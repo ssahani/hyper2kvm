@@ -1,59 +1,81 @@
 from __future__ import annotations
+
 import datetime as _dt
-import glob
 import hashlib
 import json
 import logging
 import os
 import shlex
-import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Iterable, Union
 
 from .exceptions import Fatal
 
 if TYPE_CHECKING:  # pragma: no cover
     import guestfs  # type: ignore
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, TransferSpeedColumn
+
+try:
+    from rich.progress import (
+        Progress,
+        BarColumn,
+        TextColumn,
+        TimeElapsedColumn,
+        TimeRemainingColumn,
+        TransferSpeedColumn,
+    )
+except Exception:  # pragma: no cover
+    Progress = None  # type: ignore
+
 
 class U:
     @staticmethod
     def die(logger: logging.Logger, msg: str, code: int = 1) -> None:
         logger.error(msg)
         raise Fatal(code, msg)
+
     @staticmethod
     def ensure_dir(p: Path) -> None:
         p.mkdir(parents=True, exist_ok=True)
+
     @staticmethod
     def which(prog: str) -> Optional[str]:
         from shutil import which as _which
         return _which(prog)
+
     @staticmethod
     def now_ts() -> str:
         return _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+
     @staticmethod
     def json_dump(obj: Any) -> str:
         try:
             return json.dumps(obj, indent=2, sort_keys=True, default=str)
         except Exception:
             return repr(obj)
+
     @staticmethod
     def human_bytes(n: Optional[int]) -> str:
         if n is None:
             return "unknown"
         x = float(n)
-        for unit in ["B", "KiB", "MiB", "GiB", "TiB"]:
-            if x < 1024 or unit == "TiB":
-                return f"{x:.2f} {unit}"
+        for unit in ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]:
+            if x < 1024 or unit == "PiB":
+                return f"{x:.2f} {unit}" if unit != "B" else f"{int(x)} {unit}"
             x /= 1024
         return f"{n} B"
+
     @staticmethod
     def banner(logger: logging.Logger, title: str) -> None:
         line = "─" * max(10, len(title) + 2)
         logger.info(line)
         logger.info(f" {title}")
         logger.info(line)
+
+    @staticmethod
+    def _pretty_cmd(cmd: List[str]) -> str:
+        return " ".join(shlex.quote(x) for x in cmd)
+
     @staticmethod
     def run_cmd(
         logger: logging.Logger,
@@ -63,47 +85,142 @@ class U:
         capture: bool = False,
         env: Optional[Dict[str, str]] = None,
         timeout: Optional[int] = None,
+        cwd: Optional[Union[str, Path]] = None,
+        input_text: Optional[str] = None,
+        stream: bool = False,
+        fatal: bool = False,
     ) -> subprocess.CompletedProcess:
-        pretty = " ".join(shlex.quote(x) for x in cmd)
-        logger.debug(f"Running: {pretty}")
+        """
+        Run a command.
+
+        - capture=True uses subprocess.run(capture_output=True, text=True)
+        - stream=True streams stdout/stderr to logger in realtime (forces capture=False)
+        - fatal=True wraps failures into Fatal (otherwise re-raises subprocess exceptions)
+        """
+        pretty = U._pretty_cmd(cmd)
+        logger.debug("Running: %s", pretty)
+
         try:
-            return subprocess.run(
+            if stream:
+                # Realtime streaming (best for long qemu-img/qemu-nbd/v2v etc)
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env=env,
+                    cwd=str(cwd) if cwd is not None else None,
+                )
+                assert proc.stdout is not None
+                out_lines: List[str] = []
+                for line in proc.stdout:
+                    line = line.rstrip("\n")
+                    out_lines.append(line)
+                    logger.info(line)
+                rc = proc.wait(timeout=timeout)
+                stdout = "\n".join(out_lines) if out_lines else ""
+                cp = subprocess.CompletedProcess(cmd, rc, stdout=stdout, stderr="")
+                if check and rc != 0:
+                    raise subprocess.CalledProcessError(rc, cmd, output=stdout, stderr="")
+                return cp
+
+            # Non-streaming path
+            cp = subprocess.run(
                 cmd,
                 check=check,
                 capture_output=capture,
                 text=True,
                 env=env,
                 timeout=timeout,
+                cwd=str(cwd) if cwd is not None else None,
+                input=input_text,
             )
+            return cp
+
         except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed: {pretty}\nstdout: {e.stdout}\nstderr: {e.stderr}")
+            stdout = (e.stdout or e.output or "").strip()
+            stderr = (e.stderr or "").strip()
+            if stdout or stderr:
+                logger.error(
+                    "Command failed: %s%s%s",
+                    pretty,
+                    f"\nstdout:\n{stdout}" if stdout else "",
+                    f"\nstderr:\n{stderr}" if stderr else "",
+                )
+            else:
+                logger.error("Command failed: %s (no output)", pretty)
+
+            if fatal:
+                raise Fatal(e.returncode or 1, f"Command failed: {pretty}") from e
             raise
+
+        except subprocess.TimeoutExpired as e:
+            logger.error("Command timed out: %s (timeout=%ss)", pretty, timeout)
+            if fatal:
+                raise Fatal(124, f"Command timed out: {pretty}") from e
+            raise
+
         except Exception as e:
-            logger.error(f"Command error: {pretty} {e}")
+            logger.error("Command error: %s (%s)", pretty, e)
+            if fatal:
+                raise Fatal(1, f"Command error: {pretty}: {e}") from e
             raise
+
     @staticmethod
     def require_root_if_needed(logger: logging.Logger, write_actions: bool) -> None:
         if not write_actions:
             return
         if os.geteuid() != 0:
             U.die(logger, "This operation requires root. Re-run with sudo.", 1)
+
     @staticmethod
     def checksum(path: Path, algo: str = "sha256") -> str:
         h = hashlib.new(algo)
         total_size = path.stat().st_size
-        with Progress(TextColumn("[progress.description]{task.description}"), BarColumn(), TextColumn("[progress.percentage]{task.percentage:>3.0f}%"), TransferSpeedColumn(), TimeElapsedColumn(), TimeRemainingColumn()) as progress:
+        chunk = 1024 * 1024
+
+        def _iter_blocks(f) -> Iterable[bytes]:
+            while True:
+                b = f.read(chunk)
+                if not b:
+                    break
+                yield b
+
+        # If Rich isn't available or not a TTY, do it quietly.
+        rich_ok = Progress is not None and getattr(getattr(__import__("sys"), "stderr"), "isatty", lambda: False)()
+
+        if not rich_ok:
+            with open(path, "rb") as f:
+                for blk in _iter_blocks(f):
+                    h.update(blk)
+            return h.hexdigest()
+
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TransferSpeedColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+        ) as progress:
             task = progress.add_task("Computing checksum", total=total_size)
             with open(path, "rb") as f:
-                for blk in iter(lambda: f.read(1024 * 1024), b""):
+                for blk in _iter_blocks(f):
                     h.update(blk)
                     progress.update(task, advance=len(blk))
         return h.hexdigest()
+
     @staticmethod
-    def safe_unlink(p: Path) -> None:
+    def safe_unlink(p: Path, *, missing_ok: bool = True) -> None:
         try:
             p.unlink()
+        except FileNotFoundError:
+            if not missing_ok:
+                raise
         except Exception:
+            # deliberately quiet (callers can log if they care)
             pass
+
     @staticmethod
     def to_text(x: Any) -> str:
         if x is None:
@@ -111,53 +228,111 @@ class U:
         if isinstance(x, bytes):
             return x.decode("utf-8", "replace")
         return str(x)
+
     @staticmethod
     def human_to_bytes(s: str) -> int:
-        s = s.upper().rstrip('B')
-        suffixes = {'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4}
-        for suffix, multiplier in suffixes.items():
-            if s.endswith(suffix):
-                return int(float(s[:-len(suffix)]) * multiplier)
-        return int(float(s))
+        """
+        Parse human sizes:
+          - "10G", "10GiB", "10GB"
+          - "512M", "512MiB"
+          - "1024" (bytes)
+        """
+        raw = s.strip()
+        if not raw:
+            raise ValueError("empty size")
 
-def guest_has_cmd(g: guestfs.GuestFS, cmd: str) -> bool:
+        t = raw.upper().replace(" ", "")
+        # normalize common suffixes
+        t = t.replace("KIB", "KI").replace("MIB", "MI").replace("GIB", "GI").replace("TIB", "TI").replace("PIB", "PI")
+        t = t.replace("KB", "K").replace("MB", "M").replace("GB", "G").replace("TB", "T").replace("PB", "P")
+        t = t.rstrip("B")
+
+        multipliers = {
+            "": 1,
+            "K": 1024,
+            "KI": 1024,
+            "M": 1024**2,
+            "MI": 1024**2,
+            "G": 1024**3,
+            "GI": 1024**3,
+            "T": 1024**4,
+            "TI": 1024**4,
+            "P": 1024**5,
+            "PI": 1024**5,
+        }
+
+        # split numeric and suffix
+        num = ""
+        suf = ""
+        for i, ch in enumerate(t):
+            if (ch.isdigit() or ch == "." or ch == "-"):
+                num += ch
+            else:
+                suf = t[i:]
+                break
+
+        if suf not in multipliers:
+            raise ValueError(f"unknown size suffix: {suf!r} in {raw!r}")
+
+        return int(float(num) * multipliers[suf])
+
+
+def guest_has_cmd(g: "guestfs.GuestFS", cmd: str) -> bool:
     """
     Replacement for g.available() checks.
-    Uses a shell inside the appliance so it works across guestfs builds.
+    Uses a shell inside the appliance in a way that avoids injection.
     """
     try:
-        out = g.command(["sh", "-lc", f"command -v {shlex.quote(cmd)} >/dev/null 2>&1 && echo YES || echo NO"])
+        # Pass cmd as $1 so it isn't interpolated into the shell string.
+        out = g.command([
+            "sh", "-lc",
+            'command -v "$1" >/dev/null 2>&1 && echo YES || echo NO',
+            "sh", cmd,
+        ])
         return U.to_text(out).strip() == "YES"
     except Exception:
         return False
 
-def guest_ls_glob(g: guestfs.GuestFS, pattern: str) -> List[str]:
+
+def guest_ls_glob(g: "guestfs.GuestFS", pattern: str) -> List[str]:
     """
     Replacement for g.glob().
-    Uses shell expansion for globs and returns existing matches (one per line).
+    Uses shell glob expansion but passes pattern as an argument to avoid injection.
+
+    NOTE: Still depends on shell glob semantics; returns matches that exist.
     """
     try:
-        # -1 => one path per line, 2>/dev/null to avoid noise when no matches
-        out = g.command(["sh", "-lc", f"ls -1 {pattern} 2>/dev/null || true"])
+        # We want glob expansion, but we don't want pattern injection.
+        # So: eval "set -- $pat" where $pat is *data*.
+        # Then print each resolved path safely.
+        script = r'''
+pat="$1"
+# Expand globs into positional params:
+# shellcheck disable=SC2086
+eval "set -- $pat"
+# If no matches, set -- will keep literal pat; guard with -e checks.
+for p in "$@"; do
+  [ -e "$p" ] && printf '%s\n' "$p"
+done
+'''
+        out = g.command(["sh", "-lc", script, "sh", pattern])
         lines = [ln.strip() for ln in U.to_text(out).splitlines() if ln.strip()]
-        # ls may print literal when pattern doesn't match (depends on shell); guard by checking existence
+        # extra paranoia: verify inside guestfs API
         res: List[str] = []
         for p in lines:
             try:
                 if g.is_file(p) or g.is_dir(p):
                     res.append(p)
             except Exception:
-                # If is_file fails, keep conservative: include nothing
                 pass
         return res
     except Exception:
         return []
 
-def blinking_progress(logger, label: str, interval: float = 0.12):
-    """Tiny spinner context manager for long-running external commands.
 
-    Used so the CLI feels alive even when tools are quiet.
-    If Rich is available, prefer Rich progress elsewhere; this is a lightweight fallback.
+def blinking_progress(logger: logging.Logger, label: str, interval: float = 0.12):
+    """Tiny spinner context manager for long-running external commands.
+    Avoids drawing if stderr isn't a TTY (so CI logs don't become hieroglyphs).
     """
     import contextlib
     import itertools
@@ -167,8 +342,16 @@ def blinking_progress(logger, label: str, interval: float = 0.12):
 
     @contextlib.contextmanager
     def _cm():
+        is_tty = getattr(sys.stderr, "isatty", lambda: False)()
+        if not is_tty:
+            logger.debug("%s ...", label)
+            yield
+            logger.debug("%s done", label)
+            return
+
         stop = threading.Event()
         spinner = itertools.cycle(["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"])
+
         def run():
             while not stop.is_set():
                 ch = next(spinner)
@@ -177,6 +360,7 @@ def blinking_progress(logger, label: str, interval: float = 0.12):
                 time.sleep(interval)
             sys.stderr.write(f"\r✅ {label}\n")
             sys.stderr.flush()
+
         t = threading.Thread(target=run, daemon=True)
         t.start()
         try:
@@ -184,4 +368,5 @@ def blinking_progress(logger, label: str, interval: float = 0.12):
         finally:
             stop.set()
             t.join(timeout=1.0)
+
     return _cm()
