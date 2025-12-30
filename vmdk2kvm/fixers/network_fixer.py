@@ -956,3 +956,37 @@ class NetworkFixer:
             recommendations.append("No network configuration changes were needed. The existing config looks KVM-safe.")
 
         return recommendations
+
+def fix_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    """
+    Network fix entrypoint (new project style): call NetworkFixer directly.
+    """
+    from .network_fixer import NetworkFixer, FixLevel  # local import to avoid cycles
+
+    fix_level_str = getattr(self, "network_fix_level", "moderate")
+    try:
+        fix_level = FixLevel(fix_level_str)
+    except Exception:
+        fix_level = FixLevel.MODERATE
+
+    fixer = NetworkFixer(
+        logger=getattr(self, "logger", logging.getLogger(__name__)),
+        fix_level=fix_level,
+        dry_run=bool(getattr(self, "dry_run", False)),
+    )
+
+    # If you want Rich progress later, you can wire a callback here.
+    result = fixer.fix_network_config(g, progress_callback=None)
+
+    # keep existing report behavior
+    if hasattr(self, "report"):
+        self.report.setdefault("network", {})
+        self.report["network"] = result
+
+    updated_files = [d["path"] for d in result["stats"]["details"] if d.get("modified", False)]
+    return {
+        "updated_files": updated_files,
+        "count": len(updated_files),
+        "analysis": result,
+    }
+
