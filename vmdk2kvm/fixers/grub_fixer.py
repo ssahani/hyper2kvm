@@ -166,18 +166,49 @@ def _inspect_distro_major(self, g: guestfs.GuestFS) -> Tuple[str, int]:
 
 def _detect_family(distro: str) -> str:
     d = (distro or "").lower()
-    if d in ("fedora", "rhel", "centos", "circle", "scientificlinux", "redhat-based", "oraclelinux", "rocky", "almalinux"):
+
+    # RHEL-ish (+ common derivatives and cloud distros)
+    if d in (
+        "fedora", "rhel", "centos", "circle", "scientificlinux", "redhat-based",
+        "oraclelinux", "rocky", "almalinux",
+        "amzn", "amazon", "amazonlinux",      # Amazon Linux
+        "mariner", "cbl-mariner",             # Microsoft CBL-Mariner
+        "mageia", "openmandriva",             # rpm-ish
+        "photon",                             # VMware Photon (tdnf + dracut)
+    ):
         return "rhel"
-    if d in ("sles", "suse-based", "opensuse", "opensuse-leap", "opensuse-tumbleweed"):
+
+    # SUSE-ish
+    if d in ("sles", "sled", "suse-based", "opensuse", "opensuse-leap", "opensuse-tumbleweed"):
         return "suse"
-    if d in ("debian", "ubuntu", "linuxmint", "kalilinux"):
+
+    # Debian-ish
+    if d in (
+        "debian", "ubuntu", "linuxmint", "kalilinux", "kali",
+        "raspbian", "pop", "popos", "elementary", "zorin", "deepin",
+    ):
         return "debian"
-    if d in ("arch", "manjaro", "endeavouros"):
+
+    # Arch-ish
+    if d in ("arch", "manjaro", "endeavouros", "garuda"):
         return "arch"
+
+    # Alpine
     if d in ("alpine",):
         return "alpine"
-    if d in ("photon",):
-        return "photon"
+
+    # Gentoo-ish
+    if d in ("gentoo", "funtoo"):
+        return "gentoo"
+
+    # Void
+    if d in ("void",):
+        return "void"
+
+    # NixOS
+    if d in ("nixos",):
+        return "nixos"
+
     return "other"
 
 
@@ -578,6 +609,35 @@ def _patch_suse_sysconfig_initrd_modules(self, g: guestfs.GuestFS, drivers: List
     return {"path": path, "changed": True, "note": "suse_sysconfig"}
 
 
+def _patch_modules_load_d(self, g: guestfs.GuestFS, drivers: List[str]) -> Dict[str, Any]:
+    """
+    Cross-distro fallback: ensure modules are loaded at boot via modules-load.d.
+    This does NOT guarantee availability in early initramfs, but helps for some guests.
+    """
+    path = "/etc/modules-load.d/vmdk2kvm.conf"
+    drivers = _dedup_keep_order(drivers)
+    if not drivers:
+        return {"path": path, "changed": False, "reason": "no_drivers"}
+
+    existing = _read_text(g, path) if _file_exists(g, path) else ""
+    existing_lines = {ln.strip() for ln in existing.splitlines() if ln.strip() and not ln.strip().startswith("#")}
+
+    missing = [d for d in drivers if d not in existing_lines]
+    if not missing:
+        return {"path": path, "changed": False, "reason": "already_present"}
+
+    new = existing.rstrip() + ("\n" if existing and not existing.endswith("\n") else "")
+    new += "# Added by vmdk2kvm (modules-load.d fallback)\n"
+    for d in missing:
+        new += f"{d}\n"
+
+    if getattr(self, "dry_run", False):
+        return {"path": path, "changed": True, "dry_run": True, "added": missing}
+
+    _write_text(self, g, path, new)
+    return {"path": path, "changed": True, "added": missing, "note": "modules_load_d_fallback"}
+
+
 def _maybe_add_dracut_drivers(cmd: List[str], drivers: List[str]) -> List[str]:
     if not cmd or cmd[0] != "dracut":
         return cmd
@@ -849,6 +909,9 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         # Alpine mkinitfs: config differs per image; warn only
         if guest_has_cmd(g, "mkinitfs"):
             inject_audit["warnings"].append("mkinitfs_detected: no deterministic module-injection implemented (config varies)")
+
+        # Cross-distro fallback (Void/Gentoo/minimal images): try modules-load.d
+        inject_audit["actions"].append(_patch_modules_load_d(self, g, add_drivers))
     except Exception as e:
         inject_audit["warnings"].append(f"driver_injection_failed:{e}")
 
@@ -871,6 +934,10 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
     if guest_has_cmd(g, "mkinitcpio"):
         initramfs_attempts += [["mkinitcpio", "-P"]]
+
+    # booster (used by some modern/immutable-ish distros; best-effort)
+    if guest_has_cmd(g, "booster"):
+        initramfs_attempts += [["booster", "build"]]
 
     if guest_has_cmd(g, "dracut"):
         # Prefer regenerate-all; it handles multiple kernels cleanly on many distros
@@ -945,6 +1012,24 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             grub_cfg_targets = ["/boot/grub/grub.cfg"]
         for tgt in grub_cfg_targets:
             boot_attempts.append(["grub-mkconfig", "-o", tgt])
+
+    # Best-effort GRUB reinstall attempts (non-fatal, often fixes "grub prompt" cases)
+    # NOTE: offline environment may lack device nodes; we try only when commands exist.
+    if guest_has_cmd(g, "grub2-install"):
+        # BIOS install (may fail offline; that's OK)
+        boot_attempts.append(["grub2-install", "--recheck"])
+
+        # UEFI install attempt (only if ESP likely present)
+        if looks_uefi and (_dir_exists(g, "/boot/efi") or _dir_exists(g, "/efi")):
+            # Avoid assuming distro path layout; try common EFI directory locations.
+            efi_dir = "/boot/efi" if _dir_exists(g, "/boot/efi") else "/efi"
+            boot_attempts.append(["grub2-install", "--target=x86_64-efi", f"--efi-directory={efi_dir}", "--recheck"])
+
+    if guest_has_cmd(g, "grub-install"):
+        boot_attempts.append(["grub-install", "--recheck"])
+        if looks_uefi and (_dir_exists(g, "/boot/efi") or _dir_exists(g, "/efi")):
+            efi_dir = "/boot/efi" if _dir_exists(g, "/boot/efi") else "/efi"
+            boot_attempts.append(["grub-install", "--target=x86_64-efi", f"--efi-directory={efi_dir}", "--recheck"])
 
     # systemd-boot: update is safe-ish, but only meaningful if ESP is mounted
     if guest_has_cmd(g, "bootctl"):
