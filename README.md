@@ -25,7 +25,7 @@ This repository is intentionally **not** “click migrate and pray”.
 2. Design principles
 3. Supported inputs and execution modes
 4. Pipeline model
-5. Control-plane vs data-plane (vSphere, VDDK, HTTP, SSH)
+5. Control-plane vs data-plane (vSphere, govc, VDDK, HTTP, SSH)
 6. Linux fixes
 7. Windows handling
 8. Snapshots and flattening
@@ -33,7 +33,7 @@ This repository is intentionally **not** “click migrate and pray”.
 10. YAML configuration model
 11. Multi-VM and batch processing
 12. Live-fix mode (SSH)
-13. ESXi and vSphere integration
+13. ESXi and vSphere integration (govc + APIs)
 14. virt-v2v integration strategy
 15. Safety mechanisms
 16. Daemon mode and automation
@@ -61,7 +61,7 @@ This repository is intentionally **not** “click migrate and pray”.
 
 * Not a GUI wizard
 * Not a cloud importer
-* Not a “thin wrapper around virt-v2v”
+* Not a thin wrapper around virt-v2v
 * Not a promise of zero-touch Windows fixes
 * Not a complexity hider
 
@@ -71,28 +71,15 @@ If you want *fast over correct*, this repo will argue with you (politely, with l
 
 ## 2. Design principles
 
-These principles are why this tool exists.
-
 1. **Boot failures are configuration problems, not copy problems**
-   Disk bytes can be perfect and the VM can still fail to boot.
-
 2. **Device naming must survive hypervisor changes**
-   `/dev/sdX`, `/dev/vdX`, and `/dev/disk/by-path/*` are portability traps.
-
 3. **Snapshot chains lie unless flattened**
-   VMware snapshot metadata does not carry cleanly into KVM.
-
 4. **Windows storage must be BOOT_START before first KVM boot**
-   Otherwise you get `INACCESSIBLE_BOOT_DEVICE`. Always.
-
 5. **Every destructive step needs a safe mode**
-   Dry-run, backups, atomic writes, and checkpoints are mandatory.
-
 6. **Configurations must be replayable**
-   YAML is an artifact: mergeable, reviewable, rerunnable.
-
 7. **Control-plane and data-plane must not be mixed**
-   Inventory logic must not be entangled with byte-moving logic.
+
+These rules are enforced structurally, not by convention.
 
 ---
 
@@ -118,148 +105,153 @@ These principles are why this tool exists.
 
 * SSH access to running Linux guests (**live-fix mode**)
 
-### API-based (vSphere)
+### API and CLI based (vSphere)
 
-* vCenter / ESXi via **pyvmomi**
+* vCenter / ESXi via:
 
-  * inventory
-  * snapshot inspection
-  * CBT queries
-  * datastore browsing
+  * **govc** (primary CLI control-plane)
+  * pyvmomi / pyVim (API fallback and deep inspection)
+
+Used for:
+
+* inventory
+* snapshot planning
+* CBT discovery
+* datastore browsing
+* artifact resolution
 
 ---
 
 ## 4. Pipeline model
 
-All execution modes map to a **single internal pipeline**.
+All execution modes map to a **single internal pipeline**:
 
 ```
 FETCH → FLATTEN → INSPECT → FIX → CONVERT → VALIDATE
 ```
 
-Not every mode runs every stage — but **order is never violated**.
+Stages are optional.
+**Order is not.**
 
-|    Stage | Meaning                     |
-| -------: | --------------------------- |
-|    FETCH | Obtain disks/artifacts      |
-|  FLATTEN | Collapse snapshot chains    |
-|  INSPECT | Detect OS, layout, firmware |
-|      FIX | Apply deterministic repairs |
-|  CONVERT | Produce qcow2/raw/etc       |
+| Stage    | Meaning                     |
+| -------- | --------------------------- |
+| FETCH    | Obtain disks and metadata   |
+| FLATTEN  | Collapse snapshot chains    |
+| INSPECT  | Detect OS, layout, firmware |
+| FIX      | Apply deterministic repairs |
+| CONVERT  | Produce qcow2/raw/etc       |
 | VALIDATE | Boot-test and verify        |
 
-This pipeline is **explicit**, not emergent.
+The pipeline is explicit and inspectable.
 
 ---
 
 ## 5. Control-plane vs data-plane
 
-This section is the *mental model* for the whole repo.
+This separation is the *spine* of the project.
 
 ### High-level view
 
 ```
-            ┌──────────────────────────┐
-            │       CONTROL PLANE       │
-            │  (what exists, what to do)│
-            │                            │
-            │  pyvmomi / pyVim           │
-            │  VM inventory              │
-            │  snapshot planning         │
-            │  CBT range discovery       │
-            │  datastore listing         │
-            └─────────────┬────────────┘
+            ┌────────────────────────────┐
+            │        CONTROL PLANE        │
+            │  (what exists, what to do)  │
+            │                              │
+            │  govc                       │
+            │  pyvmomi / pyVim            │
+            │  inventory + snapshots      │
+            │  CBT planning               │
+            │  datastore inspection       │
+            └─────────────┬──────────────┘
                           │
                           │ plans, ranges, metadata
                           │
-            ┌─────────────▼────────────┐
-            │        DATA PLANE         │
-            │   (move bytes reliably)   │
-            │                            │
-            │  virt-v2v                  │
-            │  VDDK reads                │
-            │  HTTP /folder downloads    │
-            │  SSH/SCP                   │
-            │  resume + verify           │
-            └──────────────────────────┘
+            ┌─────────────▼──────────────┐
+            │         DATA PLANE          │
+            │    (move bytes reliably)    │
+            │                              │
+            │  virt-v2v                   │
+            │  VDDK reads                 │
+            │  HTTP /folder downloads     │
+            │  SSH/SCP                    │
+            │  resume + verify            │
+            └────────────────────────────┘
 ```
 
-Control-plane **never** moves large data.
-Data-plane **never** makes inventory decisions.
+* Control-plane **never** moves large data
+* Data-plane **never** makes inventory decisions
 
 ---
 
-### 5.1 Control-plane responsibilities
+### 5.1 Control-plane responsibilities (govc-first)
 
-Control-plane uses **vSphere APIs** to answer questions:
+`govc` is treated as a **first-class control-plane tool**, not a convenience hack.
 
-* What VMs exist?
-* Where are their disks?
-* What snapshots exist?
-* What changed since last time?
-* What *should* be fetched?
+Used for:
 
-Responsibilities:
-
-* VM discovery (name / UUID / MoRef)
-* Disk enumeration and backing paths
-* Snapshot chain analysis
-* Firmware detection (BIOS vs UEFI)
+* VM discovery (name, UUID, MoRef)
+* Disk and backing path resolution
+* Snapshot tree inspection
 * CBT enablement and range queries
-* Datastore directory listing
+* Datastore browsing
+* Folder-level artifact enumeration
 
-Control-plane code is designed to be:
+Why govc?
 
-* deterministic
-* testable
-* side-effect minimal
+* Stable CLI semantics
+* Excellent coverage of vSphere features
+* Predictable output (JSON-friendly)
+* Easier to reason about than opaque SDK state
+
+pyvmomi remains available when:
+
+* API-only fields are required
+* govc coverage is insufficient
+* deeper object graph traversal is needed
 
 ---
 
 ### 5.2 Data-plane transports
 
-Data-plane answers one question: **how do bytes move safely?**
+Data-plane answers one question only:
+
+**How do bytes move safely?**
 
 Supported transports:
 
 #### virt-v2v
 
-Conversion-grade, semantic-aware.
+Semantic conversion engine.
 
 Use when:
 
 * you want qcow2/raw output
-* you want guest conversion logic
+* you want guest-aware conversion
 * you want fewer moving parts
 
-#### HTTP `/folder`
-
-Datastore file downloads via vCenter session auth.
+#### HTTP `/folder` (via vCenter)
 
 Use when:
 
-* you want *download-only*
-* you want VM folder artifacts
+* you want download-only
+* you want datastore artifacts
 * you want ranged reads (CBT)
 
 #### VDDK
 
-High-throughput disk reads.
-
 Use when:
 
-* performance matters
-* VDDK is allowed/available
+* throughput matters
+* VDDK is permitted
+* large disks are involved
 
 #### SSH/SCP
 
-Minimal dependency path.
-
 Use when:
 
-* no API access
-* locked-down networks
-* “just ESXi access”
+* no API access exists
+* networks are locked down
+* only ESXi shell access is available
 
 ---
 
@@ -267,25 +259,26 @@ Use when:
 
 | Goal                  | Recommended      |
 | --------------------- | ---------------- |
-| Convert VM and boot   | virt-v2v         |
+| Convert and boot VM   | virt-v2v         |
+| Inventory + planning  | govc             |
 | Download VM artifacts | HTTP `/folder`   |
 | Fast disk extraction  | VDDK             |
-| No vCenter API        | SSH/SCP          |
+| No vCenter access     | SSH/SCP          |
 | Incremental sync      | CBT + HTTP Range |
 
 ---
 
 ### 5.4 Incremental migration (CBT)
 
-CBT is **explicit**, not magical.
+CBT is explicit and audited.
 
 ```
 CONTROL PLANE:
-  query changed block ranges
-  ↓
+  govc → query changed block ranges
+        ↓
 DATA PLANE:
   HTTP Range GETs
-  ↓
+        ↓
 LOCAL DISK PATCH
 ```
 
@@ -293,95 +286,56 @@ Used for:
 
 * warm migrations
 * large disks
-* predictable cutover windows
+* controlled cutover windows
 
-If CBT lies, the tool tells you — it does not pretend.
+If CBT lies, the tool tells you.
+It does not pretend.
 
 ---
 
 ### 5.5 Resume, integrity, and checkpoints
 
-Every data-plane operation is built around failure tolerance:
+Every data-plane operation supports failure recovery:
 
-* download plans
-* `.part → final` promotion
 * resumable transfers
+* `.part → final` promotion
 * size verification
 * optional SHA256
 * rerun safety
 
-Rerunning the same config should produce the same result.
+Same config in, same result out.
 
 ---
 
 ## 6. Linux fixes
 
-### fstab stabilization
-
-Rewrites:
-
-* `/dev/sdX`
-* `/dev/vdX`
-* `/dev/disk/by-path/*`
-
-Into:
-
-* `UUID=`
-* `PARTUUID=`
-* `LABEL=` / `PARTLABEL=`
-
-### GRUB
-
-* stabilizes `root=`
-* cleans `device.map`
-* BIOS and UEFI supported
-
-### initramfs
-
-* distro-aware regeneration
-* safe skip supported
-
-### Network
-
-* MAC pinning removal
-* VMware naming cleanup
-* bond / bridge / VLAN preservation
-* topology-aware DHCP enablement
+* fstab rewrite (`UUID=` / `PARTUUID=` preferred)
+* GRUB root stabilization (BIOS + UEFI)
+* initramfs regeneration (distro-aware)
+* network cleanup (MAC pinning, VMware artifacts)
 
 ---
 
 ## 7. Windows handling
 
-Windows is a **first-class citizen**.
+Windows is a **first-class citizen**, not an afterthought.
 
-### Driver injection
-
-* VirtIO storage (BOOT_START)
-* network, balloon, input, fs
-* arch-aware
-
-### Registry (offline)
-
-* SYSTEM hive edits
-* CriticalDeviceDatabase
-* correct StartType + Group
-
-### BCD
-
-* BIOS + UEFI
-* backups created
+* VirtIO storage injected as BOOT_START
+* registry edits via offline hives
+* CriticalDeviceDatabase fixes
+* BCD handling with backups
 * no blind binary patching
 
 ---
 
 ## 8. Snapshots and flattening
 
-* descriptor recursion
-* parent chain resolution
-* flatten before conversion
+* recursive descriptor resolution
+* parent chain verification
+* flatten **before** conversion
 * atomic outputs
 
-Flattening is recommended because VMware metadata does not translate.
+Snapshot flattening is strongly recommended.
 
 ---
 
@@ -395,17 +349,17 @@ Formats:
 
 Validation:
 
-* checksum
-* libvirt boot
-* qemu direct boot
-* BIOS / UEFI
-* headless mode supported
+* checksums
+* libvirt smoke boots
+* qemu direct boots
+* BIOS and UEFI
+* headless supported
 
 ---
 
 ## 10. YAML configuration model
 
-YAML is treated as **code**.
+YAML is treated as **code**:
 
 * mergeable
 * reviewable
@@ -415,134 +369,20 @@ YAML is treated as **code**.
 --config base.yaml --config vm.yaml --config overrides.yaml
 ```
 
-Multi-VM example:
+---
 
-```yaml
-vms:
-  - vmdk: vm1.vmdk
-    to_output: vm1.qcow2
-  - vmdk: vm2.vmdk
-    to_output: vm2.qcow2
-    compress: false
-```
+## 11–19
+
+* batch processing
+* live-fix mode
+* ESXi + vSphere via govc
+* virt-v2v integration
+* safety mechanisms
+* daemon / automation
+* testing and failure analysis
+* explicit non-goals
 
 ---
 
-## 11. Multi-VM and batch processing
-
-* parallel conversion
-* shared defaults
-* recovery checkpoints
-* deterministic paths
-
-Designed for fleets and factories.
-
 ---
 
-## 12. Live-fix mode (SSH)
-
-Used **after** migration.
-
-* fstab rewrite
-* initramfs regen
-* remove VMware tools
-* dry-run preview
-
-Not for Windows or snapshot repair.
-
----
-
-## 13. ESXi and vSphere integration
-
-SSH mode:
-
-* no API dependency
-* recursive snapshot fetch
-
-vSphere mode:
-
-* inventory
-* CBT
-* datastore browsing
-* HTTP `/folder` pulls
-
----
-
-## 14. virt-v2v integration strategy
-
-Two patterns:
-
-* `use_v2v`: v2v converts, vmdk2kvm repairs
-* `post_v2v`: vmdk2kvm prepares, v2v converts
-
-virt-v2v solves *some* problems.
-`vmdk2kvm` solves the rest deterministically.
-
----
-
-## 15. Safety mechanisms
-
-* dry-run
-* backups
-* atomic writes
-* checkpoints
-* resume support
-
-Default posture: **safe and verbose**.
-
----
-
-## 16. Daemon mode and automation
-
-* directory watcher
-* systemd-friendly
-* non-interactive
-* CI/CD friendly
-
----
-
-## 17. Testing and verification
-
-Strongly recommended:
-
-* libvirt smoke boot
-* qemu direct boot
-* timeout enforcement
-
-Failures stop the pipeline by default.
-
----
-
-## 18. Failure modes
-
-Common:
-
-* missing VirtIO storage
-* unstable fstab
-* snapshot corruption
-* GUI devices on servers
-
-Tooling:
-
-* `--dump-config`
-* `--dump-args`
-* detailed reports
-
----
-
-## 19. When not to use this tool
-
-* you want a wizard
-* you expect Windows magic
-* you dislike explicit config
-* you prefer folklore over determinism
-
----
-
-## Documentation index
-
-* `README.md` — this file
-* `docs/yaml-examples.md` — runnable cookbook
-* `--help` — CLI reference
-* `--dump-config` — merged YAML
-* `--dump-args` — final argparse state
