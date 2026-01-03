@@ -14,8 +14,40 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import quote
+
+# -----------------------------
+# ✅ Rich progress (spinner-style)
+# -----------------------------
+try:
+    from rich.console import Console
+    from rich.progress import (
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+        TimeElapsedColumn,
+    )
+
+    RICH_AVAILABLE = True
+except Exception:  # pragma: no cover
+    Console = None  # type: ignore
+    Progress = None  # type: ignore
+    SpinnerColumn = None  # type: ignore
+    TextColumn = None  # type: ignore
+    TimeElapsedColumn = None  # type: ignore
+    RICH_AVAILABLE = False
+
+# -----------------------------
+# Optional: non-blocking IO helpers
+# -----------------------------
+try:
+    import select
+
+    SELECT_AVAILABLE = True
+except Exception:  # pragma: no cover
+    select = None  # type: ignore
+    SELECT_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Errors / creds resolver (robust import fallbacks)
@@ -33,6 +65,7 @@ except Exception:  # pragma: no cover
 
     def extract_paths_from_datastore_ls_json(obj: Any) -> List[str]:  # type: ignore
         return []
+
 
 try:
     # Your repo says: from ..core.exceptions import VMwareError
@@ -384,6 +417,10 @@ class VMwareClient:
       ✅ download-only mode (no guest inspection; datastore folder download)
       ✅ vddk_download mode (single disk direct VDDK pull) — prioritized for "download" when usable
       ✅ govc prefer-if-present (additive, safe fallback)
+
+    NEW:
+      ✅ virt-v2v run shows a Rich spinner progressbar (indeterminate) while streaming logs.
+         No fake % (virt-v2v doesn’t expose progress); we show liveness + elapsed time.
     """
 
     def __init__(
@@ -420,6 +457,9 @@ class VMwareClient:
         self.govc_bin = os.environ.get("GOVC_BIN", "govc")
         self.no_govmomi = False
         self._govc_client: Optional[GovmomiCLI] = None
+
+        # rich console for progress UI (stderr is conventional for progress)
+        self._rich_console = Console(stderr=True) if (RICH_AVAILABLE and Console is not None) else None
 
     # ---------------------------------------------------------------------
     # build from config using shared resolver (vs_* + vc_* + *_env)
@@ -1763,6 +1803,10 @@ class VMwareClient:
         argv += list(opt.extra_args)
         return argv
 
+    # ---------------------------------------------------------------------
+    # ✅ Rich progress subprocess runner (no threads, no asyncio)
+    # ---------------------------------------------------------------------
+
     def _run_logged_subprocess(self, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> int:
         # NOTE: never print secrets; argv should not contain passwords (we use -ip file)
         self.logger.info("Running: %s", " ".join(shlex.quote(a) for a in argv))
@@ -1779,8 +1823,95 @@ class VMwareClient:
         assert proc.stdout is not None
         assert proc.stderr is not None
 
-        # simple line pumps (no threads): read stderr/stdout opportunistically
-        # This is “good enough” for virt-v2v which is mostly stderr; avoids async/threading.
+        # Best-effort: make pipes non-blocking (posix)
+        if SELECT_AVAILABLE:
+            try:
+                os.set_blocking(proc.stdout.fileno(), False)  # type: ignore[attr-defined]
+                os.set_blocking(proc.stderr.fileno(), False)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+        def _pump_available() -> List[str]:
+            """Read whatever is immediately available from stdout/stderr (non-blocking)."""
+            lines: List[str] = []
+            # If select is not available, fall back to simple blocking readline loop
+            if not SELECT_AVAILABLE:
+                out_line = proc.stdout.readline()
+                err_line = proc.stderr.readline()
+                if out_line:
+                    lines.append(out_line.rstrip("\n"))
+                if err_line:
+                    lines.append(err_line.rstrip("\n"))
+                return lines
+
+            rlist = []
+            try:
+                rlist = [proc.stdout, proc.stderr]
+                ready, _, _ = select.select(rlist, [], [], 0.20)  # type: ignore[union-attr]
+            except Exception:
+                ready = rlist
+
+            for s in ready:
+                try:
+                    chunk = s.read()  # type: ignore[assignment]
+                except Exception:
+                    chunk = ""
+                if not chunk:
+                    continue
+                # splitlines keeps partial lines; we still show them (liveness > perfection)
+                for ln in chunk.splitlines():
+                    lines.append(ln.rstrip("\n"))
+            return lines
+
+        # Spinner progress: only when interactive-ish and rich exists
+        use_rich = bool(RICH_AVAILABLE and self._rich_console is not None and hasattr(self._rich_console, "is_terminal") and self._rich_console.is_terminal)  # type: ignore[attr-defined]
+
+        last_line = ""
+        emitted = 0
+
+        if use_rich and Progress is not None and SpinnerColumn is not None and TextColumn is not None and TimeElapsedColumn is not None:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                TimeElapsedColumn(),
+                console=self._rich_console,  # type: ignore[arg-type]
+                transient=True,
+            ) as progress:
+                task_id = progress.add_task("virt-v2v running…", total=None)
+
+                while True:
+                    lines = _pump_available()
+                    for ln in lines:
+                        last_line = ln.strip()
+                        if last_line:
+                            self.logger.info("%s", last_line)
+                            emitted += 1
+
+                        # Update progress text with last meaningful line (truncate to keep UI sane)
+                        if last_line:
+                            show = last_line
+                            if len(show) > 120:
+                                show = show[:117] + "..."
+                            progress.update(task_id, description=f"virt-v2v running… {show}")
+
+                    if proc.poll() is not None:
+                        # drain remaining
+                        for _ in range(0, 10):
+                            more = _pump_available()
+                            if not more:
+                                break
+                            for ln in more:
+                                last_line = ln.strip()
+                                if last_line:
+                                    self.logger.info("%s", last_line)
+                                    emitted += 1
+                        break
+
+                rc = int(proc.wait())
+                progress.update(task_id, description=f"virt-v2v finished (rc={rc})")
+                return rc
+
+        # Fallback: original behavior (no fancy UI)
         while True:
             out_line = proc.stdout.readline()
             err_line = proc.stderr.readline()
