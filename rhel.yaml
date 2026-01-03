@@ -18,7 +18,7 @@ command: local
 # --------------------------------------------------------------------
 # Input
 # --------------------------------------------------------------------
-vmdk: /home/ssahani/tt/vmdk2kvm/downloads/esx8.0-rhel10.0beta-x86_64-efi/esx8.0-rhel10.0beta-x86_64-efi/esx8.0-rhel10.0beta-x86_64-efi_1-flat.vmdk
+vmdk: /home/ssahani/tt/vmdk2kvm/downloads/esx8.0-rhel10.1-x86_64-efi/esx8.0-rhel10.1-x86_64-efi/esx8.0-rhel10.1-x86_64-efi.vmdk
 
 # --------------------------------------------------------------------
 # Output layout
