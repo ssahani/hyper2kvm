@@ -1,4 +1,4 @@
-# Testing Converted RHEL 10 qcow2 on Fedora (GUI, UEFI)
+  # Testing Converted RHEL 10 qcow2 on Fedora (GUI, UEFI)
 
 This guide describes how to **validate a converted RHEL 10 qcow2 image**
 using **KVM + libvirt** on Fedora, booting **directly into graphical (GUI) mode**
@@ -71,7 +71,14 @@ sudo install -o qemu -g qemu -m 0640 \
   /home/ssahani/by-path/out/rhel10-fixed.qcow2 \
   /var/lib/libvirt/images/rhel10-fixed.qcow2
 ```
+or 
+```bash
+sudo cp /home/ssahani/by-path/out/rhel10-fixed.qcow2 \
+  /var/lib/libvirt/images/
 
+sudo chown qemu:qemu /var/lib/libvirt/images/rhel10-fixed.qcow2
+
+```
 Create the NVRAM directory (safe even if it already exists):
 
 ```bash
