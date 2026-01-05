@@ -1,4 +1,3 @@
-````md
 # Testing Converted openSUSE qcow2 on Fedora (GUI, BIOS)
 
 This guide describes how to **validate a converted openSUSE qcow2 image**
