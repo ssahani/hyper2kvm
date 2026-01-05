@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # vmdk2kvm/fixers/windows_fixer.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations

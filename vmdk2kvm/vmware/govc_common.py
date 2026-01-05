@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 

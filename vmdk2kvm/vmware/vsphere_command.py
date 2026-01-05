@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # vmdk2kvm/vmware/vsphere_command.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
