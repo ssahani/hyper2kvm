@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # vmdk2kvm/fixers/bootloader_fixer.py
 # ---------------------------------------------------------------------
 # Multi-bootloader detection + KVM-friendly “safe” fixes.

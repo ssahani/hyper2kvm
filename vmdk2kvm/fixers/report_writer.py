@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 from typing import Any, Dict, List
 import datetime as _dt
 import os

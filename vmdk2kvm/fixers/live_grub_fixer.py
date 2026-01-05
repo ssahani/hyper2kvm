@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # vmdk2kvm/fixers/live_grub_fixer.py
 from __future__ import annotations
 

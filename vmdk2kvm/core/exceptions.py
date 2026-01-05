@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # vmdk2kvm/core/exceptions.py
 from __future__ import annotations
 
