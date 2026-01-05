@@ -1,4 +1,3 @@
-````md
 # YAML Configuration Examples for `vmdk2kvm.py` (Cookbook, with vSphere Control/Data Plane)
 
 This page is a **copy-paste cookbook** for running `vmdk2kvm.py` using YAML configs.
@@ -731,6 +730,3 @@ Common causes:
 
 Usually key mismatch vs argparse destination name.
 Prefer the exact names your CLI expects (`to_output`, `out_format`, `vm_name`, `vs_action`, etc.).
-
-```
-```
