@@ -4,8 +4,10 @@ import datetime as _dt
 import os
 import sys
 from pathlib import Path
+
 from ..core.utils import U
 from .. import __version__
+
 
 def write_report(self) -> None:
     self.report["timestamps"]["end"] = _dt.datetime.now().isoformat()
@@ -23,6 +25,38 @@ def write_report(self) -> None:
             return d.get(k, default)
         except Exception:
             return default
+
+    def _write_file(path: Path, content: str) -> None:
+        # Atomic write if utility exists; fallback to plain write.
+        tmp = Path(str(path) + ".tmp.vmdk2kvm")
+        try:
+            tmp.write_text(content, encoding="utf-8")
+            tmp.replace(path)
+        except Exception:
+            path.write_text(content, encoding="utf-8")
+
+    def _write_json_sidecar(base: Path, payload: Dict[str, Any]) -> Path:
+        """
+        Write a machine-readable JSON report alongside the Markdown report.
+
+        Behavior:
+          - If base is ".../report.md"  -> write ".../report.json"
+          - If base has no suffix       -> write ".../report.json"
+          - If base is already ".json"  -> also write the same path
+        """
+        if base.suffix.lower() == ".json":
+            jp = base
+        elif base.suffix:
+            jp = base.with_suffix(".json")
+        else:
+            jp = Path(str(base) + ".json")
+
+        # Best effort; do not fail report generation if JSON write fails.
+        try:
+            _write_file(jp, j(payload) + "\n")
+        except Exception:
+            pass
+        return jp
 
     # Extract common values
     changes: Dict[str, Any] = self.report.get("changes", {}) or {}
@@ -114,6 +148,40 @@ def write_report(self) -> None:
             {"stage": cp.stage, "timestamp": cp.timestamp, "completed": cp.completed}
             for cp in self.recovery_manager.checkpoints
         ]
+
+    # Build a machine-readable JSON report payload (superset)
+    json_report: Dict[str, Any] = {
+        "schema": "vmdk2kvm.report.v1",
+        "run": run_meta,
+        "host": host_meta,
+        "tools": tool_inv,
+        "changes": changes,
+        "analysis": analysis,
+        "validation": validation_payload,
+        "error": error_payload,
+        "recovery_checkpoints": checkpoints_summary or None,
+        "summary": {
+            "image": str(self.image),
+            "root_dev": self.root_dev,
+            "root_btrfs_subvol": self.root_btrfs_subvol,
+            "dry_run": self.dry_run,
+            "counts": {
+                "fstab": changes.get("fstab", 0),
+                "crypttab": crypttab_count,
+                "network_files": net.get("count", 0),
+                "grub_root": changes.get("grub_root", 0),
+                "grub_device_map_removed": changes.get("grub_device_map_removed", 0),
+            },
+            "failed_checks": {
+                "critical": critical_failed,
+                "all": failed,
+            },
+            "flags": {
+                "vmware_tools_removed": bool(vmware_rm.get("removed", False)),
+                "cloud_init_injected": bool(cloud.get("injected", False)),
+            },
+        },
+    }
 
     # Build Markdown
     md: List[str] = []
@@ -318,5 +386,14 @@ def write_report(self) -> None:
     md.extend(hints)
     md.append("")
 
-    p.write_text("\n".join(md) + "\n", encoding="utf-8")
-    self.logger.info(f"Report written: {p}")
+    # Write Markdown + JSON sidecar
+    _write_file(p, "\n".join(md) + "\n")
+    json_path = _write_json_sidecar(p, json_report)
+
+    # Log
+    try:
+        self.logger.info(f"Report written: {p}")
+        if json_path != p:
+            self.logger.info(f"Report JSON written: {json_path}")
+    except Exception:
+        pass
