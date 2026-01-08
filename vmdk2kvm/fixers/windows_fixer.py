@@ -10,12 +10,6 @@ This module intentionally stays small and delegates the heavy lifting to:
   - windows_virtio.py     (driver discovery + injection + staging + BCD backup hints)
   - windows_registry.py   (offline hive edits: SYSTEM services/CDD + SOFTWARE DevicePath)
 
-Keep imports here stable so the rest of the codebase can continue doing:
-  from vmdk2kvm.fixers.windows_fixer import inject_virtio_drivers, is_windows, windows_bcd_actual_fix
-without caring about refactors.
-
-If your orchestrator instantiates a "fixer" object, the WindowsFixer class below provides
-the same public entrypoints.
 """
 
 import logging

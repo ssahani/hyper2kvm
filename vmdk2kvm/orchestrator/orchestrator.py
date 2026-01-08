@@ -41,6 +41,9 @@ from ..vmware.vmdk_parser import VMDK
 from ..vmware.vmware_client import PYVMOMI_AVAILABLE, REQUESTS_AVAILABLE
 from ..vmware.vsphere_mode import VsphereMode
 
+# ✅ Hook: domain emitter
+from ..libvirt.domain_emitter import emit_from_args
+
 # ---------------------------
 # vSphere virt-v2v export support (SYNC ONLY)
 # Keep optional import so existing code works even if module not present yet.
@@ -89,7 +92,14 @@ class Orchestrator:
           - robust output discovery across multiple formats
           - temp keyfile cleanup safety
         """
-        Log.trace(logger, "🧪 v2v_convert: disks=%d out_root=%s out_format=%s compress=%s", len(disks), out_root, out_format, compress)
+        Log.trace(
+            logger,
+            "🧪 v2v_convert: disks=%d out_root=%s out_format=%s compress=%s",
+            len(disks),
+            out_root,
+            out_format,
+            compress,
+        )
 
         if U.which("virt-v2v") is None:
             logger.warning("virt-v2v not found; falling back to internal fixer")
@@ -117,7 +127,12 @@ class Orchestrator:
             effective_passphrase = passphrase
             if passphrase_env:
                 effective_passphrase = os.environ.get(passphrase_env)
-                Log.trace(logger, "🔐 v2v_convert: passphrase_env=%r present=%s", passphrase_env, bool(effective_passphrase))
+                Log.trace(
+                    logger,
+                    "🔐 v2v_convert: passphrase_env=%r present=%s",
+                    passphrase_env,
+                    bool(effective_passphrase),
+                )
 
             if keyfile:
                 keyfile_path_temp = Path(keyfile).expanduser().resolve()
@@ -147,7 +162,12 @@ class Orchestrator:
                     os.unlink(keyfile_path)
                     Log.trace(logger, "🧹 v2v_convert: removed temp keyfile=%s", keyfile_path)
                 except Exception:
-                    Log.trace(logger, "⚠️  v2v_convert: failed to remove temp keyfile=%s", keyfile_path, exc_info=True)
+                    Log.trace(
+                        logger,
+                        "⚠️  v2v_convert: failed to remove temp keyfile=%s",
+                        keyfile_path,
+                        exc_info=True,
+                    )
 
         # virt-v2v output files can vary; capture common ones robustly.
         patterns = ["*.qcow2", "*.raw", "*.img", "*.vmdk", "*.vdi"]
@@ -478,7 +498,12 @@ class Orchestrator:
         self.args = args
         self.recovery_manager: Optional[RecoveryManager] = None
         self.disks: List[Path] = []
-        Log.trace(self.logger, "🧠 Orchestrator init: cmd=%r output_dir=%r", getattr(args, "cmd", None), getattr(args, "output_dir", None))
+        Log.trace(
+            self.logger,
+            "🧠 Orchestrator init: cmd=%r output_dir=%r",
+            getattr(args, "cmd", None),
+            getattr(args, "output_dir", None),
+        )
 
     def log_input_layout(self, vmdk: Path) -> None:
         try:
@@ -614,7 +639,11 @@ class Orchestrator:
 
         cloud_init_data = self._load_cloud_init_config()
         if cloud_init_data is not None:
-            Log.trace(self.logger, "☁️  cloud-init loaded: keys=%s", sorted(list(cloud_init_data.keys())) if isinstance(cloud_init_data, dict) else type(cloud_init_data).__name__)
+            Log.trace(
+                self.logger,
+                "☁️  cloud-init loaded: keys=%s",
+                sorted(list(cloud_init_data.keys())) if isinstance(cloud_init_data, dict) else type(cloud_init_data).__name__,
+            )
 
         Log.step(self.logger, "Offline filesystem fixes")
         fixer = OfflineFSFix(
@@ -860,14 +889,14 @@ class Orchestrator:
                 Path(self.args.ami).expanduser().resolve(),
                 temp_dir,
                 extract_nested_tar=bool(getattr(self.args, "extract_nested_tar", True)),
-                convert_to_qcow2=bool(getattr(self.args, "convert_payload_to_qcow2", False)),
-                convert_outdir=(
+                convert_payload_to_qcow2=bool(getattr(self.args, "convert_payload_to_qcow2", False)),
+                payload_qcow2_dir=(
                     Path(self.args.payload_qcow2_dir).expanduser().resolve()
                     if getattr(self.args, "payload_qcow2_dir", None)
                     else (out_root / "qcow2")
                 ),
-                convert_compress=bool(getattr(self.args, "payload_convert_compress", False)),
-                convert_compress_level=getattr(self.args, "payload_convert_compress_level", None),
+                payload_convert_compress=bool(getattr(self.args, "payload_convert_compress", False)),
+                payload_convert_compress_level=getattr(self.args, "payload_convert_compress_level", None),
                 log_virt_filesystems=True,
             )
             self.logger.info("📦 Extracted %d disk(s) from AMI/TAR", len(self.disks))
@@ -925,8 +954,14 @@ class Orchestrator:
             or bool(getattr(self.args, "to_output", None))
             or bool(getattr(self.args, "flatten", False))
         )
-        Log.trace(self.logger, "🧾 write_actions=%s (dry_run=%s to_output=%r flatten=%s)",
-                  write_actions, getattr(self.args, "dry_run", False), getattr(self.args, "to_output", None), getattr(self.args, "flatten", False))
+        Log.trace(
+            self.logger,
+            "🧾 write_actions=%s (dry_run=%s to_output=%r flatten=%s)",
+            write_actions,
+            getattr(self.args, "dry_run", False),
+            getattr(self.args, "to_output", None),
+            getattr(self.args, "flatten", False),
+        )
         U.require_root_if_needed(self.logger, write_actions)
 
         temp_dir = self._discover_disks(out_root)
@@ -1059,6 +1094,15 @@ class Orchestrator:
             self.logger.info("🎉 Generated images:")
             for img in out_images:
                 self.logger.info(f" - {img}")
+
+        # ✅ Hook point: after out_images computed (and after tests)
+        if out_images:
+            try:
+                emit_from_args(self.logger, self.args, out_root=out_root, out_images=out_images)
+            except Exception as e:
+                self.logger.warning("Failed to emit libvirt domain XML: %s", e)
+                self.logger.debug("💥 emit_from_args exception", exc_info=True)
+
 
     def _internal_process(self, out_root: Path) -> List[Path]:
         fixed_images: List[Path] = []
