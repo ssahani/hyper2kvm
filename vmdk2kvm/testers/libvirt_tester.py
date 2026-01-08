@@ -9,13 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Sequence
 
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
+from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from ..core.utils import U
 
@@ -26,11 +20,15 @@ from ..core.utils import U
 GraphicsMode = Literal["none", "vnc", "spice"]
 MachineType = Literal["pc", "q35"]
 
+GuestOS = Literal["linux", "windows"]
+WinStage = Literal["bootstrap", "final"]  # bootstrap=sata (safe), final=virtio (fast)
+
 
 @dataclass(frozen=True)
 class FirmwareConfig:
     """
     Firmware selection.
+
       - uefi=False => BIOS
       - uefi=True  => UEFI via OVMF (CODE+VARS)
     """
@@ -41,6 +39,7 @@ class FirmwareConfig:
 class GraphicsConfig:
     """
     libvirt graphics:
+
       - none  => no display device
       - vnc   => VNC server (good for headless servers)
       - spice => SPICE server
@@ -70,6 +69,8 @@ class InputConfig:
     Input devices. USB tablet is a big quality-of-life improvement for VNC/SPICE.
     """
     usb_tablet: bool = False
+    usb_kbd: bool = False
+    usb_mouse: bool = False
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,27 @@ class DomainConfig:
 class OVMFPaths:
     code: str
     vars: str
+
+
+@dataclass(frozen=True)
+class GuestProfile:
+    """
+    Guest OS profile.
+
+    - linux: defaults stay virtio disk/net
+    - windows bootstrap: disk on SATA (safer first boot if virtio not installed)
+    - windows final: disk on VirtIO (performance)
+    """
+    os: GuestOS = "linux"
+    win_stage: WinStage = "final"
+
+    # Optional Windows niceties
+    hyperv: bool = True
+    localtime_clock: bool = True  # windows often expects localtime
+    tpm: bool = False             # needed for Win11 (plus other checks)
+    tpm_model: Literal["tpm-tis", "tpm-crb"] = "tpm-crb"
+    # Optional: attach virtio driver ISO (virtio-win.iso)
+    driver_iso: Optional[Path] = None
 
 
 # ----------------------------
@@ -144,23 +166,33 @@ class LibvirtTest:
         video_vram: int = 65536,
         usb_tablet: bool = True,
         spice: bool = False,  # legacy-friendly switch: prefer SPICE over VNC if GUI
+
+        # ✅ Windows support (backward compatible: default is linux)
+        guest_os: GuestOS = "linux",
+        windows_stage: WinStage = "final",
+        windows_hyperv: bool = True,
+        windows_tpm: bool = False,
+        windows_driver_iso: Optional[Path] = None,
     ) -> None:
         """
         Backward-compatible signature with extra knobs.
 
-        Typical GUI (like your working XML):
-          uefi=False, machine="pc", headless=False (or graphics_mode="vnc"),
-          video_model="qxl", usb_tablet=True.
+        Linux (default):
+          guest_os="linux" (implicit), disk virtio, net virtio.
 
-        Typical headless:
-          headless=True, graphics_mode="none".
+        Windows safe-first-boot:
+          guest_os="windows", windows_stage="bootstrap"  # disk SATA
+          (then install VirtIO drivers in Windows)
+          then rerun with windows_stage="final" (disk VirtIO)
+
+        Note: for Win11 you may need UEFI + TPM + secure boot policy depending on your image.
         """
         if U.which("virsh") is None:
-            U.die(logger, "virsh not found; cannot run libvirt test.", 1)
+            U.die(logger, "💥 virsh not found; cannot run libvirt test.", 1)
 
         disk = Path(disk)
         if not disk.exists():
-            U.die(logger, f"Disk not found: {disk}", 1)
+            U.die(logger, f"💥 Disk not found: {disk}", 1)
 
         fw = FirmwareConfig(uefi=uefi)
         dom = DomainConfig(
@@ -173,7 +205,15 @@ class LibvirtTest:
             keep=keep,
         )
 
-        # Derive graphics defaults: your original code used headless => none.
+        prof = GuestProfile(
+            os=guest_os,
+            win_stage=windows_stage,
+            hyperv=windows_hyperv,
+            tpm=windows_tpm,
+            driver_iso=Path(windows_driver_iso) if windows_driver_iso else None,
+        )
+
+        # Derive graphics defaults
         if graphics_mode is None:
             if headless:
                 gm: GraphicsMode = "none"
@@ -183,8 +223,25 @@ class LibvirtTest:
             gm = graphics_mode
 
         gfx = GraphicsConfig(mode=gm, listen=listen, autoport=True)
-        vid = VideoConfig(enabled=(gm != "none"), model=video_model, vram=video_vram)
-        inp = InputConfig(usb_tablet=(usb_tablet and gm != "none"))
+
+        # If Windows and user didn’t override video_model, pick saner defaults:
+        # - bootstrap: vga is widely compatible
+        # - final: virtio is good if drivers exist; keep qxl only if user explicitly wants it
+        effective_video_model = video_model
+        effective_video_vram = video_vram
+        if prof.os == "windows":
+            if video_model == "qxl":
+                effective_video_model = "vga" if prof.win_stage == "bootstrap" else "virtio"
+                effective_video_vram = 16384 if effective_video_model in ("vga", "virtio") else video_vram
+
+        vid = VideoConfig(enabled=(gm != "none"), model=effective_video_model, vram=effective_video_vram)
+
+        # Input: Windows tends to behave nicer with explicit kbd+mouse (esp. early boot)
+        inp = InputConfig(
+            usb_tablet=(usb_tablet and gm != "none"),
+            usb_kbd=(prof.os == "windows" and gm != "none"),
+            usb_mouse=(prof.os == "windows" and gm != "none"),
+        )
 
         ovmf = LibvirtTest._resolve_ovmf(logger, fw)
         nvram = LibvirtTest._prepare_nvram(logger, disk, dom.name, fw, ovmf)
@@ -199,27 +256,65 @@ class LibvirtTest:
             gfx=gfx,
             vid=vid,
             inp=inp,
+            prof=prof,
         )
 
-        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".xml") as f:
-            f.write(xml)
-            xml_path = Path(f.name)
+        xml_path: Optional[Path] = None
 
-        U.banner(logger, "Libvirt smoke test")
-        logger.info(f"Domain: {dom.name}")
-        logger.info(f"Disk: {disk}")
-        logger.info(f"Machine: {dom.machine} | Firmware: {'UEFI' if fw.uefi else 'BIOS'} | Graphics: {gfx.mode}")
+        U.banner(logger, "🧪 Libvirt smoke test")
+        logger.info("🧾 Domain: %s", dom.name)
+        logger.info("💽 Disk: %s", disk)
+        logger.info("🧬 Guest: %s", prof.os)
+        if prof.os == "windows":
+            logger.info("🪟 Windows stage: %s (disk bus=%s)", prof.win_stage, LibvirtTest._disk_bus_for_profile(prof))
+            if prof.driver_iso:
+                logger.info("📀 Driver ISO: %s", prof.driver_iso)
+            logger.info("🧩 Hyper-V features: %s", "on" if prof.hyperv else "off")
+            logger.info("🕰️  Clock: %s", "localtime" if prof.localtime_clock else "utc")
+            logger.info("🔐 TPM: %s", "on" if prof.tpm else "off")
+
+        logger.info(
+            "⚙️  Machine: %s | Firmware: %s | Graphics: %s | Network: %s | Video: %s",
+            dom.machine,
+            "UEFI" if fw.uefi else "BIOS",
+            gfx.mode,
+            dom.network,
+            vid.model if gfx.mode != "none" else "none",
+        )
 
         try:
+            with tempfile.NamedTemporaryFile("w", delete=False, suffix=".xml") as f:
+                f.write(xml)
+                xml_path = Path(f.name)
+
+            logger.debug("🧾 Generated domain XML at %s", xml_path)
+
             LibvirtTest._cleanup_domain(logger, dom.name)
+
             U.run_cmd(logger, ["virsh", "define", str(xml_path)], check=True, capture=True)
             U.run_cmd(logger, ["virsh", "start", dom.name], check=True, capture=True)
+
+            if gfx.mode != "none":
+                LibvirtTest._log_graphics_details(logger, dom.name)
+
             LibvirtTest._wait_running(logger, dom.name, dom.timeout_s)
+            logger.info("✅ Smoke test passed: domain is RUNNING")
         finally:
             if not dom.keep:
                 LibvirtTest._cleanup_domain(logger, dom.name)
-                logger.info("Cleaned up libvirt domain.")
-            U.safe_unlink(xml_path)
+                logger.info("🧹 Cleaned up libvirt domain: %s", dom.name)
+
+                # If we created an NVRAM beside the disk, delete it too (common gotcha in repeated runs).
+                if fw.uefi and nvram is not None:
+                    try:
+                        if nvram.exists():
+                            U.safe_unlink(nvram)
+                            logger.info("🧽 Removed NVRAM file: %s", nvram)
+                    except Exception as e:
+                        logger.debug("Could not remove NVRAM %s: %s", nvram, e)
+
+            if xml_path is not None:
+                U.safe_unlink(xml_path)
 
     # ----------------------------
     # Helpers
@@ -232,8 +327,11 @@ class LibvirtTest:
 
         code = next((p for p in LibvirtTest._OVMF_CODE_CANDIDATES if os.path.exists(p)), None)
         vars_ = next((p for p in LibvirtTest._OVMF_VARS_CANDIDATES if os.path.exists(p)), None)
+        logger.debug("🔎 OVMF probe: CODE=%s", code or "<missing>")
+        logger.debug("🔎 OVMF probe: VARS=%s", vars_ or "<missing>")
+
         if not code or not vars_:
-            U.die(logger, "UEFI requested but OVMF not found (CODE/VARS missing).", 1)
+            U.die(logger, "💥 UEFI requested but OVMF not found (CODE/VARS missing).", 1)
         return OVMFPaths(code=code, vars=vars_)
 
     @staticmethod
@@ -247,43 +345,65 @@ class LibvirtTest:
         if not fw.uefi:
             return None
         assert ovmf is not None
+
         nvram = disk.parent / f"{name}.VARS.fd"
         if not nvram.exists():
+            logger.info("🧬 Creating NVRAM VARS copy: %s", nvram)
             U.run_cmd(logger, ["cp", "-f", ovmf.vars, str(nvram)], check=True, capture=False)
+        else:
+            logger.debug("🧬 Reusing existing NVRAM VARS: %s", nvram)
         return nvram
 
     @staticmethod
     def _disk_format(logger: logging.Logger, disk: Path) -> str:
-        # Prefer explicit suffix; if unknown, try qemu-img info; else assume qcow2.
         suf = disk.suffix.lower().lstrip(".")
         if suf in ("qcow2", "raw", "vmdk", "vdi"):
+            logger.debug("🧾 Disk format from suffix: %s", suf)
             return suf
 
         if U.which("qemu-img"):
             try:
-                # keep dependencies light (no json parse). Extract "format" from output.
                 out = U.run_cmd(logger, ["qemu-img", "info", "--output=json", str(disk)], check=True, capture=True).stdout
                 key = '"format"'
                 i = out.find(key)
                 if i != -1:
-                    seg = out[i : i + 120]
+                    seg = out[i: i + 160]
                     c = seg.find(":")
                     q1 = seg.find('"', c + 1)
                     q2 = seg.find('"', q1 + 1)
                     if c != -1 and q1 != -1 and q2 != -1:
-                        fmt = seg[q1 + 1 : q2].strip().lower()
+                        fmt = seg[q1 + 1: q2].strip().lower()
                         if fmt:
+                            logger.debug("🧾 Disk format from qemu-img: %s", fmt)
                             return fmt
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("qemu-img info failed, falling back to qcow2: %s", e)
 
+        logger.debug("🧾 Disk format fallback: qcow2")
         return "qcow2"
+
+    @staticmethod
+    def _disk_bus_for_profile(prof: GuestProfile) -> str:
+        if prof.os != "windows":
+            return "virtio"
+        return "sata" if prof.win_stage == "bootstrap" else "virtio"
+
+    @staticmethod
+    def _disk_target_for_profile(prof: GuestProfile) -> tuple[str, str]:
+        """
+        Returns (dev, bus)
+          - virtio => vda/virtio
+          - sata   => sda/sata  (Windows bootstrap-friendly)
+        """
+        bus = LibvirtTest._disk_bus_for_profile(prof)
+        if bus == "sata":
+            return ("sda", "sata")
+        return ("vda", "virtio")
 
     @staticmethod
     def _graphics_xml(gfx: GraphicsConfig) -> str:
         if gfx.mode == "none":
-            return ""  # omit entirely
-
+            return ""
         attrs = [f"type='{gfx.mode}'", "autoport='yes'", f"listen='{gfx.listen}'"]
         if not gfx.autoport:
             attrs = [f"type='{gfx.mode}'", "autoport='no'"]
@@ -291,7 +411,6 @@ class LibvirtTest:
                 raise ValueError("graphics.autoport=False requires graphics.port")
             attrs.append(f"port='{int(gfx.port)}'")
             attrs.append(f"listen='{gfx.listen}'")
-
         if gfx.passwd:
             attrs.append(f"passwd='{gfx.passwd}'")
         if gfx.keymap:
@@ -310,9 +429,65 @@ class LibvirtTest:
     def _input_xml(inp: InputConfig, gfx: GraphicsConfig) -> str:
         if gfx.mode == "none":
             return ""
+        parts = []
         if inp.usb_tablet:
-            return "    <input type='tablet' bus='usb'/>"
-        return ""
+            parts.append("    <input type='tablet' bus='usb'/>")
+        if inp.usb_kbd:
+            parts.append("    <input type='keyboard' bus='usb'/>")
+        if inp.usb_mouse:
+            parts.append("    <input type='mouse' bus='usb'/>")
+        return "\n".join(parts)
+
+    @staticmethod
+    def _clock_xml(prof: GuestProfile) -> str:
+        if prof.os == "windows" and prof.localtime_clock:
+            return "  <clock offset='localtime'/>"
+        return "  <clock offset='utc'/>"
+
+    @staticmethod
+    def _features_xml(prof: GuestProfile) -> str:
+        # Keep Linux baseline unchanged, add Windows Hyper-V hints when requested.
+        base = [
+            "  <features>",
+            "    <acpi/>",
+            "    <apic/>",
+        ]
+        if prof.os == "windows" and prof.hyperv:
+            base += [
+                "    <hyperv mode='custom'>",
+                "      <relaxed state='on'/>",
+                "      <vapic state='on'/>",
+                "      <spinlocks state='on' retries='8191'/>",
+                "    </hyperv>",
+            ]
+        base += ["  </features>"]
+        return "\n".join(base)
+
+    @staticmethod
+    def _tpm_xml(prof: GuestProfile) -> str:
+        if not (prof.os == "windows" and prof.tpm):
+            return ""
+        # Most hosts use a swtpm socket at /run/libvirt/swtpm/<name>/swtpm-sock automatically
+        # if created via virt-manager; here we only declare device. If socket doesn't exist,
+        # libvirt start will fail (which is fine: it's a smoke test).
+        return f"""    <tpm model='tpm-tis'>
+      <backend type='emulator' version='2.0'/>
+    </tpm>"""
+
+    @staticmethod
+    def _cdrom_xml(logger: logging.Logger, iso: Optional[Path]) -> str:
+        if not iso:
+            return ""
+        iso = Path(iso)
+        if not iso.exists():
+            U.die(logger, f"💥 Driver ISO not found: {iso}", 1)
+        # attach as SATA CDROM (works broadly)
+        return f"""    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{iso}'/>
+      <target dev='sdc' bus='sata'/>
+      <readonly/>
+    </disk>"""
 
     @staticmethod
     def _build_domain_xml(
@@ -326,11 +501,11 @@ class LibvirtTest:
         gfx: GraphicsConfig,
         vid: VideoConfig,
         inp: InputConfig,
+        prof: GuestProfile,
     ) -> str:
         disk_fmt = LibvirtTest._disk_format(logger, disk)
+        (disk_dev, disk_bus) = LibvirtTest._disk_target_for_profile(prof)
 
-        # BIOS domains benefit from explicit boot dev.
-        # Your working XML uses machine='pc' + <boot dev='hd'/>.
         os_bits = [
             "  <os>",
             f"    <type arch='x86_64' machine='{dom.machine}'>hvm</type>",
@@ -344,12 +519,17 @@ class LibvirtTest:
         os_bits.append("  </os>")
         os_xml = "\n".join(os_bits)
 
+        clock_xml = LibvirtTest._clock_xml(prof)
+        features_xml = LibvirtTest._features_xml(prof)
+
         gfx_xml = LibvirtTest._graphics_xml(gfx)
         vid_xml = LibvirtTest._video_xml(vid, gfx)
         inp_xml = LibvirtTest._input_xml(inp, gfx)
+        tpm_xml = LibvirtTest._tpm_xml(prof)
+        cdrom_xml = LibvirtTest._cdrom_xml(logger, prof.driver_iso)
 
-        # Keep it simple and robust: virtio disk + virtio net + pty console always.
-        # (You can add serial/channel later if you want cloud-init style access.)
+        # Keep it simple and robust: virtio net always is usually fine (Windows has virtio-net driver),
+        # but if you want absolute “always boots”, make model configurable too.
         xml = f"""<domain type='kvm'>
   <name>{dom.name}</name>
 
@@ -357,11 +537,9 @@ class LibvirtTest:
   <vcpu>{dom.vcpus}</vcpu>
 
 {os_xml}
+{clock_xml}
 
-  <features>
-    <acpi/>
-    <apic/>
-  </features>
+{features_xml}
 
   <cpu mode='host-passthrough'/>
 
@@ -369,8 +547,9 @@ class LibvirtTest:
     <disk type='file' device='disk'>
       <driver name='qemu' type='{disk_fmt}'/>
       <source file='{disk}'/>
-      <target dev='vda' bus='virtio'/>
+      <target dev='{disk_dev}' bus='{disk_bus}'/>
     </disk>
+{cdrom_xml}
 
     <interface type='network'>
       <source network='{dom.network}'/>
@@ -381,6 +560,7 @@ class LibvirtTest:
 {gfx_xml}
 {vid_xml}
 {inp_xml}
+{tpm_xml}
   </devices>
 </domain>
 """
@@ -388,7 +568,6 @@ class LibvirtTest:
 
     @staticmethod
     def _cleanup_domain(logger: logging.Logger, name: str) -> None:
-        # Be liberal: different libvirt versions differ on --nvram support.
         U.run_cmd(logger, ["virsh", "destroy", name], check=False, capture=True)
         U.run_cmd(logger, ["virsh", "undefine", name, "--nvram"], check=False, capture=True)
         U.run_cmd(logger, ["virsh", "undefine", name], check=False, capture=True)
@@ -396,6 +575,8 @@ class LibvirtTest:
     @staticmethod
     def _wait_running(logger: logging.Logger, name: str, timeout_s: int) -> None:
         t0 = time.time()
+        last_state: Optional[str] = None
+
         with Progress(
             TextColumn("{task.description}"),
             BarColumn(),
@@ -403,13 +584,39 @@ class LibvirtTest:
             TimeElapsedColumn(),
             TimeRemainingColumn(),
         ) as progress:
-            task = progress.add_task("Waiting for domain start", total=timeout_s)
+            task = progress.add_task("⏳ Waiting for domain start", total=timeout_s)
             while True:
-                st = U.run_cmd(logger, ["virsh", "domstate", name], check=True, capture=True).stdout.strip().lower()
+                try:
+                    st = U.run_cmd(logger, ["virsh", "domstate", name], check=True, capture=True).stdout.strip().lower()
+                except Exception as e:
+                    st = f"<error:{type(e).__name__}>"
+
+                if st != last_state:
+                    logger.debug("📡 domstate=%s", st)
+                    last_state = st
+
                 if "running" in st:
-                    logger.info("Domain reached RUNNING state.")
+                    logger.info("🟢 Domain reached RUNNING state.")
                     return
+
                 if time.time() - t0 > timeout_s:
-                    U.die(logger, f"Timeout waiting for domain to run (state={st})", 1)
+                    try:
+                        info = U.run_cmd(logger, ["virsh", "dominfo", name], check=False, capture=True).stdout.strip()
+                        if info:
+                            logger.debug("virsh dominfo:\n%s", info)
+                    except Exception:
+                        pass
+                    U.die(logger, f"💥 Timeout waiting for domain to run (state={st})", 1)
+
                 time.sleep(1)
                 progress.update(task, advance=1)
+
+    @staticmethod
+    def _log_graphics_details(logger: logging.Logger, name: str) -> None:
+        try:
+            r = U.run_cmd(logger, ["virsh", "domdisplay", name], check=False, capture=True)
+            s = (r.stdout or "").strip()
+            if s:
+                logger.info("🔗 Display URL: %s", s)
+        except Exception as e:
+            logger.debug("virsh domdisplay not available: %s", e)
