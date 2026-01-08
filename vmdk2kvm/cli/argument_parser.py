@@ -172,6 +172,89 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--headless", action="store_true", help="Headless libvirt domain (no graphics).")
 
     # ------------------------------------------------------------------
+    # Libvirt domain XML emission (after pipeline)
+    # ------------------------------------------------------------------
+    p.add_argument(
+        "--emit-domain-xml",
+        dest="emit_domain_xml",
+        action="store_true",
+        help="Emit libvirt domain XML for the produced image (written to <output-dir>/libvirt/<vm-name>.xml).",
+    )
+    p.add_argument(
+        "--virsh-define",
+        dest="virsh_define",
+        action="store_true",
+        help="Define the emitted domain using `virsh define` (Linux emitter only, if supported).",
+    )
+
+    # Guest kind selection (helps Windows vs Linux)
+    p.add_argument(
+        "--guest-os",
+        dest="guest_os",
+        default=None,
+        choices=["linux", "windows"],
+        help="Guest OS hint for domain XML emission (linux/windows). If unset, heuristics may be used.",
+    )
+    p.add_argument("--windows", dest="windows", action="store_true", help="Alias hint: treat guest as Windows (domain XML emission).")
+
+    # Common domain knobs (Linux+Windows)
+    p.add_argument("--machine", dest="machine", default="q35", help="Libvirt machine type (default: q35).")
+    p.add_argument("--graphics", dest="graphics", default="spice", help="Graphics type when not headless (default: spice).")
+    p.add_argument(
+        "--graphics-listen",
+        dest="graphics_listen",
+        default="127.0.0.1",
+        help="Graphics listen address (default: 127.0.0.1). Use 0.0.0.0 for remote consoles (be careful).",
+    )
+    p.add_argument("--video", dest="video", default=None, help="Video model (Linux default virtio, Windows default qxl if unset by emitter).")
+    p.add_argument("--disk-cache", dest="disk_cache", default="none", help="Disk cache mode (default: none).")
+    p.add_argument("--net-model", dest="net_model", default="virtio", help="NIC model (default: virtio).")
+    p.add_argument("--libvirt-network", dest="libvirt_network", default="default", help="Libvirt network name (default: default).")
+    p.add_argument("--usb-tablet", dest="usb_tablet", action="store_true", help="Enable USB tablet input (mainly for graphical consoles).")
+    p.add_argument("--no-usb-tablet", dest="usb_tablet", action="store_false", help="Disable USB tablet input.")
+    p.set_defaults(usb_tablet=True)
+
+    # Firmware paths (used by both; Linux emitter supports templates)
+    p.add_argument("--ovmf-code", dest="ovmf_code", default="/usr/share/edk2/ovmf/OVMF_CODE.fd", help="Path to OVMF_CODE.fd")
+    p.add_argument("--nvram-vars", dest="nvram_vars", default=None, help="Path to NVRAM vars file (will be copied/created by emitter if supported).")
+    p.add_argument("--ovmf-vars-template", dest="ovmf_vars_template", default=None, help="Template vars file for per-VM NVRAM (Linux emitter).")
+
+    # Linux-only emission knobs
+    p.add_argument("--disk-bus", dest="disk_bus", default="virtio", help="Linux domain: disk bus (default: virtio).")
+    p.add_argument("--disk-dev", dest="disk_dev", default="vda", help="Linux domain: disk target dev (default: vda).")
+    p.add_argument("--clock", dest="clock", default="utc", help="Linux domain clock (default: utc).")
+    p.add_argument("--cloudinit-iso", dest="cloudinit_iso", default=None, help="Attach cloud-init seed ISO (Linux domain emission).")
+    p.add_argument("--cloudinit-seed-iso", dest="cloudinit_seed_iso", default=None, help="Alias for --cloudinit-iso (Linux domain emission).")
+
+    # Windows-only emission knobs
+    p.add_argument(
+        "--win-stage",
+        dest="win_stage",
+        default="bootstrap",
+        choices=["bootstrap", "final"],
+        help="Windows domain emission stage: bootstrap (SATA disk) or final (VirtIO disk).",
+    )
+    p.add_argument("--win-driver-iso", dest="win_driver_iso", default=None, help="Windows domain: attach virtio-win.iso as CDROM (bootstrap helper).")
+    p.add_argument("--virtio-win-iso", dest="virtio_win_iso", default=None, help="Alias for --win-driver-iso")
+    p.add_argument("--driver-iso", dest="driver_iso", default=None, help="Alias for --win-driver-iso")
+    p.add_argument(
+        "--win-localtime-clock",
+        dest="win_localtime_clock",
+        action="store_true",
+        help="Windows domain: set clock offset to localtime (default on).",
+    )
+    p.add_argument(
+        "--no-win-localtime-clock",
+        dest="win_localtime_clock",
+        action="store_false",
+        help="Windows domain: set clock offset to utc.",
+    )
+    p.set_defaults(win_localtime_clock=True)
+    p.add_argument("--win-hyperv", dest="win_hyperv", action="store_true", help="Windows domain: enable Hyper-V enlightenments (default on).")
+    p.add_argument("--no-win-hyperv", dest="win_hyperv", action="store_false", help="Windows domain: disable Hyper-V enlightenments.")
+    p.set_defaults(win_hyperv=True)
+
+    # ------------------------------------------------------------------
     # Daemon flags
     # ------------------------------------------------------------------
     p.add_argument("--daemon", action="store_true", help="Run in daemon mode (for systemd service).")

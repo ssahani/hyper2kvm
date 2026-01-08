@@ -8,24 +8,6 @@ Design goals (mirrors vddk_client.py philosophy):
   - self-contained: depends only on stdlib + requests
   - robust streaming: resume (.part), retry/backoff, progress, atomic rename
   - lease keepalive: caller provides a heartbeat callback (pyVmomi/govmomi side)
-How this fits the pipeline:
-  Control-plane (govmomi/govc or pyVmomi) does:
-    1) snapshot (optional)
-    2) acquire HttpNfcLease
-    3) wait until lease ready
-    4) extract device URLs + sizes (HttpNfcLeaseInfo.deviceUrl)
-    5) provide a heartbeat callback that periodically updates lease progress
-       (or just keeps it alive if you prefer)
-  Data-plane (this module) does:
-    - HTTP(S) GET the deviceUrl(s) and stream to local files
-Notes:
-  - deviceUrl often requires the same vCenter session as the lease creation.
-    Typically this means: supply a 'vmware_soap_session' cookie (or GOVC auth).
-  - many environments use self-signed certs; pass verify_tls=False (like govc -k)
-  - URLs sometimes contain '*'; you must URL-encode on the control-plane side if needed.
-Caveats:
-  - NFC exports are usually "file streaming", not sparse-aware like VDDK.
-  - Lease URLs are time-limited; heartbeat is not optional for large downloads.
 """
 from __future__ import annotations
 import contextlib
