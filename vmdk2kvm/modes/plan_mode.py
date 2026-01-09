@@ -138,10 +138,7 @@ class PlanMode:
         self.logger.info(f"Plans written: {plans_dir}")
         self.logger.info(f"Summary written: {summary_md}")
 
-        # NOTE: --run-tests is intentionally a hook:
-        # Your orchestrator already runs tests when enabled in YAML.
-        # If you want PlanMode to execute them automatically, wire it in your CLI layer.
-
+ 
     def _summary_md(self, plan_index: List[Dict[str, Any]], inv_path: Path) -> str:
         lines: List[str] = []
         lines.append("# vmdk2kvm migration plan\n")
