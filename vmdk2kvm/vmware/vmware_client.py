@@ -1895,3 +1895,112 @@ class VMwareClient:
             return self.vddk_download_disk(opt)
 
         return self.v2v_export_vm(opt)
+
+
+# -----------------------------------------------------------------------
+# VDDK feature detection + datastore-file VDDK download (additive)
+# -----------------------------------------------------------------------
+
+def has_vddk(self, vddk_libdir: Optional[Path] = None) -> bool:
+    """
+    Return True if the optional Python VDDK client is importable *and* we can
+    resolve a usable VDDK libdir (directory containing libvixDiskLib.so).
+
+    This is intentionally conservative so callers can safely prefer VDDK and
+    fall back to HTTPS /folder if unavailable.
+    """
+    if not VDDK_CLIENT_AVAILABLE:
+        return False
+    try:
+        opt = V2VExportOptions(vm_name="__vddk_probe__", vddk_libdir=vddk_libdir)
+        return self._resolve_vddk_libdir(opt) is not None
+    except Exception:
+        return False
+
+def _vddk_remote_path(self, datastore: str, ds_path: str) -> str:
+    """Build a VDDK-friendly remote VMDK path: "[ds] folder/disk.vmdk"."""
+    s = (ds_path or "").strip()
+    if s.startswith("[") and "]" in s:
+        return s
+    dsn = (datastore or "").strip()
+    if not dsn:
+        raise VMwareError("datastore is required for VDDK datastore download")
+    return f"[{dsn}] {s.lstrip('/')}" if s else f"[{dsn}]"
+
+def download_datastore_file_vddk(
+    self,
+    *,
+    datastore: str,
+    ds_path: str,
+    local_path: Path,
+    dc_name: Optional[str] = None,  # kept for call-site compatibility (unused by VDDK)
+    chunk_size: int = 1024 * 1024,  # mapped to sectors_per_read
+    on_bytes: Optional[Any] = None, # progress callback (delta_bytes, total_bytes)
+    allow_flat: bool = False,
+    resume: bool = True,
+    durable: bool = False,
+    verify_size: bool = True,
+    compute_sha256: bool = False,
+) -> Path:
+    """
+    Download a datastore VMDK via VDDK (data-plane).
+
+    Intended for VsphereMode download_datastore_file / download_only_vm when
+    transport_pref is vddk.
+
+    Notes:
+      - ds_path should refer to the *descriptor* .vmdk (not -flat/-delta), unless allow_flat=True.
+      - Connection uses the same host/user/password as this VMwareClient instance.
+    """
+    if not VDDK_CLIENT_AVAILABLE:
+        raise VMwareError("VDDK client not available (vddk_client.py import failed)")
+
+    opt = V2VExportOptions(vm_name="__vddk_datastore_file__", vddk_libdir=None)
+    vddk_dir = self._resolve_vddk_libdir(opt)
+    if vddk_dir is None:
+        raise VMwareError("VDDK not detected (libvixDiskLib.so not found). Set VMDK2KVM_VDDK_LIBDIR.")
+
+    from .vddk_client import VDDKESXClient, VDDKConnectionSpec  # type: ignore
+
+    remote = self._vddk_remote_path(datastore, ds_path)
+
+    try:
+        sectors_per_read = max(1, int(int(chunk_size) // 512))
+    except Exception:
+        sectors_per_read = 2048
+
+    last_done = {"n": 0}
+
+    def _progress(done: int, total: int, pct: float) -> None:
+        if on_bytes is None:
+            return
+        try:
+            prev = int(last_done["n"])
+            cur = int(done)
+            delta = max(0, cur - prev)
+            last_done["n"] = cur
+            on_bytes(delta, int(total))
+        except Exception:
+            pass
+
+    spec = VDDKConnectionSpec(
+        host=str(getattr(self, "host", "")),
+        user=str(getattr(self, "user", "")),
+        password=str(getattr(self, "password", "")),
+        port=int(getattr(self, "port", 443) or 443),
+        insecure=bool(getattr(self, "insecure", False)),
+        vddk_libdir=Path(vddk_dir),
+    )
+
+    with VDDKESXClient(self.logger, spec) as c:
+        return c.download_vmdk(
+            remote_vmdk=remote,
+            local_path=Path(local_path),
+            sectors_per_read=int(sectors_per_read),
+            progress=_progress if on_bytes is not None else None,
+            resume=bool(resume),
+            durable=bool(durable),
+            allow_flat=bool(allow_flat),
+            verify_size=bool(verify_size),
+            compute_sha256=bool(compute_sha256),
+        )
