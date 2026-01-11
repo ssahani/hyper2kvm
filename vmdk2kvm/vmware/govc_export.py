@@ -9,7 +9,7 @@ govc export workflow wrapper.
 Single source of truth for:
   - CD/DVD removal before export
   - VM shutdown/power-off policy
-  - Progress reporting (PTY + Rich if available)
+  - Progress reporting (TTY + Rich if available)
   - Output directory cleanup
   - OVA packaging (when mode='ova')
 
@@ -21,27 +21,39 @@ import sys
 import time
 import shutil
 import tarfile
-import logging
 import tempfile
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from ..core.exceptions import VMwareError
 
-try:
+try:  # pragma: no cover
     from rich.console import Console
-    from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+    from rich.panel import Panel
+    from rich.progress import (
+        Progress,
+        SpinnerColumn,
+        BarColumn,
+        TextColumn,
+        TimeElapsedColumn,
+        TransferSpeedColumn,
+        TaskProgressColumn,
+    )
     from rich.text import Text
 
     RICH_AVAILABLE = True
 except Exception:  # pragma: no cover
     Console = None  # type: ignore
+    Panel = None  # type: ignore
     Progress = None  # type: ignore
     SpinnerColumn = None  # type: ignore
+    BarColumn = None  # type: ignore
     TextColumn = None  # type: ignore
     TimeElapsedColumn = None  # type: ignore
+    TransferSpeedColumn = None  # type: ignore
+    TaskProgressColumn = None  # type: ignore
     Text = None  # type: ignore
     RICH_AVAILABLE = False
 
@@ -79,14 +91,9 @@ class GovcExportError(VMwareError):
     pass
 
 
-def _log(logger: Any, level: str, msg: str, *args: Any) -> None:
-    """Safe logging wrapper."""
-    try:
-        getattr(logger, level)(msg % args if args else msg)
-    except Exception:
-        print(f"[{level.upper()}] {msg % args if args else msg}")
-
-
+# -----------------------------------------------------------------------------
+# UI helpers (Rich if possible, otherwise plain prints)
+# -----------------------------------------------------------------------------
 def _is_tty() -> bool:
     try:
         return sys.stdout.isatty()
@@ -94,34 +101,107 @@ def _is_tty() -> bool:
         return False
 
 
-def _run_govc_with_rich(
+def _console(logger: Any) -> Optional[Any]:
+    if not (RICH_AVAILABLE and _is_tty()):
+        return None
+    try:
+        return Console(stderr=False)
+    except Exception:
+        return None
+
+
+def _print_panel(logger: Any, title: str, body: str = "") -> None:
+    con = _console(logger)
+    if con and Panel:
+        con.print(Panel(body, title=title, expand=True))
+        return
+
+    # Plain fallback (keeps the “boxy” vibe)
+    line = "─" * max(57, len(title) + 10)
+    print(f"╭{line}╮")
+    t = title[: max(0, len(line) - 2)]
+    print(f"│ {t:<{len(line)-2}} │")
+    if body.strip():
+        for bl in body.splitlines():
+            print(f"│ {bl:<{len(line)-2}} │")
+    print(f"╰{line}╯")
+
+
+def _info(logger: Any, msg: str) -> None:
+    try:
+        logger.info(msg)
+    except Exception:
+        print(msg)
+
+
+def _debug(logger: Any, msg: str) -> None:
+    try:
+        logger.debug(msg)
+    except Exception:
+        pass
+
+
+def _warn(logger: Any, msg: str) -> None:
+    try:
+        logger.warning(msg)
+    except Exception:
+        print(f"WARNING: {msg}")
+
+
+def _ok_line(logger: Any, msg: str) -> None:
+    # Prefer printing a clean check line (matches your sample).
+    _info(logger, f"  ✓ {msg}")
+
+
+# -----------------------------------------------------------------------------
+# govc runners
+# -----------------------------------------------------------------------------
+def _run_govc_simple(
+    cmd: List[str],
+    env: Dict[str, str],
+    logger: Any,
+    capture_output: bool = True,
+) -> subprocess.CompletedProcess:
+    """Simple govc runner without PTY."""
+    full_env = dict(os.environ)
+    full_env.update(env)
+
+    _debug(logger, "Running govc: %s" % " ".join(cmd))
+
+    try:
+        return subprocess.run(
+            cmd,
+            env=full_env,
+            capture_output=capture_output,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        error_msg = f"govc failed with exit code {e.returncode}"
+        if getattr(e, "stderr", None):
+            error_msg += f": {(e.stderr or '').strip()[:800]}"
+        raise GovcExportError(error_msg) from e
+    except Exception as e:
+        raise GovcExportError(f"Failed to run govc: {e}") from e
+
+
+def _run_govc_with_rich_spinner(
     cmd: List[str],
     env: Dict[str, str],
     logger: Any,
     *,
-    title: str = "govc running",
+    title: str,
 ) -> subprocess.CompletedProcess:
     """
-    Run govc while showing a Rich spinner + elapsed time.
-
-    We *also* tail the last non-empty line from govc output (best-effort) and show it in the UI.
-    This is intentionally robust and low-assumption (govc output formats vary).
-
-    Returns CompletedProcess on success. Raises GovcExportError on failure.
+    Run govc while showing a Rich spinner + elapsed time and tailing last line.
     """
     full_env = dict(os.environ)
     full_env.update(env)
 
-    if not (RICH_AVAILABLE and _is_tty()):
-        # Fallback: capture output
+    con = _console(logger)
+    if not (con and Progress and SpinnerColumn and TextColumn and TimeElapsedColumn):
         return _run_govc_simple(cmd, env, logger, capture_output=True)
 
-    console = Console(stderr=False)
-
-    # We capture output so we can:
-    # - show a simple progress spinner
-    # - include useful context in exceptions
-    # - still not rely on govc's TTY progress
     proc = subprocess.Popen(
         cmd,
         env=full_env,
@@ -140,12 +220,11 @@ def _run_govc_with_rich(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             TimeElapsedColumn(),
-            console=console,
+            console=con,
             transient=True,
         ) as progress:
             task_id = progress.add_task(title, total=None)
 
-            # Stream output while process runs
             assert proc.stdout is not None
             while True:
                 line = proc.stdout.readline()
@@ -154,7 +233,6 @@ def _run_govc_with_rich(
                     output_lines.append(s)
                     if s.strip():
                         last_line = s.strip()
-                        # keep it short to avoid UI spam
                         shown = last_line
                         if len(shown) > 140:
                             shown = shown[:140] + "…"
@@ -168,7 +246,7 @@ def _run_govc_with_rich(
         stdout = "\n".join(output_lines).strip()
 
         if rc != 0:
-            tail = "\n".join(output_lines[-30:]).strip()
+            tail = "\n".join(output_lines[-40:]).strip()
             msg = f"govc failed with exit code {rc}"
             if tail:
                 msg += f":\n{tail}"
@@ -183,143 +261,108 @@ def _run_govc_with_rich(
             proc.kill()
         except Exception:
             pass
-        tail = "\n".join(output_lines[-30:]).strip()
+        tail = "\n".join(output_lines[-40:]).strip()
         msg = f"Failed to run govc: {e}"
         if tail:
             msg += f"\nLast output:\n{tail}"
         raise GovcExportError(msg) from e
 
 
-def _run_govc_with_pty(
+def _run_govc_with_tty_passthrough(
     cmd: List[str],
     env: Dict[str, str],
     logger: Any,
-    show_progress: bool = True,
-) -> bool:
+) -> None:
     """
-    Run govc command with PTY-ish behavior for proper progress display.
-
-    Notes:
-    - govc itself often prints a progress bar only when attached to a TTY.
-    - If Rich is available AND we're in a TTY, we prefer a Rich spinner UI
-      (more consistent across environments), and still stream output for errors.
-    - Otherwise, we run govc directly in TTY mode (so govc can do its own progress),
-      or capture output in non-TTY mode.
-
-    Returns True if successful, raises GovcExportError otherwise.
+    Let govc draw its own progress (best when attached to a real TTY).
     """
     full_env = dict(os.environ)
     full_env.update(env)
 
-    _log(logger, "debug", "Running govc: %s", " ".join(cmd))
+    _debug(logger, "Running govc (TTY passthrough): %s" % " ".join(cmd))
 
     try:
-        # If we can do Rich, do Rich. It's cleaner than fighting with PTY details.
-        if show_progress and RICH_AVAILABLE and _is_tty():
-            _run_govc_with_rich(cmd, env, logger, title="Exporting via govc")
-            return True
-
-        # Otherwise: let govc render its own TTY progress if we have a TTY.
-        if show_progress and _is_tty():
-            result = subprocess.run(
-                cmd,
-                env=full_env,
-                check=True,
-            )
-            return result.returncode == 0
-
-        # Non-TTY: capture output
-        result = subprocess.run(
-            cmd,
-            env=full_env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        if result.stdout:
-            _log(logger, "info", result.stdout.strip())
-        return True
-
+        subprocess.run(cmd, env=full_env, check=True)
     except subprocess.CalledProcessError as e:
-        error_msg = f"govc failed with exit code {e.returncode}"
-        stderr = ""
-        try:
-            stderr = (e.stderr or "").strip()
-        except Exception:
-            stderr = ""
-        if stderr:
-            error_msg += f": {stderr[:500]}"
-        raise GovcExportError(error_msg) from e
+        raise GovcExportError(f"govc failed with exit code {e.returncode}") from e
     except Exception as e:
         raise GovcExportError(f"Failed to run govc: {e}") from e
 
 
-def _run_govc_simple(
+def _run_govc_export(
     cmd: List[str],
     env: Dict[str, str],
     logger: Any,
-    capture_output: bool = True,
-) -> subprocess.CompletedProcess:
-    """Simple govc runner without PTY."""
-    full_env = dict(os.environ)
-    full_env.update(env)
-
-    _log(logger, "debug", "Running govc: %s", " ".join(cmd))
-
-    try:
-        return subprocess.run(
-            cmd,
-            env=full_env,
-            capture_output=capture_output,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
-        error_msg = f"govc failed with exit code {e.returncode}"
-        if e.stderr:
-            error_msg += f": {e.stderr.strip()[:500]}"
-        raise GovcExportError(error_msg) from e
-
-
-def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> None:
-    """Remove CD/DVD devices from VM before export."""
-    if not spec.remove_cdroms:
+    *,
+    show_progress: bool,
+    prefer_pty: bool,
+    title: str,
+) -> None:
+    """
+    Policy:
+      - If not showing progress: capture output (best error context)
+      - If showing progress and in TTY:
+          - If Rich available: show spinner + tail (consistent UI)
+          - Else: passthrough to govc so it can render its own bar
+      - If not in TTY: capture output
+    """
+    if not show_progress:
+        _run_govc_simple(cmd, env, logger, capture_output=True)
         return
 
-    try:
-        _log(logger, "info", "Removing CD/DVD devices...")
+    if _is_tty():
+        if RICH_AVAILABLE:
+            _run_govc_with_rich_spinner(cmd, env, logger, title=title)
+            return
+        if prefer_pty:
+            _run_govc_with_tty_passthrough(cmd, env, logger)
+            return
 
-        # List all devices
+    _run_govc_simple(cmd, env, logger, capture_output=True)
+
+
+# -----------------------------------------------------------------------------
+# VM prep helpers
+# -----------------------------------------------------------------------------
+def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> List[str]:
+    """Remove CD/DVD devices from VM before export. Returns removed device names."""
+    removed: List[str] = []
+    if not spec.remove_cdroms:
+        return removed
+
+    _info(logger, "Removing CD/DVD devices...")
+
+    try:
         result = _run_govc_simple(
             [spec.govc_bin, "device.ls", "-vm", spec.vm],
             spec.env or {},
             logger,
         )
 
-        cdroms = []
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if "cdrom" in line.lower() and line:
-                parts = line.split()
+        cdroms: List[str] = []
+        for line in (result.stdout or "").splitlines():
+            s = line.strip()
+            if s and "cdrom" in s.lower():
+                parts = s.split()
                 if parts:
                     cdroms.append(parts[0])
 
         if not cdroms:
-            _log(logger, "debug", "No CD/DVD devices found")
-            return
+            _debug(logger, "No CD/DVD devices found")
+            return removed
 
-        for device in cdroms:
-            _log(logger, "debug", "  Removing device: %s", device)
+        for dev in cdroms:
             try:
                 _run_govc_simple(
-                    [spec.govc_bin, "device.remove", "-vm", spec.vm, device],
+                    [spec.govc_bin, "device.remove", "-vm", spec.vm, dev],
                     spec.env or {},
                     logger,
                     capture_output=False,
                 )
+                removed.append(dev)
+                _ok_line(logger, f"Removed: {dev}")
             except Exception as e:
-                _log(logger, "warning", "Failed to remove device %s: %s", device, e)
-                # Try eject as fallback
+                _warn(logger, f"Failed to remove device {dev}: {e} (trying eject)")
                 try:
                     _run_govc_simple(
                         [spec.govc_bin, "device.cdrom.eject", "-vm", spec.vm],
@@ -331,46 +374,56 @@ def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> None:
                     pass
 
     except Exception as e:
-        _log(logger, "warning", "CD/DVD removal failed (continuing): %s", e)
+        _warn(logger, f"CD/DVD removal failed (continuing): {e}")
+
+    return removed
 
 
-def _show_vm_info(spec: GovcExportSpec, logger: Any) -> None:
-    """Display VM information before export."""
-    if not spec.show_vm_info:
-        return
-
+def _get_vm_info_lines(spec: GovcExportSpec, logger: Any) -> List[str]:
+    """
+    Extract a few useful vm.info lines and return them for printing in a panel.
+    """
     try:
-        _log(logger, "info", "VM Information:")
         result = _run_govc_simple(
             [spec.govc_bin, "vm.info", spec.vm],
             spec.env or {},
             logger,
         )
-
-        # Parse and display key info
-        info_lines = []
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line and any(
-                keyword in line.lower()
-                for keyword in ["name:", "power state:", "storage:", "path:", "guest os:", "memory:", "cpu:"]
-            ):
-                info_lines.append(f"  {line}")
-
-        if info_lines:
-            for line in info_lines:
-                _log(logger, "info", line)
-        else:
-            _log(logger, "info", "  (No detailed info available)")
-
     except Exception as e:
-        _log(logger, "debug", "Could not get VM info: %s", e)
+        _debug(logger, f"Could not get VM info: {e}")
+        return []
+
+    want = ("name:", "power state:", "storage:", "path:", "guest os:", "memory:", "cpu:")
+    out: List[str] = []
+    for line in (result.stdout or "").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        low = s.lower()
+        if any(k in low for k in want):
+            out.append(s)
+    return out
+
+
+def _show_vm_info(spec: GovcExportSpec, logger: Any) -> None:
+    if not spec.show_vm_info:
+        return
+
+    title = f"VM Information: {spec.vm}"
+    lines = _get_vm_info_lines(spec, logger)
+
+    if not lines:
+        _print_panel(logger, title, "(No detailed info available)")
+        return
+
+    body = "\n".join([f"  {ln}" for ln in lines])
+    _print_panel(logger, title, body)
 
 
 def _prepare_vm_power_state(spec: GovcExportSpec, logger: Any) -> None:
     """Handle VM power state (shutdown/power off) before export."""
     if spec.shutdown:
-        _log(logger, "info", "Shutting down VM (graceful)...")
+        _info(logger, "Shutting down VM (graceful)...")
         try:
             _run_govc_simple(
                 [spec.govc_bin, "vm.power", "-s", spec.vm],
@@ -379,7 +432,6 @@ def _prepare_vm_power_state(spec: GovcExportSpec, logger: Any) -> None:
                 capture_output=False,
             )
 
-            # Wait for shutdown
             start_time = time.time()
             while time.time() - start_time < spec.shutdown_timeout_s:
                 try:
@@ -388,21 +440,19 @@ def _prepare_vm_power_state(spec: GovcExportSpec, logger: Any) -> None:
                         spec.env or {},
                         logger,
                     )
-                    if "poweredOff" in result.stdout:
-                        _log(logger, "info", "VM is now powered off")
+                    if "poweredOff" in (result.stdout or ""):
+                        _ok_line(logger, "VM is now powered off")
                         return
                 except Exception:
-                    pass  # VM might be in transition
-
+                    pass
                 time.sleep(spec.shutdown_poll_s)
 
-            _log(logger, "warning", "VM shutdown timeout exceeded")
-
+            _warn(logger, "VM shutdown timeout exceeded")
         except Exception as e:
-            _log(logger, "warning", "Shutdown failed: %s", e)
+            _warn(logger, f"Shutdown failed: {e}")
 
     elif spec.power_off:
-        _log(logger, "info", "Powering off VM...")
+        _info(logger, "Powering off VM...")
         try:
             _run_govc_simple(
                 [spec.govc_bin, "vm.power", "-off", spec.vm],
@@ -410,87 +460,140 @@ def _prepare_vm_power_state(spec: GovcExportSpec, logger: Any) -> None:
                 logger,
                 capture_output=False,
             )
+            _ok_line(logger, "VM powered off")
         except Exception as e:
-            _log(logger, "warning", "Power off failed: %s", e)
+            _warn(logger, f"Power off failed: {e}")
 
 
-def _create_ova_from_ovf(ovf_dir: Path, ova_file: Path, logger: Any) -> None:
-    """Create OVA file from OVF directory."""
-    _log(logger, "info", "Creating OVA archive from OVF files...")
-
-    try:
-        # List files being added
-        files = list(ovf_dir.rglob("*"))
-        _log(logger, "debug", "Found %d files in OVF directory", len(files))
-
-        with tarfile.open(ova_file, "w") as tar:
-            for file_path in files:
-                if file_path.is_file():
-                    arcname = file_path.relative_to(ovf_dir.parent)
-                    tar.add(file_path, arcname=arcname)
-                    _log(logger, "debug", "  Added: ./%s", arcname)
-
-        # Verify the OVA was created
-        if ova_file.exists():
-            size_bytes = ova_file.stat().st_size
-            size_mb = size_bytes / (1024 * 1024)
-            size_gb = size_bytes / (1024 * 1024 * 1024)
-
-            if size_gb >= 1:
-                _log(logger, "info", "OVA created: %s (%.2f GB)", ova_file.name, size_gb)
-            else:
-                _log(logger, "info", "OVA created: %s (%.2f MB)", ova_file.name, size_mb)
-        else:
-            raise GovcExportError("OVA file was not created after tar creation")
-
-    except Exception as e:
-        raise GovcExportError(f"Failed to create OVA: {e}") from e
-
-
+# -----------------------------------------------------------------------------
+# Output helpers
+# -----------------------------------------------------------------------------
 def _clean_output_directory(outdir: Path, logger: Any) -> None:
-    """Clean output directory before export."""
     if outdir.exists():
-        _log(logger, "info", "Cleaning output directory: %s", outdir)
+        _info(logger, f"Cleaning output directory: {outdir}")
         try:
-            # Remove all files and subdirectories
             for item in outdir.iterdir():
                 if item.is_file():
                     item.unlink()
                 elif item.is_dir():
                     shutil.rmtree(item)
-            _log(logger, "debug", "Output directory cleaned")
+            _debug(logger, "Output directory cleaned")
         except Exception as e:
-            _log(logger, "warning", "Failed to clean output directory: %s", e)
+            _warn(logger, f"Failed to clean output directory: {e}")
 
 
+def _create_ova_from_ovf(ovf_dir: Path, ova_file: Path, logger: Any) -> None:
+    """
+    Create OVA file from OVF directory.
+
+    Note: OVA is a TAR archive containing the OVF descriptor + disks + manifest.
+    """
+    _info(logger, "Creating OVA archive from OVF files...")
+
+    files = [p for p in ovf_dir.rglob("*") if p.is_file()]
+    if not files:
+        raise GovcExportError(f"No files found under OVF directory: {ovf_dir}")
+
+    con = _console(logger)
+    use_rich = bool(con and Progress and BarColumn and TextColumn and TimeElapsedColumn and TaskProgressColumn)
+
+    try:
+        if use_rich:
+            with Progress(
+                TextColumn("▌ [progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                console=con,
+                transient=True,
+            ) as progress:
+                task = progress.add_task("Packaging OVA files...", total=len(files))
+
+                with tarfile.open(ova_file, "w") as tar:
+                    for fp in files:
+                        # Keep the exported folder name inside the tar (common OVA layout)
+                        arcname = fp.relative_to(ovf_dir.parent)
+                        tar.add(fp, arcname=arcname)
+                        # Show a friendly “Adding:” line occasionally
+                        progress.update(task, advance=1, description=f"Packaging OVA files... ({progress.tasks[0].completed+1:.0f}/{len(files)})")
+        else:
+            with tarfile.open(ova_file, "w") as tar:
+                for fp in files:
+                    arcname = fp.relative_to(ovf_dir.parent)
+                    tar.add(fp, arcname=arcname)
+
+        if not ova_file.exists():
+            raise GovcExportError("OVA file was not created after tar creation")
+
+        size_bytes = ova_file.stat().st_size
+        size_mb = size_bytes / (1024 * 1024)
+        size_gb = size_bytes / (1024 * 1024 * 1024)
+        if size_gb >= 1:
+            _ok_line(logger, f"OVA created: {ova_file} ({size_gb:.2f} GB)")
+        else:
+            _ok_line(logger, f"OVA created: {ova_file} ({size_mb:.2f} MB)")
+
+    except Exception as e:
+        raise GovcExportError(f"Failed to create OVA: {e}") from e
+
+
+def _find_exported_ovf_dir(parent: Path, vm_name: str) -> Optional[Path]:
+    """
+    govc export.ovf typically creates a subdir named after the VM.
+    We try best-effort discovery.
+    """
+    if not parent.exists():
+        return None
+    # Prefer directory containing vm_name
+    for item in parent.iterdir():
+        if item.is_dir() and vm_name in item.name:
+            return item
+    # Otherwise first directory
+    for item in parent.iterdir():
+        if item.is_dir():
+            return item
+    return None
+
+
+def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
+    elapsed = time.time() - start_time
+    minutes = int(elapsed // 60)
+    seconds = int(elapsed % 60)
+    return minutes, seconds
+
+
+# -----------------------------------------------------------------------------
+# Public entrypoint
+# -----------------------------------------------------------------------------
 def export_vm_govc(logger: Any, spec: GovcExportSpec) -> None:
     """
     Main export workflow.
 
     Steps:
-    1. Show VM info (optional)
-    2. Remove CD/DVD devices (optional)
-    3. Handle VM power state (optional)
-    4. Clean output directory (optional)
-    5. Run govc export
-    6. Package OVA if mode='ova'
+    1. Banner
+    2. Show VM info (optional)
+    3. Remove CD/DVD devices (optional)
+    4. Handle VM power state (optional)
+    5. Clean output directory (optional)
+    6. Run govc export.ovf
+    7. Package OVA if mode='ova'
+    8. Success panel
     """
-    # Validate inputs
     if spec.mode not in ("ovf", "ova"):
         raise GovcExportError(f"Invalid export mode: {spec.mode}. Must be 'ovf' or 'ova'")
 
-    # Set default OVA filename if not provided
     if spec.mode == "ova" and not spec.ova_filename:
         spec.ova_filename = f"{spec.vm}.ova"
 
-    # Create output directory
     spec.outdir.mkdir(parents=True, exist_ok=True)
-
-    # Clean output directory if requested
     if spec.clean_outdir:
         _clean_output_directory(spec.outdir, logger)
 
-    # Show VM info
+    # Banner (matches your sample vibe)
+    banner_body = f"Mode: {spec.mode.upper()} | Output: {spec.outdir}"
+    _print_panel(logger, f"Exporting VM: {spec.vm}", banner_body)
+
+    # VM info panel
     _show_vm_info(spec, logger)
 
     # Remove CD/DVD devices
@@ -499,111 +602,74 @@ def export_vm_govc(logger: Any, spec: GovcExportSpec) -> None:
     # Handle power state
     _prepare_vm_power_state(spec, logger)
 
-    # Run export
-    _log(logger, "info", "\nStarting %s export...", spec.mode.upper())
-    _log(logger, "info", "This may take several minutes depending on disk size...")
+    # Start export
+    _info(logger, f"\nStarting {spec.mode.upper()} export...")
+    _info(logger, "This may take several minutes depending on disk size...\n")
 
     start_time = time.time()
 
     if spec.mode == "ovf":
-        # Export to OVF
         export_cmd = [spec.govc_bin, "export.ovf", "-vm", spec.vm, str(spec.outdir)]
-
         try:
-            success = _run_govc_with_pty(
+            _run_govc_export(
                 export_cmd,
                 spec.env or {},
                 logger,
                 show_progress=spec.show_progress,
+                prefer_pty=spec.prefer_pty,
+                title="Exporting OVF...",
             )
-
-            if not success:
-                raise GovcExportError("OVF export failed")
-
-            # Find the created OVF directory
-            ovf_dir = None
-            for item in spec.outdir.iterdir():
-                if item.is_dir() and spec.vm in item.name:
-                    ovf_dir = item
-                    break
-
-            if not ovf_dir:
-                # Try to find any directory
-                for item in spec.outdir.iterdir():
-                    if item.is_dir():
-                        ovf_dir = item
-                        break
-
-            if ovf_dir:
-                elapsed = time.time() - start_time
-                minutes = int(elapsed // 60)
-                seconds = int(elapsed % 60)
-                _log(logger, "info", "\nOVF export completed in %dm %ds: %s", minutes, seconds, ovf_dir)
-            else:
-                _log(logger, "warning", "Could not find OVF directory after export")
-                _log(logger, "info", "Contents of output directory:")
-                for item in spec.outdir.iterdir():
-                    _log(logger, "info", "  %s", item.name)
-
         except Exception as e:
-            elapsed = time.time() - start_time
-            minutes = int(elapsed // 60)
-            seconds = int(elapsed % 60)
-            raise GovcExportError(f"OVF export failed after {minutes}m {seconds}s: {e}") from e
+            m, s = _fmt_elapsed(start_time)
+            raise GovcExportError(f"OVF export failed after {m}m {s}s: {e}") from e
 
-    elif spec.mode == "ova":
-        # For OVA mode, we need to export to a temp directory first
+        ovf_dir = _find_exported_ovf_dir(spec.outdir, spec.vm)
+        m, s = _fmt_elapsed(start_time)
+        if ovf_dir:
+            _ok_line(logger, f"OVF export completed in {m}m {s}s")
+            _info(logger, f"Output: {ovf_dir}")
+        else:
+            _warn(logger, "Could not find OVF directory after export")
+            try:
+                _info(logger, "Contents of output directory:")
+                for item in spec.outdir.iterdir():
+                    _info(logger, f"  {item.name}")
+            except Exception:
+                pass
+
+        _print_panel(logger, "✓ Export completed successfully!", "")
+
+    else:
+        # OVA mode: export OVF to temp, then tar it as OVA into spec.outdir
         with tempfile.TemporaryDirectory(prefix=f"govc_export_{spec.vm}_") as tmpdir:
             tmp_path = Path(tmpdir)
 
-            _log(logger, "info", "Exporting to temporary directory: %s", tmp_path)
-
-            # Export to OVF in temp directory
-            export_cmd = [spec.govc_bin, "export.ovf", "-vm", spec.vm, str(tmp_path)]
-
             try:
-                success = _run_govc_with_pty(
+                export_cmd = [spec.govc_bin, "export.ovf", "-vm", spec.vm, str(tmp_path)]
+                _run_govc_export(
                     export_cmd,
                     spec.env or {},
                     logger,
                     show_progress=spec.show_progress,
+                    prefer_pty=spec.prefer_pty,
+                    title="Exporting OVF for OVA...",
                 )
 
-                if not success:
-                    raise GovcExportError("OVF export to temp directory failed")
-
-                # Find the OVF directory in temp location
-                ovf_dir = None
-                for item in tmp_path.iterdir():
-                    if item.is_dir() and spec.vm in item.name:
-                        ovf_dir = item
-                        break
-
-                if not ovf_dir:
-                    # Try to find any directory
-                    for item in tmp_path.iterdir():
-                        if item.is_dir():
-                            ovf_dir = item
-                            break
-
+                ovf_dir = _find_exported_ovf_dir(tmp_path, spec.vm)
                 if not ovf_dir:
                     raise GovcExportError(f"Could not find OVF directory in temp location: {tmp_path}")
 
-                _log(logger, "info", "Found OVF directory: %s", ovf_dir.name)
+                ova_file = spec.outdir / (spec.ova_filename or f"{spec.vm}.ova")
 
-                # Create OVA file from OVF directory
-                ova_file = spec.outdir / spec.ova_filename
+                _info(logger, "▌ Creating OVA archive...")
                 _create_ova_from_ovf(ovf_dir, ova_file, logger)
 
-                elapsed = time.time() - start_time
-                minutes = int(elapsed // 60)
-                seconds = int(elapsed % 60)
-                _log(logger, "info", "\nOVA export completed in %dm %ds: %s", minutes, seconds, ova_file)
+                m, s = _fmt_elapsed(start_time)
+                _ok_line(logger, f"OVA export completed in {m}m {s}s")
+                _info(logger, f"Output: {ova_file}\n")
+
+                _print_panel(logger, "✓ Export completed successfully!", "")
 
             except Exception as e:
-                elapsed = time.time() - start_time
-                minutes = int(elapsed // 60)
-                seconds = int(elapsed % 60)
-                raise GovcExportError(f"OVA export failed after {minutes}m {seconds}s: {e}") from e
-
-    _log(logger, "info", "\nExport completed successfully!")
+                m, s = _fmt_elapsed(start_time)
+                raise GovcExportError(f"OVA export failed after {m}m {s}s: {e}") from e
