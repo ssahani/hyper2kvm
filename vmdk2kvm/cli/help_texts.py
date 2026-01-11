@@ -571,6 +571,77 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # json: true
 #
 # --------------------------------------------------------------------------------------
+# 6c) vSphere govc export (OVA / OVF) (control+data plane via govc)
+# --------------------------------------------------------------------------------------
+# This is the "just export it" path:
+# - govc handles HttpNfcLease creation + keepalive + URL signing + downloads
+# - your wrapper can enforce policy: shutdown/power-off, remove CD/DVD, cleanup outdir
+#
+# Recommended when:
+# - You want a clean OVF/OVA package directly from vCenter/ESXi
+# - /folder downloads are blocked and you don't want VDDK
+#
+# Common govc settings (either use env GOVC_* or YAML keys your orchestrator maps):
+# vs_control_plane: govc
+# govc_url: "https://vcenter.example.com/sdk"
+# govc_password_env: VC_PASSWORD
+# govc_insecure: true
+# govc_datacenter: ha-datacenter
+#
+# --- govc export as OVA (single file) ---
+# command: vsphere
+# vs_control_plane: govc
+# govc_url: "https://vcenter.example.com/sdk"
+# govc_password_env: VC_PASSWORD
+# govc_insecure: true
+# govc_datacenter: ha-datacenter
+# vs_action: govc_export
+# vm_name: myVM
+# govc_export_mode: ova            # ova | ovf
+# output_dir: ./downloads/govc
+# # optional (policy knobs your govc_export wrapper can map):
+# govc_remove_cdrom: true
+# govc_shutdown: true              # attempt guest shutdown first
+# govc_power_off: true             # ensure powered off before export
+# govc_timeout: 600                # seconds for shutdown/export steps (optional)
+# govc_overwrite: true             # wipe output_dir/vm subdir before export (optional)
+# checksum: true
+# verbose: 1
+#
+# Result (example):
+# ./downloads/govc/myVM.ova
+#
+# --- govc export as OVF (directory output) ---
+# command: vsphere
+# vs_control_plane: govc
+# govc_url: "https://vcenter.example.com/sdk"
+# govc_password_env: VC_PASSWORD
+# govc_insecure: true
+# govc_datacenter: ha-datacenter
+# vs_action: govc_export
+# vm_name: myVM
+# govc_export_mode: ovf            # ova | ovf
+# output_dir: ./downloads/govc
+# govc_remove_cdrom: true
+# govc_shutdown: true
+# govc_power_off: true
+# checksum: true
+# verbose: 1
+#
+# Result (example):
+# ./downloads/govc/myVM/   (contains .ovf + .vmdk + .mf as produced by govc)
+#
+# --- Optional: chain export -> offline parse/convert ---
+# Step 1: export OVF via govc (above) into ./downloads/govc/myVM/
+# Step 2: run offline OVF pipeline on that OVF:
+# command: ovf
+# ovf: ./downloads/govc/myVM/myVM.ovf
+# flatten: true
+# to_output: myVM.qcow2
+# out_format: qcow2
+# compress: true
+# verbose: 1
+# --------------------------------------------------------------------------------------
 # 6b) vSphere -> virt-v2v export (EXPERIMENTAL scaffold)
 # --------------------------------------------------------------------------------------
 # This path is intended for "export a VM (or snapshot) directly from vCenter/ESXi"
