@@ -1,0 +1,35 @@
+# v2v-rhel10-ova-export.yaml
+# Goal: Export VM as a single OVA file using govc (stable exporter; NO virt-v2v, NO inspection)
+#
+# Notes:
+# - This uses govc export.ova (OVA = single tar-like bundle: .ova)
+# - Easier to move around than OVF dir, but large single file
+# - Requires govc available (GOVC_BIN or govc in PATH) and credentials
+
+command: vsphere
+
+# vCenter connection (control-plane)
+vcenter: 11.11.11.11
+vc_user: administrator@vsphere.local
+vc_password_env: VC_PASSWORD
+vc_insecure: true
+dc_name: data
+
+# Action (OVA export)
+vs_action: export_vm
+export_mode: ova_export
+vm_name: esx8.0-rhel10.0beta-x86_64-efi
+
+# Output
+output_dir: ./exports/ova
+# (Your govc wrapper may emit a single file under output_dir; commonly: <vm>.ova)
+
+# Optional govc export knobs
+govc_export_snapshot: null
+govc_export_power_off: false
+govc_export_disk_mode: null
+
+# Logging / output
+verbose: 2
+json: false
+
