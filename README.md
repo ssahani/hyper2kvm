@@ -25,7 +25,7 @@ It is **convert, repair, validate — and make it repeatable**.
 2. Design principles
 3. Supported inputs and execution modes
 4. Pipeline model
-5. Control-plane vs data-plane (vSphere, govc, VDDK, HTTP, SSH)
+5. Control-plane vs data-plane (vSphere, govc, OVF/OVA exports, VDDK, HTTP, SSH)
 6. Linux fixes
 7. Windows handling
 8. Snapshots and flattening
@@ -34,7 +34,7 @@ It is **convert, repair, validate — and make it repeatable**.
 11. Multi-VM and batch processing
 12. Live-fix mode (SSH)
 13. ESXi and vSphere integration
-14. virt-v2v integration strategy
+14. virt-v2v integration strategy (experimental)
 15. Safety mechanisms
 16. Daemon mode and automation
 17. Testing and verification
@@ -61,7 +61,6 @@ It is **convert, repair, validate — and make it repeatable**.
 
 * No GUI wizard
 * No cloud importer
-* No thin wrapper around `virt-v2v`
 * No promise of zero-touch Windows fixes
 * No attempt to hide complexity
 
@@ -127,8 +126,10 @@ Used for:
 All execution modes map to a **single internal pipeline**:
 
 ```
+
 FETCH → FLATTEN → INSPECT → FIX → CONVERT → VALIDATE
-```
+
+````
 
 Stages are optional.
 **Order is not.**
@@ -148,46 +149,62 @@ The pipeline is explicit, inspectable, and restart-safe.
 
 ## 5. Control-plane vs data-plane
 
-This separation is the **spine** of the project.
+This separation is the **spine** of `vmdk2kvm`.
+
+- **Control-plane** decides *what exists* and *what should happen*.
+- **Data-plane** moves *bytes* and produces *artifacts*.
+
+If you mix them, you get “it worked once” migrations.  
+If you separate them, you get repeatable ones.
 
 ```mermaid
 flowchart TB
-  subgraph CP
-    CP_TITLE["CONTROL PLANE<br/>(what exists, what to do)"]
-    GOVC["govc"]
-    PYVM["pyvmomi / pyVim"]
-    INV["inventory & snapshots"]
-    CBT["CBT planning"]
-    DS["datastore inspection"]
+  subgraph CP["CONTROL PLANE (decide)"]
+    GOVC["govc (primary)"]
+    PYVM["pyvmomi / pyVim (fallback / deep inspection)"]
+    INV["Inventory: VM, disks, firmware, snapshots"]
+    PLAN["Plans: snapshot flatten, disk map, export intent"]
+    DS["Datastore browsing & artifact resolution"]
+    CBT["CBT discovery + changed ranges planning"]
 
     GOVC --> INV
-    GOVC --> CBT
     GOVC --> DS
+    GOVC --> CBT
     PYVM --> INV
     PYVM --> CBT
-    PYVM --> DS
+    INV --> PLAN
+    DS --> PLAN
+    CBT --> PLAN
   end
 
-  META["plans & metadata"]
+  META["plans + metadata (explicit, auditable)"]
 
-  subgraph DP
-    DP_TITLE["DATA PLANE<br/>(move bytes safely)"]
-    V2V["virt-v2v"]
-    VDDK["VDDK"]
-    HTTP["HTTP /folder"]
-    SSH["SSH / SCP"]
-    RESUME["resume & verify"]
+  subgraph DP["DATA PLANE (move bytes)"]
+    GOVCEXP["govc export.ovf / export.ova"]
+    OVFTOOL["ovftool (OVF/OVA export/import)"]
+    HTTP["HTTP /folder + Range (artifact + CBT pulls)"]
+    VDDK["VDDK (high-throughput disk reads)"]
+    SSH["SSH / SCP (locked-down fallback)"]
+    V2V["virt-v2v (experimental option)"]
+    RESUME["resume + verify + atomic publish"]
   end
 
   CP --> META --> DP
-  V2V --> RESUME
-  VDDK --> RESUME
-  HTTP --> RESUME
-  SSH --> RESUME
-```
 
-* Control-plane **never** moves bulk data
-* Data-plane **never** makes inventory decisions
+  GOVCEXP --> RESUME
+  OVFTOOL --> RESUME
+  HTTP --> RESUME
+  VDDK --> RESUME
+  SSH --> RESUME
+  V2V --> RESUME
+````
+
+### The rule
+
+* Control-plane **never** moves bulk data.
+* Data-plane **never** makes inventory decisions.
+
+The “bridge” between them is always **explicit plans + metadata** (never implicit guesses).
 
 ---
 
@@ -198,85 +215,121 @@ flowchart TB
 Used for:
 
 * VM discovery (name, UUID, MoRef)
-* Disk and backing path resolution
-* Snapshot tree inspection
-* CBT enablement and range queries
-* Datastore browsing
-* Folder-level artifact enumeration
-
-Why govc?
-
-* Stable CLI semantics
-* Broad vSphere feature coverage
-* Predictable, JSON-friendly output
-* Easier to reason about than opaque SDK state
+* Disk inventory + backing path resolution (datastore paths, controllers, device keys)
+* Snapshot tree inspection + flatten planning
+* CBT discovery + changed-range planning
+* Datastore browsing and folder artifact enumeration
+* Safety checks (power state, attached ISOs, device layout)
 
 `pyvmomi` remains available when:
 
 * API-only fields are required
-* govc coverage is insufficient
 * deeper object-graph traversal is needed
+* govc output shapes aren’t sufficient for a specific edge case
+
+Control-plane output is **a plan**:
+“export this VM, from this source, using these disks, with these safety edits, into these artifacts.”
 
 ---
 
-### 5.2 Data-plane transports
+### 5.2 Data-plane transports (byte-moving only)
 
-The data-plane answers one question only:
+The data-plane answers one question:
 
-**How do bytes move safely?**
+**How do bytes move safely, reproducibly, and restartably?**
 
 Supported transports:
 
-* **virt-v2v** — semantic, guest-aware conversion
-* **HTTP `/folder`** — datastore artifact downloads, CBT range reads
-* **VDDK** — high-throughput raw disk access
-* **SSH / SCP** — locked-down environment fallback
+#### A) Managed vSphere exports (artifact-first)
+
+* **govc `export.ovf` / `export.ova`** — vSphere-managed export flow.
+
+  * Best when you want a clean **OVF/OVA artifact boundary**.
+  * `export.ova` = single tarball convenience
+  * `export.ovf` = directory layout (OVF + VMDKs) that’s friendlier for large disks and partial re-runs
+
+* **ovftool** — VMware/Broadcom’s OVF/OVA workhorse.
+
+  * Useful when you need ovftool’s compatibility quirks, import/export symmetry, or vendor-specific flags.
+  * Treated as data-plane because it primarily **produces artifacts** (OVF/OVA + disks).
+
+#### B) Raw pulls (fast, surgical, resumable)
+
+* **HTTP `/folder` + Range** — deterministic artifact downloads and CBT-driven incremental pulls.
+* **VDDK** — high-throughput disk reads when you want speed and you can satisfy VDDK runtime + transport constraints.
+* **SSH / SCP** — fallback for constrained environments.
+
+#### C) Guest-aware conversion (experimental option)
+
+* **virt-v2v** — available as an optional integration path, but **not the core philosophy** of this project.
+
+  * Marked experimental because it can be great in the happy path, but it’s not the foundation of the “repair + determinism” model here.
+
+All of these routes feed the same downstream pipeline stages.
 
 ---
 
-### 5.3 Decision matrix
+### 5.3 Export choices: OVF vs OVA (and why we care)
 
-| Goal                 | Preferred method |
-| -------------------- | ---------------- |
-| Convert and boot VM  | virt-v2v         |
-| Inventory + planning | govc             |
-| Download artifacts   | HTTP `/folder`   |
-| Fast disk extraction | VDDK             |
-| No vCenter access    | SSH / SCP        |
-| Incremental sync     | CBT + HTTP Range |
+Think of OVF/OVA as **packaging formats**, not “conversion”.
+
+* **OVA**: single file; easy to move/store; harder to resume mid-stream; large reruns hurt.
+* **OVF**: directory of artifacts; easier partial retries; friendlier for inspection and selective reuse.
+
+In `vmdk2kvm` terms:
+
+* Choose **OVA** when you want a portable, single-object handoff.
+* Choose **OVF** when you want restartability, transparency, and large-disk practicality.
+
+Both are still *data-plane outputs* that then feed **INSPECT → FIX → CONVERT → VALIDATE**.
 
 ---
 
-### 5.4 Incremental migration (CBT)
+### 5.4 Decision matrix (pragmatic, not dogmatic)
 
-CBT usage is explicit and audited:
+| Goal                                               | Preferred method                |
+| -------------------------------------------------- | ------------------------------- |
+| Inventory + planning                               | govc                            |
+| Export as artifacts (simple)                       | govc export.ovf / export.ova    |
+| Export as artifacts (compat-heavy / special flags) | ovftool                         |
+| Download specific datastore files                  | HTTP `/folder`                  |
+| Fast raw disk extraction                           | VDDK                            |
+| No vCenter access / restricted                     | SSH / SCP                       |
+| Incremental sync                                   | CBT plan (CP) + HTTP Range (DP) |
+| Guest-aware conversion                             | virt-v2v (experimental option)  |
+
+---
+
+### 5.5 Incremental migration (CBT) stays honest
+
+CBT usage is explicit and auditable:
 
 ```
 CONTROL PLANE:
-  govc → changed block ranges
+  govc / pyvmomi → changed block ranges
         ↓
 DATA PLANE:
-  HTTP Range GET
+  HTTP Range GET → local patch application
         ↓
-LOCAL DISK PATCH
+VERIFY:
+  size / range coverage / optional checksums
 ```
 
-If CBT lies, the tool tells you.
-It does not pretend.
+If CBT lies, the tool **flags it**. It does not pretend.
 
 ---
 
-### 5.5 Resume, integrity, and checkpoints
+### 5.6 Resume, integrity, and checkpoints
 
-All data-plane operations support recovery:
+All data-plane operations are built around recovery:
 
 * resumable transfers
-* `.part → final` promotion
+* `.part → final` promotion (atomic publish)
 * size verification
-* optional checksums
-* rerun safety
+* optional hashing
+* rerun safety (idempotent “skip if complete” semantics)
 
-Same config in. Same result out.
+Same config in. Same result out. No roulette-wheel boots.
 
 ---
 
@@ -349,7 +402,7 @@ YAML is treated as **code**:
 * batch processing
 * live-fix mode
 * ESXi + vSphere integration
-* virt-v2v coordination
+* virt-v2v coordination (experimental)
 * safety mechanisms
 * daemon and automation modes
 * testing and failure analysis
@@ -367,6 +420,3 @@ All detailed documentation, workflows, examples, and references live here:
 
 **Convert with intent. Repair with evidence. Boot without luck.**
 
----
-
-If you want, the next natural step is a **short “Why this exists” preface** or a **one-page quick-start flow** for people skimming before committing to the deep read.
