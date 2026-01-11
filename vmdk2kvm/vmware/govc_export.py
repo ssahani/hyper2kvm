@@ -1,0 +1,481 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+# vmdk2kvm/vsphere/govc_export.py
+from __future__ import annotations
+
+"""
+govc export workflow wrapper.
+
+Single source of truth for:
+  - CD/DVD removal before export
+  - VM shutdown/power-off policy
+  - Progress reporting (PTY + Rich if available)
+  - Output directory cleanup
+  - OVA packaging (when mode='ova')
+
+Design: callers pass a GovcExportSpec; this module runs the workflow.
+"""
+
+import os
+import sys
+import time
+import shutil
+import tarfile
+import logging
+import tempfile
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional, Dict, Any, List
+
+from ..core.exceptions import VMwareError
+
+try:
+    import rich.progress
+    RICH_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    RICH_AVAILABLE = False
+
+
+@dataclass
+class GovcExportSpec:
+    """All parameters needed for a govc export operation."""
+    vm: str
+    outdir: Path
+    mode: str  # "ovf" or "ova"
+    
+    # govc configuration
+    govc_bin: str = "govc"
+    env: Optional[Dict[str, str]] = None
+    
+    # VM preparation
+    remove_cdroms: bool = True
+    show_vm_info: bool = True
+    shutdown: bool = False
+    shutdown_timeout_s: float = 300.0
+    shutdown_poll_s: float = 5.0
+    power_off: bool = False
+    
+    # Output handling
+    clean_outdir: bool = False
+    ova_filename: Optional[str] = None  # only for mode="ova"
+    
+    # Progress/UI
+    show_progress: bool = True
+    prefer_pty: bool = True
+
+
+class GovcExportError(VMwareError):
+    """Specialized error for govc export failures."""
+    pass
+
+
+def _log(logger: Any, level: str, msg: str, *args: Any) -> None:
+    """Safe logging wrapper."""
+    try:
+        getattr(logger, level)(msg % args if args else msg)
+    except Exception:
+        print(f"[{level.upper()}] {msg % args if args else msg}")
+
+
+def _run_govc_with_pty(
+    cmd: List[str],
+    env: Dict[str, str],
+    logger: Any,
+    show_progress: bool = True
+) -> bool:
+    """
+    Run govc command with PTY for proper progress display.
+    
+    Returns True if successful, False otherwise.
+    """
+    # Prepare environment
+    full_env = dict(os.environ)
+    full_env.update(env)
+    
+    _log(logger, "debug", "Running govc with PTY: %s", " ".join(cmd))
+    
+    try:
+        if show_progress and sys.stdout.isatty():
+            # Run directly for TTY progress
+            result = subprocess.run(
+                cmd,
+                env=full_env,
+                check=True
+            )
+            return result.returncode == 0
+        else:
+            # For non-TTY, capture output
+            result = subprocess.run(
+                cmd,
+                env=full_env,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            if result.stdout:
+                _log(logger, "info", result.stdout.strip())
+            return True
+            
+    except subprocess.CalledProcessError as e:
+        error_msg = f"govc failed with exit code {e.returncode}"
+        if e.stderr:
+            error_msg += f": {e.stderr.strip()[:500]}"
+        raise GovcExportError(error_msg) from e
+    except Exception as e:
+        raise GovcExportError(f"Failed to run govc: {e}")
+
+
+def _run_govc_simple(
+    cmd: List[str],
+    env: Dict[str, str],
+    logger: Any,
+    capture_output: bool = True
+) -> subprocess.CompletedProcess:
+    """Simple govc runner without PTY."""
+    full_env = dict(os.environ)
+    full_env.update(env)
+    
+    _log(logger, "debug", "Running govc: %s", " ".join(cmd))
+    
+    try:
+        return subprocess.run(
+            cmd,
+            env=full_env,
+            capture_output=capture_output,
+            text=True,
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        error_msg = f"govc failed with exit code {e.returncode}"
+        if e.stderr:
+            error_msg += f": {e.stderr.strip()[:500]}"
+        raise GovcExportError(error_msg) from e
+
+
+def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> None:
+    """Remove CD/DVD devices from VM before export."""
+    if not spec.remove_cdroms:
+        return
+    
+    try:
+        _log(logger, "info", "Removing CD/DVD devices...")
+        
+        # List all devices
+        result = _run_govc_simple(
+            [spec.govc_bin, "device.ls", "-vm", spec.vm],
+            spec.env or {},
+            logger
+        )
+        
+        cdroms = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if 'cdrom' in line.lower() and line:
+                parts = line.split()
+                if parts:
+                    cdroms.append(parts[0])
+        
+        if not cdroms:
+            _log(logger, "debug", "No CD/DVD devices found")
+            return
+        
+        for device in cdroms:
+            _log(logger, "debug", "  Removing device: %s", device)
+            try:
+                _run_govc_simple(
+                    [spec.govc_bin, "device.remove", "-vm", spec.vm, device],
+                    spec.env or {},
+                    logger,
+                    capture_output=False
+                )
+            except Exception as e:
+                _log(logger, "warning", "Failed to remove device %s: %s", device, e)
+                # Try eject as fallback
+                try:
+                    _run_govc_simple(
+                        [spec.govc_bin, "device.cdrom.eject", "-vm", spec.vm],
+                        spec.env or {},
+                        logger,
+                        capture_output=False
+                    )
+                except Exception:
+                    pass
+        
+    except Exception as e:
+        _log(logger, "warning", "CD/DVD removal failed (continuing): %s", e)
+
+
+def _show_vm_info(spec: GovcExportSpec, logger: Any) -> None:
+    """Display VM information before export."""
+    if not spec.show_vm_info:
+        return
+    
+    try:
+        _log(logger, "info", "VM Information:")
+        result = _run_govc_simple(
+            [spec.govc_bin, "vm.info", spec.vm],
+            spec.env or {},
+            logger
+        )
+        
+        # Parse and display key info
+        info_lines = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line and any(keyword in line.lower() for keyword in 
+                   ["name:", "power state:", "storage:", "path:", "guest os:", "memory:", "cpu:"]):
+                info_lines.append(f"  {line}")
+        
+        if info_lines:
+            for line in info_lines:
+                _log(logger, "info", line)
+        else:
+            _log(logger, "info", "  (No detailed info available)")
+                
+    except Exception as e:
+        _log(logger, "debug", "Could not get VM info: %s", e)
+
+
+def _prepare_vm_power_state(spec: GovcExportSpec, logger: Any) -> None:
+    """Handle VM power state (shutdown/power off) before export."""
+    if spec.shutdown:
+        _log(logger, "info", "Shutting down VM (graceful)...")
+        try:
+            _run_govc_simple(
+                [spec.govc_bin, "vm.power", "-s", spec.vm],
+                spec.env or {},
+                logger,
+                capture_output=False
+            )
+            
+            # Wait for shutdown
+            start_time = time.time()
+            while time.time() - start_time < spec.shutdown_timeout_s:
+                try:
+                    result = _run_govc_simple(
+                        [spec.govc_bin, "vm.info", spec.vm],
+                        spec.env or {},
+                        logger
+                    )
+                    if "poweredOff" in result.stdout:
+                        _log(logger, "info", "VM is now powered off")
+                        return
+                except Exception:
+                    pass  # VM might be in transition
+                
+                time.sleep(spec.shutdown_poll_s)
+            
+            _log(logger, "warning", "VM shutdown timeout exceeded")
+            
+        except Exception as e:
+            _log(logger, "warning", "Shutdown failed: %s", e)
+    
+    elif spec.power_off:
+        _log(logger, "info", "Powering off VM...")
+        try:
+            _run_govc_simple(
+                [spec.govc_bin, "vm.power", "-off", spec.vm],
+                spec.env or {},
+                logger,
+                capture_output=False
+            )
+        except Exception as e:
+            _log(logger, "warning", "Power off failed: %s", e)
+
+
+def _create_ova_from_ovf(ovf_dir: Path, ova_file: Path, logger: Any) -> None:
+    """Create OVA file from OVF directory."""
+    _log(logger, "info", "Creating OVA archive from OVF files...")
+    
+    try:
+        # List files being added
+        files = list(ovf_dir.rglob("*"))
+        _log(logger, "debug", "Found %d files in OVF directory", len(files))
+        
+        with tarfile.open(ova_file, "w") as tar:
+            for file_path in files:
+                if file_path.is_file():
+                    arcname = file_path.relative_to(ovf_dir.parent)
+                    tar.add(file_path, arcname=arcname)
+                    _log(logger, "debug", "  Added: ./%s", arcname)
+        
+        # Verify the OVA was created
+        if ova_file.exists():
+            size_bytes = ova_file.stat().st_size
+            size_mb = size_bytes / (1024 * 1024)
+            size_gb = size_bytes / (1024 * 1024 * 1024)
+            
+            if size_gb >= 1:
+                _log(logger, "info", "OVA created: %s (%.2f GB)", ova_file.name, size_gb)
+            else:
+                _log(logger, "info", "OVA created: %s (%.2f MB)", ova_file.name, size_mb)
+        else:
+            raise GovcExportError("OVA file was not created after tar creation")
+            
+    except Exception as e:
+        raise GovcExportError(f"Failed to create OVA: {e}")
+
+
+def _clean_output_directory(outdir: Path, logger: Any) -> None:
+    """Clean output directory before export."""
+    if outdir.exists():
+        _log(logger, "info", "Cleaning output directory: %s", outdir)
+        try:
+            # Remove all files and subdirectories
+            for item in outdir.iterdir():
+                if item.is_file():
+                    item.unlink()
+                elif item.is_dir():
+                    shutil.rmtree(item)
+            _log(logger, "debug", "Output directory cleaned")
+        except Exception as e:
+            _log(logger, "warning", "Failed to clean output directory: %s", e)
+
+
+def export_vm_govc(logger: Any, spec: GovcExportSpec) -> None:
+    """
+    Main export workflow.
+    
+    Steps:
+    1. Show VM info (optional)
+    2. Remove CD/DVD devices (optional)
+    3. Handle VM power state (optional)
+    4. Clean output directory (optional)
+    5. Run govc export
+    6. Package OVA if mode='ova'
+    """
+    # Validate inputs
+    if spec.mode not in ("ovf", "ova"):
+        raise GovcExportError(f"Invalid export mode: {spec.mode}. Must be 'ovf' or 'ova'")
+    
+    # Set default OVA filename if not provided
+    if spec.mode == "ova" and not spec.ova_filename:
+        spec.ova_filename = f"{spec.vm}.ova"
+    
+    # Create output directory
+    spec.outdir.mkdir(parents=True, exist_ok=True)
+    
+    # Clean output directory if requested
+    if spec.clean_outdir:
+        _clean_output_directory(spec.outdir, logger)
+    
+    # Show VM info
+    _show_vm_info(spec, logger)
+    
+    # Remove CD/DVD devices
+    _remove_cdrom_devices(spec, logger)
+    
+    # Handle power state
+    _prepare_vm_power_state(spec, logger)
+    
+    # Run export
+    _log(logger, "info", "\nStarting %s export...", spec.mode.upper())
+    _log(logger, "info", "This may take several minutes depending on disk size...")
+    
+    start_time = time.time()
+    
+    if spec.mode == "ovf":
+        # Export to OVF
+        export_cmd = [spec.govc_bin, "export.ovf", "-vm", spec.vm, str(spec.outdir)]
+        
+        try:
+            success = _run_govc_with_pty(
+                export_cmd,
+                spec.env or {},
+                logger,
+                show_progress=spec.show_progress
+            )
+            
+            if not success:
+                raise GovcExportError("OVF export failed")
+            
+            # Find the created OVF directory
+            ovf_dir = None
+            for item in spec.outdir.iterdir():
+                if item.is_dir() and spec.vm in item.name:
+                    ovf_dir = item
+                    break
+            
+            if not ovf_dir:
+                # Try to find any directory
+                for item in spec.outdir.iterdir():
+                    if item.is_dir():
+                        ovf_dir = item
+                        break
+            
+            if ovf_dir:
+                elapsed = time.time() - start_time
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                _log(logger, "info", "\nOVF export completed in %dm %ds: %s", 
+                     minutes, seconds, ovf_dir)
+            else:
+                _log(logger, "warning", "Could not find OVF directory after export")
+                _log(logger, "info", "Contents of output directory:")
+                for item in spec.outdir.iterdir():
+                    _log(logger, "info", "  %s", item.name)
+        
+        except Exception as e:
+            elapsed = time.time() - start_time
+            minutes = int(elapsed // 60)
+            seconds = int(elapsed % 60)
+            raise GovcExportError(f"OVF export failed after {minutes}m {seconds}s: {e}")
+        
+    elif spec.mode == "ova":
+        # For OVA mode, we need to export to a temp directory first
+        with tempfile.TemporaryDirectory(prefix=f"govc_export_{spec.vm}_") as tmpdir:
+            tmp_path = Path(tmpdir)
+            
+            _log(logger, "info", "Exporting to temporary directory: %s", tmp_path)
+            
+            # Export to OVF in temp directory
+            export_cmd = [spec.govc_bin, "export.ovf", "-vm", spec.vm, str(tmp_path)]
+            
+            try:
+                success = _run_govc_with_pty(
+                    export_cmd,
+                    spec.env or {},
+                    logger,
+                    show_progress=spec.show_progress
+                )
+                
+                if not success:
+                    raise GovcExportError("OVF export to temp directory failed")
+                
+                # Find the OVF directory in temp location
+                ovf_dir = None
+                for item in tmp_path.iterdir():
+                    if item.is_dir() and spec.vm in item.name:
+                        ovf_dir = item
+                        break
+                
+                if not ovf_dir:
+                    # Try to find any directory
+                    for item in tmp_path.iterdir():
+                        if item.is_dir():
+                            ovf_dir = item
+                            break
+                
+                if not ovf_dir:
+                    raise GovcExportError(f"Could not find OVF directory in temp location: {tmp_path}")
+                
+                _log(logger, "info", "Found OVF directory: %s", ovf_dir.name)
+                
+                # Create OVA file from OVF directory
+                ova_file = spec.outdir / spec.ova_filename
+                _create_ova_from_ovf(ovf_dir, ova_file, logger)
+                
+                elapsed = time.time() - start_time
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                _log(logger, "info", "\nOVA export completed in %dm %ds: %s", 
+                     minutes, seconds, ova_file)
+                
+            except Exception as e:
+                elapsed = time.time() - start_time
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                raise GovcExportError(f"OVA export failed after {minutes}m {seconds}s: {e}")
+    
+    _log(logger, "info", "\nExport completed successfully!")
