@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 """
-vSphere / vCenter client for vmdk2kvm 
+vSphere / vCenter client for vmdk2kvm
 
 Policy (stable by default):
   ✅ Default export path is govc OVF (automation-friendly, debuggable)
@@ -95,13 +95,14 @@ except Exception:  # pragma: no cover
 try:
     from .http_download_client import HTTPDownloadClient, VMwareError
 except Exception:  # pragma: no cover
-    # Fallback to local definition if import fails
     HTTPDownloadClient = None  # type: ignore
     try:
         from ..core.exceptions import VMwareError  # type: ignore
     except Exception:  # pragma: no cover
+
         class VMwareError(RuntimeError):
             pass
+
 
 # ✅ shared credential resolver (supports vs_password_env + vc_password_env)
 try:
@@ -148,6 +149,15 @@ def _safe_vm_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", (name or "vm").strip()) or "vm"
 
 
+def _quote_inventory_path(path: str) -> str:
+    """
+    Quote inventory path segments for vi:// URLs while keeping '/' as a separator.
+    Spaces and special characters do appear in vCenter inventory.
+    """
+    # keep common safe characters plus '/' separators
+    return quote(path, safe="/-_.()@")
+
+
 class GovmomiCLI(GovcRunner):
     """
     Thin alias wrapper for older naming; actual logic lives in GovcRunner (govc_common.py).
@@ -156,7 +166,6 @@ class GovmomiCLI(GovcRunner):
     def __init__(self, logger: Any, **kwargs: Any):
         super().__init__(logger=logger, args=type("Args", (), kwargs))
 
-    # Keep old names used elsewhere
     def available(self) -> bool:  # type: ignore[override]
         return super().available()
 
@@ -288,7 +297,7 @@ class VMwareClient:
         self.timeout = timeout
 
         self.si: Any = None
-        
+
         # HTTP download client
         self._http_client: Optional[HTTPDownloadClient] = None
 
@@ -346,6 +355,10 @@ class VMwareClient:
     def has_creds(self) -> bool:
         return bool(self.host and self.user and self.password)
 
+    # ---------------------------
+    # Internal helpers: tool handles
+    # ---------------------------
+
     def _govc(self) -> Optional[GovmomiCLI]:
         """
         Return govc wrapper if available and not disabled.
@@ -390,8 +403,12 @@ class VMwareClient:
                 raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
             try:
                 self._ovftool_paths = find_ovftool(self.ovftool_path)
-                version = ovftool_version(self._ovftool_paths)
-                self.logger.info(f"OVF Tool found: {self._ovftool_paths.ovftool_bin} (version: {version or 'unknown'})")
+                version = ovftool_version(self._ovftool_paths) if ovftool_version is not None else None
+                self.logger.info(
+                    "OVF Tool found: %s (version: %s)",
+                    getattr(self._ovftool_paths, "ovftool_bin", "ovftool"),
+                    version or "unknown",
+                )
             except Exception as e:
                 raise VMwareError(f"OVF Tool not found: {e}")
         return self._ovftool_paths
@@ -685,17 +702,20 @@ class VMwareClient:
     # govc export (stable)
     # ---------------------------
 
+    def _ensure_output_dir(self, base: Path) -> Path:
+        out = Path(base).expanduser().resolve()
+        out.mkdir(parents=True, exist_ok=True)
+        return out
+
     def govc_export_ovf(self, opt: V2VExportOptions) -> Path:
         g = self._govc()
         if g is None:
             raise VMwareError("govc not available (or disabled); cannot run OVF export")
 
-        out_base = Path(opt.output_dir).expanduser().resolve()
-        out_base.mkdir(parents=True, exist_ok=True)
+        out_base = self._ensure_output_dir(opt.output_dir)
         out_dir = out_base / f"{_safe_vm_name(opt.vm_name)}.ovfdir"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # GovcRunner.export_ovf is expected in govc_common.py
         g.export_ovf(
             vm=opt.vm_name,
             out_dir=str(out_dir),
@@ -710,11 +730,9 @@ class VMwareClient:
         if g is None:
             raise VMwareError("govc not available (or disabled); cannot run OVA export")
 
-        out_base = Path(opt.output_dir).expanduser().resolve()
-        out_base.mkdir(parents=True, exist_ok=True)
+        out_base = self._ensure_output_dir(opt.output_dir)
         out_file = out_base / f"{_safe_vm_name(opt.vm_name)}.ova"
 
-        # GovcRunner.export_ova is expected in govc_common.py
         g.export_ova(
             vm=opt.vm_name,
             out_file=str(out_file),
@@ -725,54 +743,73 @@ class VMwareClient:
         return out_file
 
     # ---------------------------
-    # OVF Tool export
+    # OVF Tool export/deploy
     # ---------------------------
+
+    def _vm_inventory_path_under_vmfolder(self, vm_obj: Any, dc_obj: Any) -> str:
+        """
+        Compute inventory path relative to Datacenter/vm folder, e.g.
+          "<folder1>/<folder2>/<vmname>"
+
+        This is what ovftool expects after ".../<dc_name>/vm/".
+        """
+        self._require_pyvmomi()
+
+        vm_folder = getattr(dc_obj, "vmFolder", None)
+        if vm_folder is None:
+            raise VMwareError("Datacenter has no vmFolder (unexpected)")
+
+        parts: List[str] = []
+        obj = vm_obj
+        for _ in range(0, 96):
+            if obj is None:
+                break
+            name = getattr(obj, "name", None)
+            if name:
+                parts.append(str(name))
+            parent = getattr(obj, "parent", None)
+            if parent is None:
+                break
+            if parent == vm_folder:
+                break
+            obj = parent
+
+        if not parts:
+            # fallback: at least the VM name
+            return str(getattr(vm_obj, "name", "") or "").strip() or "vm"
+
+        parts = list(reversed(parts))
+        return "/".join([p.strip("/") for p in parts if p.strip("/")])
 
     def _build_ovftool_source_url(self, vm_name: str) -> str:
         """
-        Build a vi:// source URL for OVF Tool from VM name.
-        Format: vi://user:pass@host/path/to/vm
+        Build a vi:// source URL for OVF Tool from VM object + inventory path.
+
+        Format:
+          vi://user:pass@host/<Datacenter>/vm/<folder...>/<vm>
         """
-        # Get the VM path from pyvmomi
         vm_obj = self.get_vm_by_name(vm_name)
         if not vm_obj:
             raise VMwareError(f"VM not found: {vm_name}")
-        
-        # Extract the inventory path
-        vm_path = None
-        try:
-            # Try to get the path from vm.summary.config.name or similar
-            # This is a simplified approach - in production you'd want a more robust method
-            # to get the full inventory path
-            vm_path = vm_obj.name
-        except Exception as e:
-            self.logger.warning(f"Could not determine VM path: {e}")
-            vm_path = vm_name
-        
-        # Basic URL construction - this might need adjustment based on your vSphere setup
-        # OVF Tool expects something like: vi://user:pass@vcenter.example.com/Datacenter/vm/path/to/vm
-        dc_name = self.resolve_datacenter_for_vm(vm_name, "auto")
-        source_url = f"vi://{self.user}:{self.password}@{self.host}/{dc_name}/vm/{vm_path}"
-        
-        return source_url
 
-    def ovftool_export_vm(self, opt: V2VExportOptions) -> Path:
-        """
-        Export VM using OVF Tool.
-        """
-        if export_to_ova is None:
-            raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
-        
-        # Build source URL
-        source_url = self._build_ovftool_source_url(opt.vm_name)
-        
-        # Create output OVA path
-        out_dir = Path(opt.output_dir).expanduser().resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
-        ova_path = out_dir / f"{_safe_vm_name(opt.vm_name)}.ova"
-        
-        # Build OVF Tool options from opt
-        options = OvfExportOptions(
+        dc_name = self.resolve_datacenter_for_vm(vm_name, "auto")
+        dc_obj = self.get_datacenter_by_name(dc_name, refresh=False)
+        if dc_obj is None:
+            dc_obj = self.get_datacenter_by_name(dc_name, refresh=True)
+        if dc_obj is None:
+            raise VMwareError(f"Could not resolve datacenter object for dc={dc_name!r}")
+
+        inv_rel = self._vm_inventory_path_under_vmfolder(vm_obj, dc_obj)
+        inv_rel_q = _quote_inventory_path(inv_rel)
+
+        # NOTE: credential embedding is required by ovftool; do not log this URL verbatim.
+        dc_q = _quote_inventory_path(dc_name)
+        return f"vi://{self.user}:{self.password}@{self.host}/{dc_q}/vm/{inv_rel_q}"
+
+    def _ovftool_export_options(self, opt: V2VExportOptions) -> Any:
+        if OvfExportOptions is None:
+            raise VMwareError("OvfExportOptions not available (ovftool_client import failed)")
+        return OvfExportOptions(
             no_ssl_verify=opt.ovftool_no_ssl_verify,
             thumbprint=opt.ovftool_thumbprint,
             accept_all_eulas=opt.ovftool_accept_all_eulas,
@@ -784,10 +821,38 @@ class VMwareClient:
             retry_backoff_s=opt.ovftool_retry_backoff_s,
             extra_args=opt.ovftool_extra_args,
         )
-        
-        self.logger.info(f"Exporting VM {opt.vm_name} to {ova_path} using OVF Tool...")
+
+    def _ovftool_deploy_options(self, opt: V2VExportOptions, *, name: str) -> Any:
+        if OvfDeployOptions is None:
+            raise VMwareError("OvfDeployOptions not available (ovftool_client import failed)")
+        return OvfDeployOptions(
+            no_ssl_verify=opt.ovftool_no_ssl_verify,
+            thumbprint=opt.ovftool_thumbprint,
+            accept_all_eulas=opt.ovftool_accept_all_eulas,
+            overwrite=opt.ovftool_overwrite,
+            name=name,
+            disk_mode=opt.ovftool_disk_mode,
+            quiet=opt.ovftool_quiet,
+            verbose=opt.ovftool_verbose,
+            retries=opt.ovftool_retries,
+            retry_backoff_s=opt.ovftool_retry_backoff_s,
+            extra_args=opt.ovftool_extra_args,
+        )
+
+    def ovftool_export_vm(self, opt: V2VExportOptions) -> Path:
+        """
+        Export VM using OVF Tool (to OVA).
+        """
+        if export_to_ova is None:
+            raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
+
+        out_dir = self._ensure_output_dir(opt.output_dir)
+        ova_path = out_dir / f"{_safe_vm_name(opt.vm_name)}.ova"
+        source_url = self._build_ovftool_source_url(opt.vm_name)
+        options = self._ovftool_export_options(opt)
+
+        self.logger.info("Exporting VM %s to %s using OVF Tool...", opt.vm_name, ova_path)
         t0 = time.time()
-        
         try:
             export_to_ova(
                 paths=self._ovftool(),
@@ -798,8 +863,8 @@ class VMwareClient:
             )
         except OvfToolError as e:
             raise VMwareError(f"OVF Tool export failed: {e}")
-        
-        self.logger.info(f"OVF Tool export completed in {time.time() - t0:.1f}s")
+
+        self.logger.info("OVF Tool export completed in %.1fs", time.time() - t0)
         return ova_path
 
     def ovftool_deploy_ova(self, source_ova: Path, opt: V2VExportOptions) -> None:
@@ -808,38 +873,19 @@ class VMwareClient:
         """
         if deploy_ovf_or_ova is None:
             raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
-        
         if not source_ova.exists():
             raise VMwareError(f"Source OVA/OVF not found: {source_ova}")
-        
-        # Build target URL
+
         dc_name = self.resolve_datacenter_for_vm(opt.vm_name, opt.datacenter)
-        
-        # Target can be a datacenter, folder, or resource pool
-        # For now, target to the datacenter root
-        target_url = f"vi://{self.user}:{self.password}@{self.host}/{dc_name}"
-        
-        # Build OVF Tool options
-        # Note: network_map and other deployment options would need to be added to V2VExportOptions
-        # if you want to support them
-        options = OvfDeployOptions(
-            no_ssl_verify=opt.ovftool_no_ssl_verify,
-            thumbprint=opt.ovftool_thumbprint,
-            accept_all_eulas=opt.ovftool_accept_all_eulas,
-            overwrite=opt.ovftool_overwrite,
-            # Additional deployment options would go here
-            name=opt.vm_name,
-            disk_mode=opt.ovftool_disk_mode,
-            quiet=opt.ovftool_quiet,
-            verbose=opt.ovftool_verbose,
-            retries=opt.ovftool_retries,
-            retry_backoff_s=opt.ovftool_retry_backoff_s,
-            extra_args=opt.ovftool_extra_args,
-        )
-        
-        self.logger.info(f"Deploying {source_ova} to vSphere using OVF Tool...")
+        dc_q = _quote_inventory_path(dc_name)
+
+        # Target can be a datacenter/folder/resource pool; keep conservative for now.
+        target_url = f"vi://{self.user}:{self.password}@{self.host}/{dc_q}"
+
+        options = self._ovftool_deploy_options(opt, name=opt.vm_name)
+
+        self.logger.info("Deploying %s to vSphere using OVF Tool...", source_ova)
         t0 = time.time()
-        
         try:
             deploy_ovf_or_ova(
                 paths=self._ovftool(),
@@ -850,8 +896,8 @@ class VMwareClient:
             )
         except OvfToolError as e:
             raise VMwareError(f"OVF Tool deployment failed: {e}")
-        
-        self.logger.info(f"OVF Tool deployment completed in {time.time() - t0:.1f}s")
+
+        self.logger.info("OVF Tool deployment completed in %.1fs", time.time() - t0)
 
     # ---------------------------
     # Datastore parsing + HTTPS /folder download
@@ -878,6 +924,25 @@ class VMwareClient:
         folder = rel.rsplit("/", 1)[0] if "/" in rel else ""
         base = rel.rsplit("/", 1)[1] if "/" in rel else rel
         return ds, folder, base
+
+    def _resolve_datacenter_for_download(self, dc_name: Optional[str]) -> str:
+        """
+        Resolve a usable datacenter name for /folder URL construction.
+        """
+        dc_use = (dc_name or "").strip()
+        if dc_use and not self.datacenter_exists(dc_use, refresh=False):
+            self.logger.warning("Requested dc_name=%r not found; will auto-resolve", dc_use)
+            dc_use = ""
+
+        if dc_use:
+            return dc_use
+
+        dcs = self.list_datacenters(refresh=False)
+        if len(dcs) == 1:
+            return dcs[0]
+        if dcs:
+            return sorted(dcs)[0]
+        raise VMwareError("No datacenters found; cannot build /folder URL")
 
     def download_datastore_file(
         self,
@@ -909,20 +974,7 @@ class VMwareClient:
         if not self.si:
             raise VMwareError("Not connected to vSphere; cannot download. Call connect() first.")
 
-        dc_use = (dc_name or "").strip()
-        if dc_use and not self.datacenter_exists(dc_use, refresh=False):
-            self.logger.warning("Requested dc_name=%r not found; will auto-resolve", dc_use)
-            dc_use = ""
-
-        if not dc_use:
-            dcs = self.list_datacenters(refresh=False)
-            if len(dcs) == 1:
-                dc_use = dcs[0]
-            elif dcs:
-                # best-effort stable pick
-                dc_use = sorted(dcs)[0]
-            else:
-                raise VMwareError("No datacenters found; cannot build /folder URL")
+        dc_use = self._resolve_datacenter_for_download(dc_name)
 
         self._http_download_client().download_file(
             datastore=datastore,
@@ -1034,6 +1086,40 @@ class VMwareClient:
             )
         return out
 
+    def _download_selected_files(
+        self,
+        *,
+        selected: Sequence[str],
+        out_dir: Path,
+        ds_name: str,
+        folder_rel: str,
+        dc_name: str,
+        force_https: bool,
+        fail_on_missing: bool,
+        log_prefix: str,
+    ) -> None:
+        failures: List[str] = []
+        for name in selected:
+            ds_path = f"{folder_rel}/{name}" if folder_rel else name
+            local_path = out_dir / name
+            try:
+                self.download_datastore_file(
+                    datastore=ds_name,
+                    ds_path=ds_path,
+                    local_path=local_path,
+                    dc_name=dc_name,
+                    force_https=force_https,
+                )
+            except Exception as e:
+                msg = f"{name}: {e}"
+                failures.append(msg)
+                if fail_on_missing:
+                    raise VMwareError(f"{log_prefix} download failed:\n" + "\n".join(failures))
+                self.logger.error("%s download failed (non-fatal): %s", log_prefix, msg)
+
+        if failures and fail_on_missing:
+            raise VMwareError(f"{log_prefix}: one or more downloads failed:\n" + "\n".join(failures))
+
     def download_only_vm(self, opt: V2VExportOptions) -> Path:
         if not self.si:
             raise VMwareError("Not connected to vSphere; cannot download. Call connect() first.")
@@ -1052,8 +1138,7 @@ class VMwareClient:
             max_files=int(opt.download_only_max_files or 0),
         )
 
-        out_dir = Path(opt.output_dir).expanduser().resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = self._ensure_output_dir(opt.output_dir)
 
         self.logger.info(
             "Download-only VM folder: dc=%s ds=%s folder=%s files=%d (selected=%d)",
@@ -1064,27 +1149,16 @@ class VMwareClient:
             len(selected),
         )
 
-        failures: List[str] = []
-        for name in selected:
-            ds_path = f"{folder_rel}/{name}" if folder_rel else name
-            local_path = out_dir / name
-            try:
-                self.download_datastore_file(
-                    datastore=ds_name,
-                    ds_path=ds_path,
-                    local_path=local_path,
-                    dc_name=resolved_dc,
-                    force_https=False,
-                )
-            except Exception as e:
-                msg = f"{name}: {e}"
-                failures.append(msg)
-                if opt.download_only_fail_on_missing:
-                    raise VMwareError("Download failed:\n" + "\n".join(failures))
-                self.logger.error("Download failed (non-fatal): %s", msg)
-
-        if failures and opt.download_only_fail_on_missing:
-            raise VMwareError("One or more downloads failed:\n" + "\n".join(failures))
+        self._download_selected_files(
+            selected=selected,
+            out_dir=out_dir,
+            ds_name=ds_name,
+            folder_rel=folder_rel,
+            dc_name=resolved_dc,
+            force_https=False,
+            fail_on_missing=bool(opt.download_only_fail_on_missing),
+            log_prefix="Download-only",
+        )
 
         self.logger.info("Download-only completed: %s", out_dir)
         return out_dir
@@ -1110,8 +1184,7 @@ class VMwareClient:
             max_files=int(opt.download_only_max_files or 0),
         )
 
-        out_dir = Path(opt.output_dir).expanduser().resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = self._ensure_output_dir(opt.output_dir)
 
         self.logger.info(
             "FORCED HTTPS fallback: dc=%s ds=%s folder=%s files=%d (selected=%d)",
@@ -1122,27 +1195,16 @@ class VMwareClient:
             len(selected),
         )
 
-        failures: List[str] = []
-        for name in selected:
-            ds_path = f"{folder_rel}/{name}" if folder_rel else name
-            local_path = out_dir / name
-            try:
-                self.download_datastore_file(
-                    datastore=ds_name,
-                    ds_path=ds_path,
-                    local_path=local_path,
-                    dc_name=resolved_dc,
-                    force_https=True,
-                )
-            except Exception as e:
-                msg = f"{name}: {e}"
-                failures.append(msg)
-                if opt.download_only_fail_on_missing:
-                    raise VMwareError("FORCED HTTPS fallback download failed:\n" + "\n".join(failures))
-                self.logger.error("FORCED HTTPS fallback download failed (non-fatal): %s", msg)
-
-        if failures and opt.download_only_fail_on_missing:
-            raise VMwareError("FORCED HTTPS fallback: one or more downloads failed:\n" + "\n".join(failures))
+        self._download_selected_files(
+            selected=selected,
+            out_dir=out_dir,
+            ds_name=ds_name,
+            folder_rel=folder_rel,
+            dc_name=resolved_dc,
+            force_https=True,
+            fail_on_missing=bool(opt.download_only_fail_on_missing),
+            log_prefix="FORCED HTTPS fallback",
+        )
 
         self.logger.info("FORCED HTTPS fallback completed: %s", out_dir)
         return out_dir
@@ -1167,7 +1229,7 @@ class VMwareClient:
                 "Missing vSphere password for virt-v2v (-ip). "
                 "Set vs_password or vs_password_env (or vc_password/vc_password_env as fallback)."
             )
-        base_dir.mkdir(parents=True, exist_ok=True)
+        base_dir = self._ensure_output_dir(base_dir)
         pwfile = base_dir / f".v2v-pass-{os.getpid()}.txt"
         pwfile.write_text(pw + "\n", encoding="utf-8")
         try:
@@ -1201,7 +1263,6 @@ class VMwareClient:
             str(password_file),
         ]
 
-        # For virt-v2v VDDK transport we only pass through options; we do NOT implement VDDK here.
         if transport == "vddk":
             if opt.vddk_libdir:
                 argv += ["-io", f"vddk-libdir={str(Path(opt.vddk_libdir))}"]
@@ -1213,12 +1274,12 @@ class VMwareClient:
                 argv += ["-io", f"vddk-transports={opt.vddk_transports}"]
 
         argv.append(opt.vm_name)
-        opt.output_dir.mkdir(parents=True, exist_ok=True)
+        self._ensure_output_dir(opt.output_dir)
         argv += ["-o", "local", "-os", str(opt.output_dir), "-of", opt.output_format]
         argv += list(opt.extra_args)
         return argv
 
-    def _run_logged_subprocess(self, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> int:
+    def _popen_text(self, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
         self.logger.info("Running: %s", " ".join(shlex.quote(a) for a in argv))
         proc = subprocess.Popen(
             list(argv),
@@ -1230,51 +1291,85 @@ class VMwareClient:
         )
         assert proc.stdout is not None
         assert proc.stderr is not None
-
         if SELECT_AVAILABLE:
             try:
                 os.set_blocking(proc.stdout.fileno(), False)  # type: ignore[attr-defined]
                 os.set_blocking(proc.stderr.fileno(), False)  # type: ignore[attr-defined]
             except Exception:
                 pass
+        return proc
 
-        def _pump_available() -> List[str]:
-            lines: List[str] = []
-            if not SELECT_AVAILABLE:
-                out_line = proc.stdout.readline()
-                err_line = proc.stderr.readline()
-                if out_line:
-                    lines.append(out_line.rstrip("\n"))
-                if err_line:
-                    lines.append(err_line.rstrip("\n"))
-                return lines
+    def _pump_lines_blocking(self, proc: subprocess.Popen) -> List[str]:
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+        lines: List[str] = []
+        out_line = proc.stdout.readline()
+        err_line = proc.stderr.readline()
+        if out_line:
+            lines.append(out_line.rstrip("\n"))
+        if err_line:
+            lines.append(err_line.rstrip("\n"))
+        return lines
 
-            rlist = [proc.stdout, proc.stderr]
+    def _pump_lines_select(self, proc: subprocess.Popen, *, timeout_s: float = 0.20) -> List[str]:
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+        rlist = [proc.stdout, proc.stderr]
+        try:
+            ready, _, _ = select.select(rlist, [], [], timeout_s)  # type: ignore[union-attr]
+        except Exception:
+            ready = rlist
+
+        lines: List[str] = []
+        for s in ready:
             try:
-                ready, _, _ = select.select(rlist, [], [], 0.20)  # type: ignore[union-attr]
+                chunk = s.read()
             except Exception:
-                ready = rlist
+                chunk = ""
+            if not chunk:
+                continue
+            for ln in chunk.splitlines():
+                lines.append(ln.rstrip("\n"))
+        return lines
 
-            for s in ready:
-                try:
-                    chunk = s.read()
-                except Exception:
-                    chunk = ""
-                if not chunk:
-                    continue
-                for ln in chunk.splitlines():
-                    lines.append(ln.rstrip("\n"))
-            return lines
-
-        use_rich = bool(
+    def _use_rich_progress(self) -> bool:
+        return bool(
             RICH_AVAILABLE
             and self._rich_console is not None
             and hasattr(self._rich_console, "is_terminal")
             and self._rich_console.is_terminal  # type: ignore[attr-defined]
+            and Progress is not None
+            and SpinnerColumn is not None
+            and TextColumn is not None
+            and TimeElapsedColumn is not None
         )
 
-        last_line = ""
-        if use_rich and Progress is not None and SpinnerColumn is not None and TextColumn is not None and TimeElapsedColumn is not None:
+    def _drain_remaining_output(self, proc: subprocess.Popen, *, max_rounds: int = 10) -> None:
+        for _ in range(0, max_rounds):
+            lines = self._pump_lines_select(proc, timeout_s=0.05) if SELECT_AVAILABLE else self._pump_lines_blocking(proc)
+            if not lines:
+                break
+            for ln in lines:
+                s = ln.strip()
+                if s:
+                    self.logger.info("%s", s)
+
+    def _run_logged_subprocess(self, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> int:
+        proc = self._popen_text(argv, env=env)
+
+        def pump() -> List[str]:
+            if SELECT_AVAILABLE:
+                return self._pump_lines_select(proc)
+            return self._pump_lines_blocking(proc)
+
+        if self._use_rich_progress():
+            assert self._rich_console is not None
+            assert Progress is not None
+            assert SpinnerColumn is not None
+            assert TextColumn is not None
+            assert TimeElapsedColumn is not None
+
+            last_line = ""
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -1284,8 +1379,7 @@ class VMwareClient:
             ) as progress:
                 task_id = progress.add_task("virt-v2v running…", total=None)
                 while True:
-                    lines = _pump_available()
-                    for ln in lines:
+                    for ln in pump():
                         last_line = ln.strip()
                         if last_line:
                             self.logger.info("%s", last_line)
@@ -1293,30 +1387,24 @@ class VMwareClient:
                             progress.update(task_id, description=f"virt-v2v running… {show}")
 
                     if proc.poll() is not None:
-                        for _ in range(0, 10):
-                            more = _pump_available()
-                            if not more:
-                                break
-                            for ln in more:
-                                last_line = ln.strip()
-                                if last_line:
-                                    self.logger.info("%s", last_line)
+                        self._drain_remaining_output(proc, max_rounds=10)
                         break
 
                 rc = int(proc.wait())
                 progress.update(task_id, description=f"virt-v2v finished (rc={rc})")
                 return rc
 
-        # Fallback: simple
+        # Plain logger loop
         while True:
-            out_line = proc.stdout.readline()
-            err_line = proc.stderr.readline()
-            if out_line:
-                self.logger.info("%s", out_line.rstrip())
-            if err_line:
-                self.logger.info("%s", err_line.rstrip())
-            if (not out_line) and (not err_line) and (proc.poll() is not None):
+            lines = pump()
+            for ln in lines:
+                s = ln.strip()
+                if s:
+                    self.logger.info("%s", s)
+            if (not lines) and (proc.poll() is not None):
                 break
+
+        self._drain_remaining_output(proc, max_rounds=10)
         return int(proc.wait())
 
     def v2v_export_vm(self, opt: V2VExportOptions) -> Path:
@@ -1398,8 +1486,7 @@ class VMwareClient:
         return name
 
     def _default_vddk_download_path(self, opt: V2VExportOptions, *, disk_index: int) -> Path:
-        out_dir = Path(opt.output_dir).expanduser().resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = self._ensure_output_dir(opt.output_dir)
         return out_dir / f"{_safe_vm_name(opt.vm_name)}-disk{disk_index}.vmdk"
 
     def vddk_download_disk(self, opt: V2VExportOptions) -> Path:
@@ -1427,10 +1514,12 @@ class VMwareClient:
         remote_vmdk = self._vm_disk_backing_filename(disk_obj)  # "[ds] folder/disk.vmdk"
         esx_host = self._resolve_esx_host_for_vm(vm_obj)
 
-        local_path = Path(opt.vddk_download_output) if opt.vddk_download_output else self._default_vddk_download_path(opt, disk_index=disk_index)
+        local_path = (
+            Path(opt.vddk_download_output)
+            if opt.vddk_download_output
+            else self._default_vddk_download_path(opt, disk_index=disk_index)
+        )
 
-        # NOTE: libdir/thumbprint normalization and thumbprint computation are handled by vddk_client itself.
-        # We pass values through and keep the orchestration minimal.
         spec = VDDKConnectionSpec(  # type: ignore[misc]
             host=esx_host,
             user=self.user,
@@ -1479,8 +1568,55 @@ class VMwareClient:
             c.disconnect()
 
     # ---------------------------
-    # Unified entrypoint (policy)
+    # Unified entrypoint (policy) - refactored into smaller handlers
     # ---------------------------
+
+    @staticmethod
+    def _normalize_export_mode(mode: Optional[str]) -> str:
+        return (mode or "ovf_export").strip().lower()
+
+    def _handle_mode_vddk(self, mode: str, opt: V2VExportOptions) -> Optional[Path]:
+        if mode in ("vddk_download", "vddk-download", "vddkdownload"):
+            return self.vddk_download_disk(opt)
+        return None
+
+    def _handle_mode_v2v(self, mode: str, opt: V2VExportOptions) -> Optional[Path]:
+        if mode in ("v2v", "virt-v2v", "virt_v2v"):
+            return self.v2v_export_vm(opt)
+        return None
+
+    def _handle_mode_ovftool(self, mode: str, opt: V2VExportOptions) -> Optional[Path]:
+        if mode in ("ovftool_export", "ovftool", "ovftool-export"):
+            self.logger.info("Export mode=OVF Tool: attempting OVF Tool export for VM=%s", opt.vm_name)
+            return self.ovftool_export_vm(opt)
+        return None
+
+    def _handle_mode_download_only(self, mode: str, opt: V2VExportOptions) -> Optional[Path]:
+        if mode in ("download_only", "download-only", "download"):
+            return self.download_only_vm(opt)
+        return None
+
+    def _stable_chain_ovf_ova_https(self, opt: V2VExportOptions, *, log_context: str) -> Path:
+        try:
+            self.logger.info("%s: attempting govc export.ovf for VM=%s", log_context, opt.vm_name)
+            return self.govc_export_ovf(opt)
+        except Exception as e_ovf:
+            self.logger.warning("%s: govc export.ovf failed; trying export.ova next: %s", log_context, e_ovf)
+            try:
+                return self.govc_export_ova(opt)
+            except Exception as e_ova:
+                self.logger.warning(
+                    "%s: govc export.ova also failed; forcing HTTPS /folder fallback: %s", log_context, e_ova
+                )
+                return self._download_only_vm_force_https(opt)
+
+    def _stable_chain_ova_https(self, opt: V2VExportOptions, *, log_context: str) -> Path:
+        try:
+            self.logger.info("%s: attempting govc export.ova for VM=%s", log_context, opt.vm_name)
+            return self.govc_export_ova(opt)
+        except Exception as e_ova:
+            self.logger.warning("%s: govc export.ova failed; forcing HTTPS /folder fallback: %s", log_context, e_ova)
+            return self._download_only_vm_force_https(opt)
 
     def export_vm(self, opt: V2VExportOptions) -> Path:
         """
@@ -1500,58 +1636,33 @@ class VMwareClient:
               * "v2v" keeps virt-v2v behavior
               * "download_only" keeps folder download behavior
         """
-        mode = (opt.export_mode or "ovf_export").strip().lower()
+        mode = self._normalize_export_mode(opt.export_mode)
 
-        # Experimental VDDK
-        if mode in ("vddk_download", "vddk-download", "vddkdownload"):
-            return self.vddk_download_disk(opt)
+        # Explicit/special modes first (no fallback unless explicitly coded)
+        for handler in (self._handle_mode_vddk, self._handle_mode_v2v):
+            out = handler(mode, opt)
+            if out is not None:
+                return out
 
-        # Power-user virt-v2v
-        if mode in ("v2v", "virt-v2v", "virt_v2v"):
-            return self.v2v_export_vm(opt)
+        # OVF Tool requested: if it fails, fall through to stable chain
+        try:
+            out = self._handle_mode_ovftool(mode, opt)
+            if out is not None:
+                return out
+        except Exception as e:
+            self.logger.warning("OVF Tool export failed; falling back to stable chain: %s", e)
 
-        # OVF Tool export
-        if mode in ("ovftool_export", "ovftool", "ovftool-export"):
-            try:
-                self.logger.info("Export mode=OVF Tool: attempting OVF Tool export for VM=%s", opt.vm_name)
-                return self.ovftool_export_vm(opt)
-            except Exception as e:
-                self.logger.warning("OVF Tool export failed; falling back to stable chain: %s", e)
-                # Fall through to stable chain
+        out = self._handle_mode_download_only(mode, opt)
+        if out is not None:
+            return out
 
-        # Explicit download-only
-        if mode in ("download_only", "download-only", "download"):
-            return self.download_only_vm(opt)
-
-        # Stable default: OVF -> OVA -> forced HTTPS
+        # Stable families
         if mode in ("ovf_export", "ovf", "export_ovf", "govc_ovf", "govc_export"):
-            try:
-                self.logger.info("Export mode=OVF (stable): attempting govc export.ovf for VM=%s", opt.vm_name)
-                return self.govc_export_ovf(opt)
-            except Exception as e_ovf:
-                self.logger.warning("govc export.ovf failed; trying export.ova next: %s", e_ovf)
-                try:
-                    return self.govc_export_ova(opt)
-                except Exception as e_ova:
-                    self.logger.warning("govc export.ova also failed; forcing HTTPS /folder fallback: %s", e_ova)
-                    return self._download_only_vm_force_https(opt)
+            return self._stable_chain_ovf_ova_https(opt, log_context="Export mode=OVF (stable)")
 
         if mode in ("ova_export", "ova", "export_ova", "govc_ova"):
-            try:
-                self.logger.info("Export mode=OVA: attempting govc export.ova for VM=%s", opt.vm_name)
-                return self.govc_export_ova(opt)
-            except Exception as e_ova:
-                self.logger.warning("govc export.ova failed; forcing HTTPS /folder fallback: %s", e_ova)
-                return self._download_only_vm_force_https(opt)
+            return self._stable_chain_ova_https(opt, log_context="Export mode=OVA")
 
-        # Unknown mode -> stable chain
+        # Unknown -> stable default chain
         self.logger.warning("Unknown export_mode=%r; using stable OVF->OVA->HTTPS chain", mode)
-        try:
-            return self.govc_export_ovf(opt)
-        except Exception as e_ovf:
-            self.logger.warning("govc export.ovf failed; trying export.ova: %s", e_ovf)
-            try:
-                return self.govc_export_ova(opt)
-            except Exception as e_ova:
-                self.logger.warning("govc export.ova failed; forcing HTTPS /folder fallback: %s", e_ova)
-                return self._download_only_vm_force_https(opt)
+        return self._stable_chain_ovf_ova_https(opt, log_context="Export mode=UNKNOWN (stable fallback)")
