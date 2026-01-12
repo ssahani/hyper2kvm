@@ -52,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("-v", "--verbose", action="count", default=0, help="Verbosity: -v, -vv")
     p.add_argument("--log-file", dest="log_file", default=None, help="Write logs to file.")
+    p.add_argument("--debug", dest="debug", action="store_true", help="Enable extra debug logging (also via env VMDK2KVM_DEBUG=1).")
 
     # ------------------------------------------------------------------
     # NEW PROJECT CONTROL: YAML-driven operation (no subcommands)
@@ -66,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--vs-action",
         dest="vs_action",
         default=None,
-        help="vSphere action (normally from YAML `vs_action:`). Examples: list_vm_names, vm_disks, download_vm_disk, cbt_sync, ...",
+        help="vSphere action (normally from YAML `vs_action:`). Examples: list_vm_names, export_vm, download_only_vm, download_datastore_file, ovftool_export, ovftool_deploy, ...",
     )
 
     # ------------------------------------------------------------------
@@ -353,12 +354,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vc-insecure", dest="vc_insecure", action="store_true", help="Disable TLS verification")
     p.add_argument("--dc-name", dest="dc_name", default="ha-datacenter", help="Datacenter name for /folder URL (default: ha-datacenter)")
 
+    # Export policy knobs (govc path)
+    p.add_argument(
+        "--export-mode",
+        dest="export_mode",
+        default=None,
+        choices=["ovf_export", "ova_export", "auto", "ovftool_export"],
+        help="vSphere export mode preference (export_vm action): ovf_export, ova_export, auto, or ovftool_export.",
+    )
+
     # ------------------------------------------------------------------
     # vSphere control-plane selection: govc vs pyvmomi
-    #
-    # Policy (updated):
-    #   - Always prefer govc/govmomi for control-plane when available.
-    #   - pyvmomi is allowed as a fallback only.
     # ------------------------------------------------------------------
     p.add_argument(
         "--vs-control-plane",
@@ -370,10 +376,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ------------------------------------------------------------------
     # download-only transport (HTTP/HTTPS only)
-    #
-    # Policy (updated):
-    #   - download-only uses /folder over HTTP(S) only.
-    #   - VDDK is NOT used here; any VDDK mode is experimental and separate.
     # ------------------------------------------------------------------
     p.add_argument(
         "--vs-download-transport",
@@ -396,12 +398,112 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--govc-resource-pool", dest="govc_resource_pool", default=None, help="govc resource pool (optional).")
     p.add_argument("--govc-stdout-json", dest="govc_stdout_json", action="store_true", help="Prefer govc JSON output where supported.")
 
+    # govc export workflow knobs
+    p.add_argument("--govc-export-power-off", dest="govc_export_power_off", action="store_true", help="govc export: power off VM before export (force).")
+    p.add_argument("--govc-export-shutdown", dest="govc_export_shutdown", action="store_true", help="govc export: guest shutdown before export (best-effort).")
+    p.add_argument("--govc-export-shutdown-timeout-s", dest="govc_export_shutdown_timeout_s", type=float, default=300.0, help="govc export: shutdown timeout seconds.")
+    p.add_argument("--govc-export-shutdown-poll-s", dest="govc_export_shutdown_poll_s", type=float, default=5.0, help="govc export: shutdown poll interval seconds.")
+    p.add_argument("--govc-export-remove-cdroms", dest="govc_export_remove_cdroms", action="store_true", help="govc export: remove CDROM devices before export (recommended).")
+    p.add_argument("--no-govc-export-remove-cdroms", dest="govc_export_remove_cdroms", action="store_false", help="govc export: do NOT remove CDROM devices.")
+    p.set_defaults(govc_export_remove_cdroms=True)
+    p.add_argument("--govc-export-show-vm-info", dest="govc_export_show_vm_info", action="store_true", help="govc export: print vm.info summary before export.")
+    p.add_argument("--no-govc-export-show-vm-info", dest="govc_export_show_vm_info", action="store_false", help="govc export: do NOT print vm.info summary.")
+    p.set_defaults(govc_export_show_vm_info=True)
+    p.add_argument("--govc-max-detail", dest="govc_max_detail", type=int, default=500, help="govc list_vm_names: max VMs to fetch detailed vm.info JSON for.")
+
+    # ------------------------------------------------------------------
+    # OVF Tool (ovftool) knobs
+    # ------------------------------------------------------------------
+    p.add_argument(
+        "--ovftool-path",
+        dest="ovftool_path",
+        default=None,
+        help="Path to OVF Tool binary or install dir (optional; auto-detect if unset).",
+    )
+    p.add_argument(
+        "--ovftool-no-ssl-verify",
+        dest="ovftool_no_ssl_verify",
+        action="store_true",
+        help="OVF Tool: disable TLS verification (adds --noSSLVerify).",
+    )
+    p.add_argument(
+        "--no-ovftool-no-ssl-verify",
+        dest="ovftool_no_ssl_verify",
+        action="store_false",
+        help="OVF Tool: keep TLS verification (do not add --noSSLVerify).",
+    )
+    p.set_defaults(ovftool_no_ssl_verify=True)
+
+    p.add_argument(
+        "--ovftool-thumbprint",
+        dest="ovftool_thumbprint",
+        default=None,
+        help="OVF Tool: expected TLS thumbprint (e.g. AA:BB:...); used instead of disabling verification.",
+    )
+    p.add_argument(
+        "--ovftool-accept-all-eulas",
+        dest="ovftool_accept_all_eulas",
+        action="store_true",
+        help="OVF Tool: accept all EULAs (adds --acceptAllEulas).",
+    )
+    p.add_argument(
+        "--no-ovftool-accept-all-eulas",
+        dest="ovftool_accept_all_eulas",
+        action="store_false",
+        help="OVF Tool: do NOT accept EULAs automatically.",
+    )
+    p.set_defaults(ovftool_accept_all_eulas=True)
+
+    p.add_argument("--ovftool-quiet", dest="ovftool_quiet", action="store_true", help="OVF Tool: quiet output (adds --quiet).")
+    p.add_argument("--ovftool-verbose", dest="ovftool_verbose", action="store_true", help="OVF Tool: verbose output (adds --verbose).")
+    p.add_argument("--ovftool-overwrite", dest="ovftool_overwrite", action="store_true", help="OVF Tool: overwrite outputs / target objects (adds --overwrite).")
+    p.add_argument(
+        "--ovftool-disk-mode",
+        dest="ovftool_disk_mode",
+        default=None,
+        help="OVF Tool: disk mode for deploy/export where supported (e.g. thin|thick|eagerZeroedThick).",
+    )
+    p.add_argument("--ovftool-retries", dest="ovftool_retries", type=int, default=0, help="OVF Tool wrapper: retry count for transient failures (default 0).")
+    p.add_argument(
+        "--ovftool-retry-backoff-s",
+        dest="ovftool_retry_backoff_s",
+        type=float,
+        default=2.0,
+        help="OVF Tool wrapper: base backoff seconds between retries (default 2.0).",
+    )
+    p.add_argument(
+        "--ovftool-extra-arg",
+        dest="ovftool_extra_args",
+        action="append",
+        default=[],
+        help="OVF Tool: extra raw arg passed through as-is (repeatable). Example: --ovftool-extra-arg=--X:logLevel=verbose",
+    )
+
+    # OVF Tool deploy-only targeting knobs
+    p.add_argument(
+        "--ovftool-target-folder",
+        dest="ovftool_target_folder",
+        default=None,
+        help="OVF Tool deploy: target inventory folder under /vm (relative path). Example: 'Prod/Linux'.",
+    )
+    p.add_argument(
+        "--ovftool-target-resource-pool",
+        dest="ovftool_target_resource_pool",
+        default=None,
+        help="OVF Tool deploy: target resource pool path under /host (advanced; exact format depends on vCenter inventory).",
+    )
+    p.add_argument(
+        "--ovftool-network-map",
+        dest="ovftool_network_map",
+        default=None,
+        help="OVF Tool deploy: network mapping 'src:dst,src2:dst2'. Example: 'VM Network:KVM-Bridge'.",
+    )
+    p.add_argument("--ovftool-power-on", dest="ovftool_power_on", action="store_true", help="OVF Tool deploy: power on after deploy.")
+    p.add_argument("--ovftool-vm-name", dest="ovftool_vm_name", default=None, help="OVF Tool deploy: override VM name (--name in ovftool).")
+    p.add_argument("--ovftool-datastore", dest="ovftool_datastore", default=None, help="OVF Tool deploy: target datastore name.")
+
     # ------------------------------------------------------------------
     # Existing virt-v2v vSphere export knobs, download-only knobs, VDDK knobs...
-    #
-    # Policy (updated):
-    #   - vSphere virt-v2v export is EXPERIMENTAL.
-    #   - Do not default transports to vddk implicitly; require explicit user choice.
     # ------------------------------------------------------------------
     p.add_argument(
         "--vs-v2v",
@@ -453,7 +555,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fail-on-missing", dest="vs_fail_on_missing", action="store_true", help="download-only VM folder: treat any failed/missing download as fatal.")
 
     # NOTE: These remain for any separate raw-VDDK download actions you may have.
-    # They are intentionally NOT wired as defaults for download-only.
     p.add_argument("--vddk-libdir", dest="vs_vddk_libdir2", default=None, help="EXPERIMENTAL: VDDK raw download: directory containing libvixDiskLib.so (or a parent that contains it).")
     p.add_argument("--vddk-thumbprint", dest="vs_vddk_thumbprint2", default=None, help="EXPERIMENTAL: VDDK raw download: ESXi/vCenter thumbprint (SHA1 AA:BB:..).")
     p.add_argument("--no-verify", dest="vs_no_verify2", action="store_true", help="EXPERIMENTAL: VDDK raw download: disable TLS verification (insecure).")
@@ -482,6 +583,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--change_id", dest="change_id", default="*", help="Change ID (query_changed_disk_areas/cbt_sync)")
 
     p.add_argument("--vs_output_dir", dest="vs_output_dir", default=None, help="Local output dir override for download_only_vm (defaults to --output-dir)")
+
+    # OVF Tool deploy action arg (input local OVA/OVF)
+    p.add_argument(
+        "--source-path",
+        dest="source_path",
+        default=None,
+        help="ovftool_deploy: local source path to .ova or .ovf (required for vs_action=ovftool_deploy).",
+    )
 
     return p
 
@@ -617,7 +726,6 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
             raise SystemExit("cmd=vsphere: missing vCenter password. Set `vc_password:` or `vc_password_env:` (or CLI equivalents).")
 
         # Control-plane selection (auto/govc/pyvmomi)
-        # Updated default: govc
         vs_cp = _merged_get(args, conf, "vs_control_plane")
         if not _require(vs_cp):
             vs_cp = conf.get("vs_control_plane", None) or "govc"
@@ -640,7 +748,6 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
                 raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_password:`/`govc_password_env:` (or `vc_password:`).")
 
         elif vs_cp == "pyvmomi":
-            # pyvmomi uses vc_* keys which are already validated above
             pass
         else:
             raise SystemExit(f"cmd=vsphere: invalid vs_control_plane={vs_cp!r} (use auto|govc|pyvmomi)")
@@ -655,8 +762,6 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
         if not _require(dl):
             dl = conf.get("vs_download_transport", None)
 
-        # Legacy mapping (best-effort): if older configs accidentally used `vs_transport`
-        # as a download preference, accept it ONLY if vs_download_transport is unset.
         legacy = conf.get("vs_transport", None)
         if not _require(dl) and _require(legacy):
             dl = str(legacy).strip().lower()
@@ -696,6 +801,8 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
             "query_changed_disk_areas",
             "download_only_vm",
             "vddk_download_disk",
+            "export_vm",
+            "ovftool_export",
         }
         if act in needs_vm and not _require(vm_name):
             raise SystemExit(f"cmd=vsphere vs_action={act}: missing required `vm_name:` (YAML) or CLI --vm_name (or --vs-vm)")
@@ -727,6 +834,13 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
             disk = conf.get("disk", None) if _require(conf.get("disk", None)) else getattr(args, "disk", None)
             if not (_require(device_key) or _require(disk)):
                 raise SystemExit("cmd=vsphere vs_action=query_changed_disk_areas: must set `device_key:` OR `disk:` in YAML (or CLI overrides).")
+
+        if act == "ovftool_deploy":
+            sp = conf.get("source_path", None)
+            if not _require(sp):
+                sp = getattr(args, "source_path", None)
+            if not _require(sp):
+                raise SystemExit("cmd=vsphere vs_action=ovftool_deploy: missing required `source_path:` (YAML) or CLI --source-path")
 
     else:
         raise SystemExit(f"Unknown cmd={cmd!r}. Set YAML `cmd:` to a supported operation.")

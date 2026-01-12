@@ -33,7 +33,16 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
+
+# Optional: select for single-flow multiplexing stdout/stderr without threads
+try:  # pragma: no cover
+    import select  # type: ignore
+
+    SELECT_AVAILABLE = True
+except Exception:  # pragma: no cover
+    select = None  # type: ignore
+    SELECT_AVAILABLE = False
 
 
 # --------------------------------------------------------------------------------------
@@ -369,7 +378,7 @@ def deploy_ovf_or_ova(
 
     for src_net, dst_net in opt.network_map:
         # ovftool expects quoting around names containing spaces; we pass raw and let subprocess handle.
-        cmd.append(f'--net:{src_net}={dst_net}')
+        cmd.append(f"--net:{src_net}={dst_net}")
 
     cmd.extend(opt.extra_args)
 
@@ -451,21 +460,25 @@ def _run_with_retries(
     log_prefix: str,
 ) -> None:
     attempts = 0
-    last_err: Optional[BaseException] = None
     while True:
         attempts += 1
         try:
             _run_streaming(cmd=cmd, env=env, log_prefix=log_prefix)
             return
         except Exception as e:
-            last_err = e
             if attempts > (retries + 1):
                 raise
             sleep_s = backoff_s * (2 ** (attempts - 2)) if attempts >= 2 else backoff_s
-            # Keep it simple and transparent
             print(f"{log_prefix}: attempt {attempts} failed: {e}")
             print(f"{log_prefix}: retrying in {sleep_s:.1f}s...")
             time.sleep(sleep_s)
+
+
+def _is_tty() -> bool:
+    try:
+        return os.isatty(1)
+    except Exception:
+        return False
 
 
 def _run_streaming(
@@ -475,28 +488,37 @@ def _run_streaming(
     log_prefix: str,
 ) -> None:
     """
-    Run ovftool and stream output line-by-line.
+    Run ovftool and stream output line-by-line (NO threads).
 
-    - Shows best-effort progress if lines like "Progress: 12%" appear.
-    - Captures stdout/stderr for error classification without holding entire output forever:
-      we keep a rolling tail.
+    Rich UI:
+      - If Rich is available and stdout is a TTY, shows a progress bar + spinner + elapsed time.
+      - Progress updates when lines like "Progress: 12%" appear.
+      - Also shows a short tail of the most recent meaningful line.
+
+    Diagnostics:
+      - Captures rolling tails from stdout/stderr for error classification + helpful exceptions.
     """
     cmd_list = list(cmd)
     print(f"{log_prefix}: exec: {_fmt_cmd_for_log(cmd_list)}")
 
-    # Rolling tails for diagnostics
     tail_max = 300
     out_tail: List[str] = []
     err_tail: List[str] = []
 
-    use_rich = bool(RICH_AVAILABLE and os.isatty(1))
-    console = Console() if (use_rich and Console is not None) else None
+    def _tail_push(buf: List[str], line: str) -> None:
+        buf.append(line)
+        if len(buf) > tail_max:
+            del buf[0 : len(buf) - tail_max]
+
+    use_rich = bool(RICH_AVAILABLE and Progress is not None and Console is not None and _is_tty())
+    console = Console() if use_rich else None
 
     progress = None
     task_id = None
     last_pct: Optional[int] = None
+    last_status: str = ""
 
-    if use_rich and Progress is not None:
+    if use_rich:
         progress = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -509,10 +531,30 @@ def _run_streaming(
         progress.start()
         task_id = progress.add_task("ovftool", total=100)
 
-    def _tail_push(buf: List[str], line: str) -> None:
-        buf.append(line)
-        if len(buf) > tail_max:
-            del buf[0 : len(buf) - tail_max]
+    def _maybe_update_progress(line: str) -> None:
+        nonlocal last_pct, last_status
+        if not progress or task_id is None:
+            return
+
+        s = line.strip()
+        if s:
+            last_status = s
+            shown = last_status
+            if len(shown) > 140:
+                shown = shown[:140] + "…"
+            progress.update(task_id, description=f"ovftool • {shown}")
+
+        m = _PROGRESS_RE.match(line)
+        if not m:
+            return
+        try:
+            pct = int(m.group(1))
+        except Exception:
+            return
+        pct = max(0, min(100, pct))
+        if last_pct is None or pct != last_pct:
+            progress.update(task_id, completed=pct)
+            last_pct = pct
 
     try:
         p = subprocess.Popen(
@@ -532,76 +574,105 @@ def _run_streaming(
     assert p.stdout is not None
     assert p.stderr is not None
 
-    # Single-flow read: interleave by polling stderr/stdout via select if available,
-    # but keep it dependency-free. We will do a simple alternating drain approach.
-    # This is not perfect ordering, but it is robust and avoids threads.
-    while True:
-        stdout_line = p.stdout.readline()
-        if stdout_line:
-            s = stdout_line.rstrip("\n")
+    # Multiplex without threads to avoid deadlocks:
+    # - Prefer select.select when available (POSIX).
+    # - Fallback: alternating non-ideal readline (still single-flow).
+    streams = [p.stdout, p.stderr]
+    open_streams = {p.stdout: "stdout", p.stderr: "stderr"}
+
+    def _handle_line(which: str, line: str) -> None:
+        s = line.rstrip("\n")
+        if which == "stdout":
             _tail_push(out_tail, s)
-            _maybe_update_progress(s, progress, task_id, last_pct_ref=[last_pct])
-            # Only print noisy lines if they look interesting (or if no Rich)
-            if not progress or _ERROR_HINT_RE.search(s):
-                print(f"{log_prefix}: {s}")
-
-        stderr_line = p.stderr.readline()
-        if stderr_line:
-            s = stderr_line.rstrip("\n")
+        else:
             _tail_push(err_tail, s)
-            _maybe_update_progress(s, progress, task_id, last_pct_ref=[last_pct])
-            # stderr is usually useful
-            print(f"{log_prefix}: {s}")
 
-        rc = p.poll()
-        if rc is not None:
-            # Drain remaining output
-            _drain_remaining(p.stdout, out_tail, log_prefix, is_stderr=False)
-            _drain_remaining(p.stderr, err_tail, log_prefix, is_stderr=True)
-            if progress:
-                progress.stop()
-            if rc != 0:
-                stdout_txt = "\n".join(out_tail)
-                stderr_txt = "\n".join(err_tail)
-                klass = _classify_error(stderr_txt, stdout_txt) or OvfToolError
-                raise klass(
-                    f"ovftool failed rc={rc}\n"
-                    f"cmd={_fmt_cmd_for_log(cmd_list)}\n"
-                    f"--- stdout (tail) ---\n{stdout_txt}\n"
-                    f"--- stderr (tail) ---\n{stderr_txt}\n"
-                )
+        _maybe_update_progress(s)
+
+        # Printing policy:
+        # - Without Rich: print everything (user asked for output)
+        # - With Rich: reduce stdout spam (progress lines), but always show stderr and error-ish lines
+        if not use_rich:
+            print(f"{log_prefix}: {s}")
             return
 
-
-def _drain_remaining(stream, tail: List[str], log_prefix: str, is_stderr: bool) -> None:
-    while True:
-        line = stream.readline()
-        if not line:
-            break
-        s = line.rstrip("\n")
-        tail.append(s)
-        if len(tail) > 300:
-            del tail[0 : len(tail) - 300]
-        if is_stderr:
+        if which == "stderr":
             print(f"{log_prefix}: {s}")
-        else:
-            # stdout often contains repeated "Progress:" spam; print only interesting lines
-            if _ERROR_HINT_RE.search(s):
-                print(f"{log_prefix}: {s}")
+            return
 
+        # stdout with rich: show error-ish / non-progress lines
+        if _ERROR_HINT_RE.search(s):
+            print(f"{log_prefix}: {s}")
 
-def _maybe_update_progress(line: str, progress, task_id, last_pct_ref: List[Optional[int]]) -> None:
-    if not progress or task_id is None:
-        return
-    m = _PROGRESS_RE.match(line)
-    if not m:
-        return
     try:
-        pct = int(m.group(1))
-    except Exception:
-        return
-    pct = max(0, min(100, pct))
-    last = last_pct_ref[0]
-    if last is None or pct != last:
-        progress.update(task_id, completed=pct)
-        last_pct_ref[0] = pct
+        if SELECT_AVAILABLE:
+            # select loop
+            while open_streams:
+                # If process exited, we still need to drain
+                rc = p.poll()
+
+                rlist = list(open_streams.keys())
+                ready, _, _ = select.select(rlist, [], [], 0.2)  # type: ignore[arg-type]
+                if not ready:
+                    if rc is not None:
+                        break
+                    continue
+
+                for st in ready:
+                    line = st.readline()
+                    if not line:
+                        # EOF on this stream
+                        open_streams.pop(st, None)
+                        continue
+                    _handle_line(open_streams[st], line)
+
+                if rc is not None and not ready:
+                    break
+        else:
+            # Fallback (may block more than we’d like on some outputs, but keeps no-threads promise)
+            while True:
+                out_line = p.stdout.readline()
+                if out_line:
+                    _handle_line("stdout", out_line)
+
+                err_line = p.stderr.readline()
+                if err_line:
+                    _handle_line("stderr", err_line)
+
+                rc = p.poll()
+                if rc is not None:
+                    break
+
+        # Drain any remaining output after process end
+        rc = p.wait()
+
+        for st, which in [(p.stdout, "stdout"), (p.stderr, "stderr")]:
+            while True:
+                line = st.readline()
+                if not line:
+                    break
+                _handle_line(which, line)
+
+        if progress:
+            # snap to 100% if we ever saw percent updates
+            if task_id is not None and last_pct is not None and last_pct < 100:
+                progress.update(task_id, completed=100)
+            progress.stop()
+
+        if rc != 0:
+            stdout_txt = "\n".join(out_tail)
+            stderr_txt = "\n".join(err_tail)
+            klass = _classify_error(stderr_txt, stdout_txt) or OvfToolError
+            raise klass(
+                f"ovftool failed rc={rc}\n"
+                f"cmd={_fmt_cmd_for_log(cmd_list)}\n"
+                f"--- stdout (tail) ---\n{stdout_txt}\n"
+                f"--- stderr (tail) ---\n{stderr_txt}\n"
+            )
+
+    finally:
+        if progress:
+            try:
+                progress.stop()
+            except Exception:
+                pass
