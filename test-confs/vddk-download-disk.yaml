@@ -4,7 +4,7 @@
 #
 # Run:
 #   export VC_PASSWORD='your-vcenter-password'
-#   sudo -E ./vmdk2kvm.py --config vddk-download-disk.yaml vsphere vddk_download_disk
+#   sudo -E ./hyper2kvm.py --config vddk-download-disk.yaml vsphere vddk_download_disk
 # -------------------------------------------------------------------
 
 command: vsphere

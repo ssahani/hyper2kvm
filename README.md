@@ -1,11 +1,11 @@
-# vmdk2kvm 🚀🔥
+# hyper2kvm 🚀🔥
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
-[![GitHub stars](https://img.shields.io/github/stars/ssahani/vmdk2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/ssahani/vmdk2kvm/stargazers/)
+[![GitHub stars](https://img.shields.io/github/stars/ssahani/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/ssahani/hyper2kvm/stargazers/)
 
 **VMware → KVM/QEMU Conversion, Repair, and Automation Toolkit**
 
-`vmdk2kvm` is a production-oriented toolkit for migrating VMware virtual machines (VMDK / OVA / OVF / ESXi / vCenter) into **KVM/QEMU-bootable images** **without relying on boot-time luck**.
+`hyper2kvm` is a production-oriented toolkit for migrating VMware virtual machines (VMDK / OVA / OVF / ESXi / vCenter) into **KVM/QEMU-bootable images** **without relying on boot-time luck**.
 
 This project exists to solve the problems that show up *after* a “successful” conversion:
 - Broken boots
@@ -116,7 +116,7 @@ The pipeline is explicit, inspectable, and restart-safe.
 
 ---
 ## 5. Control-Plane vs Data-Plane
-This separation is the **spine** of `vmdk2kvm`.
+This separation is the **spine** of `hyper2kvm`.
 - **Control-Plane** decides *what exists* and *what should happen*.
 - **Data-Plane** moves *bytes* and produces *artifacts*.
 
@@ -211,7 +211,7 @@ Think of OVF/OVA as **packaging formats**, not “conversion”.
 - **OVA**: Single file; easy to move/store; harder to resume mid-stream; large reruns hurt.
 - **OVF**: Directory of artifacts; easier partial retries; friendlier for inspection and selective reuse.
 
-In `vmdk2kvm` terms:
+In `hyper2kvm` terms:
 - Choose **OVA** when you want a portable, single-object handoff.
 - Choose **OVF** when you want restartability, transparency, and large-disk practicality.
 
@@ -318,5 +318,5 @@ YAML is treated as **code**:
 ---
 ## 20. Documentation Index
 All detailed documentation, workflows, examples, and references live here:
-👉 **[https://github.com/ssahani/vmdk2kvm/tree/main/docs](https://github.com/ssahani/vmdk2kvm/tree/main/docs)**
+👉 **[https://github.com/ssahani/hyper2kvm/tree/main/docs](https://github.com/ssahani/hyper2kvm/tree/main/docs)**
 

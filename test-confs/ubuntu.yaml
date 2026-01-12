@@ -1,8 +1,8 @@
-# vmdk2kvm.yaml
+# hyper2kvm.yaml
 # Offline VMware → KVM conversion for openSUSE Leap 15.4
 #
 # Run with:
-#   sudo ./vmdk2kvm.py --config vmdk2kvm.yaml local
+#   sudo ./hyper2kvm.py --config hyper2kvm.yaml local
 #
 # What this does:
 # - Opens the VMDK offline with libguestfs
@@ -18,7 +18,7 @@ command: local
 # --------------------------------------------------------------------
 # Input
 # --------------------------------------------------------------------
-vmdk: /home/ssahani/tt/vmdk2kvm/mtv-ubuntu22-4.vmdk
+vmdk: /home/ssahani/tt/hyper2kvm/mtv-ubuntu22-4.vmdk
 
 # --------------------------------------------------------------------
 # Output layout
@@ -67,10 +67,10 @@ dry_run: false
 verbose: 2
 
 # Optional logfile
-log_file: /home/ssahani/by-path/out/vmdk2kvm.log
+log_file: /home/ssahani/by-path/out/hyper2kvm.log
 
 # Optional Markdown report
-report: /home/ssahani/by-path/out/vmdk2kvm-report.md
+report: /home/ssahani/by-path/out/hyper2kvm-report.md
 
 # --------------------------------------------------------------------
 # Optional smoke tests (comment out if not needed)

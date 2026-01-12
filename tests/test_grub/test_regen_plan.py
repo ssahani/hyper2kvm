@@ -7,7 +7,7 @@ from fakes.fake_logger import FakeLogger
 
 def test_regen_dry_run_returns_info():
     try:
-        grub_fixer = importlib.import_module("vmdk2kvm.fixers.grub_fixer")
+        grub_fixer = importlib.import_module("hyper2kvm.fixers.grub_fixer")
     except Exception as e:
         pytest.skip(f"Cannot import grub_fixer: {e}")
 
