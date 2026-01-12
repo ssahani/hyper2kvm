@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config stabilizeall-esx8-rhel10.yaml
+#   sudo python hyper2kvm.py --config stabilizeall-esx8-rhel10.yaml
 
 command: vsphere
 vcenter: 192.168.73.42

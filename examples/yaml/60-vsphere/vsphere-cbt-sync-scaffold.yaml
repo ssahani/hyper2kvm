@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config 60-vsphere/vsphere-cbt-sync-scaffold.yaml
+#   sudo python hyper2kvm.py --config 60-vsphere/vsphere-cbt-sync-scaffold.yaml
 
 command: vsphere
 vcenter: vcenter.example.com
@@ -11,5 +11,5 @@ vm_name: myVM
 disk: 0
 local_path: ./downloads/myVM-disk0.vmdk
 enable_cbt: true
-snapshot_name: vmdk2kvm-cbt
+snapshot_name: hyper2kvm-cbt
 json: true

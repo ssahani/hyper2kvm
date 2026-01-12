@@ -113,7 +113,7 @@ class NetworkFixer:
         self.logger = logger
         self.fix_level = fix_level
         self.dry_run = dry_run
-        self.backup_suffix = backup_suffix or f".vmdk2kvm_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.backup_suffix = backup_suffix or f".hyper2kvm_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     # ---------------------------
     # Compatibility helpers

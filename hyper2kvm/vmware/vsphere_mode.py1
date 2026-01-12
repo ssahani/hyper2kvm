@@ -1753,7 +1753,7 @@ class VsphereMode:
                         client.enable_cbt(vm)
                     except VMwareError as e:
                         raise Fatal(2, f"vsphere cbt_sync: Failed to enable CBT: {e}")
-                snap_name = self.args.snapshot_name or "vmdk2kvm-cbt"
+                snap_name = self.args.snapshot_name or "hyper2kvm-cbt"
                 try:
                     snap = client.create_snapshot(vm, snap_name, quiesce=True, memory=False)
                 except VMwareError as e:

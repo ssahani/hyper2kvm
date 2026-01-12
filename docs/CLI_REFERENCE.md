@@ -1,6 +1,6 @@
 ### Comprehensive CLI Reference 
 
-`vmdk2kvm.py` is a production-minded tool for converting VMware workloads into KVM/QEMU-friendly disk images (qcow2/raw/vdi) while applying the fixes that actually make migrations succeed: stable `/etc/fstab`, bootloader/root= alignment, initramfs regeneration, VMware tools cleanup, Windows virtio enablement, plus “prove it boots” smoke tests.
+`hyper2kvm.py` is a production-minded tool for converting VMware workloads into KVM/QEMU-friendly disk images (qcow2/raw/vdi) while applying the fixes that actually make migrations succeed: stable `/etc/fstab`, bootloader/root= alignment, initramfs regeneration, VMware tools cleanup, Windows virtio enablement, plus “prove it boots” smoke tests.
 
 This document is the **interface contract** for the CLI as implemented by your **current `build_parser()` + YAML-driven validator**. It **does not add new flags**. It’s written fresh for the new model: **config selects the operation**, CLI optionally overrides.
 
@@ -32,31 +32,31 @@ Designed for real VMware → KVM pain: snapshot chains, unstable by-path naming,
 ### Standard run (config chooses operation)
 
 ```bash
-sudo python vmdk2kvm.py --config job.yaml
+sudo python hyper2kvm.py --config job.yaml
 ```
 
 ### Merge configs (base + overrides)
 
 ```bash
-sudo python vmdk2kvm.py --config base.yaml --config override.yaml
+sudo python hyper2kvm.py --config base.yaml --config override.yaml
 ```
 
 ### Override a knob from CLI (config still drives the run)
 
 ```bash
-sudo python vmdk2kvm.py --config job.yaml --output-dir /var/tmp/out -vv
+sudo python hyper2kvm.py --config job.yaml --output-dir /var/tmp/out -vv
 ```
 
 ### Inspect merged config (does not require cmd)
 
 ```bash
-sudo python vmdk2kvm.py --config job.yaml --dump-config
+sudo python hyper2kvm.py --config job.yaml --dump-config
 ```
 
 ### Inspect final parsed args (requires cmd because validation runs)
 
 ```bash
-sudo python vmdk2kvm.py --config job.yaml --dump-args
+sudo python hyper2kvm.py --config job.yaml --dump-args
 ```
 
 ---
@@ -122,19 +122,19 @@ report: ./out/report.md
 Run:
 
 ```bash
-sudo python vmdk2kvm.py --config job.yaml
+sudo python hyper2kvm.py --config job.yaml
 ```
 
 ### 2) Dry-run preview (no writes)
 
 ```bash
-sudo python vmdk2kvm.py --config job.yaml --dry-run -vv
+sudo python hyper2kvm.py --config job.yaml --dry-run -vv
 ```
 
 ### 3) Base + override
 
 ```bash
-sudo python vmdk2kvm.py --config base.yaml --config rhel10.yaml
+sudo python hyper2kvm.py --config base.yaml --config rhel10.yaml
 ```
 
 ---
@@ -272,7 +272,7 @@ These flags exist on the CLI and can also be supplied via config using their arg
 * `--luks-passphrase` *(default: env `VMDK2KVM_LUKS_PASSPHRASE`)*
 * `--luks-passphrase-env` *(default None)*
 * `--luks-keyfile` *(default None)*
-* `--luks-mapper-prefix` *(default `vmdk2kvm-crypt`)*
+* `--luks-mapper-prefix` *(default `hyper2kvm-crypt`)*
 * `--luks-enable` *(store_true)*
 
 ---
@@ -331,7 +331,7 @@ These are available globally and expected depending on `cmd`:
 Example:
 
 ```bash
-sudo python vmdk2kvm.py --config job.yaml --vmdk /path/to/vm.vmdk
+sudo python hyper2kvm.py --config job.yaml --vmdk /path/to/vm.vmdk
 ```
 
 ### `cmd: ova`
@@ -499,7 +499,7 @@ verbose: 1
 Run:
 
 ```bash
-sudo python vmdk2kvm.py --config vs-list.yaml
+sudo python hyper2kvm.py --config vs-list.yaml
 ```
 
 ### Example: download a VM disk
@@ -525,7 +525,7 @@ json: true
 Run:
 
 ```bash
-sudo python vmdk2kvm.py --config vs-dl.yaml
+sudo python hyper2kvm.py --config vs-dl.yaml
 ```
 
 ---
