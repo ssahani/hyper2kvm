@@ -14,10 +14,12 @@ Policy (stable by default):
      - only runs when export_mode explicitly requests it ("vddk_download")
      - all VDDK logic lives in vddk_client.py (this file only orchestrates)
   ✅ virt-v2v is kept as a power-user path ("v2v")
+  ✅ OVF Tool support added as alternative export/deployment method
 
 Notes:
   - govc logic should live in govc_common.py (GovcRunner)
   - VDDK logic should live in vddk_client.py (VDDKESXClient)
+  - OVF Tool logic should live in ovftool_client.py
 """
 
 import fnmatch
@@ -63,6 +65,30 @@ try:
     from .govc_common import GovcRunner
 except Exception:  # pragma: no cover
     GovcRunner = None  # type: ignore
+
+# OVF Tool client
+try:
+    from .ovftool_client import (
+        find_ovftool,
+        ovftool_version,
+        export_to_ova,
+        deploy_ovf_or_ova,
+        OvfExportOptions,
+        OvfDeployOptions,
+        OvfToolPaths,
+        OvfToolError,
+        OvfToolNotFound,
+    )
+except Exception:  # pragma: no cover
+    find_ovftool = None  # type: ignore
+    ovftool_version = None  # type: ignore
+    export_to_ova = None  # type: ignore
+    deploy_ovf_or_ova = None  # type: ignore
+    OvfExportOptions = None  # type: ignore
+    OvfDeployOptions = None  # type: ignore
+    OvfToolPaths = None  # type: ignore
+    OvfToolError = None  # type: ignore
+    OvfToolNotFound = None  # type: ignore
 
 # Your repo says: from ..core.exceptions import VMwareError
 try:
@@ -163,10 +189,12 @@ class V2VExportOptions:
       - export_mode="ovf_export" is the default: stable and debuggable.
       - Fallback chain: OVF -> OVA -> HTTPS /folder download-only.
       - VDDK raw pull is experimental and only runs when explicitly requested.
+      - OVF Tool support added as alternative export method.
 
     Modes:
       - export_mode="ovf_export" (default): govc export.ovf
       - export_mode="ova_export": govc export.ova
+      - export_mode="ovftool_export": OVF Tool export to OVA
       - export_mode="download_only": list VM folder (pyvmomi) + download selected files
       - export_mode="v2v": virt-v2v (power user)
       - export_mode="vddk_download": experimental raw VMDK pull via VDDK (explicit)
@@ -194,6 +222,19 @@ class V2VExportOptions:
     output_dir: Path = Path("./out")
     output_format: str = "qcow2"  # qcow2|raw
     extra_args: Tuple[str, ...] = ()
+
+    # OVF Tool options
+    ovftool_path: Optional[str] = None
+    ovftool_no_ssl_verify: bool = True
+    ovftool_thumbprint: Optional[str] = None
+    ovftool_accept_all_eulas: bool = True
+    ovftool_quiet: bool = False
+    ovftool_verbose: bool = False
+    ovftool_overwrite: bool = False
+    ovftool_disk_mode: Optional[str] = None
+    ovftool_retries: int = 0
+    ovftool_retry_backoff_s: float = 2.0
+    ovftool_extra_args: Tuple[str, ...] = ()
 
     # Inventory printing (opt-in)
     print_vm_names: Tuple[str, ...] = ()
@@ -240,6 +281,7 @@ class VMwareClient:
       - virt-v2v orchestrator (sync subprocess)
       - govc stable exporter (OVF/OVA) via govc_common.GovcRunner
       - ✅ VDDK raw download is EXPERIMENTAL and lives in vddk_client.py
+      - ✅ OVF Tool support for export/deployment
     """
 
     def __init__(
@@ -275,6 +317,10 @@ class VMwareClient:
         self.no_govmomi = False
         self._govc_client: Optional[GovmomiCLI] = None
 
+        # OVF Tool knobs
+        self.ovftool_path: Optional[str] = None
+        self._ovftool_paths: Optional[OvfToolPaths] = None
+
         self._rich_console = Console(stderr=True) if (RICH_AVAILABLE and Console is not None) else None
 
     # ---------------------------------------------------------------------
@@ -307,6 +353,7 @@ class VMwareClient:
         c = cls(logger, creds.host, creds.user, creds.password, port=p, insecure=ins, timeout=timeout)
         c.govc_bin = str(cfg.get("govc_bin") or os.environ.get("GOVC_BIN") or "govc")
         c.no_govmomi = bool(cfg.get("no_govmomi", False))
+        c.ovftool_path = str(cfg.get("ovftool_path", "")) or None
         return c
 
     def has_creds(self) -> bool:
@@ -330,6 +377,21 @@ class VMwareClient:
                 no_govmomi=self.no_govmomi,
             )
         return self._govc_client if self._govc_client.available() else None
+
+    def _ovftool(self) -> OvfToolPaths:
+        """
+        Return OVF Tool paths if available.
+        """
+        if self._ovftool_paths is None:
+            if find_ovftool is None:
+                raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
+            try:
+                self._ovftool_paths = find_ovftool(self.ovftool_path)
+                version = ovftool_version(self._ovftool_paths)
+                self.logger.info(f"OVF Tool found: {self._ovftool_paths.ovftool_bin} (version: {version or 'unknown'})")
+            except Exception as e:
+                raise VMwareError(f"OVF Tool not found: {e}")
+        return self._ovftool_paths
 
     # ---------------------------
     # Context managers
@@ -649,6 +711,135 @@ class VMwareClient:
             disk_mode=opt.govc_export_disk_mode,
         )
         return out_file
+
+    # ---------------------------
+    # OVF Tool export
+    # ---------------------------
+
+    def _build_ovftool_source_url(self, vm_name: str) -> str:
+        """
+        Build a vi:// source URL for OVF Tool from VM name.
+        Format: vi://user:pass@host/path/to/vm
+        """
+        # Get the VM path from pyvmomi
+        vm_obj = self.get_vm_by_name(vm_name)
+        if not vm_obj:
+            raise VMwareError(f"VM not found: {vm_name}")
+        
+        # Extract the inventory path
+        vm_path = None
+        try:
+            # Try to get the path from vm.summary.config.name or similar
+            # This is a simplified approach - in production you'd want a more robust method
+            # to get the full inventory path
+            vm_path = vm_obj.name
+        except Exception as e:
+            self.logger.warning(f"Could not determine VM path: {e}")
+            vm_path = vm_name
+        
+        # Basic URL construction - this might need adjustment based on your vSphere setup
+        # OVF Tool expects something like: vi://user:pass@vcenter.example.com/Datacenter/vm/path/to/vm
+        dc_name = self.resolve_datacenter_for_vm(vm_name, "auto")
+        source_url = f"vi://{self.user}:{self.password}@{self.host}/{dc_name}/vm/{vm_path}"
+        
+        return source_url
+
+    def ovftool_export_vm(self, opt: V2VExportOptions) -> Path:
+        """
+        Export VM using OVF Tool.
+        """
+        if export_to_ova is None:
+            raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
+        
+        # Build source URL
+        source_url = self._build_ovftool_source_url(opt.vm_name)
+        
+        # Create output OVA path
+        out_dir = Path(opt.output_dir).expanduser().resolve()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ova_path = out_dir / f"{_safe_vm_name(opt.vm_name)}.ova"
+        
+        # Build OVF Tool options from opt
+        options = OvfExportOptions(
+            no_ssl_verify=opt.ovftool_no_ssl_verify,
+            thumbprint=opt.ovftool_thumbprint,
+            accept_all_eulas=opt.ovftool_accept_all_eulas,
+            quiet=opt.ovftool_quiet,
+            verbose=opt.ovftool_verbose,
+            overwrite=opt.ovftool_overwrite,
+            disk_mode=opt.ovftool_disk_mode,
+            retries=opt.ovftool_retries,
+            retry_backoff_s=opt.ovftool_retry_backoff_s,
+            extra_args=opt.ovftool_extra_args,
+        )
+        
+        self.logger.info(f"Exporting VM {opt.vm_name} to {ova_path} using OVF Tool...")
+        t0 = time.time()
+        
+        try:
+            export_to_ova(
+                paths=self._ovftool(),
+                source=source_url,
+                ova_path=ova_path,
+                options=options,
+                log_prefix="ovftool",
+            )
+        except OvfToolError as e:
+            raise VMwareError(f"OVF Tool export failed: {e}")
+        
+        self.logger.info(f"OVF Tool export completed in {time.time() - t0:.1f}s")
+        return ova_path
+
+    def ovftool_deploy_ova(self, source_ova: Path, opt: V2VExportOptions) -> None:
+        """
+        Deploy OVA/OVF using OVF Tool.
+        """
+        if deploy_ovf_or_ova is None:
+            raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
+        
+        if not source_ova.exists():
+            raise VMwareError(f"Source OVA/OVF not found: {source_ova}")
+        
+        # Build target URL
+        dc_name = self.resolve_datacenter_for_vm(opt.vm_name, opt.datacenter)
+        
+        # Target can be a datacenter, folder, or resource pool
+        # For now, target to the datacenter root
+        target_url = f"vi://{self.user}:{self.password}@{self.host}/{dc_name}"
+        
+        # Build OVF Tool options
+        # Note: network_map and other deployment options would need to be added to V2VExportOptions
+        # if you want to support them
+        options = OvfDeployOptions(
+            no_ssl_verify=opt.ovftool_no_ssl_verify,
+            thumbprint=opt.ovftool_thumbprint,
+            accept_all_eulas=opt.ovftool_accept_all_eulas,
+            overwrite=opt.ovftool_overwrite,
+            # Additional deployment options would go here
+            name=opt.vm_name,
+            disk_mode=opt.ovftool_disk_mode,
+            quiet=opt.ovftool_quiet,
+            verbose=opt.ovftool_verbose,
+            retries=opt.ovftool_retries,
+            retry_backoff_s=opt.ovftool_retry_backoff_s,
+            extra_args=opt.ovftool_extra_args,
+        )
+        
+        self.logger.info(f"Deploying {source_ova} to vSphere using OVF Tool...")
+        t0 = time.time()
+        
+        try:
+            deploy_ovf_or_ova(
+                paths=self._ovftool(),
+                source_ovf_or_ova=source_ova,
+                target_vi=target_url,
+                options=options,
+                log_prefix="ovftool",
+            )
+        except OvfToolError as e:
+            raise VMwareError(f"OVF Tool deployment failed: {e}")
+        
+        self.logger.info(f"OVF Tool deployment completed in {time.time() - t0:.1f}s")
 
     # ---------------------------
     # Datastore parsing + HTTPS /folder download
@@ -1342,6 +1533,8 @@ class VMwareClient:
               3) HTTPS /folder download-only (FORCED; bypass govc)
           - VDDK only when explicitly requested:
               * export_mode="vddk_download" -> VDDK raw disk download (experimental)
+          - OVF Tool when explicitly requested:
+              * export_mode="ovftool_export" -> OVF Tool export to OVA
           - Back-compat:
               * "v2v" keeps virt-v2v behavior
               * "download_only" keeps folder download behavior
@@ -1355,6 +1548,15 @@ class VMwareClient:
         # Power-user virt-v2v
         if mode in ("v2v", "virt-v2v", "virt_v2v"):
             return self.v2v_export_vm(opt)
+
+        # OVF Tool export
+        if mode in ("ovftool_export", "ovftool", "ovftool-export"):
+            try:
+                self.logger.info("Export mode=OVF Tool: attempting OVF Tool export for VM=%s", opt.vm_name)
+                return self.ovftool_export_vm(opt)
+            except Exception as e:
+                self.logger.warning("OVF Tool export failed; falling back to stable chain: %s", e)
+                # Fall through to stable chain
 
         # Explicit download-only
         if mode in ("download_only", "download-only", "download"):
