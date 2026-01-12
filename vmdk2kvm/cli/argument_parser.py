@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from typing import Any, Dict, Optional, Sequence, Tuple
 
@@ -52,7 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("-v", "--verbose", action="count", default=0, help="Verbosity: -v, -vv")
     p.add_argument("--log-file", dest="log_file", default=None, help="Write logs to file.")
-    p.add_argument("--debug", dest="debug", action="store_true", help="Enable extra debug logging (also via env VMDK2KVM_DEBUG=1).")
+    p.add_argument(
+        "--debug",
+        dest="debug",
+        action="store_true",
+        help="Enable extra debug logging (also via env VMDK2KVM_DEBUG=1).",
+    )
 
     # ------------------------------------------------------------------
     # NEW PROJECT CONTROL: YAML-driven operation (no subcommands)
@@ -84,7 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------
     p.add_argument("--flatten", action="store_true", help="Flatten snapshot chain into a single working image first.")
     p.add_argument(
-        "--flatten-format", dest="flatten_format", default="qcow2", choices=["qcow2", "raw"], help="Flatten output format."
+        "--flatten-format",
+        dest="flatten_format",
+        default="qcow2",
+        choices=["qcow2", "raw"],
+        help="Flatten output format.",
     )
     p.add_argument(
         "--to-output",
@@ -119,6 +129,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resize", default=None, help="Resize root filesystem (enlarge only, e.g., +10G or 50G)")
     p.add_argument("--report", default=None, help="Write Markdown report (relative to output-dir if not absolute).")
     p.add_argument("--virtio-drivers-dir", dest="virtio_drivers_dir", default=None, help="Path to virtio-win drivers directory for Windows injection.")
+
+    # ------------------------------------------------------------------
+    # Windows VirtIO driver *definitions* config (PnP payload discovery)
+    # ------------------------------------------------------------------
+    p.add_argument(
+        "--virtio-config",
+        dest="virtio_config_path",
+        default=None,
+        help=(
+            "Windows VirtIO: path to driver-definition config (.yaml/.yml/.json). "
+            "Controls driver patterns, PCI IDs, services, bucket mapping, etc. "
+            "If unset, baked defaults are used."
+        ),
+    )
+    p.add_argument(
+        "--virtio-config-json",
+        dest="virtio_config_json",
+        default=None,
+        help=(
+            "Windows VirtIO: inline JSON object for driver-definition overrides (advanced). "
+            "Example: --virtio-config-json '{\"drivers\":{\"storage\":[...]}}'"
+        ),
+    )
+
     p.add_argument("--post-v2v", dest="post_v2v", action="store_true", help="Run virt-v2v after internal fixes.")
     p.add_argument("--use-v2v", dest="use_v2v", action="store_true", help="Use virt-v2v for conversion if available.")
     p.add_argument(
@@ -133,6 +167,29 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=2,
         help="Max concurrent virt-v2v jobs when --v2v-parallel is set (default: 2).",
+    )
+
+    # ------------------------------------------------------------------
+    # Windows network retention override (first-boot apply)
+    # ------------------------------------------------------------------
+    p.add_argument(
+        "--win-net-override",
+        dest="win_net_override",
+        default=None,
+        help=(
+            "Windows: path to JSON network override file on the host. "
+            "If set, it is staged into guest as C:\\vmdk2kvm\\net\\network_override.json and applied at first boot."
+        ),
+    )
+    p.add_argument(
+        "--win-net-json",
+        dest="win_net_json",
+        default=None,
+        help=(
+            "Windows: inline JSON string for network override (advanced). "
+            "Useful for systemd/YAML embedding. Example: "
+            "--win-net-json '{\"schema\":1,\"mode\":\"dhcp\",\"dhcp\":{\"dns_servers\":[\"10.0.0.53\"]}}'"
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -657,6 +714,143 @@ def _merged_vs_action(args: argparse.Namespace, conf: Dict[str, Any]) -> Optiona
     return None
 
 
+def _validate_win_net_override_inputs(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    """
+    Validate Windows network override knobs without doing any filesystem writes.
+
+    Rules:
+      - win_net_override: file must exist and parse as JSON object (dict)
+      - win_net_json: must parse as JSON object (dict)
+      - both may be set, but win_net_override takes precedence downstream
+    """
+    p = _merged_get(args, conf, "win_net_override")
+    js = _merged_get(args, conf, "win_net_json")
+
+    if _require(p):
+        path = str(p)
+        if not os.path.isfile(path):
+            raise SystemExit(f"--win-net-override file not found: {path}")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                parsed = json.load(f)
+            if not isinstance(parsed, dict):
+                raise ValueError("top-level JSON must be an object")
+        except Exception as e:
+            raise SystemExit(f"--win-net-override is not valid JSON object: {path}: {e}")
+
+    if _require(js):
+        try:
+            parsed = json.loads(str(js))
+            if not isinstance(parsed, dict):
+                raise ValueError("top-level JSON must be an object")
+        except Exception as e:
+            raise SystemExit(f"--win-net-json is not valid JSON object: {e}")
+
+
+def _validate_virtio_config_inputs(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    """
+    Validate VirtIO driver-definition config knobs.
+
+    Rules:
+      - virtio_config_path: file must exist; extension must be .json/.yaml/.yml
+      - virtio_config_json: must parse as JSON object (dict)
+    """
+    pth = _merged_get(args, conf, "virtio_config_path")
+    js = _merged_get(args, conf, "virtio_config_json")
+
+    if _require(pth):
+        path = str(pth)
+        if not os.path.isfile(path):
+            raise SystemExit(f"--virtio-config file not found: {path}")
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in (".json", ".yaml", ".yml"):
+            raise SystemExit(f"--virtio-config must be .json/.yaml/.yml, got: {path}")
+
+    if _require(js):
+        try:
+            parsed = json.loads(str(js))
+            if not isinstance(parsed, dict):
+                raise ValueError("top-level JSON must be an object")
+        except Exception as e:
+            raise SystemExit(f"--virtio-config-json is not valid JSON object: {e}")
+
+
+def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: Dict[str, Any], logger: Any) -> None:
+    """
+    If user provided inline win_net_json and did NOT provide win_net_override,
+    write the JSON to a stable file under workdir, and set args.win_net_override.
+    """
+    # If they already provided a file, don't override it.
+    p = _merged_get(args, conf, "win_net_override")
+    if _require(p):
+        return
+
+    js = _merged_get(args, conf, "win_net_json")
+    if not _require(js):
+        return
+
+    parsed = json.loads(str(js))
+    if not isinstance(parsed, dict):
+        raise SystemExit("win_net_json must be a JSON object (top-level dict)")
+
+    out_dir = _merged_get(args, conf, "output_dir") or "./out"
+    wd = getattr(args, "workdir", None) or os.path.join(str(out_dir), "work")
+    os.makedirs(wd, exist_ok=True)
+    out_path = os.path.join(wd, "win-net-override.json")
+
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(parsed, indent=2, sort_keys=True))
+            f.write("\n")
+    except Exception as e:
+        raise SystemExit(f"Failed to write materialized win-net override JSON to {out_path}: {e}")
+
+    # Make downstream consume it like a normal file path.
+    setattr(args, "win_net_override", out_path)
+
+    try:
+        logger.info("Materialized win_net_json into %s", out_path)
+    except Exception:
+        pass
+
+
+def _materialize_virtio_config_json_if_needed(args: argparse.Namespace, conf: Dict[str, Any], logger: Any) -> None:
+    """
+    If user provided inline virtio_config_json and did NOT provide virtio_config_path,
+    write it under workdir and set args.virtio_config_path.
+    """
+    pth = _merged_get(args, conf, "virtio_config_path")
+    if _require(pth):
+        return
+
+    js = _merged_get(args, conf, "virtio_config_json")
+    if not _require(js):
+        return
+
+    parsed = json.loads(str(js))
+    if not isinstance(parsed, dict):
+        raise SystemExit("virtio_config_json must be a JSON object (top-level dict)")
+
+    out_dir = _merged_get(args, conf, "output_dir") or "./out"
+    wd = getattr(args, "workdir", None) or os.path.join(str(out_dir), "work")
+    os.makedirs(wd, exist_ok=True)
+    out_path = os.path.join(wd, "virtio-config.json")
+
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(parsed, indent=2, sort_keys=True))
+            f.write("\n")
+    except Exception as e:
+        raise SystemExit(f"Failed to write materialized virtio-config JSON to {out_path}: {e}")
+
+    setattr(args, "virtio_config_path", out_path)
+
+    try:
+        logger.info("Materialized virtio_config_json into %s", out_path)
+    except Exception:
+        pass
+
+
 def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
     """
     New-project policy:
@@ -673,6 +867,10 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
             "Missing required YAML key: `cmd:` (or `command:`). "
             "Examples: local, fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, daemon, generate-systemd."
         )
+
+    # Optional knobs validation (no side effects)
+    _validate_win_net_override_inputs(args, conf)
+    _validate_virtio_config_inputs(args, conf)
 
     cmd_l = str(cmd).strip().lower()
 
@@ -862,6 +1060,7 @@ def parse_args_with_config(
       Phase 2: apply config as defaults onto the parser
       Phase 3: full parse to get final args
       Phase 4: validate using merged config + args
+      Phase 5: materialize inline JSON overrides into workdir (side-effect, after validation)
     """
     import sys
 
@@ -905,4 +1104,11 @@ def parse_args_with_config(
         raise SystemExit(0)
 
     validate_args(args, conf)
+
+    # Side-effect stage: if win_net_json is used, write it under workdir and set args.win_net_override.
+    _materialize_win_net_json_if_needed(args, conf, logger)
+
+    # Side-effect stage: if virtio_config_json is used, write it under workdir and set args.virtio_config_path.
+    _materialize_virtio_config_json_if_needed(args, conf, logger)
+
     return args, conf, logger
