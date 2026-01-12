@@ -9,14 +9,6 @@ ovftool wrapper client for vmdk2kvm.
 This module provides a **thin, defensive, no-threads** wrapper around Broadcom/VMware
 OVF Tool ("ovftool") to export/import OVF/OVA from/to vSphere endpoints.
 
-Design goals:
-  - Self-contained: stdlib only (optional Rich for nicer progress)
-  - Defensive parsing: treat ovftool output as human text that may change
-  - Stable orchestration: callers decide policy; this module exposes primitives
-  - Logging-first: emit the exact command shape (with secrets masked)
-  - No background threads: single flow, blocking subprocess, streaming output
-  - Practical: handles the usual flags (noSSLVerify, thumbprint, acceptAllEulas, etc.)
-
 Notes:
   - ovftool is proprietary and must be installed by the user.
   - It can export from:
@@ -30,10 +22,11 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 # Optional: select for single-flow multiplexing stdout/stderr without threads
 try:  # pragma: no cover
@@ -50,16 +43,20 @@ except Exception:  # pragma: no cover
 # --------------------------------------------------------------------------------------
 try:  # pragma: no cover
     from rich.console import Console
+    from rich.panel import Panel
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    from rich.text import Text
 
     RICH_AVAILABLE = True
 except Exception:  # pragma: no cover
     Console = None  # type: ignore
+    Panel = None  # type: ignore
     Progress = None  # type: ignore
     SpinnerColumn = None  # type: ignore
     TextColumn = None  # type: ignore
     BarColumn = None  # type: ignore
     TimeElapsedColumn = None  # type: ignore
+    Text = None  # type: ignore
     RICH_AVAILABLE = False
 
 
@@ -116,6 +113,7 @@ _AUTH_HINTS = (
 @dataclass(frozen=True)
 class OvfToolPaths:
     """Resolved ovftool binary path."""
+
     ovftool_bin: str
 
 
@@ -127,6 +125,7 @@ class OvfExportOptions:
     Many flags are "pass-through"; if you need something not modeled here,
     use extra_args.
     """
+
     # TLS / endpoint
     no_ssl_verify: bool = True
     thumbprint: Optional[str] = None  # e.g. "AA:BB:..."; used with vi:// endpoints
@@ -137,8 +136,6 @@ class OvfExportOptions:
     verbose: bool = False
 
     # Output shape
-    # - if destination is ".ova", ovftool typically emits a single OVA
-    # - if destination is a directory, it emits OVF + VMDKs, etc.
     overwrite: bool = False
 
     # VM / disk behavior (commonly useful for deploy/import, harmless on export)
@@ -159,6 +156,7 @@ class OvfDeployOptions:
 
     This is a minimal starter set; ovftool has a huge surface area.
     """
+
     no_ssl_verify: bool = True
     thumbprint: Optional[str] = None
     accept_all_eulas: bool = True
@@ -180,6 +178,78 @@ class OvfDeployOptions:
     retries: int = 0
     retry_backoff_s: float = 2.0
     extra_args: Tuple[str, ...] = ()
+
+
+# --------------------------------------------------------------------------------------
+# UI helpers (Rich Panel when possible, otherwise plain box-drawing)
+# --------------------------------------------------------------------------------------
+def _is_tty() -> bool:
+    try:
+        return sys.stdout.isatty()
+    except Exception:
+        return False
+
+
+def _console() -> Optional[Any]:
+    if not (RICH_AVAILABLE and Console and _is_tty()):
+        return None
+    try:
+        return Console(stderr=False)
+    except Exception:
+        return None
+
+
+def _print_panel(title: str, body: str = "") -> None:
+    """
+    Render a panel like:
+
+    ╭─────────────────────────────────────────────────────────╮
+    │            ✓ Export completed successfully!              │
+    ╰─────────────────────────────────────────────────────────╯
+    """
+    con = _console()
+    if con and Panel:
+        con.print(Panel(body or "", title=title, expand=True))
+        return
+
+    # Plain fallback (keeps the “boxy” vibe)
+    inner_w = max(57, len(title) + 6, *(len(x) + 4 for x in body.splitlines() if x.strip()))  # type: ignore[arg-type]
+    line = "─" * inner_w
+    print(f"╭{line}╮")
+
+    t = title
+    if len(t) > inner_w - 2:
+        t = t[: inner_w - 3] + "…"
+    print(f"│ {t:<{inner_w-2}} │")
+
+    if body.strip():
+        for bl in body.splitlines():
+            s = bl.rstrip("\n")
+            if len(s) > inner_w - 2:
+                s = s[: inner_w - 3] + "…"
+            print(f"│ {s:<{inner_w-2}} │")
+
+    print(f"╰{line}╯")
+
+
+def _info_line(msg: str) -> None:
+    print(msg)
+
+
+def _warn_line(msg: str) -> None:
+    print(f"WARNING: {msg}")
+
+
+def _ok_line(msg: str) -> None:
+    # match your sample: "  ✓ Removed: cdrom-1000"
+    print(f"  ✓ {msg}")
+
+
+def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
+    elapsed = time.time() - start_time
+    minutes = int(elapsed // 60)
+    seconds = int(elapsed % 60)
+    return minutes, seconds
 
 
 # --------------------------------------------------------------------------------------
@@ -231,9 +301,7 @@ def find_ovftool(explicit_path: Optional[str] = None) -> OvfToolPaths:
 
 
 def ovftool_version(paths: OvfToolPaths) -> Optional[str]:
-    """
-    Return ovftool version string if detected, else None.
-    """
+    """Return ovftool version string if detected, else None."""
     rc, out, _err = _run_capture([paths.ovftool_bin, "--version"])
     if rc != 0:
         return None
@@ -270,9 +338,18 @@ def export_to_ovf_or_ova(
       - Do NOT embed passwords in logs. This module masks vi:// credentials on logging.
     """
     opt = options or OvfExportOptions()
-    dest = str(Path(destination).expanduser())
+    dest_path = Path(destination).expanduser()
+    dest = str(dest_path)
 
-    cmd = [paths.ovftool_bin]
+    mode = "OVA" if dest_path.suffix.lower() == ".ova" else "OVF"
+    _print_panel(
+        title=f"Exporting via ovftool",
+        body=f"Mode: {mode} | Output: {dest}\nSource: {_mask_vi_credentials(source)}",
+    )
+    _info_line(f"Starting {mode} export...")
+    _info_line("This may take several minutes depending on disk size...\n")
+
+    cmd: List[str] = [paths.ovftool_bin]
     cmd.extend(_common_flags(no_ssl_verify=opt.no_ssl_verify, thumbprint=opt.thumbprint))
     if opt.accept_all_eulas:
         cmd.append("--acceptAllEulas")
@@ -289,10 +366,10 @@ def export_to_ovf_or_ova(
         cmd.append(f"--diskMode={opt.disk_mode}")
 
     cmd.extend(opt.extra_args)
-
     cmd.append(source)
     cmd.append(dest)
 
+    start = time.time()
     _run_with_retries(
         cmd=cmd,
         retries=opt.retries,
@@ -300,6 +377,10 @@ def export_to_ovf_or_ova(
         env=env,
         log_prefix=log_prefix,
     )
+    m, s = _fmt_elapsed(start)
+    _ok_line(f"{mode} export completed in {m}m {s}s")
+    _info_line(f"Output: {dest}\n")
+    _print_panel("✓ Export completed successfully!", "")
 
 
 def export_to_ova(
@@ -311,9 +392,7 @@ def export_to_ova(
     env: Optional[Dict[str, str]] = None,
     log_prefix: str = "ovftool",
 ) -> None:
-    """
-    Convenience wrapper to export explicitly to an .ova file.
-    """
+    """Convenience wrapper to export explicitly to an .ova file."""
     p = Path(ova_path).expanduser()
     if p.suffix.lower() != ".ova":
         raise ValueError(f"ova_path must end with .ova, got: {p}")
@@ -351,9 +430,17 @@ def deploy_ovf_or_ova(
     This wrapper models only a small set of common knobs; use extra_args for the rest.
     """
     opt = options or OvfDeployOptions()
-    src = str(Path(source_ovf_or_ova).expanduser())
+    srcp = Path(source_ovf_or_ova).expanduser()
+    src = str(srcp)
 
-    cmd = [paths.ovftool_bin]
+    _print_panel(
+        title="Deploying via ovftool",
+        body=f"Source: {src}\nTarget: {_mask_vi_credentials(target_vi)}",
+    )
+    _info_line("Starting deploy/import...")
+    _info_line("This may take several minutes depending on disk size...\n")
+
+    cmd: List[str] = [paths.ovftool_bin]
     cmd.extend(_common_flags(no_ssl_verify=opt.no_ssl_verify, thumbprint=opt.thumbprint))
     if opt.accept_all_eulas:
         cmd.append("--acceptAllEulas")
@@ -381,10 +468,10 @@ def deploy_ovf_or_ova(
         cmd.append(f"--net:{src_net}={dst_net}")
 
     cmd.extend(opt.extra_args)
-
     cmd.append(src)
     cmd.append(target_vi)
 
+    start = time.time()
     _run_with_retries(
         cmd=cmd,
         retries=opt.retries,
@@ -392,6 +479,9 @@ def deploy_ovf_or_ova(
         env=env,
         log_prefix=log_prefix,
     )
+    m, s = _fmt_elapsed(start)
+    _ok_line(f"Deploy completed in {m}m {s}s")
+    _print_panel("✓ Deploy completed successfully!", "")
 
 
 # --------------------------------------------------------------------------------------
@@ -410,10 +500,10 @@ def _mask_vi_credentials(s: str) -> str:
     """
     Mask vi://user:pass@host style credentials.
 
-    This is best-effort and intentionally conservative: we mask anything between
-    'vi://' and '@' if it contains ':'.
+    Best-effort: we mask anything between 'vi://' and '@' if it contains ':'.
+
+    vi://user:pass@host/... -> vi://user:****@host/...
     """
-    # vi://user:pass@host/... -> vi://user:****@host/...
     return re.sub(r"(vi://[^/@:]+:)([^@]+)(@)", r"\1****\3", s)
 
 
@@ -469,16 +559,9 @@ def _run_with_retries(
             if attempts > (retries + 1):
                 raise
             sleep_s = backoff_s * (2 ** (attempts - 2)) if attempts >= 2 else backoff_s
-            print(f"{log_prefix}: attempt {attempts} failed: {e}")
-            print(f"{log_prefix}: retrying in {sleep_s:.1f}s...")
+            _warn_line(f"{log_prefix}: attempt {attempts} failed: {e}")
+            _info_line(f"{log_prefix}: retrying in {sleep_s:.1f}s...")
             time.sleep(sleep_s)
-
-
-def _is_tty() -> bool:
-    try:
-        return os.isatty(1)
-    except Exception:
-        return False
 
 
 def _run_streaming(
@@ -577,7 +660,6 @@ def _run_streaming(
     # Multiplex without threads to avoid deadlocks:
     # - Prefer select.select when available (POSIX).
     # - Fallback: alternating non-ideal readline (still single-flow).
-    streams = [p.stdout, p.stderr]
     open_streams = {p.stdout: "stdout", p.stderr: "stderr"}
 
     def _handle_line(which: str, line: str) -> None:
@@ -606,9 +688,7 @@ def _run_streaming(
 
     try:
         if SELECT_AVAILABLE:
-            # select loop
             while open_streams:
-                # If process exited, we still need to drain
                 rc = p.poll()
 
                 rlist = list(open_streams.keys())
@@ -621,7 +701,6 @@ def _run_streaming(
                 for st in ready:
                     line = st.readline()
                     if not line:
-                        # EOF on this stream
                         open_streams.pop(st, None)
                         continue
                     _handle_line(open_streams[st], line)
@@ -629,7 +708,6 @@ def _run_streaming(
                 if rc is not None and not ready:
                     break
         else:
-            # Fallback (may block more than we’d like on some outputs, but keeps no-threads promise)
             while True:
                 out_line = p.stdout.readline()
                 if out_line:
@@ -643,9 +721,9 @@ def _run_streaming(
                 if rc is not None:
                     break
 
-        # Drain any remaining output after process end
         rc = p.wait()
 
+        # Drain any remaining output after process end
         for st, which in [(p.stdout, "stdout"), (p.stderr, "stderr")]:
             while True:
                 line = st.readline()
@@ -654,7 +732,6 @@ def _run_streaming(
                 _handle_line(which, line)
 
         if progress:
-            # snap to 100% if we ever saw percent updates
             if task_id is not None and last_pct is not None and last_pct < 100:
                 progress.update(task_id, completed=100)
             progress.stop()

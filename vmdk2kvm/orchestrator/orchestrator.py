@@ -1,5 +1,27 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+# vmdk2kvm/orchestrator/orchestrator.py
 from __future__ import annotations
+
+"""
+vSphere / vCenter client for vmdk2kvm (SYNC, no threads, no asyncio).
+
+Policy (stable by default):
+  ✅ Default export path is govc OVF (automation-friendly, debuggable)
+     - export_mode="ovf_export" (default)
+     - fallback chain: OVF -> OVA -> FORCED HTTPS /folder download-only
+  ✅ VDDK raw disk download stays EXPERIMENTAL:
+     - only runs when export_mode explicitly requests it ("vddk_download")
+     - all VDDK logic lives in vddk_client.py (this file only orchestrates)
+  ✅ virt-v2v is kept as a power-user path ("v2v")
+  ✅ OVF Tool support added as alternative export/deployment method
+
+Notes:
+  - govc logic should live in govc_common.py (GovcRunner)
+  - VDDK logic should live in vddk_client.py (VDDKESXClient)
+  - OVF Tool logic should live in ovftool_client.py
+  - HTTP/HTTPS download logic lives in http_download_client.py
+"""
 
 import argparse
 import concurrent.futures
@@ -38,7 +60,17 @@ from ..ssh.ssh_config import SSHConfig
 from ..testers.libvirt_tester import LibvirtTest
 from ..testers.qemu_tester import QemuTest
 from ..vmware.vmdk_parser import VMDK
-from ..vmware.vmware_client import PYVMOMI_AVAILABLE, REQUESTS_AVAILABLE
+# Import from the correct modules
+try:
+    from ..vmware.vmware_client import PYVMOMI_AVAILABLE
+except ImportError:
+    PYVMOMI_AVAILABLE = False
+
+try:
+    from ..vmware.http_download_client import REQUESTS_AVAILABLE
+except ImportError:
+    REQUESTS_AVAILABLE = False
+
 from ..vmware.vsphere_mode import VsphereMode
 
 # ✅ Hook: domain emitter
