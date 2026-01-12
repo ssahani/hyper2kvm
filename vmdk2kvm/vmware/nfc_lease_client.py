@@ -4,6 +4,10 @@
 """
 NFC export/download via govc CLI (govmomi).
 
+Key fact:
+- `govc export.ovf` / `govc export.ova` use VMware's HttpNfcLease mechanism under the hood
+  (aka "NFC export"): lease acquisition + keepalive + signed URL fetch + downloads.
+
 Why this exists:
 - You already have a *custom* NFC data-plane downloader (requests + Range + retries).
 - Sometimes you want the "just export it" path: let govc manage HttpNfcLease + keepalive
@@ -14,10 +18,17 @@ Important differences vs nfc_lease_client.py:
   for export.ovf / export.ova.
 - There is no lease heartbeat callback here: govc keeps the lease alive internally.
 - Resume semantics are best-effort: govc does not guarantee HTTP Range resume.
-  We implement "idempotent skip" + retries around the govc command, and atomic publish.
+  We implement "idempotent skip" (when enabled) + retries around the govc command,
+  and best-effort publish of the result.
+
+Notes on "atomic publish":
+- For OVA (single file), publish is truly atomic via os.replace().
+- For OVF (directory tree), publish is best-effort: we merge/overwrite files into the
+  final directory. This is safe and idempotent for typical tool usage, but readers could
+  observe partial updates if they inspect the directory mid-copy.
 
 Docs/refs:
-- govc is shipped from vmware/govmomi and provides export.ovf / export.ova commands. :contentReference[oaicite:0]{index=0}
+- govc is shipped from vmware/govmomi and provides export.ovf / export.ova commands.
 """
 
 from __future__ import annotations
@@ -26,6 +37,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -93,7 +105,7 @@ class GovcExportSpec:
 
     # export options
     export_ova: bool = False  # if True, uses `govc export.ova`; else `govc export.ovf`
-    name: Optional[str] = None  # optional target base directory name under out_dir
+    name: Optional[str] = None  # optional target base name under out_dir (see OVA note below)
 
     # Pass-through flags (used only if set)
     dc: Optional[str] = None
@@ -106,8 +118,14 @@ class GovcExportSpec:
     # govc binary path (default: resolve from PATH)
     govc_bin: str = "govc"
 
+    # Preflight checks (recommended)
+    preflight: bool = True
+    preflight_vm_info: bool = True  # if True, verify VM is resolvable before export
 
+
+# ---------------------------------------------------------------------------
 # Helpers
+# ---------------------------------------------------------------------------
 
 def _env_apply(session: GovcSessionSpec, base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     env = dict(base or os.environ)
@@ -145,11 +163,14 @@ def _mkdirp(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
-def _atomic_publish_dir(tmp_dir: Path, final_dir: Path) -> None:
+def _best_effort_publish_dir(tmp_dir: Path, final_dir: Path) -> None:
     """
-    Publish exported directory atomically (best-effort):
-    - if final exists, we merge/overwrite files from tmp (safe for idempotent export)
+    Best-effort publish of an exported directory tree:
+    - ensure final exists
+    - merge/overwrite files from tmp into final
     - then remove tmp
+
+    This is safe and idempotent, but not strictly atomic for directory readers.
     """
     _mkdirp(final_dir)
     for root, _dirs, files in os.walk(tmp_dir):
@@ -159,7 +180,6 @@ def _atomic_publish_dir(tmp_dir: Path, final_dir: Path) -> None:
         for fn in files:
             src = Path(root) / fn
             dst = dst_root / fn
-            # overwrite is ok (export is deterministic per VM snapshot time)
             os.replace(str(src), str(dst))
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -171,15 +191,33 @@ def _parse_govc_progress(line: str) -> Optional[Tuple[int, int, float]]:
 
     Recognizes:
       - "xx%" patterns (no bytes)
-      - "<done> / <total>" bytes-ish if present
+      - "<done>/<total>" integers when present (rare; depends on govc output)
+
+    Returns (done, total, pct).
     """
     m = re.search(r"(\d+(?:\.\d+)?)\s*%", line)
     if m:
         pct = float(m.group(1))
-        return (0, 0, pct)
+        return (-1, -1, pct)
+
+    m2 = re.search(r"\b(\d+)\s*/\s*(\d+)\b", line)
+    if m2:
+        done = int(m2.group(1))
+        total = int(m2.group(2))
+        pct = (done * 100.0 / total) if total > 0 else 0.0
+        return (done, total, pct)
+
     return None
 
+
+def _should_append_ova_ext(name: str) -> bool:
+    n = name.strip().lower()
+    return not (n.endswith(".ova") or n.endswith(".ovf"))
+
+
+# ---------------------------------------------------------------------------
 # Public API
+# ---------------------------------------------------------------------------
 
 class GovcNfcExporter:
     """
@@ -187,8 +225,13 @@ class GovcNfcExporter:
 
     Guarantees we provide:
     - retries/backoff around the govc invocation
-    - atomic publish of output into final out_dir subdir
+    - publish into final out_dir
+      * OVA: atomic os.replace()
+      * OVF: best-effort merge/overwrite publish
     - optional "skip if already exported" heuristic
+
+    Reminder:
+    - This path uses HttpNfcLease implicitly via govc export.ovf/export.ova.
     """
 
     def __init__(self, logger: logging.Logger, session: GovcSessionSpec):
@@ -209,44 +252,48 @@ class GovcNfcExporter:
         max_backoff_s: float = 20.0,
         jitter_s: float = 0.5,
         skip_if_present: bool = True,
+        stage_gc_max_age_s: float = 7 * 24 * 3600,  # 7 days
     ) -> Path:
-        """
-        Export VM via govc into out_dir.
+        _ = heartbeat  # explicitly ignored (govc handles lease keepalive internally)
 
-        Returns the directory containing OVF/OVA + disks:
-          - export.ovf -> directory
-          - export.ova -> file (we still stage into a temp dir, then publish file)
-
-        Notes:
-        - govc handles HttpNfcLease creation + keepalive + download.
-        - `resume` is best-effort: we implement "skip if already present" + retries.
-        """
         out_dir = Path(spec.out_dir).expanduser().resolve()
         _mkdirp(out_dir)
 
         target_name = spec.name or self._default_name_from_vm(spec.vm)
+
+        # OVA naming: unless caller explicitly uses .ova, we append it for sanity.
+        if spec.export_ova and _should_append_ova_ext(target_name):
+            target_name = f"{target_name}.ova"
+
         final_path = out_dir / target_name
 
+        # Stage root (per-export target)
+        stage_parent = out_dir / f".{target_name}.govc.stage"
+        _mkdirp(stage_parent)
+        self._gc_stage_dirs(stage_parent, max_age_s=float(stage_gc_max_age_s))
+
+        env = _env_apply(self.session)
+
+        # Optional preflight: fail fast if auth/env is broken or VM isn't resolvable
+        if spec.preflight:
+            self._preflight(env=env, govc_bin=spec.govc_bin, vm=spec.vm, do_vm_info=spec.preflight_vm_info)
+
+        # Resume knob: disable skip fast-path when resume is False
+        effective_skip = bool(skip_if_present) and bool(resume)
+
         # Fast path: already exported
-        if skip_if_present and final_path.exists():
+        if effective_skip and final_path.exists():
             if spec.export_ova:
                 if final_path.is_file() and final_path.stat().st_size > 0:
                     self.logger.info("✅ govc: output already present, skipping: %s", final_path)
                     return final_path
             else:
-                # OVF export usually yields a directory with .ovf + .mf + one or more disks.
                 ovf_files = list(final_path.glob("*.ovf"))
                 if final_path.is_dir() and ovf_files:
                     self.logger.info("✅ govc: output already present, skipping: %s", final_path)
                     return final_path
 
-        # Stage into temp, then publish
-        stage_parent = out_dir / f".{target_name}.govc.stage"
-        _mkdirp(stage_parent)
-
-        env = _env_apply(self.session)
-
-        # Build command
+        # Build base command (NFC export path)
         cmd: List[str] = [spec.govc_bin]
         if spec.export_ova:
             cmd += ["export.ova", "-vm", spec.vm]
@@ -254,8 +301,6 @@ class GovcNfcExporter:
             cmd += ["export.ovf", "-vm", spec.vm]
 
         # Optional flags (only if set)
-        # These flags are common in govc; if your version differs, govc will error and we retry/fail loudly.
-        # (We keep them optional for compatibility.)
         if spec.dc:
             cmd += ["-dc", spec.dc]
         if spec.ds:
@@ -270,33 +315,30 @@ class GovcNfcExporter:
             cmd += ["-cluster", spec.cluster]
 
         attempt = 0
-        last_cb = 0.0
+        last_cb = 0.0  # last progress callback timestamp (for throttling)
 
         while True:
             if cancel and cancel():
                 raise NFCLeaseCancelled("Export cancelled")
 
             attempt += 1
-            stage_dir = Path(
-                tempfile.mkdtemp(prefix=f"{target_name}.", dir=str(stage_parent))
-            )
+            stage_dir = Path(tempfile.mkdtemp(prefix=f"{target_name}.", dir=str(stage_parent)))
 
-            # Where govc should write:
-            # - OVF export: target directory (govc creates files inside)
-            # - OVA export: a file path
             if spec.export_ova:
-                stage_out = stage_dir / f"{target_name}.ova"
+                stage_out = stage_dir / Path(target_name).name
                 cmd_run = cmd + [str(stage_out)]
             else:
-                stage_out = stage_dir / target_name
+                stage_out = stage_dir / Path(target_name).stem
                 cmd_run = cmd + [str(stage_out)]
 
             self.logger.info(
-                "🚚 govc: export start (attempt %d/%d): %s",
+                "📦 govc (HttpNfcLease): export start (attempt %d/%d): %s",
                 attempt,
-                max_retries,
+                int(max_retries),
                 " ".join(shlex.quote(x) for x in cmd_run),
             )
+
+            last_cb_holder = [last_cb]
 
             try:
                 self._run_govc(
@@ -305,15 +347,13 @@ class GovcNfcExporter:
                     cancel=cancel,
                     progress=progress,
                     progress_interval_s=progress_interval_s,
-                    last_cb_holder=[last_cb],
+                    last_cb_holder=last_cb_holder,
                 )
-                last_cb = time.time()
+                last_cb = float(last_cb_holder[0])
 
-                # Validate stage output exists
                 if spec.export_ova:
                     if not stage_out.exists() or stage_out.stat().st_size <= 0:
                         raise NFCLeaseError(f"govc export produced empty OVA: {stage_out}")
-                    # Publish file atomically
                     os.replace(str(stage_out), str(final_path))
                     shutil.rmtree(stage_dir, ignore_errors=True)
                 else:
@@ -322,11 +362,12 @@ class GovcNfcExporter:
                     ovfs = list(stage_out.glob("*.ovf"))
                     if not ovfs:
                         raise NFCLeaseError(f"govc export output missing .ovf: {stage_out}")
-                    # Publish directory (merge overwrite)
+
                     if final_path.exists() and final_path.is_file():
                         raise NFCLeaseError(f"Final path exists as file, expected dir: {final_path}")
+
                     _mkdirp(final_path)
-                    _atomic_publish_dir(stage_out, final_path)
+                    _best_effort_publish_dir(stage_out, final_path)
                     shutil.rmtree(stage_dir, ignore_errors=True)
 
                 self.logger.info("✅ govc: export done: %s", final_path)
@@ -336,7 +377,6 @@ class GovcNfcExporter:
                 self.logger.warning("🛑 govc: export cancelled (kept stage dir): %s", stage_dir)
                 raise
             except Exception as e:
-                # Clean stage dir unless you want to keep for debugging
                 shutil.rmtree(stage_dir, ignore_errors=True)
 
                 if attempt >= int(max_retries):
@@ -345,7 +385,6 @@ class GovcNfcExporter:
                 backoff = min(float(max_backoff_s), float(base_backoff_s) * (2 ** (attempt - 1)))
                 backoff += random.uniform(0.0, max(0.0, float(jitter_s)))
 
-                # "resume" here means: we retry govc (which will re-export); we do not guarantee HTTP range resume.
                 self.logger.warning(
                     "🔁 govc: transient export error: %s (retry %d/%d in %.2fs)",
                     e,
@@ -355,10 +394,96 @@ class GovcNfcExporter:
                 )
                 time.sleep(backoff)
 
-
     def _default_name_from_vm(self, vm: str) -> str:
-        # sanitize like libvirt: replace slashes so path components are safe
         return vm.replace("/", "_").replace("\\", "_").strip() or "vm"
+
+    def _gc_stage_dirs(self, stage_parent: Path, *, max_age_s: float) -> None:
+        try:
+            now = time.time()
+            for p in stage_parent.iterdir():
+                try:
+                    st = p.stat()
+                    age = now - float(st.st_mtime)
+                    if age > float(max_age_s):
+                        if p.is_dir():
+                            shutil.rmtree(p, ignore_errors=True)
+                        else:
+                            p.unlink(missing_ok=True)  # type: ignore[arg-type]
+                except Exception:
+                    continue
+        except Exception:
+            return
+
+    def _preflight(self, *, env: Dict[str, str], govc_bin: str, vm: str, do_vm_info: bool) -> None:
+        """
+        Fail fast if govc can't talk to vCenter or VM isn't resolvable.
+        This avoids spending minutes exporting before discovering auth/env issues.
+        """
+        try:
+            # Cheap connectivity/auth check
+            self._run_quick([govc_bin, "about"], env=env)
+        except Exception as e:
+            raise NFCLeaseError(f"govc preflight failed (about): {e}") from e
+
+        if do_vm_info:
+            try:
+                self._run_quick([govc_bin, "vm.info", "-vm", vm], env=env)
+            except Exception as e:
+                raise NFCLeaseError(f"govc preflight failed (vm.info -vm {vm!r}): {e}") from e
+
+    def _run_quick(self, cmd: List[str], *, env: Dict[str, str]) -> None:
+        p = subprocess.run(
+            cmd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if p.returncode != 0:
+            out = (p.stdout or "").strip()
+            msg = out[-2000:] if out else f"rc={p.returncode}"
+            raise NFCLeaseError(f"command failed: {' '.join(shlex.quote(x) for x in cmd)} :: {msg}")
+
+    def _terminate_process_group(
+        self,
+        logger: logging.Logger,
+        p: subprocess.Popen,
+        *,
+        term_grace_s: float = 2.0,
+        kill_grace_s: float = 2.0,
+    ) -> None:
+        try:
+            pgid = os.getpgid(p.pid)
+        except Exception:
+            pgid = None
+
+        try:
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGTERM)
+            else:
+                p.terminate()
+        except Exception:
+            pass
+
+        try:
+            p.wait(timeout=float(term_grace_s))
+            return
+        except Exception:
+            pass
+
+        try:
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                p.kill()
+        except Exception:
+            pass
+
+        try:
+            p.wait(timeout=float(kill_grace_s))
+        except Exception:
+            logger.debug("govc: process did not exit promptly after SIGKILL (pid=%s)", p.pid)
 
     def _run_govc(
         self,
@@ -370,12 +495,6 @@ class GovcNfcExporter:
         progress_interval_s: float,
         last_cb_holder: List[float],
     ) -> None:
-        """
-        Run govc and stream stdout/stderr to logger.
-
-        We parse percentage-like lines and emit progress callbacks when possible.
-        """
-        # Use line-buffered text so we can parse progress.
         p = subprocess.Popen(
             cmd,
             env=env,
@@ -384,30 +503,26 @@ class GovcNfcExporter:
             text=True,
             bufsize=1,
             universal_newlines=True,
+            start_new_session=True,
         )
 
         try:
             assert p.stdout is not None
-            for line in p.stdout:
+            for raw in p.stdout:
                 if cancel and cancel():
-                    try:
-                        p.terminate()
-                    except Exception:
-                        pass
+                    self._terminate_process_group(self.logger, p)
                     raise NFCLeaseCancelled("Export cancelled")
 
-                line = line.rstrip("\n")
+                line = raw.rstrip("\n")
                 if line:
-                    # Log govc output (debug to avoid spam unless you want info)
                     self.logger.debug("govc: %s", line)
 
-                # Best-effort progress parse
                 if progress is not None:
                     parsed = _parse_govc_progress(line)
                     if parsed is not None:
                         done, total, pct = parsed
                         now = time.time()
-                        if (now - last_cb_holder[0]) >= max(0.05, float(progress_interval_s)):
+                        if (now - float(last_cb_holder[0])) >= max(0.05, float(progress_interval_s)):
                             last_cb_holder[0] = now
                             progress(done, total, pct)
 
@@ -430,6 +545,8 @@ def export_with_govc(
     *,
     export_ova: bool = False,
     name: Optional[str] = None,
+    preflight: bool = True,
+    preflight_vm_info: bool = True,
     # Compat knobs
     resume: bool = True,
     progress: Optional[ProgressFn] = None,
@@ -443,6 +560,8 @@ def export_with_govc(
         out_dir=out_dir,
         export_ova=export_ova,
         name=name,
+        preflight=preflight,
+        preflight_vm_info=preflight_vm_info,
     )
     return GovcNfcExporter(logger, session).export(
         spec,
