@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# vmdk2kvm/vmware/vsphere_client.py
+# hyper2kvm/vmware/vsphere_client.py
 from __future__ import annotations
 import fnmatch
 import hashlib
@@ -890,7 +890,7 @@ class VMwareClient:
         *,
         quiesce: bool = True,
         memory: bool = False,
-        description: str = "Created by vmdk2kvm",
+        description: str = "Created by hyper2kvm",
     ) -> Any:
         self._require_pyvmomi()
         task = vm_obj.CreateSnapshot_Task( # type: ignore[attr-defined]
@@ -969,7 +969,7 @@ class VMwareClient:
         if not GOVC_NFC_EXPORT_AVAILABLE:
             raise VMwareError(
                 "govc NFC export requested but nfc_lease_client_govc is not importable. "
-                "Ensure vmdk2kvm/vsphere/nfc_lease_client_govc.py exists and imports cleanly."
+                "Ensure hyper2kvm/vsphere/nfc_lease_client_govc.py exists and imports cleanly."
             )
         if GovcSessionSpec is None or GovcNfcExporter is None:
             raise VMwareError("govc NFC export requested but symbols are unavailable (import failed).")
@@ -1356,7 +1356,7 @@ class VMwareClient:
         if not VDDK_CLIENT_AVAILABLE:
             raise VMwareError(
                 "VDDK raw download requested but vddk_client is not importable. "
-                "Ensure vmdk2kvm/vsphere/vddk_client.py exists and imports cleanly."
+                "Ensure hyper2kvm/vsphere/vddk_client.py exists and imports cleanly."
             )
     def _vm_disk_backing_filename(self, disk_obj: Any) -> str:
         """Return backing.fileName for a vim.vm.device.VirtualDisk."""

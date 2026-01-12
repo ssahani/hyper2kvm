@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config 11-batch/batch-local-many.yaml
+#   sudo python hyper2kvm.py --config 11-batch/batch-local-many.yaml
 
 command: local
 flatten: true

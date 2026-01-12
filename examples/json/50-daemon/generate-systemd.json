@@ -1,7 +1,7 @@
 {
-  "output_dir": "/var/lib/vmdk2kvm/out",
-  "watch_dir": "/var/lib/vmdk2kvm/incoming",
-  "workdir": "/var/lib/vmdk2kvm/work",
+  "output_dir": "/var/lib/hyper2kvm/out",
+  "watch_dir": "/var/lib/hyper2kvm/incoming",
+  "workdir": "/var/lib/hyper2kvm/work",
   "verbose": 1,
-  "log_file": "/var/log/vmdk2kvm.log"
+  "log_file": "/var/log/hyper2kvm.log"
 }

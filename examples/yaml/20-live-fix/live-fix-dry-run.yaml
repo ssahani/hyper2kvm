@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config 20-live-fix/live-fix-dry-run.yaml
+#   sudo python hyper2kvm.py --config 20-live-fix/live-fix-dry-run.yaml
 
 command: live-fix
 host: vm.example.com
