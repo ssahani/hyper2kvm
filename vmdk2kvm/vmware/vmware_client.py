@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 """
-vSphere / vCenter client for vmdk2kvm (SYNC, no threads, no asyncio).
+vSphere / vCenter client for vmdk2kvm 
 
 Policy (stable by default):
   ✅ Default export path is govc OVF (automation-friendly, debuggable)
@@ -20,6 +20,7 @@ Notes:
   - govc logic should live in govc_common.py (GovcRunner)
   - VDDK logic should live in vddk_client.py (VDDKESXClient)
   - OVF Tool logic should live in ovftool_client.py
+  - HTTP/HTTPS download logic lives in http_download_client.py
 """
 
 import fnmatch
@@ -28,8 +29,8 @@ import os
 import re
 import shlex
 import shutil
-import socket
 import ssl
+import socket
 import subprocess
 import time
 from dataclasses import dataclass
@@ -90,12 +91,17 @@ except Exception:  # pragma: no cover
     OvfToolError = None  # type: ignore
     OvfToolNotFound = None  # type: ignore
 
-# Your repo says: from ..core.exceptions import VMwareError
+# HTTP/HTTPS download client
 try:
-    from ..core.exceptions import VMwareError  # type: ignore
+    from .http_download_client import HTTPDownloadClient, VMwareError
 except Exception:  # pragma: no cover
-    class VMwareError(RuntimeError):
-        pass
+    # Fallback to local definition if import fails
+    HTTPDownloadClient = None  # type: ignore
+    try:
+        from ..core.exceptions import VMwareError  # type: ignore
+    except Exception:  # pragma: no cover
+        class VMwareError(RuntimeError):
+            pass
 
 # ✅ shared credential resolver (supports vs_password_env + vc_password_env)
 try:
@@ -118,15 +124,6 @@ except Exception:  # pragma: no cover
     vim = None  # type: ignore
     PYVMOMI_AVAILABLE = False
 
-# Optional: HTTP download (requests)
-try:
-    import requests  # type: ignore
-
-    REQUESTS_AVAILABLE = True
-except Exception:  # pragma: no cover
-    requests = None  # type: ignore
-    REQUESTS_AVAILABLE = False
-
 # Optional: silence urllib3 TLS warnings when verify=False
 try:  # pragma: no cover
     import urllib3  # type: ignore
@@ -143,20 +140,12 @@ except Exception:  # pragma: no cover
     VDDKESXClient = None  # type: ignore
     VDDK_CLIENT_AVAILABLE = False
 
-# ---------------------------------------------------------------------------
-# Small utilities
-# ---------------------------------------------------------------------------
 
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
 
 
 def _safe_vm_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", (name or "vm").strip()) or "vm"
-
-
-# ---------------------------------------------------------------------------
-# govc wrapper (thin)
-# ---------------------------------------------------------------------------
 
 
 class GovmomiCLI(GovcRunner):
@@ -173,11 +162,6 @@ class GovmomiCLI(GovcRunner):
 
     def enabled(self) -> bool:
         return super().enabled()
-
-
-# ---------------------------------------------------------------------------
-# Options
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -277,7 +261,7 @@ class VMwareClient:
     """
     Minimal vSphere/vCenter client (SYNC):
       - pyvmomi control-plane (inventory, compute path, snapshots, datastore browser)
-      - HTTPS /folder downloads via session cookie (requests)
+      - HTTPS /folder downloads via HTTPDownloadClient
       - virt-v2v orchestrator (sync subprocess)
       - govc stable exporter (OVF/OVA) via govc_common.GovcRunner
       - ✅ VDDK raw download is EXPERIMENTAL and lives in vddk_client.py
@@ -304,6 +288,9 @@ class VMwareClient:
         self.timeout = timeout
 
         self.si: Any = None
+        
+        # HTTP download client
+        self._http_client: Optional[HTTPDownloadClient] = None
 
         # caches
         self._dc_cache: Optional[List[Any]] = None
@@ -378,6 +365,22 @@ class VMwareClient:
             )
         return self._govc_client if self._govc_client.available() else None
 
+    def _http_download_client(self) -> HTTPDownloadClient:
+        """
+        Return HTTP download client.
+        """
+        if self._http_client is None:
+            if HTTPDownloadClient is None:
+                raise VMwareError("HTTP download client not available. Ensure http_download_client.py is importable.")
+            self._http_client = HTTPDownloadClient(
+                logger=self.logger,
+                host=self.host,
+                port=self.port,
+                insecure=self.insecure,
+                timeout=self.timeout,
+            )
+        return self._http_client
+
     def _ovftool(self) -> OvfToolPaths:
         """
         Return OVF Tool paths if available.
@@ -450,6 +453,15 @@ class VMwareClient:
                     port=self.port,
                     sslContext=ctx,
                 )
+
+            # Set session cookie for HTTP download client
+            try:
+                stub = getattr(self.si, "_stub", None)
+                cookie = getattr(stub, "cookie", None)
+                if cookie:
+                    self._http_download_client().set_session_cookie(str(cookie))
+            except Exception as e:
+                self.logger.debug("Failed to set HTTP session cookie: %s", e)
 
             # warm caches (best-effort)
             try:
@@ -867,15 +879,6 @@ class VMwareClient:
         base = rel.rsplit("/", 1)[1] if "/" in rel else rel
         return ds, folder, base
 
-    def _session_cookie(self) -> str:
-        if not self.si:
-            raise VMwareError("Not connected")
-        stub = getattr(self.si, "_stub", None)
-        cookie = getattr(stub, "cookie", None)
-        if not cookie:
-            raise VMwareError("Could not obtain session cookie")
-        return str(cookie)
-
     def download_datastore_file(
         self,
         *,
@@ -903,8 +906,8 @@ class VMwareClient:
                 except Exception as e:
                     self.logger.warning("govc datastore.download failed; falling back to /folder HTTP: %s", e)
 
-        if not REQUESTS_AVAILABLE:
-            raise VMwareError("requests not installed. Install: pip install requests")
+        if not self.si:
+            raise VMwareError("Not connected to vSphere; cannot download. Call connect() first.")
 
         dc_use = (dc_name or "").strip()
         if dc_use and not self.datacenter_exists(dc_use, refresh=False):
@@ -921,56 +924,14 @@ class VMwareClient:
             else:
                 raise VMwareError("No datacenters found; cannot build /folder URL")
 
-        url = f"https://{self.host}/folder/{ds_path}?dcPath={dc_use}&dsName={datastore}"
-        headers = {"Cookie": self._session_cookie()}
-        verify = not self.insecure
-
-        if not verify and urllib3 is not None:  # pragma: no cover
-            try:
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # type: ignore[attr-defined]
-            except Exception:
-                pass
-
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        self.logger.info("Downloading datastore file: [%s] %s (dc=%s) -> %s", datastore, ds_path, dc_use, local_path)
-
-        with requests.get(  # type: ignore[union-attr]
-            url,
-            headers=headers,
-            stream=True,
-            verify=verify,
-            timeout=self.timeout,
-        ) as r:
-            r.raise_for_status()
-            total = int(r.headers.get("content-length", "0") or "0")
-            got = 0
-            tmp = local_path.with_suffix(local_path.suffix + ".part")
-            try:
-                with open(tmp, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=chunk_size):
-                        if not chunk:
-                            continue
-                        f.write(chunk)
-                        got += len(chunk)
-                        if on_bytes is not None:
-                            try:
-                                on_bytes(len(chunk), total)
-                            except Exception:
-                                pass
-                        if total and got and got % (128 * 1024 * 1024) < chunk_size:
-                            self.logger.info(
-                                "Download progress: %.1f MiB / %.1f MiB (%.1f%%)",
-                                got / (1024**2),
-                                total / (1024**2),
-                                (got / total) * 100.0,
-                            )
-                os.replace(tmp, local_path)
-            finally:
-                if tmp.exists():
-                    try:
-                        tmp.unlink()
-                    except Exception:
-                        pass
+        self._http_download_client().download_file(
+            datastore=datastore,
+            ds_path=ds_path,
+            local_path=local_path,
+            dc_name=dc_use,
+            on_bytes=on_bytes,
+            chunk_size=chunk_size,
+        )
 
     # ---------------------------
     # Download-only (list via DatastoreBrowser, download via govc/https)
