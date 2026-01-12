@@ -69,8 +69,9 @@ class NetworkFixer:
         (r"(?i)^vmnic\d+$", "vmware-vmnic"),
     ]
 
+    # IMPORTANT: enum member is IFCFG_RH (not IFCONFIG_RH)
     CONFIG_PATTERNS = {
-        NetworkConfigType.IFCONFIG_RH: [
+        NetworkConfigType.IFCFG_RH: [
             "/etc/sysconfig/network-scripts/ifcfg-*",
             "/etc/sysconfig/network/ifcfg-*",
         ],
@@ -120,16 +121,29 @@ class NetworkFixer:
 
     def _ifcfg_kind_and_links(self, ifcfg: IfcfgKV) -> Any:
         """
-        Fix: this code calls self._ifcfg_kind_and_links(), but the implementation
-        lives in network_model as ifcfg_kind_and_links().
-
-        Keep a tiny wrapper so older call-sites remain valid.
+        Older code called self._ifcfg_kind_and_links(); real implementation is
+        network_model.ifcfg_kind_and_links(). Keep wrapper for compatibility.
         """
         try:
             return ifcfg_kind_and_links(ifcfg)
         except Exception as e:
             self.logger.debug("Topology: ifcfg_kind_and_links parse failed: %s", e)
             return (DeviceKind.UNKNOWN, [])
+
+    # ---------------------------
+    # Edge helpers (topology safety)
+    # ---------------------------
+
+    def _edge_touches(self, e: TopoEdge, name: str) -> bool:
+        return (e.src == name) or (e.dst == name)
+
+    def _is_lower_layer_member_edge(self, e: TopoEdge, name: str) -> bool:
+        # Orientation-agnostic: if either side is the interface and kind indicates membership,
+        # treat it as "lower layer" (do not auto-add L3/DHCP).
+        return e.kind in ("slave", "port", "vlan") and self._edge_touches(e, name)
+
+    def _is_lower_layer_member(self, name: str, edges: List[TopoEdge]) -> bool:
+        return any(self._is_lower_layer_member_edge(e, name) for e in edges)
 
     # ---------------------------
     # IO helpers
@@ -176,7 +190,7 @@ class NetworkFixer:
 
     def detect_config_type(self, path: str) -> NetworkConfigType:
         if "/etc/sysconfig/network-scripts/ifcfg-" in path:
-            return NetworkConfigType.IFCONFIG_RH
+            return NetworkConfigType.IFCFG_RH
         if "/etc/netplan/" in path and (path.endswith(".yaml") or path.endswith(".yml")):
             return NetworkConfigType.NETPLAN
         if "/etc/network/interfaces" in path:
@@ -205,8 +219,11 @@ class NetworkFixer:
             return True
         return False
 
-    def create_backup(self, g: guestfs.GuestFS, path: str, content: str) -> str:
-        backup_path = f"{path}{self.backup_suffix}"
+    def create_backup(self, g: guestfs.GuestFS, path: str, content: str, *, suffix: Optional[str] = None) -> str:
+        # Some directories are "special" (e.g. NetworkManager system-connections);
+        # keep backups clearly ignorable by other tooling.
+        backup_suffix = suffix if suffix is not None else self.backup_suffix
+        backup_path = f"{path}{backup_suffix}"
         try:
             if hasattr(g, "cp_a"):
                 try:
@@ -470,7 +487,7 @@ class NetworkFixer:
 
         for cfg in configs:
             try:
-                if cfg.type in (NetworkConfigType.IFCONFIG_RH, NetworkConfigType.WICKED_IFCFG):
+                if cfg.type in (NetworkConfigType.IFCFG_RH, NetworkConfigType.WICKED_IFCFG):
                     ifcfg = IfcfgKV.parse(cfg.content)
                     dev = (ifcfg.get("DEVICE") or "").strip()
                     if dev:
@@ -578,7 +595,7 @@ class NetworkFixer:
         - In AGGRESSIVE mode: rename DEVICE/NAME + propagate to PHYSDEV/MASTER/BRIDGE where applicable
         - DHCP normalization ONLY when safe:
             - no static intent
-            - not a slave/port of bond/bridge
+            - not a slave/port/vlan-member of bond/bridge/vlan
             - and BOOTPROTO is invalid/weird
         """
         fixes_applied: List[str] = []
@@ -592,6 +609,9 @@ class NetworkFixer:
         kind, edges = self._ifcfg_kind_and_links(ifcfg)
         topo_kind = topo.infer_kind(dev) if topo else kind
 
+        topo_edges: List[TopoEdge] = topo.edges if topo else []
+        local_edges: List[TopoEdge] = list(edges) if edges else []
+
         # --- remove MAC pinning keys
         if self.fix_level in (FixLevel.MODERATE, FixLevel.AGGRESSIVE):
             for k in ("HWADDR", "MACADDR", "MACADDRESS", "CLONED_MAC"):
@@ -599,14 +619,12 @@ class NetworkFixer:
                     ifcfg.delete(k, "MAC pinning removed by vmdk2kvm")
                     fixes_applied.append(f"removed-mac-pinning-{k.lower()}")
 
-        # --- VMware driver token cleanup (comment out lines containing vmxnet* etc when in DEVICE/TYPE context)
-        # ifcfg parser doesn't preserve arbitrary matching, but we can do safe line-based comments:
+        # --- VMware driver token cleanup
         new_lines: List[str] = []
         for ln in ifcfg.lines:
             changed = False
             for driver_name, pattern in self.VMWARE_DRIVERS.items():
                 if re.search(pattern, ln, re.IGNORECASE):
-                    # Only comment out if it's a setting line (avoid nuking comments)
                     if re.match(r"^\s*(DEVICE|TYPE|ETHTOOL_OPTS|OPTIONS|DRIVER)\s*=", ln, re.IGNORECASE):
                         if not ln.lstrip().startswith("#"):
                             new_lines.append(f"# {ln}  # VMware token removed by vmdk2kvm")
@@ -616,9 +634,9 @@ class NetworkFixer:
             if changed:
                 continue
             new_lines.append(ln)
-        ifcfg.lines = new_lines  # keep kv map as-is; key edits below still OK (we mostly changed non-parsed lines)
+        ifcfg.lines = new_lines
 
-        # --- VMware-ish params (comment out if present in any line)
+        # --- VMware-ish params
         vmware_params = ["VMWARE_", "VMXNET_", "SCSIDEVICE", "SUBCHANNELS"]
         new_lines2: List[str] = []
         for ln in ifcfg.lines:
@@ -634,69 +652,116 @@ class NetworkFixer:
 
         # --- Aggressive renaming (DEVICE/NAME + references)
         rm = rename_map or {}
+        renamed = False
         if self.fix_level == FixLevel.AGGRESSIVE and rm:
-            # Rename DEVICE itself if needed
             if dev in rm:
                 new_dev = rm[dev]
                 ifcfg.set("DEVICE", new_dev)
                 fixes_applied.append("renamed-device")
-                dev = new_dev  # update local
+                dev = new_dev
+                renamed = True
 
-            # NAME= might exist and can be used by NM; keep aligned
             namev = (ifcfg.get("NAME") or "").strip().strip('"\'')
             if namev and namev in rm:
                 ifcfg.set("NAME", rm[namev])
                 fixes_applied.append("renamed-name")
+                renamed = True
 
-            # PHYSDEV (vlan parent)
             phys = (ifcfg.get("PHYSDEV") or "").strip()
             if phys and phys in rm:
                 ifcfg.set("PHYSDEV", rm[phys])
                 fixes_applied.append("renamed-physdev")
+                renamed = True
 
-            # MASTER (bond master usually not renamed; but if it is, propagate)
             master = (ifcfg.get("MASTER") or "").strip()
             if master and master in rm:
                 ifcfg.set("MASTER", rm[master])
                 fixes_applied.append("renamed-master-ref")
+                renamed = True
 
-            # BRIDGE ref (bridge usually not renamed; but if it is, propagate)
             br = (ifcfg.get("BRIDGE") or "").strip()
             if br and br in rm:
                 ifcfg.set("BRIDGE", rm[br])
                 fixes_applied.append("renamed-bridge-ref")
+                renamed = True
+
+        # IMPORTANT: if we renamed identifiers, recompute edges/kind from the updated content
+        if renamed:
+            kind, edges = self._ifcfg_kind_and_links(ifcfg)
+            topo_kind = topo.infer_kind(dev) if topo else kind
+            local_edges = list(edges) if edges else []
+
+        all_edges: List[TopoEdge] = topo_edges + local_edges
 
         # --- DHCP normalization (careful!)
-        # Determine whether this device is a "lower layer" port/slave.
-        is_slave_or_port = any(e.src == dev and e.kind in ("slave", "port") for e in edges)
-        if topo is not None:
-            # also use topology edges if available
-            is_slave_or_port = is_slave_or_port or any(e.src == dev and e.kind in ("slave", "port") for e in topo.edges)
-
+        is_lower_member = self._is_lower_layer_member(dev, all_edges)
         bootproto = (ifcfg.get("BOOTPROTO") or "").strip().strip('"\'').lower()
 
         if bootproto and bootproto not in ("dhcp", "static", "none", "bootp"):
-            # invalid -> set dhcp only if safe
-            if not self._ifcfg_has_static_intent(ifcfg) and not is_slave_or_port:
+            if not self._ifcfg_has_static_intent(ifcfg) and not is_lower_member:
                 ifcfg.set("BOOTPROTO", "dhcp")
                 fixes_applied.append("normalized-bootproto->dhcp")
         elif bootproto == "none" and self.fix_level == FixLevel.AGGRESSIVE:
-            # do not force dhcp for slaves/ports or for logical masters that likely carry L3 elsewhere
-            if not self._ifcfg_has_static_intent(ifcfg) and not is_slave_or_port and topo_kind == DeviceKind.ETHERNET:
+            if not self._ifcfg_has_static_intent(ifcfg) and not is_lower_member and topo_kind == DeviceKind.ETHERNET:
                 ifcfg.set("BOOTPROTO", "dhcp")
                 fixes_applied.append("normalized-bootproto-none->dhcp")
 
-        # --- warn on risky layout: IP on a bridge port (common "wrong" config)
-        if kind == DeviceKind.ETHERNET and (ifcfg.has("BRIDGE") or any(e.kind == "port" for e in edges)):
+        # --- warn on risky layout: IP on a bridge port
+        if kind == DeviceKind.ETHERNET and (ifcfg.has("BRIDGE") or any(e.kind == "port" for e in local_edges)):
             if self._ifcfg_has_static_intent(ifcfg):
                 warnings.append(
                     f"{config.path}: IP/static config appears on a bridge port ({dev}). "
                     "Often the IP should live on the bridge device, not the port. Not auto-moving."
                 )
 
-        # finalize
         new_content = ifcfg.render()
         return FixResult(config=config, new_content=new_content, applied_fixes=fixes_applied, warnings=warnings)
+
+    # --- Netplan helpers (kept identical to the “fixed full file” version you got earlier)
+
+    def _netplan_collect_member_refs(self, nw: Dict[str, Any]) -> Set[str]:
+        members: Set[str] = set()
+
+        bonds = nw.get("bonds")
+        if isinstance(bonds, dict):
+            for _bname, bcfg in bonds.items():
+                if isinstance(bcfg, dict):
+                    ifaces = bcfg.get("interfaces")
+                    if isinstance(ifaces, list):
+                        for x in ifaces:
+                            if isinstance(x, str):
+                                members.add(x)
+
+        bridges = nw.get("bridges")
+        if isinstance(bridges, dict):
+            for _brname, brcfg in bridges.items():
+                if isinstance(brcfg, dict):
+                    ifaces = brcfg.get("interfaces")
+                    if isinstance(ifaces, list):
+                        for x in ifaces:
+                            if isinstance(x, str):
+                                members.add(x)
+
+        vlans = nw.get("vlans")
+        if isinstance(vlans, dict):
+            for _vname, vcfg in vlans.items():
+                if isinstance(vcfg, dict):
+                    link = vcfg.get("link")
+                    if isinstance(link, str) and link.strip():
+                        members.add(link.strip())
+
+        return members
+
+    def _netplan_collect_setname_aliases(self, nw: Dict[str, Any]) -> Dict[str, str]:
+        aliases: Dict[str, str] = {}
+        eths = nw.get("ethernets")
+        if isinstance(eths, dict):
+            for ifname, icfg in eths.items():
+                if isinstance(icfg, dict):
+                    sn = icfg.get("set-name")
+                    if isinstance(sn, str) and sn.strip():
+                        aliases[str(ifname)] = sn.strip()
+        return aliases
 
     def fix_netplan(
         self,
@@ -705,7 +770,6 @@ class NetworkFixer:
         topo: Optional[TopologyGraph] = None,
         rename_map: Optional[Dict[str, str]] = None,
     ) -> FixResult:
-        """Fix Ubuntu netplan YAML configuration with topology-aware behavior."""
         if not YAML_AVAILABLE:
             return FixResult(
                 config=config,
@@ -729,10 +793,27 @@ class NetworkFixer:
 
             renderer = str(nw.get("renderer") or "").lower()
 
-            # Helper: remove mac pinning keys in a dict
+            # Conservative: only enable DHCP automatically in AGGRESSIVE mode,
+            # and never when renderer=NetworkManager (netplan generates NM profiles).
+            allow_auto_dhcp = (self.fix_level == FixLevel.AGGRESSIVE) and (renderer != "networkmanager")
+
+            netplan_members = self._netplan_collect_member_refs(nw)
+            setname_alias = self._netplan_collect_setname_aliases(nw)
+            topo_edges: List[TopoEdge] = topo.edges if topo else []
+
+            def is_member(name: str) -> bool:
+                if name in netplan_members:
+                    return True
+                alias = setname_alias.get(name)
+                if alias and alias in netplan_members:
+                    return True
+                for k, v in setname_alias.items():
+                    if v == name and k in netplan_members:
+                        return True
+                return self._is_lower_layer_member(name, topo_edges)
+
             def scrub_mac(d: Dict[str, Any], *, prefix: str) -> None:
                 if self.fix_level in (FixLevel.MODERATE, FixLevel.AGGRESSIVE):
-                    # match.macaddress
                     match_cfg = d.get("match")
                     if isinstance(match_cfg, dict) and "macaddress" in match_cfg:
                         del match_cfg["macaddress"]
@@ -741,13 +822,11 @@ class NetworkFixer:
                             del d["match"]
                             fixes_applied.append(f"{prefix}-removed-empty-match")
 
-                    # direct keys
                     for k in ("macaddress", "cloned-mac-address"):
                         if k in d:
                             del d[k]
                             fixes_applied.append(f"{prefix}-removed-{k}")
 
-            # Helper: apply rename for interface references lists
             def rename_list(lst: Any) -> Any:
                 if not isinstance(lst, list):
                     return lst
@@ -763,14 +842,12 @@ class NetworkFixer:
                     fixes_applied.append("netplan-renamed-interfaces-ref")
                 return out
 
-            # Helper: rename single ref string
             def rename_ref(x: Any, tag: str) -> Any:
                 if isinstance(x, str) and x in rm:
                     fixes_applied.append(tag)
                     return rm[x]
                 return x
 
-            # Ethernets
             eths = nw.get("ethernets")
             if isinstance(eths, dict):
                 for ifname, icfg in list(eths.items()):
@@ -778,7 +855,6 @@ class NetworkFixer:
                         continue
                     scrub_mac(icfg, prefix=f"eth-{ifname}")
 
-                    # Remove vmware driver hint if present
                     if "driver" in icfg:
                         drv = str(icfg.get("driver") or "")
                         for vmware_driver in self.VMWARE_DRIVERS:
@@ -787,26 +863,19 @@ class NetworkFixer:
                                 fixes_applied.append(f"eth-{ifname}-removed-vmware-driver-{vmware_driver}")
                                 break
 
-                    # Safe DHCP: only on L3 interfaces that are not used as lower-layer members
                     has_static = self._netplan_iface_has_static_intent(icfg)
-                    is_member = False
-                    # member if referenced by any bond/bridge as slave/port, or as VLAN link
-                    # we detect by scanning netplan itself later; here best-effort using topology
-                    if topo is not None:
-                        is_member = any(e.src == ifname and e.kind in ("slave", "port") for e in topo.edges) or any(
-                            e.src == ifname and e.kind == "vlan" for e in topo.edges
-                        )
 
-                    if not has_static and "dhcp4" not in icfg and renderer != "networkmanager":
-                        if not is_member:
-                            icfg["dhcp4"] = True
-                            fixes_applied.append(f"eth-{ifname}-enabled-dhcp4")
+                    set_name = icfg.get("set-name")
+                    names_to_check = [str(ifname)]
+                    if isinstance(set_name, str) and set_name.strip():
+                        names_to_check.append(set_name.strip())
 
-                    # rename set-name (do NOT rename dict keys automatically)
-                    if self.fix_level == FixLevel.AGGRESSIVE and "set-name" in icfg:
-                        icfg["set-name"] = rename_ref(icfg["set-name"], "netplan-renamed-set-name")
+                    member = any(is_member(n) for n in names_to_check)
 
-            # Bonds
+                    if allow_auto_dhcp and (not has_static) and ("dhcp4" not in icfg) and (not member):
+                        icfg["dhcp4"] = True
+                        fixes_applied.append(f"eth-{ifname}-enabled-dhcp4")
+
             bonds = nw.get("bonds")
             if isinstance(bonds, dict):
                 for bname, bcfg in bonds.items():
@@ -816,18 +885,15 @@ class NetworkFixer:
                     if "interfaces" in bcfg:
                         bcfg["interfaces"] = rename_list(bcfg.get("interfaces"))
 
-                    # DHCP behavior: bond is a candidate L3 interface, but only if no static intent and not bridged
                     has_static = self._netplan_iface_has_static_intent(bcfg)
                     is_port = False
                     if topo is not None:
-                        is_port = any(e.src == bname and e.kind == "port" for e in topo.edges)
+                        is_port = any(e.kind == "port" and (e.src == bname or e.dst == bname) for e in topo.edges)
 
-                    if not has_static and "dhcp4" not in bcfg and renderer != "networkmanager":
-                        if not is_port:
-                            bcfg["dhcp4"] = True
-                            fixes_applied.append(f"bond-{bname}-enabled-dhcp4")
+                    if allow_auto_dhcp and (not has_static) and ("dhcp4" not in bcfg) and (not is_port):
+                        bcfg["dhcp4"] = True
+                        fixes_applied.append(f"bond-{bname}-enabled-dhcp4")
 
-            # Bridges
             bridges = nw.get("bridges")
             if isinstance(bridges, dict):
                 for brname, brcfg in bridges.items():
@@ -837,13 +903,11 @@ class NetworkFixer:
                     if "interfaces" in brcfg:
                         brcfg["interfaces"] = rename_list(brcfg.get("interfaces"))
 
-                    # If bridge has no static intent and no dhcp4, add dhcp4 (networkd only)
                     has_static = self._netplan_iface_has_static_intent(brcfg)
-                    if not has_static and "dhcp4" not in brcfg and renderer != "networkmanager":
+                    if allow_auto_dhcp and (not has_static) and ("dhcp4" not in brcfg):
                         brcfg["dhcp4"] = True
                         fixes_applied.append(f"bridge-{brname}-enabled-dhcp4")
 
-            # VLANs
             vlans = nw.get("vlans")
             if isinstance(vlans, dict):
                 for vname, vcfg in vlans.items():
@@ -854,19 +918,14 @@ class NetworkFixer:
                         vcfg["link"] = rename_ref(vcfg.get("link"), "netplan-renamed-vlan-link")
 
                     has_static = self._netplan_iface_has_static_intent(vcfg)
-                    if not has_static and "dhcp4" not in vcfg and renderer != "networkmanager":
+                    if allow_auto_dhcp and (not has_static) and ("dhcp4" not in vcfg):
                         vcfg["dhcp4"] = True
                         fixes_applied.append(f"vlan-{vname}-enabled-dhcp4")
 
-            # Render
             new_content = yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
 
-            # sanity warning: renderer=NetworkManager means netplan just generates NM profiles;
-            # we should avoid being too clever.
             if renderer == "networkmanager" and any("enabled-dhcp4" in f for f in fixes_applied):
-                warnings.append(
-                    f"{config.path}: renderer=NetworkManager detected; DHCP changes may be overridden by NM profiles."
-                )
+                warnings.append(f"{config.path}: renderer=NetworkManager detected; DHCP changes may be overridden by NM profiles.")
 
             return FixResult(config=config, new_content=new_content, applied_fixes=fixes_applied, warnings=warnings)
 
@@ -885,7 +944,6 @@ class NetworkFixer:
         return False
 
     def fix_interfaces(self, config: NetworkConfig) -> FixResult:
-        """Fix Debian/Ubuntu interfaces file (minimal safe edits)."""
         content = config.content
         fixes_applied: List[str] = []
         warnings: List[str] = []
@@ -905,7 +963,6 @@ class NetworkFixer:
                 in_iface_block = False
                 return
 
-            # If block says "static" but missing address -> likely intended DHCP
             if self.fix_level in (FixLevel.MODERATE, FixLevel.AGGRESSIVE):
                 has_address = self._interfaces_block_has_address(iface_block_lines)
                 for idx, ln in enumerate(iface_block_lines):
@@ -935,16 +992,13 @@ class NetworkFixer:
             if line.strip() and not line.startswith((" ", "\t")) and in_iface_block:
                 flush_block()
 
-            # Remove vmware tokens + MAC pinning lines
             if in_iface_block:
-                # VMware tokens
                 for driver_name, pattern in self.VMWARE_DRIVERS.items():
                     if re.search(pattern, line, re.IGNORECASE):
                         line = f"# {line}  # VMware token removed by vmdk2kvm"
                         fixes_applied.append(f"removed-vmware-token-{driver_name}")
                         break
 
-                # MAC pinning
                 if self.fix_level in (FixLevel.MODERATE, FixLevel.AGGRESSIVE):
                     if re.match(r"(?im)^\s*hwaddress\s+ether\s+.*$", line):
                         line = f"# {line}  # MAC pinning removed by vmdk2kvm"
@@ -952,7 +1006,6 @@ class NetworkFixer:
 
                 iface_block_lines.append(line)
             else:
-                # Outside block: only remove VMware tokens, don't mess with structure
                 for driver_name, pattern in self.VMWARE_DRIVERS.items():
                     if re.search(pattern, line, re.IGNORECASE):
                         line = f"# {line}  # VMware token removed by vmdk2kvm"
@@ -971,13 +1024,6 @@ class NetworkFixer:
         *,
         rename_map: Optional[Dict[str, str]] = None,
     ) -> FixResult:
-        """
-        Fix systemd-networkd configuration (.network / .netdev):
-        - Remove MAC pinning in [Match] (MODERATE+)
-        - Remove vmware tokens in lines (comment out)
-        - Validate DHCP= values; add DHCP=yes in aggressive mode if safe
-        - Apply renaming to [Match] Name=... literals (aggressive)
-        """
         content = config.content
         fixes_applied: List[str] = []
         warnings: List[str] = []
@@ -994,7 +1040,6 @@ class NetworkFixer:
         saw_static = False
 
         def is_static_key(ln: str) -> bool:
-            # Common static keys in networkd
             return bool(re.match(r"^\s*(Address|Gateway|DNS|Domains|Routes?|RoutingPolicyRule)\s*=", ln, re.IGNORECASE))
 
         for line in lines:
@@ -1017,7 +1062,6 @@ class NetworkFixer:
                         fixes_applied.append("removed-mac-match")
                         continue
 
-                # Aggressive rename for Name= lines without globs
                 if self.fix_level == FixLevel.AGGRESSIVE and rm:
                     m = re.match(r"^\s*Name\s*=\s*(.+)\s*$", line, re.IGNORECASE)
                     if m:
@@ -1032,17 +1076,20 @@ class NetworkFixer:
                             else:
                                 out_parts.append(p)
                         if changed:
-                            line = re.sub(r"(?:^(\s*Name\s*=\s*)).*$", r"\1" + " ".join(out_parts), line, flags=re.IGNORECASE)
+                            line = re.sub(
+                                r"(?:^(\s*Name\s*=\s*)).*$",
+                                r"\1" + " ".join(out_parts),
+                                line,
+                                flags=re.IGNORECASE,
+                            )
                             fixes_applied.append("renamed-networkd-match-name")
 
-            # VMware token removal
             for driver_name, pattern in self.VMWARE_DRIVERS.items():
                 if re.search(pattern, line, re.IGNORECASE) and not line.lstrip().startswith("#"):
                     new_lines.append(f"# {line}  # VMware token removed by vmdk2kvm")
                     fixes_applied.append(f"removed-vmware-token-{driver_name}")
                     break
             else:
-                # not broken out => no vmware token triggered
                 if in_network_section:
                     if re.match(r"^\s*DHCP\s*=", line, re.IGNORECASE):
                         saw_dhcp = True
@@ -1054,7 +1101,6 @@ class NetworkFixer:
 
                 new_lines.append(line)
 
-        # Aggressive: add DHCP=yes only if safe (has [Network], no DHCP, no static hints)
         if self.fix_level == FixLevel.AGGRESSIVE and saw_network_section and not saw_dhcp and not saw_static:
             out: List[str] = []
             inserted = False
@@ -1075,14 +1121,6 @@ class NetworkFixer:
         *,
         rename_map: Optional[Dict[str, str]] = None,
     ) -> FixResult:
-        """
-        Fix NetworkManager connection profiles (ini-like):
-        - Remove MAC pinning keys in any section (MODERATE+)
-        - Comment out VMware-ish tokens
-        - Aggressive rename: interface-name=... if it maps (only literal)
-        - VLAN parent rename: [vlan] parent=...
-        We intentionally do NOT rewrite master/slave topology here (too risky across NM versions).
-        """
         content = config.content
         fixes_applied: List[str] = []
         warnings: List[str] = []
@@ -1092,6 +1130,12 @@ class NetworkFixer:
         new_lines: List[str] = []
         sec = None
 
+        def has_vmware_token(val: str) -> bool:
+            for _dn, pat in self.VMWARE_DRIVERS.items():
+                if re.search(pat, val, re.IGNORECASE):
+                    return True
+            return bool(re.search(r"(?i)\bvmware\b", val))
+
         for line in lines:
             s = line.strip()
             msec = re.match(r"^\s*\[(.+)\]\s*$", s)
@@ -1100,14 +1144,12 @@ class NetworkFixer:
                 new_lines.append(line)
                 continue
 
-            # MAC pinning
             if self.fix_level in (FixLevel.MODERATE, FixLevel.AGGRESSIVE):
                 if re.match(r"^\s*(mac-address|cloned-mac-address|mac-address-blacklist)\s*=", line, re.IGNORECASE):
                     new_lines.append(f"# {line}  # MAC pinning removed by vmdk2kvm")
                     fixes_applied.append("removed-nm-mac")
                     continue
 
-            # Aggressive rename
             if self.fix_level == FixLevel.AGGRESSIVE and rm:
                 if re.match(r"^\s*interface-name\s*=", line, re.IGNORECASE):
                     m = re.match(r"^\s*interface-name\s*=\s*(.+?)\s*$", line, re.IGNORECASE)
@@ -1125,11 +1167,12 @@ class NetworkFixer:
                             line = f"parent={rm[cur]}"
                             fixes_applied.append("renamed-nm-vlan-parent")
 
-            # VMware token removal
-            if re.search(r"(?i)vmware|vmxnet|e1000", line) and not line.lstrip().startswith("#"):
-                new_lines.append(f"# {line}  # VMware token removed by vmdk2kvm")
-                fixes_applied.append("removed-vmware-setting")
-                continue
+            if re.match(r"^\s*driver\s*=", line, re.IGNORECASE) and not line.lstrip().startswith("#"):
+                m = re.match(r"^\s*driver\s*=\s*(.+?)\s*$", line, re.IGNORECASE)
+                if m and has_vmware_token(m.group(1)):
+                    new_lines.append(f"# {line}  # VMware driver hint removed by vmdk2kvm")
+                    fixes_applied.append("removed-nm-driver-hint")
+                    continue
 
             new_lines.append(line)
 
@@ -1137,9 +1180,6 @@ class NetworkFixer:
         return FixResult(config=config, new_content=new_content, applied_fixes=fixes_applied, warnings=warnings)
 
     def fix_wicked_xml(self, config: NetworkConfig) -> FixResult:
-        """
-        Best-effort wicked XML fixer: remove MAC pinning only, keep XML structure intact.
-        """
         content = config.content
         fixes_applied: List[str] = []
 
@@ -1158,6 +1198,20 @@ class NetworkFixer:
 
         return FixResult(config=config, new_content=new_content, applied_fixes=fixes_applied)
 
+    # ---------------------------
+    # Validation helpers
+    # ---------------------------
+
+    def _has_live_section(self, text: str, header: str) -> bool:
+        want = header.strip().lower()
+        for ln in text.splitlines():
+            s = ln.strip()
+            if not s or s.startswith(("#", ";")):
+                continue
+            if s.lower() == want:
+                return True
+        return False
+
     def validate_fix(self, original: str, fixed: str, config_type: NetworkConfigType) -> List[str]:
         errors: List[str] = []
 
@@ -1172,18 +1226,30 @@ class NetworkFixer:
             except Exception as e:
                 errors.append(f"Invalid YAML: {e}")
 
-        essential_keywords = {
-            NetworkConfigType.IFCONFIG_RH: ["DEVICE", "ONBOOT"],
-            NetworkConfigType.WICKED_IFCFG: ["DEVICE", "ONBOOT"],
-            NetworkConfigType.INTERFACES: ["iface"],
-            NetworkConfigType.SYSTEMD_NETWORK: ["[Network]"],
-            NetworkConfigType.SYSTEMD_NETDEV: ["[NetDev]"],
-            NetworkConfigType.NETWORK_MANAGER: ["[connection]"],
-        }
-        if config_type in essential_keywords:
-            for keyword in essential_keywords[config_type]:
-                if keyword in original and keyword not in fixed:
-                    errors.append(f"Missing essential keyword: {keyword}")
+        if config_type in (NetworkConfigType.IFCFG_RH, NetworkConfigType.WICKED_IFCFG):
+            try:
+                ifcfg = IfcfgKV.parse(fixed)
+                dev = (ifcfg.get("DEVICE") or "").strip()
+                if not dev:
+                    errors.append("ifcfg missing DEVICE after fix")
+            except Exception as e:
+                errors.append(f"ifcfg parse failed after fix: {e}")
+
+        if config_type == NetworkConfigType.SYSTEMD_NETWORK:
+            if self._has_live_section(fixed, "[Network]") is False and self._has_live_section(original, "[Network]") is True:
+                errors.append("Missing live [Network] section after fix")
+
+        if config_type == NetworkConfigType.SYSTEMD_NETDEV:
+            if self._has_live_section(fixed, "[NetDev]") is False and self._has_live_section(original, "[NetDev]") is True:
+                errors.append("Missing live [NetDev] section after fix")
+
+        if config_type == NetworkConfigType.NETWORK_MANAGER:
+            if self._has_live_section(fixed, "[connection]") is False and self._has_live_section(original, "[connection]") is True:
+                errors.append("Missing live [connection] section after fix")
+
+        if config_type == NetworkConfigType.INTERFACES:
+            if "iface" in original and "iface" not in fixed:
+                errors.append("Missing essential keyword: iface")
 
         return errors
 
@@ -1197,7 +1263,11 @@ class NetworkFixer:
             result.validation_errors.extend(validation_errors)
             return False
 
-        backup_path = self.create_backup(g, config.path, config.content)
+        backup_suffix = self.backup_suffix
+        if config.type == NetworkConfigType.NETWORK_MANAGER and not backup_suffix.endswith(".bak"):
+            backup_suffix = f"{backup_suffix}.bak"
+
+        backup_path = self.create_backup(g, config.path, config.content, suffix=backup_suffix)
 
         if self.dry_run:
             self.logger.info("🧪 DRY-RUN: would update %s with fixes: %s", config.path, result.applied_fixes)
@@ -1265,7 +1335,7 @@ class NetworkFixer:
         }
 
         fixer_map = {
-            NetworkConfigType.IFCONFIG_RH: "ifcfg",
+            NetworkConfigType.IFCFG_RH: "ifcfg",
             NetworkConfigType.WICKED_IFCFG: "ifcfg",
             NetworkConfigType.NETPLAN: "netplan",
             NetworkConfigType.INTERFACES: "interfaces",
@@ -1355,8 +1425,11 @@ class NetworkFixer:
             "recommendations": self.generate_recommendations(stats),
         }
 
-        self.logger.info("🎉 Network fix complete: %d file(s) modified, %d fix(es) applied",
-                         stats["files_modified"], stats["total_fixes_applied"])
+        self.logger.info(
+            "🎉 Network fix complete: %d file(s) modified, %d fix(es) applied",
+            stats["files_modified"],
+            stats["total_fixes_applied"],
+        )
         return summary
 
     def generate_recommendations(self, stats: Dict[str, Any]) -> List[str]:
@@ -1381,7 +1454,7 @@ class NetworkFixer:
                 )
             if stats["backups_created"] > 0:
                 recommendations.append(
-                    f"Created {stats['backups_created']} backup files with suffix '{self.backup_suffix}'."
+                    f"Created {stats['backups_created']} backup file(s) with suffix '{self.backup_suffix}' (NetworkManager backups get an extra '.bak')."
                 )
 
         if stats["files_failed"] > 0:
@@ -1391,6 +1464,7 @@ class NetworkFixer:
         if topo.get("warnings"):
             recommendations.append("Topology warnings detected. Review 'stats.warnings' and confirm bond/bridge/vlan intent.")
 
+        # NOTE: these keys are the enum .value strings from network_model.py
         if "ifcfg-rh" in stats["by_type"] or "wicked-ifcfg" in stats["by_type"]:
             recommendations.append("ifcfg-based system detected. After boot, restart network service (or reboot).")
 
@@ -1439,3 +1513,7 @@ def fix_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
     updated_files = [d["path"] for d in result["stats"]["details"] if d.get("modified", False)]
     return {"updated_files": updated_files, "count": len(updated_files), "analysis": result}
+
+
+# Alias that reads nicer in some call sites (keeps old name intact)
+fix_network_config_compat = fix_network_config
