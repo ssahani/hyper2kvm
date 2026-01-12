@@ -7,7 +7,7 @@ from fakes.fake_logger import FakeLogger
 
 def test_network_fixer_smoke():
     try:
-        network_fixer = importlib.import_module("vmdk2kvm.fixers.network_fixer")
+        network_fixer = importlib.import_module("hyper2kvm.fixers.network_fixer")
     except Exception as e:
         pytest.skip(f"Cannot import network_fixer: {e}")
 

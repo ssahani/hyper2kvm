@@ -22,6 +22,6 @@
   "dry_run": false,
 
   "verbose": 2,
-  "log_file": "/home/ssahani/by-path/out/vmdk2kvm.log",
-  "report": "/home/ssahani/by-path/out/vmdk2kvm-report.md"
+  "log_file": "/home/ssahani/by-path/out/hyper2kvm.log",
+  "report": "/home/ssahani/by-path/out/hyper2kvm-report.md"
 }

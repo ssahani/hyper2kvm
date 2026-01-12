@@ -15,7 +15,7 @@ def _pick_fstab_mode(offline_fixer):
 
 def test_offline_fixer_runs_and_builds_report(monkeypatch, tmp_path):
     try:
-        offline_fixer = importlib.import_module("vmdk2kvm.fixers.offline_fixer")
+        offline_fixer = importlib.import_module("hyper2kvm.fixers.offline_fixer")
     except Exception as e:
         pytest.skip(f"Cannot import offline_fixer: {e}")
 
