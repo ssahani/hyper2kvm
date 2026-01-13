@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 
 def _is_probably_ipv6(host: str) -> bool:
@@ -17,6 +17,14 @@ def _scp_host(host: str) -> str:
     if _is_probably_ipv6(h) and not (h.startswith("[") and h.endswith("]")):
         return f"[{h}]"
     return h
+
+
+def _clean_opt(opt: str) -> str:
+    # Keep it one-line and strip; reject embedded newlines.
+    o = (opt or "").strip()
+    o = o.replace("\r", " ").replace("\n", " ")
+    o = " ".join(o.split())
+    return o
 
 
 @dataclass(frozen=True)
@@ -46,22 +54,19 @@ class SSHConfig:
     jump_host: Optional[str] = None          # ProxyJump
     strict_host_key_checking: bool = False   # automation-safe default
 
-    # --- additive: explicit non-interactive behavior (CI-safe) ---
-    batch_mode: bool = True                  # never prompt for passwords/passphrases
-    request_tty: bool = False                # True if you need remote TTY (rare)
+    # explicit non-interactive behavior (CI-safe)
+    batch_mode: bool = True
+    request_tty: bool = False
 
-    # --- additive: host key policy knobs ---
-    known_hosts_file: Optional[Path] = None  # None => /dev/null when strict_host_key_checking=False
-    accept_new_host_keys: bool = False       # OpenSSH 8.0+: StrictHostKeyChecking=accept-new
+    # host key policy knobs
+    known_hosts_file: Optional[Path] = None
+    accept_new_host_keys: bool = False       # semantic intent; may not be emitted on old ssh
+    force_accept_new: bool = False           # if True, emit accept-new even if ssh might be old
 
-    # --- additive: performance / multiplexing knobs ---
-    control_master: bool = False             # enable connection reuse
-    control_path: Optional[Path] = None      # where to store control socket
-    control_persist_s: int = 60              # keep master open for N seconds
-
-    # -------------------------
-    # Normalization & validation
-    # -------------------------
+    # performance / multiplexing knobs
+    control_master: bool = False
+    control_path: Optional[Path] = None
+    control_persist_s: int = 60
 
     def __post_init__(self) -> None:
         host = (self.host or "").strip()
@@ -75,26 +80,22 @@ class SSHConfig:
         object.__setattr__(self, "user", user)
 
         if self.identity is not None:
-            p = Path(self.identity).expanduser()
-            object.__setattr__(self, "identity", p)
+            object.__setattr__(self, "identity", Path(self.identity).expanduser())
 
         if self.known_hosts_file is not None:
-            kh = Path(self.known_hosts_file).expanduser()
-            object.__setattr__(self, "known_hosts_file", kh)
+            object.__setattr__(self, "known_hosts_file", Path(self.known_hosts_file).expanduser())
 
         if self.jump_host is not None:
             j = (self.jump_host or "").strip()
             object.__setattr__(self, "jump_host", j or None)
 
-        # normalize ssh_opts: strip empties, preserve order, de-dup
         if self.ssh_opts:
             cleaned: List[str] = []
             seen = set()
             for opt in self.ssh_opts:
-                o = (opt or "").strip()
+                o = _clean_opt(opt)
                 if not o:
                     continue
-                # keep stable order; de-dup exact strings
                 if o not in seen:
                     cleaned.append(o)
                     seen.add(o)
@@ -112,29 +113,44 @@ class SSHConfig:
             if v < 0:
                 raise ValueError(f"{name} must be >= 0 (got {v})")
 
-        # accept-new only makes sense when strict_host_key_checking=True-ish
-        # We won't error; we just avoid generating conflicting flags later.
-
     # -------------------------
     # Rendering helpers
     # -------------------------
 
     def target(self) -> str:
-        """
-        user@host form (ssh). (For scp/rsync use scp_target()).
-        """
-        return f"{self.user}@{self.host}"
-
-    def scp_target(self) -> str:
-        """
-        user@[host] form suitable for scp/rsync when host might be IPv6.
-        """
+        # Using bracket form is harmless for ssh and consistent with scp.
         return f"{self.user}@{_scp_host(self.host)}"
 
+    def scp_target(self) -> str:
+        return f"{self.user}@{_scp_host(self.host)}"
+
+    def _append_hostkey_policy(self, cmd: List[str]) -> None:
+        if self.strict_host_key_checking:
+            if self.accept_new_host_keys and self.force_accept_new:
+                cmd += ["-o", "StrictHostKeyChecking=accept-new"]
+            else:
+                cmd += ["-o", "StrictHostKeyChecking=yes"]
+        else:
+            cmd += ["-o", "StrictHostKeyChecking=no"]
+
+        if self.known_hosts_file is not None:
+            cmd += ["-o", f"UserKnownHostsFile={self.known_hosts_file}"]
+        else:
+            if not self.strict_host_key_checking:
+                cmd += ["-o", "UserKnownHostsFile=/dev/null"]
+
+    def _append_mux(self, cmd: List[str]) -> None:
+        if not self.control_master:
+            return
+        cmd += ["-o", "ControlMaster=auto"]
+        cmd += ["-o", f"ControlPersist={self.control_persist_s}s"]
+        if self.control_path:
+            cmd += ["-o", f"ControlPath={self.control_path}"]
+        else:
+            # Hash-based path avoids length limits.
+            cmd += ["-o", "ControlPath=~/.ssh/cm-%C"]
+
     def base_cmd(self) -> List[str]:
-        """
-        Base SSH command suitable for subprocess (no shell).
-        """
         cmd: List[str] = [
             "ssh",
             "-p", str(self.port),
@@ -145,43 +161,17 @@ class SSHConfig:
 
         if self.batch_mode:
             cmd += ["-o", "BatchMode=yes"]
-
         if self.request_tty:
             cmd += ["-tt"]
 
-        # Host key policy
-        if self.strict_host_key_checking:
-            if self.accept_new_host_keys:
-                # OpenSSH supports this; if older ssh, it's ignored as unknown value? (actually it errors)
-                # So we only emit it when explicitly asked.
-                cmd += ["-o", "StrictHostKeyChecking=accept-new"]
-            else:
-                cmd += ["-o", "StrictHostKeyChecking=yes"]
-        else:
-            cmd += ["-o", "StrictHostKeyChecking=no"]
-
-        if self.known_hosts_file is not None:
-            cmd += ["-o", f"UserKnownHostsFile={self.known_hosts_file}"]
-        else:
-            # Keep your automation default: don't pollute the runner/user known_hosts
-            if not self.strict_host_key_checking:
-                cmd += ["-o", "UserKnownHostsFile=/dev/null"]
+        self._append_hostkey_policy(cmd)
 
         if self.identity:
             cmd += ["-i", str(self.identity)]
-
         if self.jump_host:
             cmd += ["-J", self.jump_host]
 
-        # Multiplexing (big win for repeated SSH ops)
-        if self.control_master:
-            cmd += ["-o", "ControlMaster=auto"]
-            cmd += ["-o", f"ControlPersist={self.control_persist_s}s"]
-            if self.control_path:
-                cmd += ["-o", f"ControlPath={self.control_path}"]
-            else:
-                # Safe-ish default; users can override for very long paths
-                cmd += ["-o", "ControlPath=~/.ssh/cm-%r@%h:%p"]
+        self._append_mux(cmd)
 
         for opt in self.ssh_opts:
             cmd += ["-o", opt]
@@ -189,83 +179,48 @@ class SSHConfig:
         cmd.append(self.target())
         return cmd
 
-    def remote_cmd(self, argv: List[str]) -> List[str]:
-        """
-        Build full SSH command executing a remote command.
-        """
+    def remote_cmd(self, argv: Sequence[str]) -> List[str]:
+        args = list(argv)
         if self.sudo:
-            argv = ["sudo", "-n", "--"] + argv
-
-        return self.base_cmd() + ["--"] + argv
+            args = ["sudo", "-n", "--"] + args
+        return self.base_cmd() + ["--"] + args
 
     def scp_src(self, remote_path: str) -> str:
-        """
-        user@host:/path form for scp / rsync.
-        """
         return f"{self.scp_target()}:{remote_path}"
 
     def scp_base_cmd(self) -> List[str]:
-        """
-        Base scp command (port + identity + options mirrored from SSH where relevant).
-        Note: scp uses -P for port (not -p).
-        """
         cmd: List[str] = ["scp", "-P", str(self.port)]
         if self.identity:
             cmd += ["-i", str(self.identity)]
         if self.batch_mode:
             cmd += ["-o", "BatchMode=yes"]
 
-        # mirror host key policy
-        if self.strict_host_key_checking:
-            if self.accept_new_host_keys:
-                cmd += ["-o", "StrictHostKeyChecking=accept-new"]
-            else:
-                cmd += ["-o", "StrictHostKeyChecking=yes"]
-        else:
-            cmd += ["-o", "StrictHostKeyChecking=no"]
-
-        if self.known_hosts_file is not None:
-            cmd += ["-o", f"UserKnownHostsFile={self.known_hosts_file}"]
-        else:
-            if not self.strict_host_key_checking:
-                cmd += ["-o", "UserKnownHostsFile=/dev/null"]
+        self._append_hostkey_policy(cmd)
 
         if self.jump_host:
             cmd += ["-o", f"ProxyJump={self.jump_host}"]
+
+        # scp also benefits from multiplexing (it uses ssh under the hood).
+        self._append_mux(cmd)
 
         for opt in self.ssh_opts:
             cmd += ["-o", opt]
 
         return cmd
 
-    # -------------------------
-    # Convenience helpers
-    # -------------------------
-
     def describe(self) -> str:
-        """
-        Human-readable description (safe for logs).
-        """
         parts = [f"{self.user}@{self.host}:{self.port}"]
-
         if self.identity:
             parts.append(f"key={self.identity}")
-
         if self.jump_host:
             parts.append(f"via={self.jump_host}")
-
         if self.sudo:
             parts.append("sudo")
-
         if self.batch_mode:
             parts.append("batch")
-
-        if self.strict_host_key_checking:
-            parts.append("hostkey=strict")
-        else:
-            parts.append("hostkey=off")
-
+        parts.append("hostkey=strict" if self.strict_host_key_checking else "hostkey=off")
+        if self.accept_new_host_keys:
+            parts.append("hostkey=accept-new(intent)")
         if self.control_master:
             parts.append("mux")
-
         return " ".join(parts)
