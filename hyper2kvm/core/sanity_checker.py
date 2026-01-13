@@ -6,14 +6,16 @@ import logging
 import os
 import shutil
 import socket
+import sys
 import tempfile
 from dataclasses import dataclass, field
+from enum import IntEnum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from rich.progress import (
-    Progress,
     BarColumn,
+    Progress,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -22,22 +24,103 @@ from rich.progress import (
 from .utils import U
 
 
+class ExitCode(IntEnum):
+    OK = 0
+
+    # generic failures
+    BAD_ARGS = 2
+    PERMISSION = 3
+    DISK_SPACE = 4
+    TOOLS_MISSING = 5
+    GUESTFS = 6
+    NETWORK = 7
+
+    INTERNAL = 99
+
+
+class ErrorKind:
+    TOOLS = "tools"
+    PERMISSION = "permission"
+    DISK = "disk"
+    GUESTFS = "guestfs"
+    NETWORK = "network"
+    BAD_ARGS = "bad_args"
+    INTERNAL = "internal"
+
+
+@dataclass
+class SanityIssue:
+    kind: str
+    message: str
+
+    def __str__(self) -> str:
+        return f"{self.kind}: {self.message}"
+
+
 @dataclass
 class SanityReport:
     missing_required: List[str] = field(default_factory=list)
     missing_optional: List[str] = field(default_factory=list)
+
+    errors: List[SanityIssue] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     notes: Dict[str, str] = field(default_factory=dict)
 
+    checks_ran: List[str] = field(default_factory=list)
+
     def ok(self) -> bool:
-        return not self.missing_required
+        return not self.missing_required and not self.errors
+
+    def add_error(self, kind: str, msg: str) -> None:
+        self.errors.append(SanityIssue(kind=kind, message=msg))
+
+    def exit_code(self) -> int:
+        """
+        Deterministic mapping of failures to exit codes.
+        Preference: BAD_ARGS wins (fast feedback) then TOOLS then others.
+        """
+        if self.ok():
+            return int(ExitCode.OK)
+
+        kinds = {e.kind for e in self.errors}
+        if ErrorKind.BAD_ARGS in kinds:
+            return int(ExitCode.BAD_ARGS)
+
+        if self.missing_required:
+            return int(ExitCode.TOOLS_MISSING)
+
+        if ErrorKind.PERMISSION in kinds:
+            return int(ExitCode.PERMISSION)
+        if ErrorKind.DISK in kinds:
+            return int(ExitCode.DISK_SPACE)
+        if ErrorKind.GUESTFS in kinds:
+            return int(ExitCode.GUESTFS)
+        if ErrorKind.NETWORK in kinds:
+            return int(ExitCode.NETWORK)
+
+        return int(ExitCode.INTERNAL)
+
+    def to_dict(self) -> Dict[str, object]:
+        """
+        Machine-friendly representation (JSON-serializable).
+        """
+        return {
+            "ok": self.ok(),
+            "exit_code": self.exit_code(),
+            "missing_required": list(self.missing_required),
+            "missing_optional": list(self.missing_optional),
+            "errors": [{"kind": e.kind, "message": e.message} for e in self.errors],
+            "warnings": list(self.warnings),
+            "notes": dict(self.notes),
+            "checks_ran": list(self.checks_ran),
+        }
 
 
 class SanityChecker:
     """
     Sanity checks for hyper2kvm:
       - tool availability (required vs optional, conditional)
-      - libguestfs import + minimal init
+      - libguestfs import + minimal init (when needed)
       - disk space estimate
       - permissions on output dir
       - optional network connectivity (for download/fetch workflows)
@@ -49,7 +132,13 @@ class SanityChecker:
         self.out_root = Path(getattr(args, "output_dir", ".")).expanduser().resolve()
         self.report = SanityReport()
 
-    # -------- helpers --------
+        # record useful context
+        self.report.notes["mode"] = str(getattr(args, "mode", "") or "default")
+        self.report.notes["output_dir"] = str(self.out_root)
+
+    # -------------------------------------------------------------------------
+    # tiny helpers
+    # -------------------------------------------------------------------------
 
     def _need(self, flag: str) -> bool:
         """Return True if args has flag and it evaluates truthy."""
@@ -57,141 +146,360 @@ class SanityChecker:
 
     def _add_warn(self, msg: str) -> None:
         self.report.warnings.append(msg)
-        self.logger.warning(msg)
+
+    def _add_err(self, kind: str, msg: str) -> None:
+        self.report.add_error(kind, msg)
 
     def _tool_missing(self, tool: str) -> bool:
         return U.which(tool) is None
 
     def _bytes(self, n: int) -> str:
-        # tiny humanizer without extra deps
-        units = ["B", "KiB", "MiB", "GiB", "TiB"]
-        x = float(n)
+        units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
+        x = float(max(0, int(n)))
         for u in units:
             if x < 1024 or u == units[-1]:
                 return f"{x:.2f} {u}" if u != "B" else f"{int(x)} {u}"
             x /= 1024
         return f"{x:.2f} B"
 
-    # -------- checks --------
+    def _is_tty(self) -> bool:
+        try:
+            return sys.stderr.isatty()
+        except Exception:
+            return False
+
+    def _args_mode(self) -> str:
+        return str(getattr(self.args, "mode", "") or "")
+
+    # ------------------------
+    # network policy
+    # ------------------------
+
+    def _wants_network_check(self) -> bool:
+        """
+        Decide whether to *run* the network check.
+        """
+        if self._need("skip_sanity_net") or self._need("skip_network_check"):
+            return False
+        return self._args_mode() in ("fetch", "fetch-and-fix", "remote") or self._need("download")
+
+    def _network_required(self) -> bool:
+        """
+        Decide whether a network failure should be ERROR or WARNING.
+        Policy: fetch-like modes require network by default.
+        Override knobs:
+          - --net_optional forces WARNING
+          - --net_required forces ERROR
+        """
+        if self._need("net_required"):
+            self.report.notes["net_override"] = "required"
+            return True
+        if self._need("net_optional"):
+            self.report.notes["net_override"] = "optional (user override)"
+            return False
+        return self._args_mode() in ("fetch", "fetch-and-fix", "remote") or self._need("download")
+
+    # ------------------------
+    # guestfs policy
+    # ------------------------
+
+    def _needs_guestfs(self) -> bool:
+        """
+        Require guestfs only when we intend to mount/modify guest filesystems.
+        """
+        if self._need("skip_guestfs_check") or self._need("no_guestfs_check"):
+            return False
+
+        if self._need("fix") or self._need("offline_fix") or self._need("inject_drivers") or self._need("repair"):
+            return True
+
+        mode = self._args_mode()
+        if mode in ("fix", "offline-fix", "windows-fix", "linux-fix", "fetch-and-fix"):
+            return True
+
+        if getattr(self.args, "dry_run", False):
+            return False
+
+        return False
+
+    def _same_filesystem(self, a: Path, b: Path) -> Optional[bool]:
+        """
+        True if a and b are on the same filesystem (st_dev).
+        Returns None if we cannot determine.
+        """
+        try:
+            a_dev = os.stat(a).st_dev
+            b_dev = os.stat(b).st_dev
+            return a_dev == b_dev
+        except Exception:
+            return None
+
+    # -------------------------------------------------------------------------
+    # argument validation (lightweight)
+    # -------------------------------------------------------------------------
+
+    def check_args(self) -> None:
+        self.report.checks_ran.append("args")
+
+        # output_dir basic sanity
+        try:
+            _ = str(self.out_root)
+        except Exception as e:
+            self._add_err(ErrorKind.BAD_ARGS, f"Invalid output_dir: {e!s}")
+            return
+
+        # fetch-like modes need a host (best-effort: support common arg names)
+        mode = self._args_mode()
+        if mode in ("fetch", "fetch-and-fix", "remote"):
+            host = (
+                getattr(self.args, "host", None)
+                or getattr(self.args, "esxi_host", None)
+                or getattr(self.args, "remote_host", None)
+            )
+            if not host:
+                self._add_err(ErrorKind.BAD_ARGS, f"Mode '{mode}' requires a host (--host/--esxi-host/--remote-host)")
+
+    # -------------------------------------------------------------------------
+    # checks
+    # -------------------------------------------------------------------------
 
     def check_tools(self) -> None:
+        self.report.checks_ran.append("tools")
+
+        mode = self._args_mode()
+
         # Always required
-        required_tools = ["qemu-img"]
+        required_tools: List[str] = ["qemu-img"]
 
         # Optional baseline
-        optional_tools = ["rsync", "sgdisk"]
+        optional_tools: List[str] = ["sgdisk"]
 
-        # Conditional optional/required depending on features
-        # (Change these flags to match your CLI)
+        fetch_like = mode in ("fetch", "fetch-and-fix", "remote")
+        if fetch_like:
+            required_tools.extend(["ssh", "scp"])
+            if not self._need("fetch_no_rsync"):
+                required_tools.append("rsync")
+                self.report.notes["fetch_rsync"] = "required (default)"
+            else:
+                optional_tools.append("rsync")
+                self.report.notes["fetch_rsync"] = "optional (--fetch_no_rsync set)"
+
         if self._need("libvirt_test") or self._need("keep_domain"):
-            optional_tools.append("virsh")
+            required_tools.append("virsh")
 
-        if self._need("qemu_test") or self._need("uefi"):
+        # FIX: do NOT require qemu-system-x86_64 just because --uefi is set.
+        # Only require it when we're actually going to run a qemu-based boot test.
+        if self._need("qemu_test"):
+            required_tools.append("qemu-system-x86_64")
+        elif self._need("uefi"):
             optional_tools.append("qemu-system-x86_64")
 
-        # If you have a mode like fetch-from-esxi: rsync/scp might be needed
-        # Keep optional, but we can warn more loudly
-        if getattr(self.args, "mode", "") in ("fetch", "fetch-and-fix", "remote"):
-            optional_tools.extend(["ssh", "scp"])
+        # record for debugging
+        self.report.notes["required_tools"] = ", ".join(sorted(set(required_tools)))
+        self.report.notes["optional_tools"] = ", ".join(sorted(set(optional_tools)))
 
-        missing_required = [t for t in required_tools if self._tool_missing(t)]
-        missing_optional = sorted({t for t in optional_tools if self._tool_missing(t)})
+        missing_required = [t for t in sorted(set(required_tools)) if self._tool_missing(t)]
+        missing_optional = [t for t in sorted(set(optional_tools)) if self._tool_missing(t)]
 
         self.report.missing_required.extend(missing_required)
         self.report.missing_optional.extend(missing_optional)
 
         if missing_required:
-            U.die(self.logger, f"Missing required tools: {', '.join(missing_required)}", 1)
+            self._add_err(ErrorKind.TOOLS, f"Missing required tools: {', '.join(missing_required)}")
 
         if missing_optional:
             self._add_warn(f"Missing optional tools: {', '.join(missing_optional)}")
 
-        # libguestfs check (you rely on it for offline edits)
+        # stop early if required tools are missing (avoid extra noise)
+        if missing_required:
+            self.report.notes["libguestfs"] = "SKIPPED (required tools missing)"
+            return
+
+        # guestfs is conditional
+        if not self._needs_guestfs():
+            self.report.notes["libguestfs"] = "SKIPPED (not needed for this run)"
+            return
+
         try:
             import guestfs  # type: ignore
 
             g = guestfs.GuestFS(python_return_dict=True)
-            # minimal handshake; doesn't require attaching disks
             g.set_trace(0)
             g.set_verbose(0)
             g.close()
             self.report.notes["libguestfs"] = "OK"
         except Exception as e:
-            # If you have modes that do not need guestfs, you can relax this.
-            U.die(self.logger, f"libguestfs test failed: {e}", 1)
+            self._add_err(ErrorKind.GUESTFS, f"libguestfs test failed: {e!s}")
 
-        self.logger.info("Tools sanity check passed.")
+    def _iter_input_paths(self) -> Iterable[Path]:
+        disks = getattr(self.args, "disks", None)
+        if disks:
+            for d in disks:
+                if d:
+                    yield Path(d)
+
+        for key in ("vmdk", "input", "image", "src", "source"):
+            v = getattr(self.args, key, None)
+            if v:
+                yield Path(v)
+
+    def _dir_size_bytes(self, root: Path, max_files: int = 20000) -> Tuple[Optional[int], Optional[str]]:
+        """
+        Best-effort directory sizing (bounded).
+        Returns (size_bytes, note). If too large/unknown, returns (None, note).
+        """
+        try:
+            total = 0
+            count = 0
+            for dp, _, files in os.walk(root):
+                for fn in files:
+                    count += 1
+                    if count > max_files:
+                        return None, f"directory size unknown (>{max_files} files)"
+                    p = Path(dp) / fn
+                    try:
+                        total += p.stat().st_size
+                    except Exception:
+                        continue
+            return total, None
+        except Exception as e:
+            return None, f"directory size failed: {e!s}"
+
+    def _sum_existing_sizes(self, paths: Sequence[Path]) -> Tuple[int, bool, List[str]]:
+        total = 0
+        missing: List[str] = []
+        unknown = False
+
+        for p in paths:
+            try:
+                pp = p.expanduser()
+                if not pp.exists():
+                    missing.append(str(pp))
+                    unknown = True
+                    continue
+
+                if pp.is_file():
+                    total += pp.stat().st_size
+                    continue
+
+                if pp.is_dir():
+                    sz, note = self._dir_size_bytes(pp)
+                    if sz is None:
+                        unknown = True
+                        self._add_warn(f"Input dir size unknown for {pp}: {note or 'unknown'}")
+                    else:
+                        total += sz
+                    continue
+
+                unknown = True
+                self._add_warn(f"Input path not a regular file/dir (size unknown): {pp}")
+
+            except Exception:
+                unknown = True
+
+        return total, unknown, missing
 
     def check_disk_space(self) -> None:
+        self.report.checks_ran.append("disk")
+
+        if self._need("skip_sanity_disk") or self._need("skip_disk_check"):
+            self.report.notes["disk_space"] = "SKIPPED (flagged)"
+            return
+
         if getattr(self.args, "dry_run", False):
-            self.logger.info("DRY-RUN: skipping disk space check")
+            self.report.notes["disk_space"] = "SKIPPED (dry-run)"
+            self.report.notes["dry_run"] = "yes"
             return
 
         try:
+            self.out_root.mkdir(parents=True, exist_ok=True)
             usage = shutil.disk_usage(self.out_root)
-            free_bytes = usage.free
+            free_bytes = int(usage.free)
 
-            input_bytes = 0
-            disks = getattr(self.args, "disks", None)
+            inputs = list(dict.fromkeys([p.expanduser() for p in self._iter_input_paths()]))
+            known_bytes, unknown, missing_inputs = self._sum_existing_sizes(inputs)
 
-            # Some modes pass --vmdk instead of --disks; cover both.
-            if disks:
-                input_bytes = sum(Path(d).stat().st_size for d in disks)
-            else:
-                vmdk = getattr(self.args, "vmdk", None)
-                if vmdk:
-                    input_bytes = Path(vmdk).stat().st_size
+            # more paranoid disk model + dynamic slack for large inputs
+            factor_out = 1.10
+            factor_tmp = 1.10
 
-            # Estimate:
-            # - output image ~= input size (raw) or somewhat less/more depending on format
-            # - temp working copy + scratch (snapshot flattening / conversion) can add overhead
-            # - compression: may reduce final size but temp space still needed
-            factor_out = 1.0
-            factor_tmp = 1.0
-
-            # If converting to qcow2, temp + output can be > input
-            to_qcow2 = bool(getattr(self.args, "to_qcow2", None))
+            to_qcow2 = bool(getattr(self.args, "to_qcow2", False))
             if to_qcow2:
-                factor_out = 1.1
-                factor_tmp = 1.2
+                factor_out = 1.20
+                factor_tmp = 1.50
 
-            # If flattening snapshot chains or doing heavy fixups, bump temp need
-            if self._need("flatten") or self._need("workdir"):
-                factor_tmp += 0.5
+            if self._need("flatten"):
+                factor_tmp += 1.00
 
-            # If you keep original + create backups, add overhead
-            if self._need("backup") or self._need("keep_work"):
-                factor_tmp += 0.3
+            if self._need("backup") or self._need("keep_work") or self._need("keep_original"):
+                factor_tmp += 0.75
 
-            # Baseline: output + temp + some slack
-            estimated_needed = int(input_bytes * (factor_out + factor_tmp) + (1 * 1024**3))  # +1GiB slack
+            if self._need("stage") or self._need("copy_input") or self._need("make_work_copy"):
+                factor_tmp += 1.00
+
+            # cap temp factor to avoid ridiculous false-negatives
+            factor_tmp = min(factor_tmp, 3.00)
+
+            unknown_pad = 1.0
+            if unknown:
+                unknown_pad = 1.25
+                self.report.notes["disk_unknown_pad"] = "1.25x"
+
+            slack_min = 2 * 1024**3
+            slack_scaled = int(min(32 * 1024**3, known_bytes * 0.02))
+            slack = slack_min + slack_scaled
+
+            estimated_needed = int(max(0, known_bytes) * (factor_out + factor_tmp) * unknown_pad + slack)
 
             self.report.notes["disk_free"] = self._bytes(free_bytes)
-            self.report.notes["disk_input"] = self._bytes(input_bytes)
+            self.report.notes["disk_input_known"] = self._bytes(known_bytes)
             self.report.notes["disk_need_est"] = self._bytes(estimated_needed)
+            self.report.notes["disk_model"] = f"out={factor_out:.2f},tmp={factor_tmp:.2f},slack={self._bytes(slack)}"
+            if unknown:
+                self.report.notes["disk_input_unknown"] = "yes"
+
+            if missing_inputs:
+                self._add_warn(f"{len(missing_inputs)} input path(s) not found; disk estimate may be inaccurate")
+
+            workdir = getattr(self.args, "workdir", None)
+            if workdir:
+                try:
+                    wd = Path(workdir).expanduser().resolve()
+                    same = self._same_filesystem(wd, self.out_root)
+                    if same is True:
+                        self.report.notes["workdir_fs"] = "same as output_dir"
+                    elif same is False:
+                        self.report.notes["workdir_fs"] = "different from output_dir"
+                        self._add_warn(f"workdir is on a different filesystem ({wd}); disk estimate only covers output_dir")
+                    else:
+                        self._add_warn(f"Could not determine filesystem relation for workdir ({wd}) vs output_dir")
+                except Exception:
+                    pass
+
+            if known_bytes <= 0:
+                self._add_warn("Disk space check: could not size any inputs; not enforcing strict free-space gate")
+                return
 
             if free_bytes < estimated_needed:
-                U.die(
-                    self.logger,
+                self._add_err(
+                    ErrorKind.DISK,
                     f"Insufficient disk space: {self._bytes(free_bytes)} free, "
-                    f"estimated needed {self._bytes(estimated_needed)} "
-                    f"(input={self._bytes(input_bytes)})",
-                    1,
+                    f"estimated needed {self._bytes(estimated_needed)} (known_input={self._bytes(known_bytes)})",
                 )
+                return
 
-            self.logger.info(
-                "Disk space OK: %s free (estimated needed %s, input %s)",
-                self._bytes(free_bytes),
-                self._bytes(estimated_needed),
-                self._bytes(input_bytes),
-            )
         except Exception as e:
-            self._add_warn(f"Disk space check failed (non-fatal): {e}")
+            self._add_warn(f"Disk space check failed (non-fatal): {e!s}")
 
     def check_permissions(self) -> None:
+        self.report.checks_ran.append("permissions")
+
+        if self._need("skip_sanity_permissions") or self._need("skip_permissions_check"):
+            self.report.notes["permissions"] = "SKIPPED (flagged)"
+            return
+
         try:
             self.out_root.mkdir(parents=True, exist_ok=True)
-            # atomic create + write + fsync to catch weird perms / RO mounts
             fd, tmp = tempfile.mkstemp(prefix=".permtest_", dir=str(self.out_root))
             try:
                 os.write(fd, b"ok\n")
@@ -199,51 +507,109 @@ class SanityChecker:
             finally:
                 os.close(fd)
             Path(tmp).unlink(missing_ok=True)
-            self.logger.debug("Permissions OK (%s)", self.out_root)
+            self.report.notes["permissions"] = "OK"
         except Exception as e:
-            U.die(self.logger, f"Permission check failed for {self.out_root}: {e}", 1)
+            self._add_err(ErrorKind.PERMISSION, f"Permission check failed for {self.out_root}: {e!s}")
 
     def check_network(self) -> None:
-        # Only meaningful for modes that fetch/download.
-        needs_net = getattr(self.args, "mode", "") in ("fetch", "fetch-and-fix", "remote") or self._need("download")
-        if not needs_net:
-            self.logger.debug("Network check skipped (not needed for this mode)")
+        self.report.checks_ran.append("network")
+
+        if not self._wants_network_check():
+            self.report.notes["network"] = "SKIPPED"
             return
 
         host = getattr(self.args, "net_check_host", None) or "1.1.1.1"
         port = int(getattr(self.args, "net_check_port", None) or 53)
         timeout = float(getattr(self.args, "net_check_timeout", None) or 2.0)
 
+        # tiny polish: record what we tried
+        self.report.notes["network_target"] = f"{host}:{port}"
+        self.report.notes["network_timeout_s"] = str(timeout)
+
         try:
             with socket.create_connection((host, port), timeout=timeout):
                 pass
-            self.logger.debug("Network OK (tcp connect to %s:%s)", host, port)
             self.report.notes["network"] = f"OK ({host}:{port})"
         except Exception as e:
-            self._add_warn(f"Network check failed (tcp {host}:{port}): {e}")
+            msg = f"Network check failed (tcp {host}:{port}): {e!s}"
+            if self._network_required():
+                self._add_err(ErrorKind.NETWORK, msg)
+            else:
+                self._add_warn(msg)
+
+    # -------------------------------------------------------------------------
+    # orchestration
+    # -------------------------------------------------------------------------
+
+    def _run_checks(self, checks: Sequence[Tuple[str, callable]]) -> None:
+        if self._is_tty():
+            with Progress(
+                TextColumn("{task.description}"),
+                BarColumn(),
+                TextColumn("{task.completed}/{task.total}"),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+            ) as progress:
+                task = progress.add_task("Running sanity checks", total=len(checks))
+                for name, fn in checks:
+                    progress.update(task, description=f"Running sanity checks: {name}")
+                    fn()
+                    progress.update(task, advance=1)
+        else:
+            for name, fn in checks:
+                self.logger.info("Sanity: %s...", name)
+                fn()
+
+    def _log_summary(self) -> None:
+        # log once at end (avoid duplicates)
+        if self.report.ok():
+            self.logger.info("Sanity: OK")
+            if self.report.missing_optional:
+                self.logger.warning("Sanity: optional missing tools: %s", ", ".join(self.report.missing_optional))
+            if self.report.notes:
+                self.logger.debug("Sanity notes: %s", self.report.notes)
+            return
+
+        self.logger.error("Sanity: FAILED (exit=%s)", self.report.exit_code())
+        if self.report.missing_required:
+            self.logger.error("Sanity: missing required tools: %s", ", ".join(self.report.missing_required))
+        if self.report.missing_optional:
+            self.logger.warning("Sanity: missing optional tools: %s", ", ".join(self.report.missing_optional))
+        for e in self.report.errors:
+            self.logger.error("Sanity error[%s]: %s", e.kind, e.message)
+        for w in self.report.warnings:
+            self.logger.warning("Sanity warn: %s", w)
+        if self.report.notes:
+            self.logger.debug("Sanity notes: %s", self.report.notes)
 
     def check_all(self) -> SanityReport:
-        checks = [
+        checks: List[Tuple[str, callable]] = [
+            ("args", self.check_args),
             ("tools", self.check_tools),
             ("disk space", self.check_disk_space),
             ("permissions", self.check_permissions),
             ("network", self.check_network),
         ]
 
-        with Progress(
-            TextColumn("{task.description}"),
-            BarColumn(),
-            TextColumn("{task.completed}/{task.total}"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-        ) as progress:
-            task = progress.add_task("Running sanity checks", total=len(checks))
-            for name, fn in checks:
-                progress.update(task, description=f"Running sanity checks: {name}")
-                fn()
-                progress.update(task, advance=1)
-
-        if self.report.missing_optional:
-            self.logger.warning("Sanity checks passed with optional missing tools.")
-        self.logger.info("All sanity checks passed.")
+        self._run_checks(checks)
+        self._log_summary()
         return self.report
+
+    def die_if_failed(self) -> None:
+        """
+        Run checks if needed, and exit with structured exit codes.
+        """
+        if not self.report.checks_ran:
+            self.check_all()
+
+        if self.report.ok():
+            return
+
+        code = self.report.exit_code()
+
+        # keep user-facing message short; details are already logged in summary
+        if self.report.missing_required:
+            U.die(self.logger, f"Sanity failed: missing required tools: {', '.join(self.report.missing_required)}", code)
+
+        headline = self.report.errors[0].message if self.report.errors else "Sanity failed"
+        U.die(self.logger, f"Sanity failed: {headline}", code)
