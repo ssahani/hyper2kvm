@@ -7,7 +7,7 @@
 
 `hyper2kvm` is a production-oriented toolkit for migrating virtual machines  
 from **multiple hypervisors and disk ecosystems**  
-(VMware, Hyper-V, cloud images, raw artifacts)  
+(VMware, Hyper-V, cloud images, raw artifacts, physical exports)  
 into **KVM/QEMU-bootable systems** — **without relying on boot-time luck**.
 
 KVM/QEMU is treated as the **target truth**.  
@@ -59,6 +59,7 @@ It is **convert, repair, validate — and make it repeatable**.
 - Applies selected Linux fixes **live over SSH**
 - Stabilizes storage and network identifiers across hypervisors
 - Injects Windows VirtIO drivers safely (**storage first, always**)
+- Uses a **two-phase Windows boot strategy** (SATA bootstrap → VirtIO final)
 - Flattens snapshot chains deterministically
 - Enables repeatable, automatable migrations via mergeable YAML
 - Validates results using libvirt / QEMU smoke tests
@@ -66,7 +67,7 @@ It is **convert, repair, validate — and make it repeatable**.
 While VMware remains the deepest and most battle-tested integration,  
 `hyper2kvm` is intentionally **disk-centric**, not platform-centric.
 
-If it can be reduced to disks + metadata, it can enter the pipeline.
+If it can be reduced to **disks + metadata**, it can enter the pipeline.
 
 ### What This Tool **Does Not**
 - No GUI wizard  
@@ -94,61 +95,112 @@ These rules are enforced structurally, not by convention.
 
 ## 3. Supported Inputs and Execution Modes
 
+### Hypervisor-Agnostic by Design
+
+`hyper2kvm` is **not a VMware-only tool**.
+
+VMware happens to be the most deeply integrated source today because it is:
+- Common in enterprises
+- Snapshot-heavy
+- Full of sharp edges
+
+Architecturally, **hyper2kvm does not care about hypervisors**.  
+It cares about:
+
+- Disks
+- Firmware assumptions
+- Boot chains
+- Drivers
+- Metadata quality
+
+Any platform that can ultimately produce **block devices + minimal metadata**
+can be migrated.
+
+```mermaid
+flowchart LR
+  HV1[VMware]
+  HV2[Hyper-V]
+  HV3[Cloud / AMI]
+  HV4[Physical / Raw]
+  HV5[Other Hypervisors]
+
+  HV1 --> D[Disks + Metadata]
+  HV2 --> D
+  HV3 --> D
+  HV4 --> D
+  HV5 --> D
+
+  D --> P[hyper2kvm Pipeline]
+  P --> K[KVM / QEMU]
+````
+
+The moment disks are available, **all inputs converge**.
+
+---
+
 ### Primary: VMware (Deep Integration)
-- Descriptor VMDK  
-- Monolithic VMDK  
-- Multi-extent snapshot chains  
-- OVA  
-- OVF + extracted disks  
-- ESXi over SSH / SCP  
-- vCenter / ESXi via:
-  - **govc** (primary control-plane)
-  - pyvmomi / pyVim (fallback and deep inspection)
+
+* Descriptor VMDK
+* Monolithic VMDK
+* Multi-extent snapshot chains
+* OVA
+* OVF + extracted disks
+* ESXi over SSH / SCP
+* vCenter / ESXi via:
+
+  * **govc** (primary control-plane)
+  * **pyvmomi / pyVim** (fallback and deep inspection)
 
 Used for:
-- Inventory
-- Snapshot planning
-- CBT discovery
-- Datastore browsing
-- Artifact resolution
+
+* Inventory
+* Snapshot planning
+* CBT discovery
+* Datastore browsing
+* Artifact resolution
 
 This is the most mature path in `hyper2kvm`.
 
 ---
 
 ### Hyper-V / Microsoft Disk Formats (Disk-Level)
+
 Supported as **artifact inputs**, without Hyper-V APIs:
 
-- **VHD**
-- **VHDX**
+* VHD
+* VHDX
 
 Handled via offline inspection, repair, and deterministic driver transitions.
 
 ---
 
 ### Cloud Images / AMIs (Artifact-Level)
+
 Supported once reduced to disks:
 
-- AWS AMI / EBS snapshots (exported to raw / qcow2)
-- Generic cloud images
+* AWS AMI / EBS snapshots (exported to raw / qcow2)
+* Generic cloud images
 
-Fixes:
-- Device naming assumptions (NVMe / virtio)
-- initramfs completeness
-- Network configs bound to cloud metadata
-- Bootloader assumptions that fail off-cloud
+Fixes include:
+
+* NVMe vs virtio assumptions
+* initramfs completeness
+* Network configs bound to cloud metadata
+* Bootloader defaults that fail off-cloud
 
 No cloud lifecycle or IAM handling is included.
 
 ---
 
 ### Generic Disk Artifacts
+
 Any block-attachable format:
-- raw
-- qcow2
-- vdi
-- vmdk
-- vhd / vhdx
+
+* raw
+* qcow2
+* vdi
+* vmdk
+* vhd / vhdx
 
 Once inside, all inputs are treated equally.
 
@@ -159,21 +211,19 @@ Once inside, all inputs are treated equally.
 All execution modes map to a single internal pipeline:
 
 ```
-
 FETCH → FLATTEN → INSPECT → FIX → CONVERT → VALIDATE
-
-````
+```
 
 Stages are optional. **Order is not.**
 
-| Stage     | Purpose                           |
-|----------|-----------------------------------|
-| FETCH    | Obtain disks and metadata         |
-| FLATTEN | Collapse snapshot chains          |
-| INSPECT | Detect OS, layout, firmware       |
-| FIX     | Apply deterministic repairs       |
-| CONVERT | Produce qcow2 / raw / etc         |
-| VALIDATE| Boot-test and verify              |
+| Stage    | Purpose                     |
+| -------- | --------------------------- |
+| FETCH    | Obtain disks and metadata   |
+| FLATTEN  | Collapse snapshot chains    |
+| INSPECT  | Detect OS, layout, firmware |
+| FIX      | Apply deterministic repairs |
+| CONVERT  | Produce qcow2 / raw / etc   |
+| VALIDATE | Boot-test and verify        |
 
 The pipeline is explicit, inspectable, and restart-safe.
 
@@ -183,10 +233,10 @@ The pipeline is explicit, inspectable, and restart-safe.
 
 This separation is the **spine** of `hyper2kvm`.
 
-- **Control-Plane** decides *what exists* and *what should happen*
-- **Data-Plane** moves bytes and produces artifacts
+* **Control-Plane** decides *what exists* and *what should happen*
+* **Data-Plane** moves bytes and produces artifacts
 
-If you mix them, you get “it worked once” migrations.  
+If you mix them, you get “it worked once” migrations.
 If you separate them, you get repeatable ones.
 
 ```mermaid
@@ -214,9 +264,9 @@ flowchart TB
   subgraph DP["DATA PLANE (move bytes)"]
     GOVCEXP["govc export.ovf / export.ova"]
     OVFTOOL["ovftool (OVF/OVA export/import)"]
-    HTTP["HTTP /folder + Range (artifact + CBT pulls)"]
+    HTTP["HTTP /folder + Range"]
     VDDK["VDDK (high-throughput disk reads)"]
-    SSH["SSH / SCP (locked-down fallback)"]
+    SSH["SSH / SCP fallback"]
     V2V["virt-v2v (experimental option)"]
     RESUME["resume + verify + atomic publish"]
   end
@@ -228,14 +278,14 @@ flowchart TB
   VDDK --> RESUME
   SSH --> RESUME
   V2V --> RESUME
-````
+```
 
-### The Rule
+**Rule**
 
-* Control-plane **never** moves bulk data
-* Data-plane **never** makes inventory decisions
+* Control-plane never moves bulk data
+* Data-plane never makes inventory decisions
 
-The bridge is always **explicit plans + metadata** — never implicit guesses.
+The bridge is always **explicit plans + metadata**.
 
 ---
 
@@ -256,7 +306,10 @@ Windows is a **first-class citizen**.
 * Offline registry and hive edits
 * `CriticalDeviceDatabase` fixes
 * BCD handling with backups
-* No blind binary patching
+* Two-phase boot: SATA bootstrap → VirtIO final
+* Driver plans are **data-driven** (JSON/YAML)
+
+No blind binary patching. Everything is logged and reversible.
 
 ---
 
@@ -266,8 +319,6 @@ Windows is a **first-class citizen**.
 * Parent-chain verification
 * Flatten **before** conversion
 * Atomic outputs
-
-Snapshot flattening is strongly recommended.
 
 ---
 
@@ -303,12 +354,12 @@ YAML is treated as **code**:
 
 ---
 
-## 11–19 (Advanced Topics)
+## 11–19. Advanced Topics
 
 * Batch processing
 * Live-fix mode (SSH)
 * ESXi and vSphere integration
-* virt-v2v coordination (experimental option)
+* virt-v2v coordination (experimental, never default)
 * Safety mechanisms
 * Daemon and automation modes
 * Testing and failure analysis
@@ -318,6 +369,8 @@ YAML is treated as **code**:
 
 ## 20. Documentation Index
 
-All detailed documentation, workflows, examples, and references live here:
+All detailed documentation lives here:
 
 👉 [https://github.com/ssahani/hyper2kvm/tree/main/docs](https://github.com/ssahani/hyper2kvm/tree/main/docs)
+
+```
