@@ -1,7 +1,7 @@
 # hyper2kvm 🚀🔥
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
-[![GitHub stars](https://img.shields.io/github/stars/ssahani/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/hyper2kvm/hyper2kvm/stargazers/)
+[![GitHub stars](https://img.shields.io/github/stars/hyper2kvm/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/hyper2kvm/hyper2kvm/stargazers/)
 
 **Hypervisor → KVM/QEMU Conversion, Repair, and Automation Toolkit**
 
@@ -371,6 +371,5 @@ YAML is treated as **code**:
 
 All detailed documentation lives here:
 
-👉 [https://github.com/ssahani/hyper2kvm/tree/main/docs](https://github.com/ssahani/hyper2kvm/tree/main/docs)
-
-```
+👉 [docs/](docs/)
+(Direct link: [https://github.com/hyper2kvm/hyper2kvm/tree/main/docs](https://github.com/hyper2kvm/hyper2kvm/tree/main/docs))
