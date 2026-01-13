@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from __future__ import annotations
 
+import logging
+import posixpath
 import shlex
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Union
-
-import logging
+from typing import List, Optional, Sequence
 
 from ..core.utils import U
 from .ssh_config import SSHConfig
@@ -26,13 +27,6 @@ class SSHClient:
     """
     Minimal, production-safe SSH helper.
 
-    Improvements vs original:
-      - Proper quoting of remote command (avoids "double parsing" surprises)
-      - Configurable connect timeout + strict host key policy
-      - Better rsync/scp defaults (preserve times, partial transfers)
-      - Support for retries (useful when ESXi/vCenter/host is slow to respond)
-      - exists() uses POSIX-safe quoting and avoids accidental globbing
-      - Optional non-throwing run() that returns rc/stdout/stderr
     """
 
     def __init__(self, logger: logging.Logger, cfg: SSHConfig):
@@ -40,15 +34,22 @@ class SSHClient:
         self.cfg = cfg
         self.use_rsync = U.which("rsync") is not None
 
-        # Defaults (can be extended via cfg.ssh_opt)
-        self._connect_timeout = getattr(cfg, "connect_timeout", 10)
-        self._server_alive_interval = getattr(cfg, "server_alive_interval", 10)
-        self._server_alive_count = getattr(cfg, "server_alive_count", 3)
-        self._strict_host_key = getattr(cfg, "strict_host_key_checking", "accept-new")  # accept-new | yes | no
+        # Defaults (can be extended via cfg.*)
+        self._connect_timeout = int(getattr(cfg, "connect_timeout", 10) or 10)
+        self._server_alive_interval = int(getattr(cfg, "server_alive_interval", 10) or 10)
+        self._server_alive_count = int(getattr(cfg, "server_alive_count", 3) or 3)
+        self._strict_host_key = str(
+            getattr(cfg, "strict_host_key_checking", "accept-new") or "accept-new"
+        )  # accept-new | yes | no
 
         # Retry policy (optional)
         self._retries = int(getattr(cfg, "retries", 0) or 0)
         self._retry_sleep = float(getattr(cfg, "retry_sleep", 1.0) or 1.0)
+
+        # rsync policy (optional)
+        self._rsync_partial_dir = str(getattr(cfg, "rsync_partial_dir", ".rsync-partial") or ".rsync-partial")
+        self._rsync_append_verify = bool(getattr(cfg, "rsync_append_verify", False))
+        self._ensure_remote_dir = bool(getattr(cfg, "ensure_remote_dir", True))
 
     # ----------------------------
     # argv builders
@@ -85,29 +86,33 @@ class SSHClient:
         return ["-p", str(self.cfg.port)] + self._common()
 
     def _scp_args(self) -> List[str]:
-        # -p preserves times; add -q? (no, keep verbosity in logs)
+        # -p preserves times
         return ["-P", str(self.cfg.port), "-p"] + self._common()
 
     def _rsync_args(self) -> List[str]:
-        # rsync over ssh; prefer partial + inplace for large images; keep progress
-        # -a preserves perms/times/links, -H hardlinks, -x one filesystem
+        # rsync over ssh; prefer resume-friendly behavior for large images/artifacts
         shell_parts: List[str] = ["ssh"] + self._common()
-        # NOTE: _common already includes ConnectTimeout, etc. but also includes -o StrictHostKeyChecking
-        # We still must pass port via ssh -p (rsync doesn't use ssh's -p unless in -e string)
         if self.cfg.port != 22:
             shell_parts += ["-p", str(self.cfg.port)]
 
-        # rsync flags:
-        return [
+        args: List[str] = [
             "-a",
             "-H",
             "--numeric-ids",
             "--info=progress2",
             "--partial",
+            f"--partial-dir={self._rsync_partial_dir}",
             "--inplace",
             "-e",
             " ".join(shlex.quote(x) for x in shell_parts),
         ]
+
+        # When resuming large files, --append-verify can be safer than plain --inplace for some workflows.
+        if self._rsync_append_verify:
+            # NOTE: --append-verify implies append semantics; only enable if your use-case fits.
+            args += ["--append-verify"]
+
+        return args
 
     # ----------------------------
     # command helpers
@@ -119,9 +124,7 @@ class SSHClient:
     def _maybe_sudo(self, cmd: str) -> str:
         if not getattr(self.cfg, "sudo", False):
             return cmd
-
         # Use -- to stop sudo from parsing args, then run a single sh -lc payload.
-        # If sudo isn't allowed, sudo -n fails fast (good).
         return f"sudo -n -- sh -lc {shlex.quote(cmd)}"
 
     def _remote_sh(self, cmd: str) -> str:
@@ -130,19 +133,21 @@ class SSHClient:
         This prevents issues where ssh remote gets a command with spaces/quotes,
         and different shells interpret it oddly.
         """
-        # If the user already passed something that is shell-specific, we still run via sh -lc.
         return f"sh -lc {shlex.quote(cmd)}"
 
-    def _run(
+    def _run_local(
         self,
         argv: Sequence[str],
         *,
-        check: bool,
         capture: bool,
         timeout: Optional[int],
     ) -> SSHResult:
+        """
+        Execute a local ssh/scp/rsync command. Never raises on rc!=0.
+        (Timeout exceptions may still raise from U.run_cmd depending on its implementation.)
+        """
         t0 = time.monotonic()
-        cp = U.run_cmd(self.logger, list(argv), check=check, capture=capture, timeout=timeout)
+        cp = U.run_cmd(self.logger, list(argv), check=False, capture=capture, timeout=timeout)
         dt = time.monotonic() - t0
         return SSHResult(
             rc=int(getattr(cp, "returncode", 0) or 0),
@@ -151,6 +156,48 @@ class SSHClient:
             argv=list(argv),
             seconds=dt,
         )
+
+    def _looks_transient_ssh(self, res: Optional[SSHResult], exc: Optional[BaseException]) -> bool:
+        """
+        Decide whether to retry.
+
+        We retry only on connection/transport-ish failures (ssh exit 255 or common SSH transport errors),
+        not on normal remote command failures (rc 1/2/etc).
+        """
+        if isinstance(exc, subprocess.TimeoutExpired):
+            return True
+
+        if res is None:
+            return False
+
+        if res.rc == 255:
+            return True
+
+        s = (res.stderr or "").lower()
+        transient_markers = [
+            "connection timed out",
+            "connection refused",
+            "no route to host",
+            "network is unreachable",
+            "could not resolve hostname",
+            "temporary failure in name resolution",
+            "kex_exchange_identification",
+            "connection reset by peer",
+            "broken pipe",
+            "connection closed",
+        ]
+        return any(m in s for m in transient_markers)
+
+    def _raise_on_failure(self, res: SSHResult, desc: str) -> None:
+        if res.rc == 0:
+            return
+        # Provide a compact error; keep stderr (often contains the real story).
+        msg = (
+            f"{desc} failed (rc={res.rc}, {res.seconds:.2f}s)\n"
+            f"argv: {res.argv}\n"
+            f"stderr: {(res.stderr or '').strip()}"
+        ).strip()
+        raise subprocess.CalledProcessError(res.rc, res.argv, output=res.stdout, stderr=msg)
 
     # ----------------------------
     # public API
@@ -168,29 +215,55 @@ class SSHClient:
         Run a command on the remote host.
 
         - Uses sh -lc quoting to avoid remote shell gotchas
-        - Optional retries (cfg.retries)
+        - Optional retries (cfg.retries) ONLY for transient/transport failures
         - Returns SSHResult with rc/stdout/stderr/duration
+        - If check=True, raises CalledProcessError on rc!=0
         """
         raw = self._maybe_sudo(cmd)
         remote = self._remote_sh(raw)
-
         argv = ["ssh"] + self._ssh_args() + [self._target(), remote]
 
-        last_err: Optional[Exception] = None
         attempts = 1 + self._retries
+        last_res: Optional[SSHResult] = None
+        last_exc: Optional[BaseException] = None
+
         for attempt in range(1, attempts + 1):
             try:
-                res = self._run(argv, check=check, capture=capture, timeout=timeout)
-                return res
-            except Exception as e:
-                last_err = e
-                if attempt >= attempts:
-                    raise
-                self.logger.warning(f"SSH attempt {attempt}/{attempts} failed; retrying in {self._retry_sleep:.1f}s: {e}")
-                time.sleep(self._retry_sleep)
+                res = self._run_local(argv, capture=capture, timeout=timeout)
+                last_res = res
 
-        # unreachable, but keeps mypy happy
-        raise last_err  # type: ignore[misc]
+                # Retry only on transport-ish failures
+                if attempt < attempts and self._looks_transient_ssh(res, None):
+                    self.logger.warning(
+                        f"SSH transport issue (attempt {attempt}/{attempts}, rc={res.rc}); "
+                        f"retrying in {self._retry_sleep:.1f}s"
+                    )
+                    time.sleep(self._retry_sleep)
+                    continue
+
+                if check:
+                    self._raise_on_failure(res, "ssh")
+                return res
+
+            except BaseException as e:
+                last_exc = e
+                # If the exception itself looks transient (e.g. timeout), retry. Otherwise raise.
+                if attempt < attempts and self._looks_transient_ssh(last_res, e):
+                    self.logger.warning(
+                        f"SSH exception (attempt {attempt}/{attempts}); retrying in {self._retry_sleep:.1f}s: {e}"
+                    )
+                    time.sleep(self._retry_sleep)
+                    continue
+                raise
+
+        # If we fall through (shouldn't), raise the last exception or failure.
+        if last_exc:
+            raise last_exc
+        if last_res:
+            if check:
+                self._raise_on_failure(last_res, "ssh")
+            return last_res
+        raise RuntimeError("ssh failed with no result and no exception (unexpected)")
 
     def ssh(self, cmd: str, *, capture: bool = True, timeout: Optional[int] = None) -> str:
         """Backwards-compatible: returns stdout string, raises on failure."""
@@ -212,51 +285,80 @@ class SSHClient:
         else:
             argv = ["scp"] + self._scp_args() + [remote_spec, str(local)]
 
-        self._run(argv, check=True, capture=False, timeout=None)
+        res = self._run_local(argv, capture=False, timeout=None)
+        self._raise_on_failure(res, "copy (from)")
         self.logger.info(f"Copied {remote} -> {local}")
 
     def scp_to(self, local: Path, remote: str) -> None:
         remote_spec = f"{self._target()}:{remote}"
+
+        # Best-effort: create remote parent dir (common failure mode in automation)
+        if self._ensure_remote_dir:
+            parent = posixpath.dirname(remote.rstrip("/"))
+            if parent and parent not in (".", "/"):
+                self.mkdir_p(parent)
 
         if self.use_rsync:
             argv = ["rsync"] + self._rsync_args() + [str(local), remote_spec]
         else:
             argv = ["scp"] + self._scp_args() + [str(local), remote_spec]
 
-        self._run(argv, check=True, capture=False, timeout=None)
+        res = self._run_local(argv, capture=False, timeout=None)
+        self._raise_on_failure(res, "copy (to)")
         self.logger.info(f"Copied {local} -> {remote}")
 
+    # ----------------------------
+    # safer remote probes (argument-based)
+    # ----------------------------
+
+    def _probe(self, script: str, arg1: str, *, timeout: int = 10) -> str:
+        """
+        Run a small POSIX sh script with a single positional argument ($1).
+        Returns stdout (no-throw for rc!=0; scripts should print deterministically).
+        """
+        payload = f"sh -lc {shlex.quote(script)} -- {shlex.quote(arg1)}"
+        res = self.run(payload, capture=True, timeout=timeout, check=False)
+        return (res.stdout or "").strip()
+
     def exists(self, remote: str) -> bool:
-        # Use POSIX test with proper quoting; avoid echo parsing surprises.
-        # Print "1" or "0" reliably.
-        q = shlex.quote(remote)
-        res = self.run(f"test -e {q} && printf 1 || printf 0", capture=True, timeout=10, check=True)
-        return res.stdout.strip() == "1"
+        # Deterministic print; never throws for normal "false"
+        out = self._probe('if [ -e "$1" ]; then printf 1; else printf 0; fi', remote)
+        return out == "1"
 
     def is_file(self, remote: str) -> bool:
-        q = shlex.quote(remote)
-        res = self.run(f"test -f {q} && printf 1 || printf 0", capture=True, timeout=10, check=True)
-        return res.stdout.strip() == "1"
+        out = self._probe('if [ -f "$1" ]; then printf 1; else printf 0; fi', remote)
+        return out == "1"
 
     def is_dir(self, remote: str) -> bool:
-        q = shlex.quote(remote)
-        res = self.run(f"test -d {q} && printf 1 || printf 0", capture=True, timeout=10, check=True)
-        return res.stdout.strip() == "1"
+        out = self._probe('if [ -d "$1" ]; then printf 1; else printf 0; fi', remote)
+        return out == "1"
 
     def mkdir_p(self, remote_dir: str) -> None:
-        q = shlex.quote(remote_dir)
-        self.run(f"mkdir -p {q}", capture=False, timeout=30, check=True)
+        # Use positional arg to avoid interpolation pitfalls
+        payload = 'mkdir -p -- "$1"'
+        cmd = f"sh -lc {shlex.quote(payload)} -- {shlex.quote(remote_dir)}"
+        res = self.run(cmd, capture=False, timeout=30, check=False)
+        self._raise_on_failure(res, "mkdir")
 
     def rm_rf(self, remote_path: str) -> None:
-        q = shlex.quote(remote_path)
-        self.run(f"rm -rf -- {q}", capture=False, timeout=60, check=True)
+        payload = 'rm -rf -- "$1"'
+        cmd = f"sh -lc {shlex.quote(payload)} -- {shlex.quote(remote_path)}"
+        res = self.run(cmd, capture=False, timeout=60, check=False)
+        self._raise_on_failure(res, "rm")
 
     def read_text(self, remote: str, *, max_bytes: int = 4 * 1024 * 1024) -> str:
         """
         Read remote file content safely (bounded).
-        Uses head -c to avoid slurping multi-GB files.
+        Uses head -c (if available); fallback to dd.
+        Never raises on content-read failure (returns "" for missing/unreadable).
         """
-        q = shlex.quote(remote)
-        # POSIX-ish: try head -c; fallback to dd if needed
-        cmd = f"(head -c {int(max_bytes)} {q} 2>/dev/null || dd if={q} bs=1 count={int(max_bytes)} 2>/dev/null) || true"
-        return self.ssh(cmd, timeout=30).rstrip("\n")
+        n = int(max_bytes)
+        script = (
+            'p="$1"; n="$2"; '
+            '(head -c "$n" "$p" 2>/dev/null || dd if="$p" bs=1 count="$n" 2>/dev/null) || true'
+        )
+
+        # Two-arg call: we still keep it simple by embedding $2 as a quoted literal
+        cmd = f"sh -lc {shlex.quote(script)} -- {shlex.quote(remote)} {shlex.quote(str(n))}"
+        res = self.run(cmd, capture=True, timeout=30, check=False)
+        return (res.stdout or "").rstrip("\n")
