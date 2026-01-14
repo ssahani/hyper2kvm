@@ -10,21 +10,6 @@ from **multiple hypervisors and disk ecosystems**
 (VMware, Hyper-V, cloud images, raw artifacts, physical exports)  
 into **KVM/QEMU-bootable systems** — **without relying on boot-time luck**.
 
-KVM/QEMU is treated as the **target truth**.  
-Everything else is an input dialect.
-
-This project exists to solve the problems that show up *after* a “successful” conversion:
-
-- Broken boots  
-- Unstable device naming  
-- Missing or misordered drivers  
-- Corrupted or misleading snapshot chains  
-- Windows guests that blue-screen on first KVM boot  
-- Cloud images that assume hardware you don’t have  
-
-This repository is intentionally **not** “click migrate and pray”.  
-It is **convert, repair, validate — and make it repeatable**.
-
 ---
 
 ## Table of Contents
@@ -47,7 +32,7 @@ It is **convert, repair, validate — and make it repeatable**.
 17. Testing and Verification  
 18. Failure Modes and Troubleshooting  
 19. When Not to Use This Tool  
-20. Documentation Index  
+20. Documentation Index and References  
 
 ---
 
@@ -59,7 +44,7 @@ It is **convert, repair, validate — and make it repeatable**.
 - Applies selected Linux fixes **live over SSH**
 - Stabilizes storage and network identifiers across hypervisors
 - Injects Windows VirtIO drivers safely (**storage first, always**)
-- Uses a **two-phase Windows boot strategy** (SATA bootstrap → VirtIO final)
+- Uses a **two-phase Windows boot strategy** (SATA bootstrap → VirtIO final) to guarantee driver activation
 - Flattens snapshot chains deterministically
 - Enables repeatable, automatable migrations via mergeable YAML
 - Validates results using libvirt / QEMU smoke tests
@@ -69,27 +54,33 @@ While VMware remains the deepest and most battle-tested integration,
 
 If it can be reduced to **disks + metadata**, it can enter the pipeline.
 
-### What This Tool **Does Not**
-- No GUI wizard  
-- No cloud lifecycle orchestration  
-- No promise of zero-touch Windows fixes  
-- No attempt to hide complexity  
-- No hypervisor emulation  
-
-If you want *fast over correct*, this repo will argue with you — politely, and with logs.
-
 ---
 
 ## 2. Design Principles
-1. Boot failures are configuration problems, not copy problems  
-2. Device naming must survive hypervisor changes  
-3. Snapshot chains lie unless flattened or verified  
-4. Windows storage must be **BOOT_START** before first KVM boot  
-5. Every destructive step needs a safe mode  
-6. Configurations must be replayable  
-7. Control-plane and data-plane must never be mixed  
 
-These rules are enforced structurally, not by convention.
+`hyper2kvm` is built around a small set of non-negotiable principles:
+
+* **Determinism over luck**  
+  Every action should be repeatable, inspectable, and explainable.  
+  If a migration “just happens to boot,” something is missing.
+
+* **Disk-centric, not platform-centric**  
+  Hypervisors are treated as *sources of disks and metadata*, not as sacred systems.
+
+* **Control-plane separated from data-plane**  
+  Decisions are made before bytes move.  
+  Byte movers never guess.
+
+* **Offline-first repairs**  
+  Guests should boot correctly on first power-on in KVM, without emergency console work.
+
+* **Explicit plans over implicit behavior**  
+  Snapshot flattening, driver injection, and boot strategy are always planned, never inferred mid-flight.
+
+* **Safety by default**  
+  Backups, atomic writes, and reversible changes are standard—not optional.
+
+These principles are enforced structurally, not by convention.
 
 ---
 
@@ -367,9 +358,9 @@ YAML is treated as **code**:
 
 ---
 
-## 20. Documentation Index
+## 20. Documentation Index and References
 
 All detailed documentation lives here:
 
-👉 [docs/](docs/)
-(Direct link: [https://github.com/hyper2kvm/hyper2kvm/tree/main/docs](https://github.com/hyper2kvm/hyper2kvm/tree/main/docs))
+👉 `docs/`
+Direct link: [https://github.com/hyper2kvm/hyper2kvm/tree/main/docs](https://github.com/hyper2kvm/hyper2kvm/tree/main/docs)
