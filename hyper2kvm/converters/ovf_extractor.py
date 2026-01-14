@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+# hyper2kvm/converters/ovf_extractor.py
 from __future__ import annotations
 
 import logging
 import os
 import tarfile
-from pathlib import Path
+import tempfile
+from pathlib import Path, PurePosixPath
 from typing import List, Optional, Dict, Any, Tuple
 import xml.etree.ElementTree as ET
 
@@ -35,6 +37,12 @@ class OVF:
         convert_compress_level: Optional[int] = None,
         # --- Enhancement: optional host-side debug logging ---
         log_virt_filesystems: bool = False,
+        # --- Safety rails (optional; defaults keep behavior permissive) ---
+        skip_special: bool = True,  # skip symlinks/hardlinks/devices/fifos
+        max_members: Optional[int] = None,
+        max_total_bytes: Optional[int] = None,
+        max_member_bytes: Optional[int] = None,
+        max_files: Optional[int] = None,  # regular files only
     ) -> List[Path]:
         """
         Extract an OVA (tar) into outdir, then parse OVF(s) inside and return referenced disk paths.
@@ -43,8 +51,14 @@ class OVF:
           - Optional conversion to QCOW2 immediately after extraction (convert_to_qcow2=True)
           - Optional "virt-filesystems -a ..." logging for each disk
 
+        Safety improvements:
+          - Strong safe extraction (no tar.extract for files; blocks traversal; skips links/devices by default)
+          - Optional limits to reduce tar-bomb risk (max_members / max_total_bytes / max_member_bytes / max_files)
+          - OVF href safe-join (blocks ../ escapes from OVF metadata)
+
         Returns:
-            List[Path]: Disk file paths (in outdir) referenced by the OVF (or converted qcow2 outputs if enabled).
+            List[Path]: Disk file paths (in outdir) referenced by the OVF
+                        (or converted qcow2 outputs if enabled).
         """
         U.banner(logger, "Extract OVA")
         ova = Path(ova)
@@ -58,16 +72,37 @@ class OVF:
 
         logger.info(f"OVA: {ova}")
 
+        extracted_files = 0
+        skipped_special_count = 0
+        skipped_other = 0
+        blocked = 0
+        regular_file_count = 0
+
         with tarfile.open(ova, mode="r:*") as tar:
             members = tar.getmembers()
 
-            # Total bytes for progress (some tar members may have 0/None size)
+            if max_members is not None and len(members) > max_members:
+                U.die(
+                    logger,
+                    f"OVA contains {len(members)} members which exceeds max_members={max_members}",
+                    1,
+                )
+
+            # Total bytes for progress (regular files only; directories/specials don't count)
             total_bytes = 0
             for m in members:
                 try:
-                    total_bytes += int(getattr(m, "size", 0) or 0)
+                    if m.isreg():
+                        total_bytes += int(getattr(m, "size", 0) or 0)
                 except Exception:
                     pass
+
+            if max_total_bytes is not None and total_bytes > max_total_bytes:
+                U.die(
+                    logger,
+                    f"OVA total regular-file size {total_bytes} exceeds max_total_bytes={max_total_bytes}",
+                    1,
+                )
 
             with Progress(
                 TextColumn("{task.description}"),
@@ -81,11 +116,45 @@ class OVF:
                 task = progress.add_task("Extracting OVA", total=total_bytes or len(members))
 
                 for member in members:
-                    OVF._safe_extract_one(tar, member, outdir)
+                    wrote = 0  # IMPORTANT: avoid UnboundLocalError when exceptions happen
 
-                    # Advance by bytes if we can, otherwise by 1
-                    advance = int(getattr(member, "size", 0) or 0)
-                    progress.update(task, advance=advance if total_bytes else 1)
+                    # File-count DoS guard (regular files only)
+                    if member.isreg():
+                        regular_file_count += 1
+                        if max_files is not None and regular_file_count > max_files:
+                            U.die(
+                                logger,
+                                f"OVA exceeds max_files={max_files} (regular files seen: {regular_file_count})",
+                                1,
+                            )
+
+                    try:
+                        wrote, status = OVF._safe_extract_one(
+                            tar,
+                            member,
+                            outdir,
+                            skip_special=skip_special,
+                            max_member_bytes=max_member_bytes,
+                        )
+                        if status == "extracted":
+                            extracted_files += 1
+                        elif status == "skipped_special":
+                            skipped_special_count += 1
+                        elif status == "skipped_other":
+                            skipped_other += 1
+                    except Exception as e:
+                        blocked += 1
+                        logger.error(f"Blocked/failed extracting tar member {member.name!r}: {e}")
+
+                    # Advance by bytes written if we can, otherwise by 1 if total unknown
+                    progress.update(task, advance=wrote if total_bytes else 1)
+
+        if skipped_special_count:
+            logger.warning(
+                f"Security: skipped {skipped_special_count} special tar members (links/devices/fifos)"
+            )
+        if blocked:
+            logger.warning(f"Security: {blocked} tar members failed safety checks or extraction (see errors above)")
 
         ovfs = sorted(outdir.glob("*.ovf"))
         if not ovfs:
@@ -117,7 +186,6 @@ class OVF:
             logger.warning("Some OVF-referenced disks were not found after extraction:")
             for m in missing:
                 logger.warning(f" - {m}")
-            # Keep behavior: still return what we found (or die? historically you didn’t check)
             uniq = [d for d in uniq if d.exists()]
             if not uniq:
                 U.die(logger, "OVF referenced disks but none were found on disk after extraction.", 1)
@@ -143,14 +211,14 @@ class OVF:
         ovf: Path,
         outdir: Path,
         *,
-        # --- Enhancement: optional host-side debug logging ---
         log_virt_filesystems: bool = False,
     ) -> List[Path]:
         """
         Parse an OVF file and return disk paths referenced via <File ... ovf:href="..."> used by <Disk ovf:fileRef="...">.
 
-        Enhancement (non-breaking):
-          - Optionally logs host-side disk layout via virt-filesystems (if disks exist).
+        Safety improvement:
+          - OVF href safe-join (blocks ../ escapes from OVF metadata)
+          - Prefer defusedxml if available (mitigates XML entity expansion DoS)
         """
         U.banner(logger, "Parse OVF")
         ovf = Path(ovf)
@@ -161,10 +229,18 @@ class OVF:
 
         logger.info(f"OVF: {ovf}")
 
+        # Prefer defusedxml if installed
         try:
-            tree = ET.parse(ovf)
+            from defusedxml.ElementTree import parse as safe_parse  # type: ignore
+        except Exception:
+            safe_parse = None
+
+        try:
+            tree = safe_parse(ovf) if safe_parse else ET.parse(ovf)
         except ET.ParseError as e:
             U.die(logger, f"Failed to parse OVF XML: {ovf}: {e}", 1)
+        except Exception as e:
+            U.die(logger, f"Failed to read OVF XML: {ovf}: {e}", 1)
 
         root = tree.getroot()
 
@@ -193,13 +269,13 @@ class OVF:
 
             href = file_map.get(file_id)
             if not href:
-                # Some OVFs are weird; don’t hard-fail, but warn loudly.
                 logger.warning(f"OVF disk references fileRef={file_id} but no matching <File> entry was found")
                 continue
 
-            # Normalize (OVF hrefs are usually relative, but can include directories)
-            href_norm = href.replace("\\", "/").lstrip("/")
-            disks.append(outdir / href_norm)
+            try:
+                disks.append(OVF._safe_out_path(outdir, href))
+            except Exception as e:
+                logger.warning(f"Security: skipping unsafe OVF href={href!r} (fileRef={file_id}): {e}")
 
         if not disks:
             U.die(logger, "No disks found in OVF.", 1)
@@ -230,7 +306,6 @@ class OVF:
         Convert extracted disks to qcow2 outputs. Keeps order and de-dups.
         Uses the project Convert wrapper if available.
         """
-        # Lazy import to avoid circular deps at import time.
         try:
             from ..converters.qemu_converter import Convert  # type: ignore
         except Exception as e:
@@ -246,18 +321,15 @@ class OVF:
                 logger.warning(f"Skipping missing disk: {disk}")
                 continue
 
-            # Optional: log layout before conversion
             if log_virt_filesystems:
                 OVF._log_virt_filesystems(logger, disk)
 
             # Name outputs deterministically
             stem = disk.name
-            # Keep descriptor naming nicer
             if stem.lower().endswith(".vmdk"):
                 stem = stem[:-5]
             out = (outdir / f"{stem}.qcow2").expanduser().resolve()
 
-            # Throttle log spam; report conversion % in 5% buckets
             last_bucket = {"b": -1}
 
             def progress_callback(progress: float) -> None:
@@ -309,11 +381,16 @@ class OVF:
         Host-side introspection:
           virt-filesystems -a <image> --all --long -h
 
-        Logs output into normal logs (exactly what you asked).
+        Note: resource limiting/timeouts are best implemented in U.run_cmd globally.
         """
         cmd = ["virt-filesystems", "-a", str(image), "--all", "--long", "-h"]
         try:
-            cp = U.run_cmd(logger, cmd, capture=True)
+            # If your U.run_cmd supports timeout, pass it; otherwise ignore (compat).
+            try:
+                cp = U.run_cmd(logger, cmd, capture=True, timeout_s=60)  # type: ignore[call-arg]
+            except TypeError:
+                cp = U.run_cmd(logger, cmd, capture=True)
+
             out = (cp.stdout or "").strip()
             if out:
                 logger.info(f"virt-filesystems -a {image} --all --long -h\n{out}")
@@ -324,19 +401,167 @@ class OVF:
             logger.warning(f"virt-filesystems failed for {image}: {e}")
             return {"ok": False, "error": str(e), "cmd": cmd}
 
+    # -----------------------------
+    # Safe path helpers
+    # -----------------------------
+
     @staticmethod
-    def _safe_extract_one(tar: tarfile.TarFile, member: tarfile.TarInfo, outdir: Path) -> None:
+    def _clean_posix_relpath(name: str) -> PurePosixPath:
         """
-        Extract a single tar member safely, preventing path traversal.
+        Normalize a tar/OVF path to a safe relative POSIX path:
+          - converts backslashes to slashes
+          - strips ALL leading '/' (no absolute paths)
+          - drops '.' segments
+          - rejects '..' segments
+          - rejects empty results
         """
-        outdir = Path(outdir).resolve()
+        raw = (name or "").replace("\\", "/")
 
-        # member.name can be absolute or contain .. components
-        target_path = (outdir / member.name).resolve()
+        # Strip all leading slashes explicitly (clear intent)
+        raw = raw.lstrip("/")
 
-        # Ensure the target is within outdir
-        if outdir != target_path and outdir not in target_path.parents:
-            raise RuntimeError(f"Blocked unsafe tar path traversal: {member.name}")
+        p = PurePosixPath(raw)
 
-        # Extract (tarfile handles dirs/files/links; we rely on path check above)
-        tar.extract(member, outdir)
+        clean_parts: List[str] = []
+        for part in p.parts:
+            if part in ("", "."):
+                continue
+            if part == "..":
+                raise ValueError(f"Blocked '..' in path: {name!r}")
+            clean_parts.append(part)
+
+        if not clean_parts:
+            raise ValueError(f"Empty/invalid path: {name!r}")
+
+        return PurePosixPath(*clean_parts)
+
+    @staticmethod
+    def _assert_no_symlink_parents(outdir_r: Path, target: Path) -> None:
+        """
+        Hardening: ensure no path component *within outdir* is a symlink.
+        This mitigates attacks where an adversary pre-creates symlinks inside outdir.
+        """
+        try:
+            rel = target.relative_to(outdir_r)
+        except Exception:
+            raise ValueError(f"Target is not inside outdir: {target}")
+
+        cur = outdir_r
+        for part in rel.parts[:-1]:  # parent components only
+            cur = cur / part
+            # If it exists and is a symlink -> reject
+            try:
+                if cur.exists() and cur.is_symlink():
+                    raise ValueError(f"Parent component is a symlink: {cur}")
+            except OSError:
+                # If we can't stat, treat as suspicious
+                raise ValueError(f"Unable to stat parent component safely: {cur}")
+
+    @staticmethod
+    def _safe_out_path(outdir: Path, rel: str) -> Path:
+        """
+        Safe-join outdir with a possibly-untrusted relative path (tar member name or OVF href).
+        """
+        outdir_r = Path(outdir).resolve()
+        pp = OVF._clean_posix_relpath(rel)
+        target = (outdir_r / Path(*pp.parts)).resolve()
+
+        if target != outdir_r and outdir_r not in target.parents:
+            raise ValueError(f"Blocked path traversal: {rel!r}")
+
+        # Additional hardening: prevent symlink parent hops
+        OVF._assert_no_symlink_parents(outdir_r, target)
+
+        return target
+
+    # -----------------------------
+    # Safe extraction
+    # -----------------------------
+
+    @staticmethod
+    def _safe_extract_one(
+        tar: tarfile.TarFile,
+        member: tarfile.TarInfo,
+        outdir: Path,
+        *,
+        skip_special: bool = True,
+        max_member_bytes: Optional[int] = None,
+    ) -> Tuple[int, str]:
+        """
+        Extract a single tar member safely.
+
+        Returns:
+            (bytes_written, status)
+            status in: extracted | skipped_special | skipped_other
+        """
+        # Identify special members
+        is_special = (
+            member.issym()
+            or member.islnk()
+            or member.ischr()
+            or member.isblk()
+            or member.isfifo()
+            or getattr(member, "isdev", lambda: False)()
+        )
+        if is_special and skip_special:
+            return (0, "skipped_special")
+
+        # We only support dirs + regular files (everything else skipped)
+        if member.isdir():
+            target_dir = OVF._safe_out_path(outdir, member.name)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            return (0, "extracted")
+
+        if not member.isreg():
+            return (0, "skipped_other")
+
+        # Size safety rail
+        size = int(getattr(member, "size", 0) or 0)
+        if max_member_bytes is not None and size > max_member_bytes:
+            raise ValueError(
+                f"Member {member.name!r} size {size} exceeds max_member_bytes={max_member_bytes}"
+            )
+
+        target = OVF._safe_out_path(outdir, member.name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        src = tar.extractfile(member)
+        if src is None:
+            return (0, "skipped_other")
+
+        wrote = 0
+        tmp_path: Optional[Path] = None
+        try:
+            # Use a unique temp file in the same directory (avoids collisions; best-effort atomic replace)
+            with tempfile.NamedTemporaryFile(
+                dir=str(target.parent),
+                prefix=f".{target.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as tf:
+                tmp_path = Path(tf.name)
+                while True:
+                    chunk = src.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    tf.write(chunk)
+                    wrote += len(chunk)
+
+            os.replace(str(tmp_path), str(target))
+
+            # Conservative permissions: we are not honoring tar modes (safer),
+            # but ensure it's not accidentally executable/world-writable.
+            try:
+                if os.name == "posix":
+                    os.chmod(target, 0o644)
+            except Exception:
+                pass
+
+        finally:
+            try:
+                if tmp_path is not None and tmp_path.exists():
+                    tmp_path.unlink()
+            except Exception:
+                pass
+
+        return (wrote, "extracted")
