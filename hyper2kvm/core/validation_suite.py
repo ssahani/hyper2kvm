@@ -9,7 +9,7 @@ import pickle
 import time
 import traceback
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, Tuple
 
 
 # ---------------------------
@@ -72,17 +72,18 @@ class CheckSpec:
 
     Timeouts:
       - If timeout_s is set and the check is run in a subprocess, timeout is HARD:
-        the child process is terminated.
+        the child process is terminated by the parent.
       - If timeout_s is set but the check runs in-process, timeout is SOFT:
         we mark it failed if it exceeded the budget.
 
     Subprocess mode requirements:
       - spec.func must be pickleable (top-level functions are safest).
-      - context must be pickleable *after sanitization* (see suite context_sanitizer).
+      - context must be pickleable after sanitization/narrowing.
 
     Dependencies:
-      - depends_on lists check names that must have PASSED for this check to run.
-        If any dependency did not pass, this check is skipped with reason.
+      - depends_on lists check names that must have PASSED (not skipped) for this check to run.
+        If a dependency failed => skip_reason=dependency_failed:<name>
+        If a dependency was skipped => skip_reason=dependency_skipped:<name>
 
     Retries:
       - retries > 0 repeats the check if it fails. Attempts count is recorded.
@@ -90,7 +91,8 @@ class CheckSpec:
 
     Parallelism:
       - If tagged "parallel_safe" and suite parallelism is enabled, this check may run
-        concurrently in its own process (never threads).
+        concurrently in its own process (never threads). Hard timeouts are enforced by the parent
+        killing that process when timeout expires (no nested multiprocessing).
     """
 
     name: str
@@ -114,7 +116,15 @@ class CheckSpec:
     retry_critical: bool = False
 
     # safety controls
-    max_result_repr_len: int = 20000           # cap to avoid gigantic payloads
+    # structured shrinking knobs (keeps shape)
+    max_depth: int = 5
+    max_list_items: int = 50
+    max_dict_items: int = 50
+    max_string_len: int = 4000
+    # final safeguard cap (repr)
+    max_result_repr_len: int = 20000
+
+    # redaction
     redact_keys: List[str] = field(default_factory=list)  # extra per-check redact keys
 
 
@@ -145,7 +155,7 @@ class CheckResult:
 
 
 # ---------------------------
-# Small helpers: redaction + capping
+# Small helpers: redaction + structured shrinking + caps
 # ---------------------------
 
 def _is_mapping(x: Any) -> bool:
@@ -156,31 +166,115 @@ def _is_sequence(x: Any) -> bool:
     return isinstance(x, (list, tuple))
 
 
-def _redact_in_obj(obj: Any, redact_keys: "set[str]") -> Any:
+def _redact_in_obj(obj: Any, redact_tokens: "set[str]") -> Any:
     """
-    Best-effort recursive redaction. Non-destructive (returns new structures where possible).
+    Best-effort recursive redaction.
+    Redacts if any token appears as a substring in the key (case-insensitive).
     """
     try:
         if _is_mapping(obj):
-            out: Dict[str, Any] = {}
+            out: Dict[Any, Any] = {}
             for k, v in obj.items():
-                ks = str(k)
-                if ks.lower() in redact_keys:
+                key_s = str(k).lower()
+                if any(tok in key_s for tok in redact_tokens):
                     out[k] = "***REDACTED***"
                 else:
-                    out[k] = _redact_in_obj(v, redact_keys)
+                    out[k] = _redact_in_obj(v, redact_tokens)
             return out
         if _is_sequence(obj):
-            return obj.__class__(_redact_in_obj(v, redact_keys) for v in obj)  # type: ignore[misc]
+            return obj.__class__(_redact_in_obj(v, redact_tokens) for v in obj)  # type: ignore[misc]
         return obj
     except Exception:
-        # If redaction fails for weird objects, fall back to repr-safe
         return obj
 
 
-def _cap_result(obj: Any, max_repr_len: int) -> Tuple[Any, bool]:
+def _shrink_obj(
+    obj: Any,
+    *,
+    depth: int,
+    max_depth: int,
+    max_list_items: int,
+    max_dict_items: int,
+    max_string_len: int,
+) -> Tuple[Any, bool]:
     """
-    Cap large results by using repr() truncation. Returns (possibly_modified_obj, truncated_flag).
+    Structured shrink: preserves shape where possible.
+    Returns (shrunk_obj, truncated_flag).
+    """
+    truncated = False
+
+    if depth >= max_depth:
+        # stop descending; keep a hint but don't explode
+        try:
+            return {"_truncated": True, "_repr": repr(obj)[:200]}, True
+        except Exception:
+            return {"_truncated": True, "_repr": "<unreprable>"}, True
+
+    try:
+        if isinstance(obj, str):
+            if len(obj) > max_string_len:
+                return obj[: max_string_len - 3] + "...", True
+            return obj, False
+
+        if _is_mapping(obj):
+            out: Dict[Any, Any] = {}
+            items = list(obj.items())
+            if len(items) > max_dict_items:
+                truncated = True
+                items = items[:max_dict_items]
+            for k, v in items:
+                vv, tt = _shrink_obj(
+                    v,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    max_list_items=max_list_items,
+                    max_dict_items=max_dict_items,
+                    max_string_len=max_string_len,
+                )
+                if tt:
+                    truncated = True
+                out[k] = vv
+            if truncated:
+                out["_truncated_dict_items"] = True
+            return out, truncated
+
+        if _is_sequence(obj):
+            seq = list(obj)
+            if len(seq) > max_list_items:
+                truncated = True
+                seq = seq[:max_list_items]
+            out_list: List[Any] = []
+            for v in seq:
+                vv, tt = _shrink_obj(
+                    v,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    max_list_items=max_list_items,
+                    max_dict_items=max_dict_items,
+                    max_string_len=max_string_len,
+                )
+                if tt:
+                    truncated = True
+                out_list.append(vv)
+            if truncated:
+                out_list.append({"_truncated_list_items": True})
+            # preserve tuple/list type roughly
+            return (obj.__class__(out_list) if isinstance(obj, tuple) else out_list), truncated
+
+        # scalars / unknown objects
+        return obj, False
+
+    except Exception:
+        # last resort
+        try:
+            return {"_truncated": True, "_repr": repr(obj)[:200]}, True
+        except Exception:
+            return {"_truncated": True, "_repr": "<unreprable>"}, True
+
+
+def _cap_repr(obj: Any, max_repr_len: int) -> Tuple[Any, bool]:
+    """
+    Final safeguard: cap repr if needed.
     """
     if max_repr_len <= 0:
         return obj, False
@@ -188,7 +282,6 @@ def _cap_result(obj: Any, max_repr_len: int) -> Tuple[Any, bool]:
         s = repr(obj)
         if len(s) <= max_repr_len:
             return obj, False
-        # Keep a preview string only (avoid huge payload)
         preview = s[: max_repr_len - 3] + "..."
         return {"_truncated_repr": preview}, True
     except Exception:
@@ -205,13 +298,13 @@ def _sleep_with_backoff(base_delay: float, backoff: float, attempt_idx: int) -> 
 
 
 # ---------------------------
-# Multiprocessing child plumbing
+# Multiprocessing child plumbing (top-level for spawn)
 # ---------------------------
 
 def _child_run_check(func: CheckFunc, context: Dict[str, Any], conn: Any) -> None:
     """
     Child process entry: run func(context), send ("ok", result) or ("err", (err, tb)).
-    Uses a one-shot Pipe (simpler than Queue, fewer flush-at-exit edge cases).
+    One-shot Pipe.
     """
     try:
         res = func(context)
@@ -253,17 +346,18 @@ class ValidationSuite:
       - typed CheckSpec/CheckResult
       - per-check duration timing
       - skip support via context flags + per-check skip predicate
-      - dependency-aware skipping
+      - dependency-aware skipping (distinguishes skipped vs failed deps)
       - retries with backoff
-      - per-check and global redaction + result size caps
+      - per-check and global redaction + structured shrinking + result caps
       - subprocess execution for hard timeouts
       - process-based parallel execution for checks tagged "parallel_safe"
-      - JSON-friendly output + stats (by tag + slowest)
+        (spawn-safe, no nested multiprocessing)
+      - JSON-friendly output + stats (by tag + slowest, excluding skipped)
       - structured exit codes helper (ExitCodes.from_payload)
 
     Payload semantics:
       - ok == True only if *no checks failed* (critical or non-critical)
-      - failed_critical reports whether any critical checks failed
+      - failed_critical reports whether any critical checks actually failed
       - stop_on_critical only affects how far we run, not what ok means
     """
 
@@ -300,6 +394,10 @@ class ValidationSuite:
         retry_delay_s: float = 0.0,
         retry_backoff: float = 1.0,
         retry_critical: bool = False,
+        max_depth: int = 5,
+        max_list_items: int = 50,
+        max_dict_items: int = 50,
+        max_string_len: int = 4000,
         max_result_repr_len: int = 20000,
         redact_keys: Optional[List[str]] = None,
     ) -> None:
@@ -318,6 +416,10 @@ class ValidationSuite:
                 retry_delay_s=float(retry_delay_s or 0.0),
                 retry_backoff=float(retry_backoff or 1.0),
                 retry_critical=bool(retry_critical),
+                max_depth=int(max_depth or 5),
+                max_list_items=int(max_list_items or 50),
+                max_dict_items=int(max_dict_items or 50),
+                max_string_len=int(max_string_len or 4000),
                 max_result_repr_len=int(max_result_repr_len or 20000),
                 redact_keys=redact_keys or [],
             )
@@ -337,7 +439,6 @@ class ValidationSuite:
         if spec.name in skip_checks:
             return True, "user:skip_checks"
         if spec.tags and (set(spec.tags) & skip_tags):
-            # return which tag matched (first)
             hit = next(iter(set(spec.tags) & skip_tags))
             return True, f"user:skip_tags:{hit}"
         if spec.skip_if is not None:
@@ -355,21 +456,17 @@ class ValidationSuite:
             dep_r = results_json.get(dep)
             if not dep_r:
                 return False, f"dependency_missing:{dep}"
+            if bool(dep_r.get("skipped", False)):
+                return False, f"dependency_skipped:{dep}"
             if not bool(dep_r.get("passed", False)):
                 return False, f"dependency_failed:{dep}"
         return True, None
 
     # ---------------------------
-    # Context sanitization + redaction configuration
+    # Context narrowing/sanitization + redaction keys
     # ---------------------------
 
     def _sanitize_context_for_child(self, context: Dict[str, Any], *, allow_keys: Optional[Sequence[str]]) -> Dict[str, Any]:
-        """
-        Reduce/clean context for child processes.
-        - If allow_keys is provided, only those keys are included.
-        - Else, if context_sanitizer is set, it is applied.
-        - Else, context is passed as-is.
-        """
         ctx = context
         if allow_keys:
             out: Dict[str, Any] = {}
@@ -382,25 +479,59 @@ class ValidationSuite:
             try:
                 ctx = self.context_sanitizer(ctx)
             except Exception as e:
-                # Sanitizer should not explode the run; fall back to current ctx
                 self.logger.debug("context_sanitizer errored: %s", e)
 
         return ctx
 
-    def _effective_redact_keys(self, spec: CheckSpec, context: Dict[str, Any]) -> "set[str]":
+    def _effective_redact_tokens(self, spec: CheckSpec, context: Dict[str, Any]) -> "set[str]":
         base = set(str(k).lower() for k in (context.get("redact_keys", []) or []))
         extra = set(str(k).lower() for k in (spec.redact_keys or []))
-        # Some sane defaults
-        base |= {"password", "passwd", "token", "secret", "apikey", "api_key", "authorization"}
+        # sensible defaults
+        base |= {
+            "password",
+            "passwd",
+            "token",
+            "secret",
+            "apikey",
+            "api_key",
+            "authorization",
+            "bearer",
+            "cookie",
+            "session",
+        }
         return base | extra
 
     # ---------------------------
-    # Core execution: in-process + subprocess with retries
+    # Result post-processing
+    # ---------------------------
+
+    def _postprocess_result(self, spec: CheckSpec, context: Dict[str, Any], r: CheckResult) -> CheckResult:
+        if r.skipped or (not r.passed):
+            return r
+
+        tokens = self._effective_redact_tokens(spec, context)
+        redacted = _redact_in_obj(r.result, tokens)
+
+        shrunk, trunc1 = _shrink_obj(
+            redacted,
+            depth=0,
+            max_depth=spec.max_depth,
+            max_list_items=spec.max_list_items,
+            max_dict_items=spec.max_dict_items,
+            max_string_len=spec.max_string_len,
+        )
+        capped, trunc2 = _cap_repr(shrunk, spec.max_result_repr_len)
+
+        r.result = capped
+        r.result_truncated = bool(trunc1 or trunc2)
+        return r
+
+    # ---------------------------
+    # Execution: in-process (soft timeout) + subprocess (hard timeout)
     # ---------------------------
 
     def _run_check_inprocess_once(self, spec: CheckSpec, context: Dict[str, Any], *, show_tracebacks: bool) -> CheckResult:
         t0 = time.monotonic()
-        mode = "inprocess"
         try:
             out = spec.func(context)
             dur = time.monotonic() - t0
@@ -412,14 +543,10 @@ class ValidationSuite:
                     critical=spec.critical,
                     duration_s=dur,
                     error=f"Check exceeded soft timeout ({dur:.2f}s > {spec.timeout_s:.2f}s)",
-                    traceback=None,
-                    skipped=False,
-                    skip_reason=None,
+                    timed_out=True,
+                    mode="inprocess",
                     tags=list(spec.tags),
                     description=spec.description,
-                    timed_out=True,
-                    terminated=False,
-                    mode=mode,
                 )
 
             return CheckResult(
@@ -428,11 +555,10 @@ class ValidationSuite:
                 critical=spec.critical,
                 duration_s=dur,
                 result=out,
+                mode="inprocess",
                 tags=list(spec.tags),
                 description=spec.description,
-                mode=mode,
             )
-
         except Exception as e:
             dur = time.monotonic() - t0
             tb = traceback.format_exc()
@@ -443,9 +569,9 @@ class ValidationSuite:
                 duration_s=dur,
                 error=str(e),
                 traceback=(tb if show_tracebacks else None),
+                mode="inprocess",
                 tags=list(spec.tags),
                 description=spec.description,
-                mode=mode,
             )
 
     def _run_check_subprocess_once(
@@ -456,21 +582,21 @@ class ValidationSuite:
         show_tracebacks: bool,
         strict_process_checks: bool,
         allow_context_keys: Optional[Sequence[str]],
+        mode_override: str = "subprocess",
     ) -> CheckResult:
         t0 = time.monotonic()
-        mode = "subprocess"
 
         child_ctx = self._sanitize_context_for_child(context, allow_keys=allow_context_keys)
 
         ok_f, why_f = _can_pickle(spec.func)
         ok_c, why_c = _can_pickle(child_ctx)
         if not ok_f or not ok_c:
-            why = []
+            bits = []
             if not ok_f:
-                why.append(f"func not pickleable: {why_f}")
+                bits.append(f"func not pickleable: {why_f}")
             if not ok_c:
-                why.append(f"context not pickleable: {why_c}")
-            msg = "; ".join(why) or "cannot pickle for subprocess"
+                bits.append(f"context not pickleable: {why_c}")
+            msg = "; ".join(bits) or "cannot pickle for subprocess"
 
             if strict_process_checks:
                 dur = time.monotonic() - t0
@@ -480,9 +606,9 @@ class ValidationSuite:
                     critical=spec.critical,
                     duration_s=dur,
                     error=f"Cannot run in subprocess (strict mode): {msg}",
+                    mode=mode_override,
                     tags=list(spec.tags),
                     description=spec.description,
-                    mode=mode,
                 )
             raise RuntimeError(msg)
 
@@ -497,10 +623,6 @@ class ValidationSuite:
 
         timed_out = False
         terminated = False
-        err_s: Optional[str] = None
-        tb_s: Optional[str] = None
-        result: Any = None
-        passed = False
 
         timeout = spec.timeout_s
         if timeout is None:
@@ -524,35 +646,52 @@ class ValidationSuite:
             pass
 
         if timed_out:
-            passed = False
-            err_s = f"Check timed out after {timeout:.2f}s"
-        else:
             try:
-                if parent_conn.poll(0.0):
-                    kind, payload = parent_conn.recv()
-                else:
-                    kind, payload = None, None
-            except EOFError:
-                kind, payload = None, None
-            except Exception as e:
-                kind, payload = None, None
-                err_s = f"Failed to read subprocess result: {e}"
+                parent_conn.close()
+            except Exception:
+                pass
+            return CheckResult(
+                name=spec.name,
+                passed=False,
+                critical=spec.critical,
+                duration_s=dur,
+                error=f"Check timed out after {timeout:.2f}s",
+                timed_out=True,
+                terminated=terminated,
+                mode=mode_override,
+                tags=list(spec.tags),
+                description=spec.description,
+            )
 
-            if kind == "ok":
-                passed = True
-                result = payload
-            elif kind == "err":
-                passed = False
-                try:
-                    err_s, tb_s = payload
-                except Exception:
-                    err_s = "Subprocess reported error, but payload was malformed"
-                    tb_s = None
+        # not timed out => read result
+        err_s: Optional[str] = None
+        tb_s: Optional[str] = None
+        result: Any = None
+        passed = False
+
+        try:
+            if parent_conn.poll(0.0):
+                kind, payload = parent_conn.recv()
             else:
-                passed = False
-                hint = _exitcode_hint(p.exitcode)
-                if err_s is None:
-                    err_s = f"Check subprocess exited without result ({hint})"
+                kind, payload = None, None
+        except Exception as e:
+            kind, payload = None, None
+            err_s = f"Failed to read subprocess result: {e}"
+
+        if kind == "ok":
+            passed = True
+            result = payload
+        elif kind == "err":
+            passed = False
+            try:
+                err_s, tb_s = payload
+            except Exception:
+                err_s = "Subprocess reported error, but payload malformed"
+                tb_s = None
+        else:
+            passed = False
+            if err_s is None:
+                err_s = f"Check subprocess exited without result ({_exitcode_hint(p.exitcode)})"
 
         try:
             parent_conn.close()
@@ -567,60 +706,275 @@ class ValidationSuite:
             result=result,
             error=err_s,
             traceback=(tb_s if show_tracebacks else None),
+            mode=mode_override,
             tags=list(spec.tags),
             description=spec.description,
-            timed_out=timed_out,
-            terminated=terminated,
-            mode=mode,
         )
 
-    def _apply_redaction_and_caps(self, spec: CheckSpec, context: Dict[str, Any], r: CheckResult) -> CheckResult:
-        # Only touch "result" (errors/tracebacks are left as-is)
-        if not r.passed:
-            return r
-
-        redact_keys = self._effective_redact_keys(spec, context)
-        redacted = _redact_in_obj(r.result, redact_keys)
-        capped, truncated = _cap_result(redacted, spec.max_result_repr_len)
-
-        r.result = capped
-        r.result_truncated = bool(truncated)
-        return r
-
-    def _run_with_retries(
-        self,
-        spec: CheckSpec,
-        context: Dict[str, Any],
-        *,
-        executor: Callable[[], CheckResult],
-    ) -> CheckResult:
+    def _run_with_retries(self, spec: CheckSpec, exec_once: Callable[[], CheckResult]) -> CheckResult:
         attempts = 0
-        last: Optional[CheckResult] = None
         max_attempts = 1 + max(0, int(spec.retries or 0))
-
-        # Default: do not retry critical unless explicitly allowed
         allow_retry = (not spec.critical) or bool(spec.retry_critical)
 
+        last: Optional[CheckResult] = None
         for i in range(max_attempts):
             attempts += 1
-            r = executor()
+            r = exec_once()
             r.attempts = attempts
             last = r
 
             if r.passed:
                 return r
-
             if not allow_retry:
                 return r
-
-            # last attempt: stop
             if i >= max_attempts - 1:
                 return r
 
-            # delay/backoff before retry
             _sleep_with_backoff(spec.retry_delay_s, spec.retry_backoff, i)
 
         return last or CheckResult(name=spec.name, passed=False, critical=spec.critical, duration_s=0.0, error="unknown")
+
+    # ---------------------------
+    # Parallel scheduler (process-based, spawn-safe, no nested multiprocessing)
+    # ---------------------------
+
+    @staticmethod
+    def _is_parallel_candidate(spec: CheckSpec) -> bool:
+        return "parallel_safe" in set(spec.tags or [])
+
+    def _run_parallel_checks(
+        self,
+        specs: List[CheckSpec],
+        context: Dict[str, Any],
+        *,
+        show_tracebacks: bool,
+        strict_process_checks: bool,
+        allow_context_keys: Optional[Sequence[str]],
+        max_workers: int,
+        use_hard_timeout: bool,
+    ) -> Dict[str, CheckResult]:
+        """
+        Run parallel-safe checks with bounded concurrency using processes directly.
+        Hard timeouts enforced by killing the worker process.
+        Retries handled by re-queuing.
+        """
+        if not specs:
+            return {}
+
+        # Pre-sanitize and pickle-check the worker context once.
+        worker_ctx = self._sanitize_context_for_child(context, allow_keys=allow_context_keys)
+        ok_ctx, why_ctx = _can_pickle(worker_ctx)
+        if not ok_ctx:
+            # Can't parallelize safely; caller should fallback sequentially.
+            raise RuntimeError(f"parallel worker context not pickleable: {why_ctx}")
+
+        try:
+            ctx = mp.get_context(self.mp_start_method)
+        except Exception:
+            ctx = mp.get_context("spawn")
+
+        # Task state
+        pending: List[Tuple[float, CheckSpec, int]] = []  # (ready_time, spec, attempt_index starting at 1)
+        now = time.monotonic()
+        for s in specs:
+            pending.append((now, s, 1))
+
+        running: Dict[str, Dict[str, Any]] = {}
+        finished: Dict[str, CheckResult] = {}
+
+        def start_one(spec: CheckSpec, attempt: int) -> None:
+            # One process per check attempt; parent enforces timeout by termination.
+            # Note: if use_hard_timeout is False, we still run as a process here (parallel),
+            # but no timeout enforcement beyond whatever the parent chooses to do.
+            ok_f, why_f = _can_pickle(spec.func)
+            if not ok_f:
+                if strict_process_checks:
+                    finished[spec.name] = CheckResult(
+                        name=spec.name,
+                        passed=False,
+                        critical=spec.critical,
+                        duration_s=0.0,
+                        error=f"Cannot run parallel process (strict): func not pickleable: {why_f}",
+                        mode="parallel",
+                        tags=list(spec.tags),
+                        description=spec.description,
+                        attempts=attempt,
+                    )
+                    return
+                # non-strict: fail with message (parallel mode can't fall back to in-process safely here)
+                finished[spec.name] = CheckResult(
+                    name=spec.name,
+                    passed=False,
+                    critical=spec.critical,
+                    duration_s=0.0,
+                    error=f"Cannot run parallel process: func not pickleable: {why_f}",
+                    mode="parallel",
+                    tags=list(spec.tags),
+                    description=spec.description,
+                    attempts=attempt,
+                )
+                return
+
+            parent_conn, child_conn = ctx.Pipe(duplex=False)
+            p = ctx.Process(target=_child_run_check, args=(spec.func, worker_ctx, child_conn), daemon=True)
+            p.start()
+
+            running[spec.name] = {
+                "spec": spec,
+                "proc": p,
+                "conn": parent_conn,
+                "child_conn": child_conn,
+                "t0": time.monotonic(),
+                "attempt": attempt,
+            }
+
+        def complete(name: str, r: CheckResult) -> None:
+            finished[name] = r
+
+        def can_retry(spec: CheckSpec, r: CheckResult, attempt: int) -> bool:
+            if r.passed:
+                return False
+            if spec.critical and not spec.retry_critical:
+                return False
+            return attempt < (1 + max(0, int(spec.retries or 0)))
+
+        # Main loop
+        while pending or running:
+            now = time.monotonic()
+
+            # start as many as possible
+            pending.sort(key=lambda x: x[0])
+            while pending and len(running) < max_workers and pending[0][0] <= now:
+                _, spec, attempt = pending.pop(0)
+                if spec.name in finished:
+                    continue
+                start_one(spec, attempt)
+
+            # poll running procs
+            done_names: List[str] = []
+            for name, st in list(running.items()):
+                spec: CheckSpec = st["spec"]
+                p: mp.Process = st["proc"]
+                conn = st["conn"]
+                child_conn = st["child_conn"]
+                t0: float = st["t0"]
+                attempt: int = st["attempt"]
+
+                timeout = spec.timeout_s if use_hard_timeout else None
+                elapsed = time.monotonic() - t0
+
+                # timeout enforcement
+                if timeout is not None and elapsed > timeout and p.is_alive():
+                    try:
+                        p.terminate()
+                    finally:
+                        p.join(2.0)
+                    # close conns
+                    try:
+                        child_conn.close()
+                    except Exception:
+                        pass
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
+                    r = CheckResult(
+                        name=spec.name,
+                        passed=False,
+                        critical=spec.critical,
+                        duration_s=elapsed,
+                        error=f"Check timed out after {timeout:.2f}s",
+                        timed_out=True,
+                        terminated=True,
+                        mode="parallel",
+                        tags=list(spec.tags),
+                        description=spec.description,
+                        attempts=attempt,
+                    )
+
+                    if can_retry(spec, r, attempt):
+                        # schedule retry
+                        delay = spec.retry_delay_s * ((spec.retry_backoff or 1.0) ** max(0, attempt - 1))
+                        pending.append((time.monotonic() + max(0.0, delay), spec, attempt + 1))
+                    else:
+                        complete(name, r)
+
+                    done_names.append(name)
+                    continue
+
+                # finished?
+                if not p.is_alive():
+                    p.join(0.0)
+                    # close child end
+                    try:
+                        child_conn.close()
+                    except Exception:
+                        pass
+
+                    result: Any = None
+                    err_s: Optional[str] = None
+                    tb_s: Optional[str] = None
+                    passed = False
+
+                    try:
+                        if conn.poll(0.0):
+                            kind, payload = conn.recv()
+                        else:
+                            kind, payload = None, None
+                    except Exception as e:
+                        kind, payload = None, None
+                        err_s = f"Failed to read parallel result: {e}"
+
+                    if kind == "ok":
+                        passed = True
+                        result = payload
+                    elif kind == "err":
+                        passed = False
+                        try:
+                            err_s, tb_s = payload
+                        except Exception:
+                            err_s = "Parallel worker reported error, payload malformed"
+                    else:
+                        passed = False
+                        if err_s is None:
+                            err_s = f"Parallel worker exited without result ({_exitcode_hint(p.exitcode)})"
+
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
+                    r = CheckResult(
+                        name=spec.name,
+                        passed=passed,
+                        critical=spec.critical,
+                        duration_s=elapsed,
+                        result=result,
+                        error=err_s,
+                        traceback=(tb_s if show_tracebacks else None),
+                        mode="parallel",
+                        tags=list(spec.tags),
+                        description=spec.description,
+                        attempts=attempt,
+                    )
+
+                    if can_retry(spec, r, attempt):
+                        delay = spec.retry_delay_s * ((spec.retry_backoff or 1.0) ** max(0, attempt - 1))
+                        pending.append((time.monotonic() + max(0.0, delay), spec, attempt + 1))
+                    else:
+                        complete(name, r)
+
+                    done_names.append(name)
+
+            for name in done_names:
+                running.pop(name, None)
+
+            # avoid busy loop
+            if not done_names:
+                time.sleep(0.05)
+
+        return finished
 
     # ---------------------------
     # JSON serialization + stats
@@ -629,7 +983,7 @@ class ValidationSuite:
     @staticmethod
     def _result_to_json(r: CheckResult, *, show_tracebacks: bool) -> Dict[str, Any]:
         d: Dict[str, Any] = {
-            "passed": r.passed,
+            "passed": bool(r.passed) and (not r.skipped),
             "critical": r.critical,
             "duration_s": round(r.duration_s, 3),
             "skipped": r.skipped,
@@ -643,9 +997,9 @@ class ValidationSuite:
         }
         if r.description:
             d["description"] = r.description
-        if r.passed:
+        if not r.skipped and d["passed"]:
             d["result"] = r.result
-        else:
+        elif not r.skipped:
             d["error"] = r.error or "unknown error"
             if show_tracebacks and r.traceback:
                 d["traceback"] = r.traceback
@@ -653,24 +1007,28 @@ class ValidationSuite:
 
     def _compute_tag_stats(self, results_json: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
         out: Dict[str, Dict[str, int]] = {}
-        for name, r in results_json.items():
+        for _, r in results_json.items():
             tags = r.get("tags") or []
             if not tags:
                 tags = ["_untagged"]
             for t in tags:
-                d = out.setdefault(str(t), {"passed": 0, "failed": 0, "skipped": 0, "total": 0})
+                d = out.setdefault(str(t), {"executed": 0, "passed": 0, "failed": 0, "skipped": 0, "total": 0})
                 d["total"] += 1
                 if bool(r.get("skipped", False)):
                     d["skipped"] += 1
-                elif bool(r.get("passed", False)):
-                    d["passed"] += 1
                 else:
-                    d["failed"] += 1
+                    d["executed"] += 1
+                    if bool(r.get("passed", False)):
+                        d["passed"] += 1
+                    else:
+                        d["failed"] += 1
         return out
 
     def _compute_slowest(self, results_json: Dict[str, Dict[str, Any]], top_n: int = 10) -> List[Dict[str, Any]]:
         items: List[Tuple[str, float, str]] = []
         for name, r in results_json.items():
+            if bool(r.get("skipped", False)):
+                continue
             try:
                 dur = float(r.get("duration_s", 0.0) or 0.0)
             except Exception:
@@ -678,41 +1036,8 @@ class ValidationSuite:
             mode = str(r.get("mode", "") or "")
             items.append((name, dur, mode))
         items.sort(key=lambda x: x[1], reverse=True)
-        out = [{"name": n, "duration_s": round(d, 3), "mode": m} for (n, d, m) in items[: max(1, int(top_n or 10))]]
-        return out
-
-    # ---------------------------
-    # Parallel runner (process-based)
-    # ---------------------------
-
-    def _parallel_candidate(self, spec: CheckSpec) -> bool:
-        return "parallel_safe" in set(spec.tags or [])
-
-    def _parallel_worker_entry(
-        self,
-        spec: CheckSpec,
-        context: Dict[str, Any],
-        show_tracebacks: bool,
-        strict_process_checks: bool,
-        allow_context_keys: Optional[Sequence[str]],
-        use_subprocess: bool,
-    ) -> CheckResult:
-        """
-        Executed inside the *parallel worker process* (one process per check).
-        If use_subprocess=True, that worker will spawn a child process for hard timeout.
-        Yes, that’s process-in-process; ugly but correct and keeps hard timeout semantics.
-        """
-        # In a worker, we can run in-process (fast) OR enforce hard timeout by spawning a child.
-        if use_subprocess:
-            # In worker process, we still use subprocess-once to enforce hard timeout.
-            return self._run_check_subprocess_once(
-                spec,
-                context,
-                show_tracebacks=show_tracebacks,
-                strict_process_checks=strict_process_checks,
-                allow_context_keys=allow_context_keys,
-            )
-        return self._run_check_inprocess_once(spec, context, show_tracebacks=show_tracebacks)
+        top_n = max(1, int(top_n or 10))
+        return [{"name": n, "duration_s": round(d, 3), "mode": m} for (n, d, m) in items[:top_n]]
 
     # ---------------------------
     # Public API
@@ -736,15 +1061,7 @@ class ValidationSuite:
             "ok": bool,
             "failed_critical": bool,
             "results": {name: {...}},
-            "stats": {
-              "total": int,
-              "passed": int,
-              "failed": int,
-              "skipped": int,
-              "duration_s": float,
-              "by_tag": {...},
-              "slowest": [...],
-            },
+            "stats": {...},
             "exit_code": int
           }
 
@@ -752,15 +1069,15 @@ class ValidationSuite:
           - strict_process_checks: bool
               If True, subprocess-required checks FAIL (not fallback) when pickle/subprocess fails.
           - process_context_keys: [str,...]
-              If provided, only these keys are passed into child processes (helps pickling).
+              If provided, only these keys are passed into child processes.
           - missing_required_tools: [str,...]
-              If set + non-empty, suite can fail-fast or skip expensive checks (see below).
+              If non-empty:
+                - if fail_fast_on_missing_required_tools True: suite stops early; marks all checks skipped
+                - else: skips checks whose tags intersect expensive_tags
           - fail_fast_on_missing_required_tools: bool (default True)
-              If missing_required_tools and this is True, suite stops early (no noisy checks).
           - expensive_tags: [str,...] default ["expensive","guestfs"]
-              If not failing fast, checks matching these tags are skipped when required tools missing.
-          - redact_keys: [str,...]
-              Global redaction keys for result payloads.
+          - redact_keys: [str,...] global redaction tokens
+          - max_workers: int default min(4, cpu_count)
         """
         started = time.monotonic()
 
@@ -770,7 +1087,7 @@ class ValidationSuite:
                 "ok": False,
                 "failed_critical": False,
                 "results": {},
-                "stats": {"total": 0, "passed": 0, "failed": 0, "skipped": 0, "duration_s": 0.0},
+                "stats": {"total": 0, "passed": 0, "failed": 0, "skipped": 0, "duration_s": 0.0, "by_tag": {}, "slowest": []},
                 "exit_code": ExitCodes.INVALID,
                 "error": "No checks registered",
             }
@@ -784,7 +1101,6 @@ class ValidationSuite:
         if allow_context_keys is not None and not isinstance(allow_context_keys, (list, tuple)):
             allow_context_keys = None
 
-        # Missing required tools policy
         missing_required = list(context.get("missing_required_tools", []) or [])
         fail_fast_missing = bool(context.get("fail_fast_on_missing_required_tools", True))
         expensive_tags = set(context.get("expensive_tags", ["expensive", "guestfs"]) or ["expensive", "guestfs"])
@@ -805,74 +1121,11 @@ class ValidationSuite:
         failed_count = 0
         skipped_count = 0
 
-        # If required tools missing: either fail fast, or skip expensive checks automatically
-        if missing_required and fail_fast_missing:
-            # Mark a synthetic failure result to explain
-            msg = f"Missing required tools: {', '.join(missing_required)}"
-            self.logger.error(msg)
-
-            # Skip everything (fast + deterministic), but report per-check skipped with reason
-            for spec in self.checks:
-                r = CheckResult(
-                    name=spec.name,
-                    passed=False if spec.critical else True,  # do not pretend pass; mark skipped
-                    critical=spec.critical,
-                    duration_s=0.0,
-                    skipped=True,
-                    skip_reason="missing_required_tools:fail_fast",
-                    tags=list(spec.tags),
-                    description=spec.description,
-                    mode="skipped",
-                    attempts=0,
-                )
-                results_json[spec.name] = self._result_to_json(r, show_tracebacks=False)
-                skipped_count += 1
-
-            total_dur = time.monotonic() - started
-            payload = {
-                "ok": False,
-                "failed_critical": any(spec.critical for spec in self.checks),
-                "results": results_json,
-                "stats": {
-                    "total": total,
-                    "passed": 0,
-                    "failed": 0,
-                    "skipped": skipped_count,
-                    "duration_s": round(total_dur, 3),
-                    "by_tag": self._compute_tag_stats(results_json),
-                    "slowest": self._compute_slowest(results_json, top_n=top_slowest),
-                },
-                "exit_code": ExitCodes.CRITICAL if any(spec.critical for spec in self.checks) else ExitCodes.FAIL,
-                "error": msg,
-            }
-            if log_summary:
-                self._log_summary(payload)
-            return payload
-
-        # Otherwise: auto-skip expensive checks if missing_required_tools is set
-        # (and let cheap checks run, so user still gets useful info)
-        # Also: parallel scheduling must preserve stop_on_critical semantics, so we do:
-        #   - sequential for criticals (and dependencies)
-        #   - parallel only for eligible non-critical independent checks
-        #
-        # Implementation plan:
-        #   Phase A: sequential pass that respects dependencies and critical stop.
-        #            We run checks that are NOT parallel candidates, OR are critical, OR have deps.
-        #   Phase B: parallel batch for remaining eligible checks (no deps, non-critical, parallel_safe).
-        #
-        # This keeps behavior predictable and avoids "critical failed but other checks kept running".
-
-        # Build lookup for specs by name and preserve original order
-        specs_by_name: Dict[str, CheckSpec] = {s.name: s for s in self.checks}
-
-        def already_done(name: str) -> bool:
-            return name in results_json
-
         def mark_skipped(spec: CheckSpec, reason: str) -> None:
             nonlocal skipped_count
             r = CheckResult(
                 name=spec.name,
-                passed=True,  # skipped counts as neither pass nor fail in human terms
+                passed=False,
                 critical=spec.critical,
                 duration_s=0.0,
                 skipped=True,
@@ -885,42 +1138,61 @@ class ValidationSuite:
             results_json[spec.name] = self._result_to_json(r, show_tracebacks=False)
             skipped_count += 1
 
-        # ---------------------------
-        # Phase A: sequential checks
-        # ---------------------------
+        def already_done(name: str) -> bool:
+            return name in results_json
 
+        # Fail-fast on missing required tools (truthful semantics: skipped, not "critical failed")
+        if missing_required and fail_fast_missing:
+            msg = f"Missing required tools: {', '.join(missing_required)}"
+            self.logger.error(msg)
+            for spec in self.checks:
+                mark_skipped(spec, "missing_required_tools:fail_fast")
+            total_dur = time.monotonic() - started
+            payload = {
+                "ok": False,
+                "failed_critical": False,
+                "results": results_json,
+                "stats": {
+                    "total": total,
+                    "passed": 0,
+                    "failed": 0,
+                    "skipped": skipped_count,
+                    "duration_s": round(total_dur, 3),
+                    "by_tag": self._compute_tag_stats(results_json),
+                    "slowest": self._compute_slowest(results_json, top_n=top_slowest),
+                },
+                "exit_code": ExitCodes.FAIL,
+                "error": msg,
+            }
+            if log_summary:
+                self._log_summary(payload)
+            return payload
+
+        # Phase A: sequential checks (and any non-parallel-safe or dependency/critical ones)
         for spec in self.checks:
             if already_done(spec.name):
                 continue
 
-            # Auto-skip expensive checks if required tools missing
+            # auto-skip expensive if missing required tools but not failing fast
             if missing_required and (set(spec.tags or []) & expensive_tags):
                 mark_skipped(spec, "missing_required_tools:skip_expensive")
                 continue
 
-            # Skip requested?
             sk, sk_reason = self._should_skip(spec, context)
             if sk:
                 mark_skipped(spec, sk_reason or "skipped")
                 continue
 
-            # Dependencies satisfied?
             dep_ok, dep_reason = self._dependency_ok(spec, results_json)
             if not dep_ok:
-                mark_skipped(spec, dep_reason or "dependency_failed")
+                mark_skipped(spec, dep_reason or "dependency_blocked")
                 continue
 
-            # Decide if this should run in Phase A or Phase B
-            is_parallel_candidate = parallel and self._parallel_candidate(spec)
-            has_deps = bool(spec.depends_on)
-            if is_parallel_candidate and (not spec.critical) and (not has_deps):
-                # defer to Phase B
-                continue
+            is_parallel = parallel and self._is_parallel_candidate(spec) and (not spec.critical) and (not spec.depends_on)
+            if is_parallel:
+                continue  # defer to Phase B
 
-            # Decide execution mode for Phase A
-            # - If spec.run_in_process: subprocess
-            # - Else if use_procs and spec.timeout_s: subprocess (hard timeout)
-            # - Else: in-process
+            # choose mode
             run_sub = bool(spec.run_in_process) or (use_procs and spec.timeout_s is not None)
 
             def exec_once() -> CheckResult:
@@ -931,11 +1203,12 @@ class ValidationSuite:
                         show_tracebacks=show_tracebacks,
                         strict_process_checks=strict_process_checks,
                         allow_context_keys=allow_context_keys,
+                        mode_override="subprocess",
                     )
                 return self._run_check_inprocess_once(spec, context, show_tracebacks=show_tracebacks)
 
             try:
-                r = self._run_with_retries(spec, context, executor=exec_once)
+                r = self._run_with_retries(spec, exec_once)
             except Exception as e:
                 if strict_process_checks:
                     r = CheckResult(
@@ -951,11 +1224,10 @@ class ValidationSuite:
                         attempts=1,
                     )
                 else:
-                    # Best effort: if subprocess exploded, fallback to in-process once (no retry loop here)
-                    self.logger.debug("Execution error for %s (%s); best-effort fallback to in-process", spec.name, e)
+                    self.logger.debug("Execution error for %s (%s); fallback to in-process", spec.name, e)
                     r = self._run_check_inprocess_once(spec, context, show_tracebacks=show_tracebacks)
 
-            r = self._apply_redaction_and_caps(spec, context, r)
+            r = self._postprocess_result(spec, context, r)
             results_json[spec.name] = self._result_to_json(r, show_tracebacks=show_tracebacks)
 
             if r.skipped:
@@ -978,8 +1250,11 @@ class ValidationSuite:
                     if show_tracebacks and r.traceback:
                         self.logger.warning((r.traceback or "").rstrip())
 
-        # If we stopped early on critical, skip Phase B entirely
+        # If critical fail stops early, mark remaining as skipped (truthfully)
         if failed_critical and stop_on_critical:
+            for spec in self.checks:
+                if not already_done(spec.name):
+                    mark_skipped(spec, "stopped_on_critical")
             total_dur = time.monotonic() - started
             ok = (failed_count == 0)
             payload = {
@@ -1001,12 +1276,9 @@ class ValidationSuite:
                 self._log_summary(payload)
             return payload
 
-        # ---------------------------
-        # Phase B: parallel checks (process-based, no threads)
-        # ---------------------------
-
+        # Phase B: parallel-safe checks (spawn-safe scheduler)
         if parallel:
-            # Gather remaining candidates
+            # gather candidates still not done
             candidates: List[CheckSpec] = []
             for spec in self.checks:
                 if already_done(spec.name):
@@ -1023,15 +1295,16 @@ class ValidationSuite:
 
                 dep_ok, dep_reason = self._dependency_ok(spec, results_json)
                 if not dep_ok:
-                    mark_skipped(spec, dep_reason or "dependency_failed")
+                    mark_skipped(spec, dep_reason or "dependency_blocked")
                     continue
 
-                if spec.critical:
-                    # keep critical sequential for predictable stop behavior
-                    # run now (Phase A-style)
+                if self._is_parallel_candidate(spec) and (not spec.critical) and (not spec.depends_on):
+                    candidates.append(spec)
+                else:
+                    # run sequentially (non-parallel-safe) now
                     run_sub = bool(spec.run_in_process) or (use_procs and spec.timeout_s is not None)
 
-                    def exec_once_crit() -> CheckResult:
+                    def exec_once2() -> CheckResult:
                         if run_sub:
                             return self._run_check_subprocess_once(
                                 spec,
@@ -1039,133 +1312,46 @@ class ValidationSuite:
                                 show_tracebacks=show_tracebacks,
                                 strict_process_checks=strict_process_checks,
                                 allow_context_keys=allow_context_keys,
+                                mode_override="subprocess",
                             )
                         return self._run_check_inprocess_once(spec, context, show_tracebacks=show_tracebacks)
 
-                    try:
-                        r = self._run_with_retries(spec, context, executor=exec_once_crit)
-                    except Exception as e:
-                        if strict_process_checks:
-                            r = CheckResult(
-                                name=spec.name,
-                                passed=False,
-                                critical=spec.critical,
-                                duration_s=0.0,
-                                error=f"Execution failed (strict mode): {e}",
-                                traceback=(traceback.format_exc() if show_tracebacks else None),
-                                tags=list(spec.tags),
-                                description=spec.description,
-                                mode="subprocess" if run_sub else "inprocess",
-                                attempts=1,
-                            )
-                        else:
-                            self.logger.debug(
-                                "Execution error for %s (%s); best-effort fallback to in-process",
-                                spec.name,
-                                e,
-                            )
-                            r = self._run_check_inprocess_once(spec, context, show_tracebacks=show_tracebacks)
-
-                    r = self._apply_redaction_and_caps(spec, context, r)
+                    r = self._run_with_retries(spec, exec_once2)
+                    r = self._postprocess_result(spec, context, r)
                     results_json[spec.name] = self._result_to_json(r, show_tracebacks=show_tracebacks)
 
                     if r.passed:
                         passed_count += 1
                     else:
                         failed_count += 1
-                        failed_critical = True
-                        self.logger.error(
-                            "Validation failed: %s (%.2fs) [%s] - %s",
-                            spec.name,
-                            r.duration_s,
-                            r.mode,
-                            r.error or "error",
-                        )
-                        if show_tracebacks and r.traceback:
-                            self.logger.error((r.traceback or "").rstrip())
-                        if stop_on_critical:
-                            # skip remaining not-yet-run checks
-                            break
-
-                    continue
-
-                # Only parallel-safe checks go here
-                if not self._parallel_candidate(spec):
-                    # Non-parallel-safe: run sequentially now
-                    run_sub = bool(spec.run_in_process) or (use_procs and spec.timeout_s is not None)
-
-                    def exec_once_seq() -> CheckResult:
-                        if run_sub:
-                            return self._run_check_subprocess_once(
-                                spec,
-                                context,
-                                show_tracebacks=show_tracebacks,
-                                strict_process_checks=strict_process_checks,
-                                allow_context_keys=allow_context_keys,
-                            )
-                        return self._run_check_inprocess_once(spec, context, show_tracebacks=show_tracebacks)
-
-                    try:
-                        r = self._run_with_retries(spec, context, executor=exec_once_seq)
-                    except Exception as e:
-                        if strict_process_checks:
-                            r = CheckResult(
-                                name=spec.name,
-                                passed=False,
-                                critical=spec.critical,
-                                duration_s=0.0,
-                                error=f"Execution failed (strict mode): {e}",
-                                traceback=(traceback.format_exc() if show_tracebacks else None),
-                                tags=list(spec.tags),
-                                description=spec.description,
-                                mode="subprocess" if run_sub else "inprocess",
-                                attempts=1,
-                            )
-                        else:
-                            self.logger.debug(
-                                "Execution error for %s (%s); best-effort fallback to in-process",
-                                spec.name,
-                                e,
-                            )
-                            r = self._run_check_inprocess_once(spec, context, show_tracebacks=show_tracebacks)
-
-                    r = self._apply_redaction_and_caps(spec, context, r)
-                    results_json[spec.name] = self._result_to_json(r, show_tracebacks=show_tracebacks)
-
-                    if r.passed:
-                        passed_count += 1
-                    else:
-                        failed_count += 1
-
-                    continue
-
-                candidates.append(spec)
-
-            # If we already hit critical stop during candidate gathering, mark rest skipped
-            if failed_critical and stop_on_critical:
-                for spec in self.checks:
-                    if not already_done(spec.name):
-                        mark_skipped(spec, "stopped_on_critical")
-                candidates = []
 
             if candidates:
-                # Determine worker count
                 cpu = os.cpu_count() or 2
                 mw = int(max_workers or 0) or int(context.get("max_workers", 0) or 0) or min(4, cpu)
                 mw = max(1, min(mw, cpu))
 
-                # Important: context must be pickleable for worker processes too.
-                # Use same sanitization for worker context.
-                worker_ctx = self._sanitize_context_for_child(context, allow_keys=allow_context_keys)
-                ok_ctx, why_ctx = _can_pickle(worker_ctx)
-                if not ok_ctx:
-                    # If we can't pickle even sanitized context, parallelism must be disabled (deterministic)
-                    self.logger.warning("Parallel disabled: worker context not pickleable: %s", why_ctx)
-                    # fall back to sequential for candidates
+                # In parallel mode, we already run each check in its own process; "use_hard_timeout"
+                # just decides whether we enforce spec.timeout_s as a hard kill in that scheduler.
+                use_hard_timeout = bool(use_procs)  # hard timeout enforcement enabled when processes are allowed
+
+                try:
+                    par_results = self._run_parallel_checks(
+                        candidates,
+                        context,
+                        show_tracebacks=show_tracebacks,
+                        strict_process_checks=strict_process_checks,
+                        allow_context_keys=allow_context_keys,
+                        max_workers=mw,
+                        use_hard_timeout=use_hard_timeout,
+                    )
+                except Exception as e:
+                    # If parallel machinery fails, fall back sequentially (best-effort)
+                    self.logger.warning("Parallel execution failed (%s); falling back to sequential", e)
+                    par_results = {}
                     for spec in candidates:
                         run_sub = bool(spec.run_in_process) or (use_procs and spec.timeout_s is not None)
 
-                        def exec_once_fallback() -> CheckResult:
+                        def exec_once3() -> CheckResult:
                             if run_sub:
                                 return self._run_check_subprocess_once(
                                     spec,
@@ -1173,282 +1359,29 @@ class ValidationSuite:
                                     show_tracebacks=show_tracebacks,
                                     strict_process_checks=strict_process_checks,
                                     allow_context_keys=allow_context_keys,
+                                    mode_override="subprocess",
                                 )
                             return self._run_check_inprocess_once(spec, context, show_tracebacks=show_tracebacks)
 
-                        r = self._run_with_retries(spec, context, executor=exec_once_fallback)
-                        r.mode = "inprocess" if not run_sub else "subprocess"
-                        r = self._apply_redaction_and_caps(spec, context, r)
-                        results_json[spec.name] = self._result_to_json(r, show_tracebacks=show_tracebacks)
-                        if r.passed:
-                            passed_count += 1
-                        else:
-                            failed_count += 1
-                else:
-                    # ProcessPool for parallel checks
-                    try:
-                        ctxmp = mp.get_context(self.mp_start_method)
-                    except Exception:
-                        ctxmp = mp.get_context("spawn")
+                        rr = self._run_with_retries(spec, exec_once3)
+                        rr.mode = "inprocess" if not run_sub else "subprocess"
+                        par_results[spec.name] = rr
 
-                    # Strategy:
-                    # - Each candidate runs in its own *worker process* (pool).
-                    # - Inside worker, if hard timeout required (timeout_s set & use_procs),
-                    #   worker spawns a child process to enforce hard timeout.
-                    #   (Yes, nested processes; but no threads, and timeouts remain hard.)
-                    #
-                    # NOTE: For heavy checks, this is fine. For micro checks, overhead exists.
-                    from concurrent.futures import ProcessPoolExecutor, as_completed  # stdlib
+                for name, r in par_results.items():
+                    spec = next((s for s in candidates if s.name == name), None)
+                    if spec is None:
+                        continue
+                    r = self._postprocess_result(spec, context, r)
+                    results_json[name] = self._result_to_json(r, show_tracebacks=show_tracebacks)
+                    if r.passed:
+                        passed_count += 1
+                    else:
+                        failed_count += 1
 
-                    # We need a top-level pickleable callable for pool. We'll ship a small function
-                    # via module scope wrapper by using a staticmethod-like pattern isn't enough
-                    # because 'self' isn't pickleable in a robust way across start methods.
-                    #
-                    # So: we run parallel checks using a helper function that re-implements the
-                    # child execution logic without capturing self.
-                    #
-                    # This means: in parallel mode, "context_sanitizer" is not applied inside worker
-                    # except by pre-sanitizing worker_ctx here.
-                    #
-                    # (If you want sanitizer inside workers too, make it a top-level function.)
-
-                    def _parallel_run_one(
-                        spec: CheckSpec,
-                        worker_ctx_in: Dict[str, Any],
-                        show_tracebacks_in: bool,
-                        strict_process_checks_in: bool,
-                        mp_start_method_in: str,
-                        use_hard_timeout_in: bool,
-                    ) -> CheckResult:
-                        # Minimal clone of inprocess/subprocess once + retries + caps/redaction handled in parent.
-                        def run_inproc_once() -> CheckResult:
-                            t0 = time.monotonic()
-                            try:
-                                out = spec.func(worker_ctx_in)
-                                dur = time.monotonic() - t0
-                                if spec.timeout_s is not None and dur > spec.timeout_s:
-                                    return CheckResult(
-                                        name=spec.name,
-                                        passed=False,
-                                        critical=spec.critical,
-                                        duration_s=dur,
-                                        error=f"Check exceeded soft timeout ({dur:.2f}s > {spec.timeout_s:.2f}s)",
-                                        timed_out=True,
-                                        mode="parallel",
-                                        tags=list(spec.tags),
-                                        description=spec.description,
-                                    )
-                                return CheckResult(
-                                    name=spec.name,
-                                    passed=True,
-                                    critical=spec.critical,
-                                    duration_s=dur,
-                                    result=out,
-                                    mode="parallel",
-                                    tags=list(spec.tags),
-                                    description=spec.description,
-                                )
-                            except Exception as e:
-                                dur = time.monotonic() - t0
-                                tb = traceback.format_exc()
-                                return CheckResult(
-                                    name=spec.name,
-                                    passed=False,
-                                    critical=spec.critical,
-                                    duration_s=dur,
-                                    error=str(e),
-                                    traceback=(tb if show_tracebacks_in else None),
-                                    mode="parallel",
-                                    tags=list(spec.tags),
-                                    description=spec.description,
-                                )
-
-                        def run_subproc_once() -> CheckResult:
-                            t0 = time.monotonic()
-                            mode = "parallel"
-                            ok_f, why_f = _can_pickle(spec.func)
-                            ok_c, why_c = _can_pickle(worker_ctx_in)
-                            if not ok_f or not ok_c:
-                                msg = []
-                                if not ok_f:
-                                    msg.append(f"func not pickleable: {why_f}")
-                                if not ok_c:
-                                    msg.append(f"context not pickleable: {why_c}")
-                                err = "; ".join(msg) or "cannot pickle for subprocess"
-                                if strict_process_checks_in:
-                                    return CheckResult(
-                                        name=spec.name,
-                                        passed=False,
-                                        critical=spec.critical,
-                                        duration_s=time.monotonic() - t0,
-                                        error=f"Cannot run hard-timeout subprocess (strict): {err}",
-                                        mode=mode,
-                                        tags=list(spec.tags),
-                                        description=spec.description,
-                                    )
-                                # fallback to inproc in worker
-                                return run_inproc_once()
-
-                            try:
-                                ctxx = mp.get_context(mp_start_method_in)
-                            except Exception:
-                                ctxx = mp.get_context("spawn")
-
-                            parent_conn, child_conn = ctxx.Pipe(duplex=False)
-                            p = ctxx.Process(target=_child_run_check, args=(spec.func, worker_ctx_in, child_conn), daemon=True)
-                            p.start()
-
-                            timed_out = False
-                            terminated = False
-                            err_s: Optional[str] = None
-                            tb_s: Optional[str] = None
-                            result: Any = None
-                            passed = False
-
-                            timeout = spec.timeout_s
-                            if timeout is None:
-                                p.join()
-                            else:
-                                p.join(timeout)
-
-                            if p.is_alive():
-                                timed_out = True
-                                terminated = True
-                                try:
-                                    p.terminate()
-                                finally:
-                                    p.join(2.0)
-
-                            dur = time.monotonic() - t0
-
-                            try:
-                                child_conn.close()
-                            except Exception:
-                                pass
-
-                            if timed_out:
-                                passed = False
-                                err_s = f"Check timed out after {timeout:.2f}s"
-                            else:
-                                try:
-                                    if parent_conn.poll(0.0):
-                                        kind, payload = parent_conn.recv()
-                                    else:
-                                        kind, payload = None, None
-                                except Exception as e:
-                                    kind, payload = None, None
-                                    err_s = f"Failed to read subprocess result: {e}"
-
-                                if kind == "ok":
-                                    passed = True
-                                    result = payload
-                                elif kind == "err":
-                                    passed = False
-                                    try:
-                                        err_s, tb_s = payload
-                                    except Exception:
-                                        err_s = "Subprocess reported error, but payload malformed"
-                                else:
-                                    passed = False
-                                    err_s = f"Check subprocess exited without result ({_exitcode_hint(p.exitcode)})"
-
-                            try:
-                                parent_conn.close()
-                            except Exception:
-                                pass
-
-                            return CheckResult(
-                                name=spec.name,
-                                passed=passed,
-                                critical=spec.critical,
-                                duration_s=dur,
-                                result=result,
-                                error=err_s,
-                                traceback=(tb_s if show_tracebacks_in else None),
-                                timed_out=timed_out,
-                                terminated=terminated,
-                                mode=mode,
-                                tags=list(spec.tags),
-                                description=spec.description,
-                            )
-
-                        # retries loop (same policy as suite)
-                        attempts = 0
-                        max_attempts = 1 + max(0, int(spec.retries or 0))
-                        allow_retry = (not spec.critical) or bool(spec.retry_critical)
-
-                        last: Optional[CheckResult] = None
-                        for i in range(max_attempts):
-                            attempts += 1
-                            if use_hard_timeout_in and spec.timeout_s is not None:
-                                rr = run_subproc_once()
-                            else:
-                                rr = run_inproc_once()
-                            rr.attempts = attempts
-                            last = rr
-                            if rr.passed:
-                                return rr
-                            if not allow_retry:
-                                return rr
-                            if i >= max_attempts - 1:
-                                return rr
-                            _sleep_with_backoff(spec.retry_delay_s, spec.retry_backoff, i)
-
-                        return last or CheckResult(name=spec.name, passed=False, critical=spec.critical, duration_s=0.0, error="unknown", mode="parallel")
-
-                    use_hard_timeout = bool(use_procs)  # hard timeouts only meaningful if we allow subprocesses
-
-                    with ProcessPoolExecutor(max_workers=mw, mp_context=ctxmp) as ex:
-                        futs = {
-                            ex.submit(
-                                _parallel_run_one,
-                                spec,
-                                worker_ctx,
-                                show_tracebacks,
-                                strict_process_checks,
-                                self.mp_start_method,
-                                use_hard_timeout,
-                            ): spec
-                            for spec in candidates
-                        }
-
-                        for fut in as_completed(futs):
-                            spec = futs[fut]
-                            try:
-                                r: CheckResult = fut.result()
-                            except Exception as e:
-                                r = CheckResult(
-                                    name=spec.name,
-                                    passed=False,
-                                    critical=spec.critical,
-                                    duration_s=0.0,
-                                    error=f"Parallel worker crashed: {e}",
-                                    traceback=(traceback.format_exc() if show_tracebacks else None),
-                                    tags=list(spec.tags),
-                                    description=spec.description,
-                                    mode="parallel",
-                                    attempts=1,
-                                )
-
-                            # Parent applies redaction + caps (consistent + uses global keys)
-                            r = self._apply_redaction_and_caps(spec, context, r)
-                            results_json[spec.name] = self._result_to_json(r, show_tracebacks=show_tracebacks)
-
-                            if r.passed:
-                                passed_count += 1
-                            else:
-                                failed_count += 1
-                                # Non-critical only should appear here; but keep safe.
-                                if r.critical:
-                                    failed_critical = True
-
-        # Any not-yet-run checks (due to ordering / critical stop) => skipped
+        # Any remaining not executed => skipped (truthfully)
         for spec in self.checks:
-            if spec.name not in results_json:
-                reason = "not_executed"
-                if failed_critical and stop_on_critical:
-                    reason = "stopped_on_critical"
-                mark_skipped(spec, reason)
+            if not already_done(spec.name):
+                mark_skipped(spec, "not_executed")
 
         total_dur = time.monotonic() - started
         ok = (failed_count == 0)
@@ -1495,6 +1428,10 @@ class ValidationSuite:
             self.logger.error("One or more CRITICAL validations failed.")
 
         results = payload.get("results", {}) or {}
-        failed = [name for name, r in results.items() if not r.get("passed", True) and not r.get("skipped", False)]
+        failed = [
+            name
+            for name, r in results.items()
+            if (not r.get("skipped", False)) and (not r.get("passed", True))
+        ]
         if failed:
             self.logger.warning("Failed validations: %s", ", ".join(failed))
