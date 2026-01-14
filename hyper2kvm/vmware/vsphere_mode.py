@@ -37,6 +37,7 @@ except Exception:  # pragma: no cover
     urllib3 = None  # type: ignore
 
 from ..core.exceptions import Fatal, VMwareError
+from ..core.utils import U
 
 # Import from the correct modules
 try:
@@ -92,19 +93,6 @@ def _short_exc(e: BaseException) -> str:
         return f"{type(e).__name__}: {e}"
     except Exception:
         return type(e).__name__
-
-
-def _fmt_bytes(n: Optional[int]) -> str:
-    """Format bytes to human readable string."""
-    if n is None or n < 0:
-        return "?"
-    units = ["B", "KiB", "MiB", "GiB", "TiB"]
-    x = float(n)
-    for u in units:
-        if x < 1024.0 or u == units[-1]:
-            return f"{x:.2f} {u}"
-        x /= 1024.0
-    return f"{n} B"
 
 
 def _fmt_duration(sec: float) -> str:
@@ -364,7 +352,7 @@ def _download_one_folder_file(
                 "vsphere: HTTPS download ok: ds=[%s] path=%r bytes=%s dur=%s",
                 ds_name,
                 ds_path,
-                _fmt_bytes(sz),
+                U.human_bytes(sz),
                 _fmt_duration(time.monotonic() - t0),
             )
 
@@ -1415,7 +1403,7 @@ class VsphereMode:
                         "download_only_vm: ok ds_path=%r local=%r size=%s dur=%s",
                         safe_ds_path,
                         str(local_path),
-                        _fmt_bytes(sz),
+                        U.human_bytes(sz),
                         _fmt_duration(time.monotonic() - t0),
                     )
             except Exception as e:
