@@ -58,7 +58,7 @@ def _add_global_config_logging(p: argparse.ArgumentParser) -> None:
         "--debug",
         dest="debug",
         action="store_true",
-        help="Enable extra debug logging (also via env VMDK2KVM_DEBUG=1).",
+        help="Enable extra debug logging (also via env HYPER2KVM_DEBUG=1 / VMDK2KVM_DEBUG=1).",
     )
 
 
@@ -134,7 +134,26 @@ def _add_fixing_behavior(p: argparse.ArgumentParser) -> None:
     p.add_argument("--remove-vmware-tools", dest="remove_vmware_tools", action="store_true", help="Remove VMware tools from guest (Linux only).")
     p.add_argument("--cloud-init-config", dest="cloud_init_config", default=None, help="Cloud-init config (YAML/JSON) to inject.")
     p.add_argument("--enable-recovery", dest="enable_recovery", action="store_true", help="Enable checkpoint recovery for long operations.")
-    p.add_argument("--parallel-processing", dest="parallel_processing", action="store_true", help="Process multiple disks in parallel.")
+
+    # ✅ Process-based parallelism (no threads): used by Orchestrator.process_disks_parallel
+    p.add_argument(
+        "--parallel-processing",
+        dest="parallel_processing",
+        action="store_true",
+        help="Process multiple disks in parallel (multi-process).",
+    )
+    p.add_argument(
+        "--workers",
+        dest="workers",
+        type=int,
+        default=None,
+        help=(
+            "Max worker PROCESSES when --parallel-processing is set. "
+            "If unset: auto (min(4, disk_count, cpu_count)). "
+            "Also overridable via env HYPER2KVM_WORKERS / VMDK2KVM_WORKERS."
+        ),
+    )
+
     p.add_argument("--resize", default=None, help="Resize root filesystem (enlarge only, e.g., +10G or 50G)")
     p.add_argument("--report", default=None, help="Write Markdown report (relative to output-dir if not absolute).")
     p.add_argument("--virtio-drivers-dir", dest="virtio_drivers_dir", default=None, help="Path to virtio-win drivers directory for Windows injection.")
@@ -175,7 +194,7 @@ def _add_v2v_flags(p: argparse.ArgumentParser) -> None:
         "--v2v-parallel",
         dest="v2v_parallel",
         action="store_true",
-        help="Run multiple virt-v2v jobs in parallel when multiple disks/images are provided (experimental).",
+        help="Run multiple virt-v2v jobs in parallel when multiple disks/images are provided (multi-process; experimental).",
     )
     p.add_argument(
         "--v2v-concurrency",
@@ -196,7 +215,7 @@ def _add_windows_network_override(p: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "Windows: path to JSON network override file on the host. "
-            "If set, it is staged into guest as C:\\vmdk2kvm\\net\\network_override.json and applied at first boot."
+            "If set, it is staged into guest as C:\\hyper2kvm\\net\\network_override.json and applied at first boot."
         ),
     )
     p.add_argument(
@@ -218,8 +237,8 @@ def _add_luks_knobs(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--luks-passphrase",
         dest="luks_passphrase",
-        default=os.environ.get("VMDK2KVM_LUKS_PASSPHRASE"),
-        help="Passphrase for LUKS-encrypted disks (or set VMDK2KVM_LUKS_PASSPHRASE env var).",
+        default=os.environ.get("HYPER2KVM_LUKS_PASSPHRASE") or os.environ.get("VMDK2KVM_LUKS_PASSPHRASE"),
+        help="Passphrase for LUKS-encrypted disks (or set HYPER2KVM_LUKS_PASSPHRASE / VMDK2KVM_LUKS_PASSPHRASE env var).",
     )
     p.add_argument(
         "--luks-passphrase-env",
@@ -231,8 +250,8 @@ def _add_luks_knobs(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--luks-mapper-prefix",
         dest="luks_mapper_prefix",
-        default="vmdk2kvm-crypt",
-        help="Mapper name prefix for opened LUKS devices (default: vmdk2kvm-crypt).",
+        default="hyper2kvm-crypt",
+        help="Mapper name prefix for opened LUKS devices (default: hyper2kvm-crypt).",
     )
     p.add_argument("--luks-enable", dest="luks_enable", action="store_true", help="Explicitly enable LUKS unlocking (otherwise inferred from passphrase/keyfile).")
 
@@ -605,7 +624,7 @@ def _add_vsphere_v2v_and_download_knobs(p: argparse.ArgumentParser) -> None:
     p.add_argument("--quiesce", dest="quiesce", action="store_true", default=True, help="Quiesce filesystem (create_snapshot)")
     p.add_argument("--no_quiesce", dest="quiesce", action="store_false", help="Disable quiesce (create_snapshot)")
     p.add_argument("--snapshot_memory", dest="snapshot_memory", action="store_true", default=False, help="Include memory in snapshot (create_snapshot)")
-    p.add_argument("--description", dest="snapshot_description", default="Created by vmdk2kvm", help="Snapshot description (create_snapshot)")
+    p.add_argument("--description", dest="snapshot_description", default="Created by hyper2kvm", help="Snapshot description (create_snapshot)")
 
     p.add_argument("--enable_cbt", dest="enable_cbt", action="store_true", help="Enable CBT (cbt_sync)")
     p.add_argument("--device_key", dest="device_key", type=int, default=None, help="Device key (query_changed_disk_areas)")
@@ -623,7 +642,7 @@ def build_parser() -> argparse.ArgumentParser:
     epilog = _build_epilog()
 
     p = argparse.ArgumentParser(
-        description=c("vmdk2kvm: Ultimate VMware → KVM/QEMU Converter + Fixer", "green", ["bold"]),
+        description=c("hyper2kvm: Ultimate VMware → KVM/QEMU Converter + Fixer", "green", ["bold"]),
         formatter_class=HelpFormatter,
         epilog=epilog,
     )
