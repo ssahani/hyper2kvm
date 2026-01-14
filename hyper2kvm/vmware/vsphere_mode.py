@@ -40,9 +40,15 @@ from ..core.exceptions import Fatal, VMwareError
 
 # Import from the correct modules
 try:
-    from .http_download_client import REQUESTS_AVAILABLE
+    from .http_download_client import (
+        REQUESTS_AVAILABLE,
+        HTTPDownloadClient,
+        HTTPDownloadOptions,
+    )
 except ImportError:  # pragma: no cover
     REQUESTS_AVAILABLE = False
+    HTTPDownloadClient = None  # type: ignore
+    HTTPDownloadOptions = None  # type: ignore
 
 try:
     from .vmware_client import VMwareClient
@@ -293,142 +299,86 @@ def _download_one_folder_file(
     on_bytes: Optional[Callable[[int, int], None]] = None,
     chunk_size: int = _DEFAULT_CHUNK_SIZE,
 ) -> None:
-    """Download a single file via HTTPS /folder endpoint."""
-    if not REQUESTS_AVAILABLE:
-        raise VMwareError("requests not installed. Install: pip install requests")
+    """Download a single file via HTTPS /folder endpoint using HTTPDownloadClient."""
+    if HTTPDownloadClient is None:
+        raise VMwareError("HTTPDownloadClient not available. Install: pip install requests")
 
-    quoted_path = quote(ds_path, safe="/")
-    url = f"https://{vc_host}/folder/{quoted_path}?dcPath={quote(dc_name)}&dsName={quote(ds_name)}"
-
-    cookie = _get_session_cookie(client)
-    headers = {"Cookie": cookie}
-
-    if not verify_tls and urllib3 is not None:  # pragma: no cover
-        try:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
-    local_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = local_path.with_suffix(local_path.suffix + ".part")
-
+    # Create download client
     timeout_tuple = _get_http_timeout(args)
+    download_client = HTTPDownloadClient(
+        logger=logging.getLogger(__name__),
+        host=vc_host,
+        port=443,
+        insecure=not verify_tls,
+        timeout=float(timeout_tuple[1]),  # Use read timeout
+    )
+
+    # Set session cookie from VMwareClient
+    cookie = _get_session_cookie(client)
+    download_client.set_session_cookie(cookie)
+
+    # Configure download options to match previous behavior
     retries_i = _get_http_retries(args)
+    options = HTTPDownloadOptions(
+        show_progress=True,
+        log_every_bytes=10 * 1024 * 1024,  # 10MB - progress bar fix applied!
+        retries=retries_i,
+        retry_backoff_s=2.0,
+        chunk_size=chunk_size,
+        resume_download=True,  # Bonus: resume support!
+        atomic=True,
+        show_panels=False,  # Don't show extra UI panels in vsphere mode
+    )
 
     if _debug_enabled(args):
         logging.getLogger(__name__).debug(
-            "vsphere: HTTPS /folder download: "
-            "url=%r verify_tls=%s timeout=%s chunk_size=%s cookie=%r",
-            url,
+            "vsphere: HTTPS /folder download (via HTTPDownloadClient): "
+            "ds=[%s] path=%r verify_tls=%s timeout=%s chunk_size=%s retries=%d cookie=%r",
+            ds_name,
+            ds_path,
             verify_tls,
             timeout_tuple,
             chunk_size,
+            retries_i,
             _redact_cookie(cookie),
         )
 
-    _cleanup_temp_file(tmp)
-
-    attempt = 0
-    last_err: Optional[BaseException] = None
+    # Download using HTTPDownloadClient
     t0 = time.monotonic()
-    while True:
-        attempt += 1
-        try:
-            got = _download_chunk_with_progress(
-                url=url,
-                headers=headers,
-                verify_tls=verify_tls,
-                timeout_tuple=timeout_tuple,
-                chunk_size=chunk_size,
-                tmp_path=tmp,
-                on_bytes=on_bytes,
+    try:
+        download_client.download_file(
+            datastore=ds_name,
+            ds_path=ds_path,
+            local_path=local_path,
+            dc_name=dc_name,
+            on_bytes=on_bytes,
+            options=options,
+        )
+
+        if _debug_enabled(args):
+            try:
+                sz = local_path.stat().st_size
+            except Exception:
+                sz = None
+            logging.getLogger(__name__).debug(
+                "vsphere: HTTPS download ok: ds=[%s] path=%r bytes=%s dur=%s",
+                ds_name,
+                ds_path,
+                _fmt_bytes(sz),
+                _fmt_duration(time.monotonic() - t0),
             )
-            os.replace(tmp, local_path)
 
-            if _debug_enabled(args):
-                logging.getLogger(__name__).debug(
-                    "vsphere: HTTPS download ok: ds=[%s] path=%r bytes=%s dur=%s attempts=%d",
-                    ds_name,
-                    ds_path,
-                    _fmt_bytes(got),
-                    _fmt_duration(time.monotonic() - t0),
-                    attempt,
-                )
-            return
-
-        except requests.RequestException as e:
-            last_err = e
-            status = _get_response_status(e)
-            transient = bool(status and _is_transient_http(status))
-            if _debug_enabled(args):
-                logging.getLogger(__name__).debug(
-                    "vsphere: HTTPS attempt %d/%d failed status=%s transient=%s err=%s",
-                    attempt,
-                    retries_i + 1,
-                    status,
-                    transient,
-                    _short_exc(e),
-                )
-
-            _cleanup_temp_file(tmp)
-
-            if attempt > retries_i or not transient:
-                break
-
-            time.sleep(min(2.0 * attempt, 8.0))
-            continue
-
-        except Exception as e:
-            last_err = e
-            if _debug_enabled(args):
-                logging.getLogger(__name__).debug(
-                    "vsphere: HTTPS attempt %d/%d failed err=%s",
-                    attempt,
-                    retries_i + 1,
-                    _short_exc(e),
-                )
-            _cleanup_temp_file(tmp)
-            break
-
-    raise VMwareError(f"HTTPS /folder download failed after {attempt} attempt(s): {_short_exc(last_err or Exception('unknown'))}")
-
-
-def _download_chunk_with_progress(
-    *,
-    url: str,
-    headers: Dict[str, str],
-    verify_tls: bool,
-    timeout_tuple: Tuple[int, int],
-    chunk_size: int,
-    tmp_path: Path,
-    on_bytes: Optional[Callable[[int, int], None]],
-) -> int:
-    """Download file chunks with progress tracking."""
-    got = 0
-    total = 0
-    with requests.get(url, headers=headers, verify=verify_tls, stream=True, timeout=timeout_tuple) as r:
-        status = int(getattr(r, "status_code", 0) or 0)
-        if status >= 400:
-            r.raise_for_status()
-
-        total = int(r.headers.get("content-length", "0") or "0")
-
-        with open(tmp_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=chunk_size):
-                if not chunk:
-                    continue
-                f.write(chunk)
-                got += len(chunk)
-                if on_bytes is not None:
-                    try:
-                        on_bytes(len(chunk), total)
-                    except Exception:
-                        pass
-
-    if total and got != total:
-        raise VMwareError(f"incomplete download: got={got} expected={total}")
-
-    return got
+    except Exception as e:
+        # HTTPDownloadClient already wraps errors in VMwareError and handles retries
+        if _debug_enabled(args):
+            logging.getLogger(__name__).debug(
+                "vsphere: HTTPS download failed: ds=[%s] path=%r dur=%s err=%s",
+                ds_name,
+                ds_path,
+                _fmt_duration(time.monotonic() - t0),
+                _short_exc(e),
+            )
+        raise  # Re-raise the VMwareError from HTTPDownloadClient
 
 
 def _get_session_cookie(client: "VMwareClient") -> str:
@@ -462,15 +412,6 @@ def _get_response_status(e: requests.RequestException) -> Optional[int]:
     except Exception:
         pass
     return None
-
-
-def _cleanup_temp_file(tmp_path: Path) -> None:
-    """Clean up temporary file."""
-    try:
-        if tmp_path.exists():
-            tmp_path.unlink()
-    except Exception:
-        pass
 
 
 # -----------------------------------------------------------------------------
