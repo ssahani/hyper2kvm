@@ -58,56 +58,27 @@ except Exception:
 # Import utility functions
 from ..core.utils import U
 
+# Import progress reporters
+from .http_progress_reporters import (
+    ProgressReporter,
+    create_progress_reporter,
+)
 
-# Optional: Rich UI
+# Optional: Rich UI (for panels only, progress reporters handle their own Rich imports)
 try:  # pragma: no cover
     from rich.console import Console
     from rich.panel import Panel
-    from rich.progress import (
-        BarColumn,
-        DownloadColumn,
-        Progress,
-        SpinnerColumn,
-        TextColumn,
-        TimeElapsedColumn,
-        TimeRemainingColumn,
-        TransferSpeedColumn,
-    )
 
     RICH_AVAILABLE = True
 except Exception:  # pragma: no cover
     Console = None  # type: ignore
     Panel = None  # type: ignore
-    Progress = None  # type: ignore
-    SpinnerColumn = None  # type: ignore
-    BarColumn = None  # type: ignore
-    TextColumn = None  # type: ignore
-    TimeElapsedColumn = None  # type: ignore
-    TimeRemainingColumn = None  # type: ignore
-    TransferSpeedColumn = None  # type: ignore
-    DownloadColumn = None  # type: ignore
     RICH_AVAILABLE = False
 
 
 # --------------------------------------------------------------------------------------
 # UI helpers
 # --------------------------------------------------------------------------------------
-def _is_tty() -> bool:
-    try:
-        return sys.stdout.isatty()
-    except Exception:
-        return False
-
-
-def _console() -> Optional[Any]:
-    if not (RICH_AVAILABLE and Console and _is_tty()):
-        return None
-    try:
-        return Console(stderr=False)
-    except Exception:
-        return None
-
-
 def _print_panel(
     title: str,
     body: str = "",
@@ -169,148 +140,6 @@ class HTTPDownloadOptions:
 
 
 ProgressCallback = Callable[[int, int], None]  # (bytes_delta, total_bytes)
-
-
-# --------------------------------------------------------------------------------------
-# Progress Reporter Interface (Strategy Pattern)
-# --------------------------------------------------------------------------------------
-class ProgressReporter(ABC):
-    @abstractmethod
-    def start(self, description: str, total: Optional[int] = None) -> None: ...
-
-    @abstractmethod
-    def update(self, delta: int) -> None: ...
-
-    @abstractmethod
-    def finish(self) -> None: ...
-
-
-class RichProgressReporter(ProgressReporter):
-    def __init__(self, console: Any, refresh_hz: float = 10.0):
-        self.console = console
-        self.refresh_hz = refresh_hz
-        self.progress: Optional[Any] = None
-        self.task_id: Optional[int] = None
-
-    def start(self, description: str, total: Optional[int] = None) -> None:
-        self.progress = Progress(
-            SpinnerColumn(style="bright_green"),
-            TextColumn("[progress.description]{task.description}", style="bold cyan"),
-            BarColumn(
-                complete_style="bright_blue",
-                finished_style="bright_green",
-                pulse_style="magenta",
-            ),
-            DownloadColumn(),
-            TransferSpeedColumn(),
-            TimeRemainingColumn(style="yellow"),
-            TimeElapsedColumn(style="dim green"),
-            console=self.console,
-            transient=False,  # FIXED: Keep progress bar visible after completion
-            refresh_per_second=max(1, int(self.refresh_hz)),
-        )
-        self.progress.start()
-        self.task_id = self.progress.add_task(description, total=total if total and total > 0 else None)
-
-    def update(self, delta: int) -> None:
-        if self.progress and self.task_id is not None:
-            self.progress.update(self.task_id, advance=delta)
-
-    def finish(self) -> None:
-        if self.progress:
-            try:
-                self.progress.stop()
-            except Exception:
-                pass
-
-
-class SimpleProgressReporter(ProgressReporter):
-    def __init__(self, file_name: str):
-        self.file_name = file_name
-        self.downloaded = 0
-        self.total: Optional[int] = None
-
-    def start(self, description: str, total: Optional[int] = None) -> None:
-        self.total = total
-        self._update_display()
-
-    def update(self, delta: int) -> None:
-        self.downloaded += delta
-        self._update_display()
-
-    def _update_display(self) -> None:
-        if self.total and self.total > 0:
-            pct = (self.downloaded / self.total) * 100.0
-            s = f"{pct:.1f}% ({U.human_bytes(self.downloaded)}/{U.human_bytes(self.total)})"
-        else:
-            s = f"{U.human_bytes(self.downloaded)} (size unknown)"
-        sys.stdout.write(f"Downloading {self.file_name}: {s}   \r")
-        sys.stdout.flush()
-
-    def finish(self) -> None:
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-
-
-class LoggingProgressReporter(ProgressReporter):
-    def __init__(self, logger: logging.Logger, log_every_bytes: int = 128 * 1024 * 1024):
-        self.logger = logger
-        self.log_every_bytes = log_every_bytes
-        self.downloaded = 0
-        self.total: Optional[int] = None
-        self.last_log_mark = 0
-
-    def start(self, description: str, total: Optional[int] = None) -> None:
-        self.total = total
-        self.logger.info("Starting download: %s", description)
-
-    def update(self, delta: int) -> None:
-        self.downloaded += delta
-        if self.downloaded - self.last_log_mark >= self.log_every_bytes:
-            self.last_log_mark = self.downloaded
-            if self.total and self.total > 0:
-                pct = (self.downloaded / self.total) * 100.0
-                self.logger.info(
-                    "Download progress: %s / %s (%.1f%%)",
-                    U.human_bytes(self.downloaded),
-                    U.human_bytes(self.total),
-                    pct,
-                )
-            else:
-                self.logger.info("Download progress: %s", U.human_bytes(self.downloaded))
-
-    def finish(self) -> None:
-        self.logger.info("Download completed: %s", U.human_bytes(self.downloaded))
-
-
-class NoopProgressReporter(ProgressReporter):
-    def start(self, description: str, total: Optional[int] = None) -> None:
-        pass
-
-    def update(self, delta: int) -> None:
-        pass
-
-    def finish(self) -> None:
-        pass
-
-
-def create_progress_reporter(
-    options: HTTPDownloadOptions,
-    file_name: str,
-    logger: logging.Logger,
-) -> ProgressReporter:
-    if not options.show_progress:
-        return NoopProgressReporter()
-
-    if RICH_AVAILABLE and Progress and _is_tty():
-        con = _console()
-        if con:
-            return RichProgressReporter(con, options.progress_refresh_hz)
-
-    if options.simple_progress and _is_tty():
-        return SimpleProgressReporter(file_name)
-
-    return LoggingProgressReporter(logger, options.log_every_bytes)
 
 
 # --------------------------------------------------------------------------------------
