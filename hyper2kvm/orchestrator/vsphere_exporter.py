@@ -1,0 +1,264 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+# hyper2kvm/orchestrator/vsphere_exporter.py
+"""
+vSphere VM export handler.
+Supports virt-v2v export, download-only, and VDDK download modes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+from pathlib import Path
+from typing import List, Optional
+
+from ..core.cred import resolve_vsphere_creds
+from ..core.exceptions import Fatal, VMwareError
+from ..core.logger import Log
+from ..core.utils import U
+
+# Conditional imports
+try:
+    from ..vmware.vmware_client import VMwareClient, V2VExportOptions
+
+    VSPHERE_V2V_AVAILABLE = True
+except Exception:
+    VMwareClient = None  # type: ignore
+    V2VExportOptions = None  # type: ignore
+    VSPHERE_V2V_AVAILABLE = False
+
+try:
+    from ..vmware.vmware_client import PYVMOMI_AVAILABLE
+except ImportError:
+    PYVMOMI_AVAILABLE = False
+
+
+class VsphereExporter:
+    """
+    Handles vSphere VM export operations.
+
+    Responsibilities:
+    - vSphere VM identification and credential resolution
+    - virt-v2v based export (VDDK/SSH transports)
+    - download-only mode
+    - VDDK raw download mode
+    - Snapshot management
+    """
+
+    def __init__(self, logger: logging.Logger, args: argparse.Namespace):
+        self.logger = logger
+        self.args = args
+
+    def is_v2v_enabled(self) -> bool:
+        """Check if vSphere virt-v2v export is enabled."""
+        enabled = bool(getattr(self.args, "vs_v2v", False))
+        Log.trace(self.logger, "🌐 _vsphere_v2v_enabled: %s", enabled)
+        return enabled
+
+    def get_vm_names(self) -> List[str]:
+        """Extract VM names from args (supports multiple sources)."""
+        vms: List[str] = []
+        if getattr(self.args, "vs_vm", None):
+            vms = [str(self.args.vs_vm)]
+        elif getattr(self.args, "vs_vms", None):
+            v = getattr(self.args, "vs_vms")
+            if isinstance(v, (list, tuple)):
+                vms = [str(x) for x in v]
+            else:
+                vms = [s.strip() for s in str(v).split(",") if s.strip()]
+        elif getattr(self.args, "vm_name", None):
+            vms = [str(self.args.vm_name)]
+        out = [x for x in (n.strip() for n in vms) if x]
+        Log.trace(self.logger, "🧾 _vsphere_vm_names: %s", out)
+        return out
+
+    def export_many_sync(self, out_root: Path) -> List[Path]:
+        """
+        SYNC vSphere export path.
+
+        Policy (download-first):
+          - If vs_download_only:true and vs_transport:vddk => prefer export_mode="vddk_download"
+          - Else if vs_download_only:true => export_mode="download_only"
+          - Else => export_mode="v2v" (virt-v2v export)
+
+        Returns:
+            List of exported disk image paths
+        """
+        Log.step(self.logger, "vSphere export (sync) initializing…")
+        Log.trace(
+            self.logger,
+            "🌐 vSphere export: out_root=%s VSPHERE_V2V_AVAILABLE=%s",
+            out_root,
+            VSPHERE_V2V_AVAILABLE,
+        )
+
+        if not VSPHERE_V2V_AVAILABLE:
+            raise Fatal(2, "vSphere export not available (VMwareClient/V2VExportOptions missing)")
+
+        if not PYVMOMI_AVAILABLE:
+            raise Fatal(2, "pyvmomi not installed. Install: pip install pyvmomi")
+
+        vms = self.get_vm_names()
+        if not vms:
+            raise Fatal(2, "No vSphere VM name(s) provided (vs_vm/vs_vms/vm_name)")
+
+        # Resolve creds using shared core/cred.py
+        try:
+            creds = resolve_vsphere_creds(vars(self.args))
+        except Exception as e:
+            raise Fatal(2, f"Missing vSphere credentials for export: {e}")
+
+        # Accept both vs_* and vc_* knobs
+        port = int(getattr(self.args, "vs_port", None) or getattr(self.args, "vc_port", None) or 443)
+        vs_insecure = getattr(self.args, "vs_insecure", None)
+        insecure = bool(vs_insecure if vs_insecure is not None else getattr(self.args, "vc_insecure", False))
+
+        timeout = getattr(self.args, "vs_timeout", None) or getattr(self.args, "vc_timeout", None)
+        timeout_f = float(timeout) if timeout is not None else None
+
+        datacenter = str(getattr(self.args, "vs_datacenter", None) or getattr(self.args, "vc_datacenter", None) or "auto")
+        compute = str(getattr(self.args, "vs_compute", None) or "auto")
+        transport = str(getattr(self.args, "vs_transport", "vddk")).strip().lower()
+
+        vddk_libdir = getattr(self.args, "vs_vddk_libdir", None)
+        vddk_thumbprint = getattr(self.args, "vs_vddk_thumbprint", None)
+        vddk_transports = getattr(self.args, "vs_vddk_transports", None)
+
+        snapshot_moref = getattr(self.args, "vs_snapshot_moref", None)
+        create_snapshot = bool(getattr(self.args, "vs_create_snapshot", False))
+
+        extra_args = tuple(getattr(self.args, "vs_v2v_extra_args", []) or ())
+        out_format = str(getattr(self.args, "out_format", "qcow2"))
+
+        download_only = bool(getattr(self.args, "vs_download_only", False))
+        prefer_vddk_download = bool(getattr(self.args, "vs_prefer_vddk_download", True))
+
+        # Optional vddk_download extras
+        vddk_download_disk = getattr(self.args, "vs_vddk_download_disk", None) or getattr(
+            self.args, "vddk_download_disk", None
+        )
+        vddk_download_output = getattr(self.args, "vs_vddk_download_output", None) or getattr(
+            self.args, "vddk_download_output", None
+        )
+
+        Log.trace(
+            self.logger,
+            "🧷 vSphere export knobs: host=%s port=%s insecure=%s timeout=%s dc=%s compute=%s transport=%s download_only=%s prefer_vddk_download=%s",
+            getattr(creds, "host", None),
+            port,
+            insecure,
+            timeout_f,
+            datacenter,
+            compute,
+            transport,
+            download_only,
+            prefer_vddk_download,
+        )
+
+        out_images: List[Path] = []
+        failures: List[str] = []
+
+        # SYNC context manager (no async-with)
+        with VMwareClient(  # type: ignore[misc]
+            self.logger,
+            host=str(creds.host),
+            user=str(creds.user),
+            password=str(creds.password),
+            port=port,
+            insecure=insecure,
+            timeout=timeout_f,
+        ) as vc:
+            Log.ok(self.logger, "vSphere connection established")
+            for vm_name in vms:
+                try:
+                    Log.step(self.logger, f"Exporting VM: {vm_name}")
+                    snap_moref = str(snapshot_moref) if snapshot_moref else None
+                    if create_snapshot:
+                        Log.trace(self.logger, "📸 create_snapshot enabled for %s", vm_name)
+                        vm_obj = vc.get_vm_by_name(vm_name)
+                        if not vm_obj:
+                            raise VMwareError(f"VM not found: {vm_name}")
+                        snap_obj = vc.create_snapshot(vm_obj, name=f"hyper2kvm-{vm_name}", quiesce=True, memory=False)
+                        snap_moref = vc.snapshot_moref(snap_obj)
+                        self.logger.info("📸 Snapshot created: %s (moref=%s)", vm_name, snap_moref)
+
+                    job_dir = out_root / "vsphere-v2v" / vm_name
+                    U.ensure_dir(job_dir)
+
+                    export_mode = "v2v"
+                    if download_only:
+                        if prefer_vddk_download and transport == "vddk":
+                            export_mode = "vddk_download"
+                        else:
+                            export_mode = "download_only"
+
+                    Log.trace(self.logger, "🧭 export_mode=%s job_dir=%s", export_mode, job_dir)
+
+                    opt = V2VExportOptions(  # type: ignore[misc]
+                        vm_name=vm_name,
+                        export_mode=export_mode,
+                        datacenter=datacenter,
+                        compute=compute,
+                        transport=transport,
+                        no_verify=bool(getattr(self.args, "vs_no_verify", False)),
+                        vddk_libdir=Path(vddk_libdir).expanduser().resolve() if vddk_libdir else None,
+                        vddk_thumbprint=str(vddk_thumbprint) if vddk_thumbprint else None,
+                        vddk_snapshot_moref=snap_moref,
+                        vddk_transports=str(vddk_transports) if vddk_transports else None,
+                        output_dir=job_dir,
+                        output_format=out_format,
+                        extra_args=extra_args,
+                        vddk_download_disk=str(vddk_download_disk) if vddk_download_disk is not None else None,
+                        vddk_download_output=Path(vddk_download_output).expanduser().resolve()
+                        if vddk_download_output
+                        else None,
+                    )
+
+                    # This must be SYNC in VMwareClient implementation
+                    out_path = vc.export_vm(opt)  # type: ignore[attr-defined]
+                    Log.trace(self.logger, "📤 export_vm returned: %r", out_path)
+
+                    if export_mode == "download_only":
+                        self.logger.info("⬇️  vSphere download-only OK: %s -> %s", vm_name, out_path)
+                        continue
+
+                    if export_mode == "vddk_download":
+                        out_images.append(Path(out_path))
+                        self.logger.info("⬇️  vSphere VDDK download OK: %s -> %s", vm_name, out_path)
+                        continue
+
+                    # export_mode == "v2v": discover artifacts
+                    pats = ["*.qcow2", "*.raw", "*.img", "*.vmdk", "*.vdi"]
+                    imgs: List[Path] = []
+                    for pat in pats:
+                        found = sorted(job_dir.glob(pat))
+                        Log.trace(self.logger, "🔎 vSphere discover: %s/%s -> %d", job_dir, pat, len(found))
+                        imgs.extend(found)
+                    if not imgs:
+                        self.logger.warning("vSphere v2v export produced no outputs for %s in %s", vm_name, job_dir)
+                    else:
+                        self.logger.info("✅ vSphere v2v export outputs for %s: %d file(s)", vm_name, len(imgs))
+                    out_images.extend(imgs)
+
+                except Exception as e:
+                    self.logger.error("vSphere export failed for %s: %s", vm_name, e)
+                    Log.trace(self.logger, "💥 vSphere export exception for %s", vm_name, exc_info=True)
+                    failures.append(f"{vm_name}: {e}")
+
+        # De-dup while preserving order
+        seen: set[str] = set()
+        uniq: List[Path] = []
+        for p in out_images:
+            sp = str(p)
+            if sp not in seen:
+                seen.add(sp)
+                uniq.append(p)
+
+        if failures:
+            self.logger.warning("Some vSphere export jobs failed:")
+            for f in failures:
+                self.logger.warning(" - %s", f)
+
+        Log.trace(self.logger, "📦 vSphere export: uniq_out_images=%d", len(uniq))
+        return uniq
