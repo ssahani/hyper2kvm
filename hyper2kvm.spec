@@ -17,6 +17,7 @@ BuildRequires:  python3-build
 BuildRequires:  python3-sphinx
 BuildRequires:  python3-sphinx_rtd_theme
 BuildRequires:  make
+BuildRequires:  systemd-rpm-macros
 
 Requires:       python3-rich >= 13.0.0
 Requires:       python3-click >= 8.0.0
@@ -25,6 +26,12 @@ Requires:       python3-requests >= 2.31.0
 Requires:       python3-pyvmomi >= 8.0.0
 Requires:       libguestfs-tools
 Requires:       qemu-img
+Requires:       systemd
+
+Requires(pre):    shadow-utils
+Requires(post):   systemd
+Requires(preun):  systemd
+Requires(postun): systemd
 
 # Optional but recommended dependencies
 Recommends:     virt-v2v
@@ -91,12 +98,58 @@ install -m 644 INSTALLATION.md %{buildroot}%{_docdir}/%{name}/
 install -m 644 DEPENDENCIES.md %{buildroot}%{_docdir}/%{name}/
 cp -r docs/* %{buildroot}%{_docdir}/%{name}/
 
+# Install systemd service files
+install -d %{buildroot}%{_unitdir}
+install -m 644 systemd/hyper2kvm.service %{buildroot}%{_unitdir}/
+install -m 644 systemd/hyper2kvm@.service %{buildroot}%{_unitdir}/
+
+# Install systemd documentation
+install -d %{buildroot}%{_docdir}/%{name}/systemd
+install -m 644 systemd/README.md %{buildroot}%{_docdir}/%{name}/systemd/
+
+# Create directories for daemon mode
+install -d %{buildroot}%{_sharedstatedir}/%{name}
+install -d %{buildroot}%{_localstatedir}/log/%{name}
+install -d %{buildroot}%{_sysconfdir}/%{name}
+
 %check
 # Basic import test
 %{__python3} -c "import hyper2kvm; print(hyper2kvm.__version__)"
 
 # Verify command is available
 %{buildroot}%{_bindir}/hyper2kvm --version
+
+%pre
+# Create hyper2kvm system user and group
+getent group hyper2kvm >/dev/null || groupadd -r hyper2kvm
+getent passwd hyper2kvm >/dev/null || \
+    useradd -r -g hyper2kvm -d %{_sharedstatedir}/%{name} -s /sbin/nologin \
+    -c "hyper2kvm daemon user" hyper2kvm
+exit 0
+
+%post
+%systemd_post hyper2kvm.service hyper2kvm@.service
+
+# Set ownership of working directories
+if [ $1 -eq 1 ]; then
+    # Initial installation
+    chown hyper2kvm:hyper2kvm %{_sharedstatedir}/%{name}
+    chown hyper2kvm:hyper2kvm %{_localstatedir}/log/%{name}
+    chown root:hyper2kvm %{_sysconfdir}/%{name}
+    chmod 750 %{_sysconfdir}/%{name}
+fi
+
+%preun
+%systemd_preun hyper2kvm.service hyper2kvm@.service
+
+%postun
+%systemd_postun_with_restart hyper2kvm.service hyper2kvm@.service
+
+# Remove user on final uninstall
+if [ $1 -eq 0 ]; then
+    userdel hyper2kvm 2>/dev/null || :
+    groupdel hyper2kvm 2>/dev/null || :
+fi
 
 %files
 %license LICENSE
@@ -110,11 +163,18 @@ cp -r docs/* %{buildroot}%{_docdir}/%{name}/
 %{_mandir}/man1/hyper2kvm-hyperv.1*
 %{_mandir}/man1/hyper2kvm-azure.1*
 %{_mandir}/man5/hyper2kvm.conf.5*
+%{_unitdir}/hyper2kvm.service
+%{_unitdir}/hyper2kvm@.service
+%dir %attr(0750,hyper2kvm,hyper2kvm) %{_sharedstatedir}/%{name}
+%dir %attr(0750,hyper2kvm,hyper2kvm) %{_localstatedir}/log/%{name}
+%dir %attr(0750,root,hyper2kvm) %{_sysconfdir}/%{name}
 %{_docdir}/%{name}/
 
 %changelog
-* Wed Jan 15 2026 Susant Sahani <ssahani@redhat.com> - 3.1.0-1
+* Wed Jan 15 2026 Susant Sahani <ssahani@redhat.com> - 0.0.1-1
 - Initial RPM package
 - Add comprehensive man pages
 - Include example configurations
 - Support for VMware vSphere, Hyper-V, and Azure migrations
+- Add systemd service units for daemon mode
+- Create system user and directories for daemon operation
