@@ -83,80 +83,87 @@ def download_with_resume(
     if start_byte > 0:
         headers["Range"] = f"bytes={start_byte}-"
 
-    last_error = None
-    for attempt in range(max(1, retries)):
-        try:
-            resp = requests.get(
-                url,
-                headers=headers,
-                stream=True,
-                timeout=(connect_timeout_s, read_timeout_s),
-                allow_redirects=True,
-            )
-            resp.raise_for_status()
+    # Use session for connection pooling and reuse across retries
+    session = requests.Session()
 
-            # Parse Content-Range or Content-Length
-            expected_total: Optional[int] = None
-            content_range = resp.headers.get("Content-Range")
-            if content_range:
-                # Format: bytes start-end/total
-                parts = content_range.split("/")
-                if len(parts) == 2 and parts[1].isdigit():
-                    expected_total = int(parts[1])
-            else:
-                content_length = resp.headers.get("Content-Length")
-                if content_length and content_length.isdigit():
-                    if start_byte > 0:
-                        expected_total = start_byte + int(content_length)
-                    else:
-                        expected_total = int(content_length)
+    try:
+        last_error = None
+        for attempt in range(max(1, retries)):
+            try:
+                resp = session.get(
+                    url,
+                    headers=headers,
+                    stream=True,
+                    timeout=(connect_timeout_s, read_timeout_s),
+                    allow_redirects=True,
+                )
+                resp.raise_for_status()
 
-            # Update progress total
-            if expected_total:
-                progress.update(task_id, total=expected_total, completed=start_byte)
+                # Parse Content-Range or Content-Length
+                expected_total: Optional[int] = None
+                content_range = resp.headers.get("Content-Range")
+                if content_range:
+                    # Format: bytes start-end/total
+                    parts = content_range.split("/")
+                    if len(parts) == 2 and parts[1].isdigit():
+                        expected_total = int(parts[1])
+                else:
+                    content_length = resp.headers.get("Content-Length")
+                    if content_length and content_length.isdigit():
+                        if start_byte > 0:
+                            expected_total = start_byte + int(content_length)
+                        else:
+                            expected_total = int(content_length)
 
-            # Download
-            mode = "ab" if start_byte > 0 else "wb"
-            bytes_written = start_byte
+                # Update progress total
+                if expected_total:
+                    progress.update(task_id, total=expected_total, completed=start_byte)
 
-            with open(temp, mode) as f:
-                for chunk in resp.iter_content(chunk_size=chunk_bytes):
-                    if chunk:
-                        f.write(chunk)
-                        bytes_written += len(chunk)
-                        progress.update(task_id, completed=bytes_written)
+                # Download
+                mode = "ab" if start_byte > 0 else "wb"
+                bytes_written = start_byte
 
-            # Verify size
-            if verify_size and expected_total is not None:
-                if bytes_written != expected_total:
-                    msg = f"Size mismatch: expected {expected_total}, got {bytes_written}"
-                    if strict_verify:
-                        temp.unlink(missing_ok=True)
-                        raise AzureDownloadError(msg)
-                    else:
-                        LOG.warning(msg)
+                with open(temp, mode) as f:
+                    for chunk in resp.iter_content(chunk_size=chunk_bytes):
+                        if chunk:
+                            f.write(chunk)
+                            bytes_written += len(chunk)
+                            progress.update(task_id, completed=bytes_written)
 
-            # Success - move to final location
-            temp.rename(dest)
-            return DownloadResult(
-                bytes_written=bytes_written,
-                expected_total=expected_total,
-                resumed_from=start_byte,
-            )
+                # Verify size
+                if verify_size and expected_total is not None:
+                    if bytes_written != expected_total:
+                        msg = f"Size mismatch: expected {expected_total}, got {bytes_written}"
+                        if strict_verify:
+                            temp.unlink(missing_ok=True)
+                            raise AzureDownloadError(msg)
+                        else:
+                            LOG.warning(msg)
 
-        except (requests.RequestException, IOError, OSError) as e:
-            last_error = str(e)
-            LOG.warning(f"Download attempt {attempt + 1}/{retries} failed: {e}")
+                # Success - move to final location
+                temp.rename(dest)
+                return DownloadResult(
+                    bytes_written=bytes_written,
+                    expected_total=expected_total,
+                    resumed_from=start_byte,
+                )
 
-            if attempt + 1 < retries:
-                _backoff_sleep(attempt, backoff_base_s, backoff_cap_s)
+            except (requests.RequestException, IOError, OSError) as e:
+                last_error = str(e)
+                LOG.warning(f"Download attempt {attempt + 1}/{retries} failed: {e}")
 
-                # Update start_byte for resume
-                if resume and temp.exists():
-                    start_byte = temp.stat().st_size
-                    headers["Range"] = f"bytes={start_byte}-"
-                continue
+                if attempt + 1 < retries:
+                    _backoff_sleep(attempt, backoff_base_s, backoff_cap_s)
 
-    # All retries exhausted
-    temp.unlink(missing_ok=True)
-    raise AzureDownloadError(f"Download failed after {retries} attempts: {last_error}")
+                    # Update start_byte for resume
+                    if resume and temp.exists():
+                        start_byte = temp.stat().st_size
+                        headers["Range"] = f"bytes={start_byte}-"
+                    continue
+
+        # All retries exhausted
+        temp.unlink(missing_ok=True)
+        raise AzureDownloadError(f"Download failed after {retries} attempts: {last_error}")
+
+    finally:
+        session.close()

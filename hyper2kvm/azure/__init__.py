@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/azure/__init__.py
 """Azure VM migration module for hyper2kvm."""
 
 from __future__ import annotations

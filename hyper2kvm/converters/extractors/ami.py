@@ -994,7 +994,9 @@ class AMI:
                 raise
 
         try:
-            os.chmod(target_path, member.mode or 0o644)
+            # Mask permissions to prevent world-writable files from archives
+            safe_mode = (member.mode or 0o644) & 0o755
+            os.chmod(target_path, safe_mode)
         except Exception:
             pass
 

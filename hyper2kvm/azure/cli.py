@@ -100,11 +100,23 @@ def validate_account(subscription: Optional[str], tenant: Optional[str]) -> Dict
     return acct
 
 
-def list_vms(resource_group: Optional[str]) -> List[Dict[str, Any]]:
+def list_vms(resource_group: Optional[str], *, show_details: bool = False) -> List[Dict[str, Any]]:
+    """
+    List VMs, optionally with instance details (including power state).
+
+    Args:
+        resource_group: Optional resource group filter
+        show_details: If True, includes instance view with power state (slower but more complete)
+
+    Returns:
+        List of VM dictionaries
+    """
     args = ["vm", "list"]
     if resource_group:
         args += ["--resource-group", resource_group]
-    data = run_az_json(args, timeout_s=120, retries=3)
+    if show_details:
+        args += ["--show-details"]
+    data = run_az_json(args, timeout_s=180, retries=3)  # Increased timeout for --show-details
     return list(data or [])
 
 
@@ -112,7 +124,39 @@ def get_vm_show(rg: str, name: str) -> Dict[str, Any]:
     return run_az_json(["vm", "show", "--resource-group", rg, "--name", name], timeout_s=120, retries=3)
 
 
+def extract_power_state_from_vm_dict(vm: Dict[str, Any]) -> Optional[str]:
+    """
+    Extract power state from VM dictionary (requires --show-details in list_vms).
+
+    Args:
+        vm: VM dictionary from az vm list --show-details
+
+    Returns:
+        Power state string (e.g., "running", "stopped", "deallocated") or None if not available
+    """
+    # Check for powerState field (added by --show-details)
+    ps = vm.get("powerState")
+    if ps:
+        # Format is "VM running" or "VM stopped", extract the status part
+        parts = str(ps).lower().split()
+        if len(parts) >= 2:
+            return parts[1]  # "running", "stopped", "deallocated"
+        return ps.lower()
+
+    # Fallback: check instance view if embedded
+    iv = vm.get("instanceView")
+    if iv:
+        statuses = iv.get("statuses") or []
+        for st in statuses:
+            code = st.get("code") or ""
+            if code.lower().startswith("powerstate/"):
+                return code.split("/", 1)[1].lower()
+
+    return None
+
+
 def get_vm_power_state(rg: str, name: str) -> str:
+    """Get VM power state via dedicated API call (slower, use extract_power_state_from_vm_dict when possible)."""
     # instance view is slower, but accurate
     iv = run_az_json(["vm", "get-instance-view", "--resource-group", rg, "--name", name], timeout_s=120, retries=3)
     statuses = (iv or {}).get("statuses") or []
