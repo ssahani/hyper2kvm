@@ -32,6 +32,7 @@ from .disk_discovery import DiskDiscovery
 from .disk_processor import DiskProcessor
 from .virt_v2v_converter import VirtV2VConverter
 from .vsphere_exporter import VsphereExporter
+from .azure_exporter import AzureExporter
 
 # Check availability
 try:
@@ -67,6 +68,7 @@ class Orchestrator:
         # Initialize component handlers
         self.v2v_converter = VirtV2VConverter(logger)
         self.vsphere_exporter = VsphereExporter(logger, args)
+        self.azure_exporter = AzureExporter(logger, args)
         self.disk_discovery = DiskDiscovery(logger, args)
         self.disk_processor: Optional[DiskProcessor] = None  # Created after recovery setup
 
@@ -123,6 +125,24 @@ class Orchestrator:
         VsphereMode(self.logger, self.args).run()
         return False
 
+    def _handle_azure_mode(self, out_root: Path) -> bool:
+        """
+        Handle Azure mode operations.
+
+        Returns:
+            True if handled and should continue pipeline, False if should exit
+        """
+        if self.azure_exporter.is_enabled():
+            U.banner(self.logger, "Azure export")
+            exported = self.azure_exporter.export_vms(out_root)
+            if exported:
+                self.disks = exported
+                self.logger.info("📦 Azure export produced %d disk(s)", len(self.disks))
+                return True  # Continue pipeline
+            self.logger.warning("Azure export produced no disks")
+            return False  # Exit
+        return True  # Not Azure mode, continue
+
     def _discover_disks(self, out_root: Path) -> Optional[Path]:
         """
         Discover disks from various sources.
@@ -133,13 +153,18 @@ class Orchestrator:
         cmd = getattr(self.args, "cmd", None)
         Log.trace(self.logger, "🧭 _discover_disks: cmd=%r", cmd)
 
+        if cmd == "azure":
+            should_continue = self._handle_azure_mode(out_root)
+            if not should_continue:
+                return None  # Azure mode handled everything
+
         if cmd == "vsphere":
             should_continue = self._handle_vsphere_mode(out_root)
             if not should_continue:
                 return None  # VsphereMode handled everything
 
         # Use DiskDiscovery for all other modes
-        if not self.disks:  # Only if vsphere didn't already populate
+        if not self.disks:  # Only if vsphere/azure didn't already populate
             self.disks, temp_dir = self.disk_discovery.discover(out_root)
             return temp_dir
 
@@ -312,9 +337,11 @@ class Orchestrator:
 
         # Discover disks
         temp_dir = self._discover_disks(out_root)
-        if temp_dir is None and getattr(self.args, "cmd", None) in ("live-fix", "vsphere"):
+        if temp_dir is None and getattr(self.args, "cmd", None) in ("live-fix", "vsphere", "azure"):
             if getattr(self.args, "cmd", None) == "vsphere" and self.disks:
                 Log.trace(self.logger, "🌐 vsphere: continuing pipeline with exported disks=%d", len(self.disks))
+            elif getattr(self.args, "cmd", None) == "azure" and self.disks:
+                Log.trace(self.logger, "☁️ azure: continuing pipeline with exported disks=%d", len(self.disks))
             else:
                 return  # Early exit for modes that don't produce disks
 

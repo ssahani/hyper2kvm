@@ -11,6 +11,7 @@ from ...core.utils import U
 from .builder import HelpFormatter, _build_epilog
 from .groups import (
     _add_ami_extraction_knobs,
+    _add_azure_knobs,
     _add_daemon_flags,
     _add_domain_emission,
     _add_fixing_behavior,
@@ -74,6 +75,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_govc_knobs(p)
     _add_ovftool_knobs(p)
     _add_vsphere_v2v_and_download_knobs(p)
+
+    _add_azure_knobs(p)
 
     return p
 
