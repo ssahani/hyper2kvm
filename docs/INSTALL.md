@@ -110,9 +110,40 @@ sudo python -m hyper2kvm live-fix --host 192.168.1.50 --sudo --print-fstab
 ### Run tests
 
 ```bash
+# Install dependencies
 python -m pip install -r requirements.txt
 python -m pip install -e .
-python -m pytest -q
+
+# Install test dependencies
+pip install pytest pytest-cov pytest-xdist ruff mypy bandit
+
+# Run unit tests
+python -m pytest tests/unit/ -v
+
+# Run with coverage
+python -m pytest tests/unit/ --cov=hyper2kvm --cov-report=term-missing
+
+# Run specific test file
+python -m pytest tests/unit/test_core/test_utils.py -v
+
+# Run linting
+ruff check hyper2kvm/
+
+# Run type checking
+mypy hyper2kvm/ --ignore-missing-imports
+
+# Run security scan
+bandit -r hyper2kvm/
 ```
+
+### Continuous Integration
+
+Tests run automatically on GitHub Actions for every push and pull request:
+- Unit tests on Python 3.10, 3.11, 3.12
+- Code quality checks (ruff, mypy)
+- Security scanning (Bandit, pip-audit)
+- Documentation validation
+
+See `.github/workflows/` for CI configuration.
 
 

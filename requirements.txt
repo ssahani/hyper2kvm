@@ -1,8 +1,11 @@
-rich
-termcolor
-watchdog
-PyYAML
-requests
-pyvmomi
-libguestfs
-hivex
+# Core dependencies
+rich>=13.0.0
+click>=8.0.0
+PyYAML>=6.0
+requests>=2.31.0
+
+# VMware/vSphere integration
+pyvmomi>=8.0.0
+
+# Optional dependencies for specific features
+# watchdog>=3.0.0  # For daemon mode file watching
