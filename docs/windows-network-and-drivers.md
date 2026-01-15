@@ -1,4 +1,4 @@
-# 🪟 Windows Network & Driver Configuration in hyper2kvm
+#  Windows Network & Driver Configuration in hyper2kvm
 
 > **Declarative. Explicit. Boring (in the best way).**
 > Windows conversions fail when networking and drivers are left to luck.
@@ -8,7 +8,7 @@ This document explains **how Windows networking and drivers are configured**, ho
 
 ---
 
-## 🧠 Design Philosophy
+##  Design Philosophy
 
 hyper2kvm follows a strict separation of concerns:
 
@@ -40,7 +40,7 @@ These mechanisms apply when:
 
 ---
 
-# 🌐 Windows Network Configuration (Retention & Overrides)
+#  Windows Network Configuration (Retention & Overrides)
 
 Windows networking is **not modified directly offline**.
 Instead, hyper2kvm **stages a first-boot configuration** that is applied once Windows boots under KVM.
@@ -49,7 +49,7 @@ This avoids registry archaeology and matches how Windows actually wants to be co
 
 ---
 
-## ✅ YAML → JSON: Network Override (Recommended)
+##  YAML → JSON: Network Override (Recommended)
 
 ### YAML configuration
 
@@ -94,7 +94,7 @@ After the first successful application, the override is **not re-applied**.
 
 ---
 
-## 🧪 Inline Network JSON (Advanced / CI Friendly)
+##  Inline Network JSON (Advanced / CI Friendly)
 
 Useful when embedding everything into a single YAML file (systemd, CI, Ansible).
 
@@ -112,7 +112,7 @@ Behavior:
 
 ---
 
-## 🌐 Network JSON Schema (Current)
+##  Network JSON Schema (Current)
 
 ```json
 {
@@ -141,7 +141,7 @@ No hard-coded PNP IDs.
 
 ---
 
-## 🎯 What Driver JSON Controls
+##  What Driver JSON Controls
 
 * Which INF files are injected
 * Which drivers are staged
@@ -151,7 +151,7 @@ No hard-coded PNP IDs.
 
 ---
 
-## ✅ YAML → JSON: Driver Metadata
+##  YAML → JSON: Driver Metadata
 
 ### YAML configuration
 
@@ -253,7 +253,7 @@ output_dir: ./out
 
 windows: true
 
-# 🌐 Network configuration
+#  Network configuration
 win_net_override: ./net/windows-network.json
 
 # 🧰 Driver metadata

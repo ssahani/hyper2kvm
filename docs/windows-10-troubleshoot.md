@@ -24,7 +24,7 @@ Registry edits alone are **necessary but not sufficient**.
 Libvirt **must** be able to read the qcow2 image. Home directories often fail
 due to permissions or SELinux.
 
-### ✅ Exact command used
+###  Exact command used
 
 ```bash
 sudo cp -a out/windows10-fixed.qcow2 /var/lib/libvirt/images/windows10-fixed.qcow2 && \
@@ -152,9 +152,9 @@ sudo virsh define /tmp/${VM}.xml && sudo virsh start ${VM}
 
 ## Result
 
-✅ No `INACCESSIBLE_BOOT_DEVICE`
-✅ VirtIO storage loads at BOOT
-✅ Stable, permanent configuration
+ No `INACCESSIBLE_BOOT_DEVICE`
+ VirtIO storage loads at BOOT
+ Stable, permanent configuration
 
 ---
 

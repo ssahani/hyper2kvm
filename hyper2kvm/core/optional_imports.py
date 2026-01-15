@@ -11,9 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-# --------------------------------------------------------------------------------------
 # Rich library (progress bars, panels, console formatting)
-# --------------------------------------------------------------------------------------
 try:
     from rich.console import Console
     from rich.panel import Panel
@@ -42,9 +40,7 @@ except Exception:
     TransferSpeedColumn = None  # type: ignore
     RICH_AVAILABLE = False
 
-# --------------------------------------------------------------------------------------
 # requests library (HTTP client)
-# --------------------------------------------------------------------------------------
 try:
     import requests
     import requests.adapters
@@ -54,9 +50,7 @@ except Exception:
     requests = None  # type: ignore
     REQUESTS_AVAILABLE = False
 
-# --------------------------------------------------------------------------------------
 # urllib3 library (HTTP utilities, TLS warnings)
-# --------------------------------------------------------------------------------------
 try:
     import urllib3
 
@@ -65,9 +59,7 @@ except Exception:
     urllib3 = None  # type: ignore
     URLLIB3_AVAILABLE = False
 
-# --------------------------------------------------------------------------------------
 # pyVmomi library (VMware vSphere API)
-# --------------------------------------------------------------------------------------
 try:
     from pyVmomi import vim, vmodl
 
@@ -77,9 +69,7 @@ except Exception:
     vmodl = None  # type: ignore
     PYVMOMI_AVAILABLE = False
 
-# --------------------------------------------------------------------------------------
 # paramiko library (SSH client)
-# --------------------------------------------------------------------------------------
 try:
     import paramiko
 
@@ -88,9 +78,7 @@ except Exception:
     paramiko = None  # type: ignore
     PARAMIKO_AVAILABLE = False
 
-# --------------------------------------------------------------------------------------
 # Helper functions
-# --------------------------------------------------------------------------------------
 
 
 def require_rich() -> None:

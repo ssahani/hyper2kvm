@@ -220,6 +220,6 @@ See [CHANGELOG.md](../CHANGELOG.md) for version history and release notes.
 
 ---
 
-**Happy migrating! 🚀**
+**Happy migrating! **
 
 For quick help: `python -m hyper2kvm --help`

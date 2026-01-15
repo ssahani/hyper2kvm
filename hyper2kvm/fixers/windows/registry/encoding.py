@@ -23,9 +23,7 @@ import hivex  # type: ignore
 
 from .io import _is_probably_regf
 
-# ---------------------------------------------------------------------------
 # Guest file helpers
-# ---------------------------------------------------------------------------
 
 
 def _mkdir_p_guest(logger: logging.Logger, g: guestfs.GuestFS, path: str) -> None:
@@ -94,9 +92,7 @@ def _encode_windows_cmd_script(text: str) -> bytes:
     return b"\xff\xfe" + t.encode("utf-16le", errors="replace")
 
 
-# ---------------------------------------------------------------------------
 # Hivex node normalization (IMPORTANT)
-# ---------------------------------------------------------------------------
 
 NodeLike = Union[int, None]
 
@@ -116,9 +112,7 @@ def _node_ok(n: NodeLike) -> bool:
     return _node_id(n) != 0
 
 
-# ---------------------------------------------------------------------------
 # Registry encoding helpers (CRITICAL)
-# ---------------------------------------------------------------------------
 
 
 def _reg_sz(s: str) -> bytes:
@@ -277,9 +271,7 @@ def _detect_current_controlset(h: hivex.Hivex, root: NodeLike) -> str:
     return f"ControlSet{current_set:03d}"
 
 
-# ---------------------------------------------------------------------------
 # Hivex open helpers (LOCAL FILES ONLY)
-# ---------------------------------------------------------------------------
 
 
 def _open_hive_local(path: Path, *, write: bool) -> hivex.Hivex:
@@ -335,9 +327,7 @@ def _commit_best_effort(h: hivex.Hivex) -> None:
     raise RuntimeError("python-hivex: no commit method found")
 
 
-# ---------------------------------------------------------------------------
 # Internal: normalize Driver values (fixes NoneType -> int errors)
-# ---------------------------------------------------------------------------
 
 
 def _driver_start_default(drv: Any, *, fallback: int = 3) -> int:

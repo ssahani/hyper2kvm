@@ -231,9 +231,9 @@ Typically this will include one or more exported disk images in qcow2 (and virt-
 This happens when the vpx path is cluster-only.
 Your updated VMwareClient resolves **host-system compute paths**:
 
-* ✅ `host/<ClusterOrCompute>/<EsxHost>`
+*  `host/<ClusterOrCompute>/<EsxHost>`
   instead of
-* ❌ cluster-only paths that libvirt ESX rejects
+*  cluster-only paths that libvirt ESX rejects
 
 ### VDDK libdir errors (libvixDiskLib.so not found)
 

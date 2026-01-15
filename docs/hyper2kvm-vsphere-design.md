@@ -25,8 +25,8 @@ vCenter inventories can be massive, and naive "list everything" approaches lead 
 
 ### Correct Compute Paths for Libvirt ESX (Host-System Path)
 `hyper2kvm` resolves a common failure where libvirt rejects cluster-only paths:
-- Avoid: `host/<cluster>` ❌ (frequently rejected).
-- Resolve to: `host/<cluster-or-compute>/<esx-host>` ✅, or fallback to `host/<esx-host>` ✅.
+- Avoid: `host/<cluster>`  (frequently rejected).
+- Resolve to: `host/<cluster-or-compute>/<esx-host>` , or fallback to `host/<esx-host>` .
 This fix prevents errors like **“Path … does not specify a host system”** when constructing `vpx://...` URIs for tools like `virt-v2v`.
 
 ### Bytes Should Be Explicit (Download ≠ Convert)

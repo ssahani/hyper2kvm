@@ -110,9 +110,7 @@ from .registry_core import (
     _ensure_windows_root,  # internal helper in same package
 )
 
-# -----------------------------------------------------------------------------
 # Logging helpers
-# -----------------------------------------------------------------------------
 
 
 def _safe_logger(self) -> logging.Logger:
@@ -120,9 +118,7 @@ def _safe_logger(self) -> logging.Logger:
     return _safe_logger_base(self, "hyper2kvm.windows_network_fixer")
 
 
-# -----------------------------------------------------------------------------
 # Windows paths (guestfs paths, not C:\)
-# -----------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -169,9 +165,7 @@ def _guestfs_to_windows_path(p: str) -> str:
     return f"C:\\{s}"
 
 
-# -----------------------------------------------------------------------------
 # guestfs hivex compatibility helpers (same approach as windows_virtio.py)
-# -----------------------------------------------------------------------------
 
 
 def _hivex_call_known(
@@ -308,9 +302,7 @@ def _read_dword(g: guestfs.GuestFS, h: int, node: Any, name: str) -> Optional[in
         return None
 
 
-# -----------------------------------------------------------------------------
 # Parsing helpers
-# -----------------------------------------------------------------------------
 
 
 _IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
@@ -361,9 +353,7 @@ def _first_non_apipa(ips: List[str]) -> Optional[str]:
     return ips[0] if ips else None
 
 
-# -----------------------------------------------------------------------------
 # Network snapshot extraction (SYSTEM hive)
-# -----------------------------------------------------------------------------
 
 
 def _get_controlset_path(g: guestfs.GuestFS, h: int, root: Any) -> str:
@@ -568,9 +558,7 @@ def _choose_best_network_payload(snapshot: Dict[str, Any]) -> Optional[Dict[str,
     }
 
 
-# -----------------------------------------------------------------------------
 # Override loading/staging
-# -----------------------------------------------------------------------------
 
 
 def _normalize_override(obj: Dict[str, Any]) -> Dict[str, Any]:
@@ -645,9 +633,7 @@ def _load_windows_network_override(self) -> Optional[Dict[str, Any]]:
     return None
 
 
-# -----------------------------------------------------------------------------
 # Firstboot PowerShell payload
-# -----------------------------------------------------------------------------
 
 
 def _build_apply_network_ps1() -> str:
@@ -866,9 +852,7 @@ try {
 """.lstrip()
 
 
-# -----------------------------------------------------------------------------
 # Public API
-# -----------------------------------------------------------------------------
 
 
 def retain_windows_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:

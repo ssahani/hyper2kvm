@@ -165,9 +165,7 @@ def _markdown_path_for_base(base: Path) -> Path:
     return base
 
 
-# ---------------------------
 # Report content helpers
-# ---------------------------
 
 def _extract_validation(validation_payload: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
@@ -587,9 +585,7 @@ def _build_markdown(
     return "\n".join(md) + "\n"
 
 
-# ---------------------------
 # Public entrypoint
-# ---------------------------
 
 def write_report(self) -> None:
     """

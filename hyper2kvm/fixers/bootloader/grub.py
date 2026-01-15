@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/bootloader/grub.py
 # -*- coding: utf-8 -*-
-# ---------------------------------------------------------------------
 # GRUB/root= stabilization + device.map cleanup + initramfs + bootloader regen
 # Linux-only. Windows logic stays in windows_fixer.py.
 #
@@ -20,7 +19,6 @@
 #     or grub.cfg without mounting them, we "succeed" but write into the rootfs /
 #     directory, producing broken boots. So: mount /boot and /boot/efi temporarily
 #     (from /etc/fstab) before regen, then unmount.
-# ---------------------------------------------------------------------
 
 from __future__ import annotations
 
@@ -36,9 +34,7 @@ from ...core.utils import U, guest_has_cmd
 from ..filesystem.fstab import Ident, parse_btrfsvol_spec
 
 
-# ---------------------------------------------------------------------
 # tiny helpers
-# ---------------------------------------------------------------------
 
 def _logger(self):
     return getattr(self, "logger", None)
@@ -142,9 +138,7 @@ def _run_guestfs_cmd(self, g: guestfs.GuestFS, cmd: List[str]) -> Tuple[bool, st
         return False, str(e)
 
 
-# ---------------------------------------------------------------------
 # distro / family hints
-# ---------------------------------------------------------------------
 
 def _inspect_distro_major(self, g: guestfs.GuestFS) -> Tuple[str, int]:
     distro = ""
@@ -213,9 +207,7 @@ def _detect_family(distro: str) -> str:
     return "other"
 
 
-# ---------------------------------------------------------------------
 # Boot layout heuristics (offline)
-# ---------------------------------------------------------------------
 
 def _guest_looks_uefi(g: guestfs.GuestFS) -> bool:
     # Strong: presence of an EFI tree with .efi binaries
@@ -250,9 +242,7 @@ def _guest_has_bls(g: guestfs.GuestFS) -> bool:
     return _dir_exists(g, "/boot/loader/entries")
 
 
-# ---------------------------------------------------------------------
 # root= stabilization
-# ---------------------------------------------------------------------
 
 def _stable_root_id(self, g: guestfs.GuestFS) -> Optional[str]:
     """
@@ -462,9 +452,7 @@ def update_grub_root(self, g: guestfs.GuestFS) -> int:
     return changed
 
 
-# ---------------------------------------------------------------------
 # GRUB device.map cleanup
-# ---------------------------------------------------------------------
 
 def remove_stale_device_map(self, g: guestfs.GuestFS) -> int:
     """
@@ -486,9 +474,7 @@ def remove_stale_device_map(self, g: guestfs.GuestFS) -> int:
     return removed
 
 
-# ---------------------------------------------------------------------
 # initramfs driver injection (boot-relevant, keep here)
-# ---------------------------------------------------------------------
 
 def _get_initramfs_add_drivers(self) -> List[str]:
     """
@@ -650,9 +636,7 @@ def _maybe_add_dracut_drivers(cmd: List[str], drivers: List[str]) -> List[str]:
     return cmd + ["--add-drivers", " ".join(drivers)]
 
 
-# ---------------------------------------------------------------------
 # fstab-based /boot, /boot/efi mounting (critical for correct regen)
-# ---------------------------------------------------------------------
 
 @dataclass
 class _MountSpec:
@@ -807,9 +791,7 @@ def _umount_boot_partitions_best_effort(self, g: guestfs.GuestFS, mounted: List[
             pass
 
 
-# ---------------------------------------------------------------------
 # initramfs + bootloader regeneration
-# ---------------------------------------------------------------------
 
 def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     """
@@ -1085,9 +1067,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     return info
 
 
-# ---------------------------------------------------------------------
 # Optional: compatibility wiring (not used in your OfflineFSFix, but kept)
-# ---------------------------------------------------------------------
 
 def wire_into(cls: type) -> type:
     """

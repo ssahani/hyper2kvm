@@ -28,9 +28,7 @@ _ALLOWED_MANIFEST_EXTS = {".txt", ".json", ".yaml", ".yml"}
 _ALLOWED_RAW_EXTS = {".raw", ".img"}
 
 
-# ---------------------------------------------------------------------------
 # Shared extraction policy / result (tar-safe core)
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class ExtractPolicy:
@@ -313,9 +311,7 @@ def safe_extract_one(
         raise
 
 
-# ---------------------------------------------------------------------------
 # RAW extractor (matches the filename!)
-# ---------------------------------------------------------------------------
 
 class RAW:
     @staticmethod

@@ -51,9 +51,7 @@ from .io import _download_hive_local, _log_mountpoints_best_effort
 from .mount import _ensure_windows_root, _guest_path_join
 
 
-# ---------------------------------------------------------------------------
 # Logging helper
-# ---------------------------------------------------------------------------
 
 
 def _safe_logger(self) -> logging.Logger:
@@ -61,9 +59,7 @@ def _safe_logger(self) -> logging.Logger:
     return _safe_logger_base(self, "hyper2kvm.windows_registry")
 
 
-# ---------------------------------------------------------------------------
 # First-boot mechanism: create a one-shot SERVICE (more reliable than RunOnce)
-# ---------------------------------------------------------------------------
 
 _DEFAULT_GUEST_DIR = "/hyper2kvm"
 _DEFAULT_DRIVER_STAGE_DIR = "/hyper2kvm/drivers"
@@ -205,9 +201,7 @@ def _add_firstboot_service_system_hive(
             _close_best_effort(h)
 
 
-# ---------------------------------------------------------------------------
 # VMware Tools removal (firstboot script block)
-# ---------------------------------------------------------------------------
 
 
 def _vmware_tools_removal_cmd_block() -> str:
@@ -278,9 +272,7 @@ for %%D in (
 """
 
 
-# ---------------------------------------------------------------------------
 # Firstboot provisioning: refactored into small helpers
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)

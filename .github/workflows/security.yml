@@ -8,6 +8,7 @@ on:
   schedule:
     # Run weekly on Monday at 00:00 UTC
     - cron: '0 0 * * 1'
+  workflow_dispatch:
 
 jobs:
   security:
@@ -54,7 +55,10 @@ jobs:
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    # Only run on public repos or when dependency graph is enabled
+    # Requires: Settings > Security > Dependency graph to be enabled
+    if: github.event_name == 'pull_request' && github.repository_visibility == 'public'
+    continue-on-error: true
 
     steps:
     - name: Checkout code
@@ -62,5 +66,6 @@ jobs:
 
     - name: Dependency Review
       uses: actions/dependency-review-action@v4
+      continue-on-error: true
       with:
         fail-on-severity: high

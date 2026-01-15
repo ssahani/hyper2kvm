@@ -158,7 +158,7 @@ A successful boot typically shows:
    * **GDM login** (Desktop / GUI installed), or
    * **Text login prompt** (Server image)
 
-✅ **Pass condition:** any stable login prompt (GUI or console).
+ **Pass condition:** any stable login prompt (GUI or console).
 
 ---
 
@@ -269,4 +269,4 @@ dpkg -l | egrep 'ubuntu-desktop|gdm3|gnome-shell'
 
 ---
 
-**Status:** ✅ Smoke test template for Ubuntu 24.04.3 (BIOS, KVM/libvirt)
+**Status:**  Smoke test template for Ubuntu 24.04.3 (BIOS, KVM/libvirt)

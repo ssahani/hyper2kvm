@@ -40,9 +40,7 @@ except Exception:  # pragma: no cover
     SELECT_AVAILABLE = False
 
 
-# --------------------------------------------------------------------------------------
 # Optional Rich UI
-# --------------------------------------------------------------------------------------
 try:  # pragma: no cover
     from rich.console import Console
     from rich.panel import Panel
@@ -62,9 +60,7 @@ except Exception:  # pragma: no cover
     RICH_AVAILABLE = False
 
 
-# --------------------------------------------------------------------------------------
 # Errors
-# --------------------------------------------------------------------------------------
 class OvfToolError(RuntimeError):
     """Generic ovftool failure."""
 
@@ -81,9 +77,7 @@ class OvfToolSslError(OvfToolError):
     """Likely SSL/certificate/handshake failure (best-effort classification)."""
 
 
-# --------------------------------------------------------------------------------------
 # Regex helpers for parsing output
-# --------------------------------------------------------------------------------------
 _PROGRESS_RE = re.compile(r"^\s*Progress:\s*(\d+)\s*%\s*$", re.IGNORECASE)
 _VERSION_RE = re.compile(r"^\s*VMware\s+OVF\s+Tool\s+([\w\.\-\+]+)", re.IGNORECASE)
 # Some ovftool builds print "Error:" lines; keep it loose.
@@ -109,9 +103,7 @@ _AUTH_HINTS = (
 )
 
 
-# --------------------------------------------------------------------------------------
 # Config dataclasses
-# --------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class OvfToolPaths:
     """Resolved ovftool binary path."""
@@ -182,9 +174,7 @@ class OvfDeployOptions:
     extra_args: Tuple[str, ...] = ()
 
 
-# --------------------------------------------------------------------------------------
 # UI helpers (Rich Panel when possible, otherwise plain box-drawing)
-# --------------------------------------------------------------------------------------
 def _console() -> Optional[Any]:
     """Create Rich Console if available and running in TTY."""
     if not (RICH_AVAILABLE and Console and _is_tty()):
@@ -248,9 +238,7 @@ def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
     return minutes, seconds
 
 
-# --------------------------------------------------------------------------------------
 # Public API
-# --------------------------------------------------------------------------------------
 def find_ovftool(explicit_path: Optional[str] = None) -> OvfToolPaths:
     """
     Resolve ovftool binary.
@@ -480,9 +468,7 @@ def deploy_ovf_or_ova(
     _print_panel("✓ Deploy completed successfully!", "")
 
 
-# --------------------------------------------------------------------------------------
 # Internals
-# --------------------------------------------------------------------------------------
 def _common_flags(*, no_ssl_verify: bool, thumbprint: Optional[str]) -> List[str]:
     flags: List[str] = []
     if no_ssl_verify:

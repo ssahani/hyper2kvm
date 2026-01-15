@@ -755,9 +755,7 @@ def best_effort_fsck(ctx: Any, g: guestfs.GuestFS, dev: str) -> Dict[str, Any]:
     return audit
 
 
-# -----------------------------------------------------------------------------
 # Orchestrated "fix all filesystems" entrypoint (also refactored)
-# -----------------------------------------------------------------------------
 
 def _umount_all_best_effort(ctx: Any, g: guestfs.GuestFS, logger: Optional[logging.Logger]) -> None:
     try:

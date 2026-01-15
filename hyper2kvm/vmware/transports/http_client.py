@@ -36,9 +36,7 @@ except Exception:  # pragma: no cover
     requests = None  # type: ignore
     REQUESTS_AVAILABLE = False
 
-# --------------------------------------------------------------------------------------
 # Exception Hierarchy
-# --------------------------------------------------------------------------------------
 class HTTPDownloadError(Exception):
     """Base exception for HTTP download errors."""
 
@@ -76,9 +74,7 @@ except Exception:  # pragma: no cover
     RICH_AVAILABLE = False
 
 
-# --------------------------------------------------------------------------------------
 # UI helpers
-# --------------------------------------------------------------------------------------
 def _print_panel(
     title: str,
     body: str = "",
@@ -121,9 +117,7 @@ def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
     return minutes, seconds
 
 
-# --------------------------------------------------------------------------------------
 # HTTP Download Options
-# --------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class HTTPDownloadOptions:
     show_panels: bool = True
@@ -142,9 +136,7 @@ class HTTPDownloadOptions:
 ProgressCallback = Callable[[int, int], None]  # (bytes_delta, total_bytes)
 
 
-# --------------------------------------------------------------------------------------
 # HTTP Download Client
-# --------------------------------------------------------------------------------------
 class HTTPDownloadClient:
     """
     HTTP/HTTPS client for downloading files from vSphere datastores.
@@ -544,9 +536,7 @@ class HTTPDownloadClient:
             return False
 
 
-# --------------------------------------------------------------------------------------
 # HTTP Download Manager
-# --------------------------------------------------------------------------------------
 class HTTPDownloadManager:
     """
     Manager for batch HTTP downloads with parallel download support.
