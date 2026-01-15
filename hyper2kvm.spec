@@ -130,6 +130,14 @@ exit 0
 %post
 %systemd_post hyper2kvm.service hyper2kvm@.service
 
+# Add hyper2kvm user to necessary groups for libguestfs, QEMU, and libvirt access
+# Only add to groups that exist on the system
+for group in qemu kvm libvirt disk; do
+    if getent group "$group" >/dev/null 2>&1; then
+        usermod -a -G "$group" hyper2kvm >/dev/null 2>&1 || :
+    fi
+done
+
 # Set ownership of working directories
 if [ $1 -eq 1 ]; then
     # Initial installation
@@ -178,3 +186,4 @@ fi
 - Support for VMware vSphere, Hyper-V, and Azure migrations
 - Add systemd service units for daemon mode
 - Create system user and directories for daemon operation
+- Add hyper2kvm user to qemu, kvm, libvirt, and disk groups for proper access
