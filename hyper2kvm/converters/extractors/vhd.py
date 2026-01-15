@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/converters/vhd_extractor.py
+# hyper2kvm/converters/extractors/vhd.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
-from ..core.utils import U
+from ...core.utils import U
 
 
 _ALLOWED_MANIFEST_EXTS = {".txt", ".json", ".yaml", ".yml"}
@@ -385,7 +385,7 @@ class VHD:
         log_virt_filesystems: bool = False,
     ) -> List[Path]:
         try:
-            from ..converters.qemu_converter import Convert  # type: ignore
+            from ..qemu.converter import Convert  # type: ignore
         except Exception as e:
             U.die(logger, f"QCOW2 conversion requested but Convert could not be imported: {e}", 1)
             raise

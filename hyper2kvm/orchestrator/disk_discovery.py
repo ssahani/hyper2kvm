@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..converters.fetch import Fetch
-from ..converters.ovf_extractor import OVF
-from ..converters.raw_extractor import RAW
-from ..converters.vhd_extractor import VHD
+from ..converters.extractors.ovf import OVF
+from ..converters.extractors.raw import RAW
+from ..converters.extractors.vhd import VHD
 from ..core.exceptions import Fatal
 from ..core.logger import Log
 from ..core.utils import U
@@ -188,7 +188,7 @@ class DiskDiscovery:
             self.logger.info("📦 Extracted %d disk(s) from RAW/IMG/TAR", len(disks))
 
         elif cmd == "ami":
-            from ..converters.ami_extractor import AMI
+            from ..converters.extractors.ami import AMI
 
             temp_dir = out_root / "extracted"
             Log.step(self.logger, f"Extract AMI/TAR → {temp_dir}")

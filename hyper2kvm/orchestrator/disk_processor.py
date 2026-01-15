@@ -24,7 +24,7 @@ from rich.progress import (
 )
 
 from ..converters.flatten import Flatten
-from ..converters.qemu_converter import Convert
+from ..converters.qemu.converter import Convert
 from ..core.logger import Log
 from ..core.recovery_manager import RecoveryManager
 from ..core.utils import U
