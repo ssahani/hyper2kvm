@@ -98,3 +98,9 @@ Thumbs.db
 *.swo
 *~
 
+
+# Test fixtures
+tests/fixtures/images/
+*.qcow2
+*.vmdk
+*.img

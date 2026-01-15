@@ -1,0 +1,307 @@
+# ============================================
+# Complete Workflow: vSphere → libvirt (Windows 11)
+# ============================================
+# Description: Export Windows 11 VM from vSphere and prepare for libvirt/KVM with full requirements
+# Use Case: Windows 11 Professional/Enterprise migration with TPM 2.0 and Secure Boot
+# Prerequisites:
+#   - govc installed
+#   - vCenter credentials
+#   - VirtIO driver ISO (virtio-win.iso)
+#   - swtpm package (for TPM 2.0 emulation)
+#   - OVMF with Secure Boot support
+# ============================================
+
+cmd: vsphere
+
+# vSphere Connection
+vcenter: vcenter.example.com
+username: administrator@vsphere.local
+password_file: ~/.vcenter_password
+datacenter: Production-DC
+cluster: Windows-Cluster
+
+# VM Selection
+vm_name: windows-11-enterprise
+# Alternative: vm_uuid: 502d5b64-0a7e-b2a5-45f9-065cbf375a77
+
+# vSphere Export
+vs_action: export
+export_method: govc
+export_format: ova
+
+# Snapshot Configuration
+create_snapshot: true
+snapshot_name: win11-kvm-migration-$(date +%Y%m%d-%H%M%S)
+snapshot_description: Windows 11 migration snapshot
+snapshot_memory: false
+snapshot_quiesce: true  # VSS snapshot
+delete_snapshot_after: true
+
+# Disk Processing
+flatten: true
+compress: true
+disk_format: qcow2
+
+# Windows 11 Detection
+windows: true
+os_type: windows
+os_variant: win11
+windows_version: 11
+
+# VirtIO Driver Injection
+inject_virtio: true
+virtio_win_iso: /data/virtio-win.iso
+virtio_drivers:
+  - storage      # Critical: BOOT_START
+  - network
+  - balloon
+  - rng
+  - vioserial
+  - viorng
+  - vioscsi
+
+# Registry Modification (Offline)
+modify_registry: true
+registry_edits:
+  - Add VirtIO storage to BOOT_START
+  - Add VirtIO drivers to CriticalDeviceDatabase
+  - Configure safe boot for driver detection
+  - Disable Windows 11 hardware checks (optional)
+
+# Two-Phase Boot Strategy
+boot_strategy: two-phase
+phase1_bus: sata  # Bootstrap with SATA
+phase2_bus: virtio  # Final boot with VirtIO
+
+# BCD (Boot Configuration Database) Handling
+backup_bcd: true
+repair_bcd: true
+
+# VMware Tools Removal
+remove_vmware_tools: true
+uninstall_vmware_tools_cleanly: true
+
+# Output Configuration
+to_output: /data/kvm/windows-11-enterprise.qcow2
+output_format: qcow2
+output_dir: /data/kvm/
+
+# libvirt Domain XML Generation
+generate_libvirt_xml: true
+libvirt_xml_path: /data/kvm/windows-11-enterprise.xml
+libvirt_domain_name: windows-11-enterprise
+
+# libvirt Hardware Configuration
+memory_mb: 16384  # 16GB for Windows 11 (minimum 4GB)
+vcpus: 8
+cpu_mode: host-passthrough
+cpu_topology:
+  sockets: 1
+  cores: 4
+  threads: 2
+machine_type: q35  # Required for Windows 11
+
+# Firmware Configuration (UEFI + Secure Boot required for Windows 11)
+firmware_type: uefi
+uefi_loader: /usr/share/edk2/ovmf/OVMF_CODE.secboot.fd
+uefi_nvram_template: /usr/share/edk2/ovmf/OVMF_VARS.secboot.fd
+secure_boot: true  # Windows 11 requirement
+secure_boot_enrolled_keys: true
+
+# TPM 2.0 Configuration (Windows 11 requirement)
+enable_tpm: true
+tpm_version: 2.0
+tpm_model: tpm-crb
+tpm_backend: emulator
+tpm_persistent_state: /var/lib/libvirt/swtpm/windows-11-enterprise-tpm.state
+
+# Storage Configuration
+# Phase 1: SATA for initial boot
+disk_bus_phase1: sata
+disk_cache_phase1: writeback
+
+# Phase 2: VirtIO for production
+disk_bus: virtio
+disk_cache: writeback
+disk_io: threads
+disk_discard: unmap
+disk_detect_zeroes: unmap
+
+# Network Configuration
+network_type: bridge
+network_bridge: br0
+network_model: virtio
+
+# Graphics Configuration
+enable_spice: true
+spice_listen: 127.0.0.1
+graphics_type: spice
+enable_qxl: true
+video_ram_mb: 256
+
+# Audio and Input
+enable_audio: true
+audio_model: ich9
+enable_usb_tablet: true
+enable_usb_keyboard: true
+enable_usb_redirection: true
+
+# USB Controller (Windows 11)
+usb_controller: qemu-xhci
+
+# Additional Windows 11 Features
+qemu_guest_agent: true
+qemu_guest_agent_path: C:\Program Files\Qemu-ga\qemu-ga.exe
+
+# VirtIO Features
+enable_virtio_serial: true
+enable_balloon: true
+enable_rng: true
+rng_model: virtio
+
+# Performance Optimizations
+enable_hyperv_enlightenments: true
+hyperv_features:
+  - relaxed
+  - vapic
+  - spinlocks
+  - vpindex
+  - runtime
+  - synic
+  - stimer
+  - reset
+  - frequencies
+
+# Clock Configuration
+clock_offset: localtime
+clock_timers:
+  - rtc:
+      tickpolicy: catchup
+  - pit:
+      tickpolicy: delay
+  - hpet:
+      present: false
+  - hypervclock:
+      present: true
+
+# Validation
+libvirt_test: true
+boot_timeout: 600
+validate_windows_boot: true
+check_virtio_drivers_loaded: true
+validate_tpm: true
+validate_secure_boot: true
+
+# Reporting
+report: /var/log/migrations/windows-11-$(date +%Y%m%d-%H%M%S).md
+log_level: INFO
+verbose: true
+
+# Recovery Configuration
+enable_recovery: true
+recovery_checkpoint_dir: /tmp/hyper2kvm-checkpoints
+
+# Post-Migration Script
+post_migration_script: |
+  #!/bin/bash
+  set -e
+
+  echo "=============================================="
+  echo "Windows 11 Migration Post-Processing"
+  echo "=============================================="
+
+  # Ensure swtpm is installed (for TPM 2.0)
+  if ! command -v swtpm &> /dev/null; then
+      echo "ERROR: swtpm not found. Install with: sudo dnf install swtpm swtpm-tools"
+      exit 1
+  fi
+
+  # Create TPM state directory
+  sudo mkdir -p /var/lib/libvirt/swtpm
+  sudo chown -R qemu:qemu /var/lib/libvirt/swtpm
+
+  # Import domain (Phase 1: SATA boot)
+  virsh define /data/kvm/windows-11-enterprise.xml
+
+  # Verify TPM device in XML
+  echo "Verifying TPM 2.0 configuration..."
+  virsh dumpxml windows-11-enterprise | grep -A 5 "<tpm"
+
+  # Verify Secure Boot
+  echo "Verifying Secure Boot configuration..."
+  virsh dumpxml windows-11-enterprise | grep -A 3 "secboot"
+
+  # Start VM with SATA disk
+  echo "Starting Windows 11 VM (Phase 1: SATA boot)..."
+  echo "TPM 2.0 and Secure Boot are enabled"
+  virsh start windows-11-enterprise
+
+  # Wait for Windows to boot
+  echo "Waiting for Windows 11 to boot and detect VirtIO drivers..."
+  echo "This may take 5-10 minutes..."
+  sleep 300
+
+  # Check VM status
+  virsh list | grep windows-11-enterprise
+
+  echo ""
+  echo "Phase 1 Complete: Windows 11 booted with SATA"
+  echo ""
+  echo "Next Steps:"
+  echo "1. Access VM via virt-manager or virt-viewer"
+  echo "2. Verify Windows 11 booted successfully"
+  echo "3. Check Device Manager for VirtIO drivers"
+  echo "4. Verify TPM 2.0: tpm.msc in Windows"
+  echo "5. Verify Secure Boot in System Information"
+  echo "6. Once drivers are installed, shut down VM"
+  echo "7. Switch disk from SATA to VirtIO (Phase 2)"
+  echo ""
+  echo "Phase 2 XML modification:"
+  echo "  virsh shutdown windows-11-enterprise"
+  echo "  virsh edit windows-11-enterprise"
+  echo "  # Change: <disk ... bus='sata'> → <disk ... bus='virtio'>"
+  echo "  virsh start windows-11-enterprise"
+  echo ""
+  echo "Management:"
+  echo "  virt-manager"
+  echo "  virt-viewer windows-11-enterprise"
+
+# Windows 11 Requirements Check
+pre_migration_checks: |
+  Windows 11 Hardware Requirements:
+  ✓ UEFI with Secure Boot: Enabled
+  ✓ TPM 2.0: Emulated via swtpm
+  ✓ CPU: host-passthrough (meets requirements)
+  ✓ RAM: 16GB (minimum 4GB required)
+  ✓ Storage: 64GB+ (validated during conversion)
+  ✓ Graphics: SPICE with QXL
+
+# Two-Phase Boot Instructions
+post_migration_notes: |
+  Windows 11 Two-Phase Boot Strategy:
+
+  PHASE 1 (SATA Bootstrap + Driver Installation):
+  - VM boots with SATA disk controller
+  - TPM 2.0 device present and functional
+  - Secure Boot enabled
+  - Windows detects VirtIO drivers injected offline
+  - Drivers install via PnP (Plug and Play)
+  - VirtIO storage becomes available
+
+  PHASE 2 (VirtIO Production):
+  - Shutdown VM cleanly
+  - Modify libvirt XML: bus="sata" → bus="virtio"
+  - Restart VM
+  - Windows 11 boots natively on VirtIO with full performance
+
+  TPM 2.0 Verification in Windows:
+  - Run: tpm.msc
+  - Check: "TPM Manufacturer Information"
+  - Should show: "2.0" under "Specification Version"
+
+  Secure Boot Verification:
+  - Run: msinfo32
+  - Check: "System Summary" → "Secure Boot State"
+  - Should show: "On"
+
+  This ensures Windows 11 compliance and zero-risk migration.

@@ -1,0 +1,183 @@
+# ============================================
+# Complete Workflow: vSphere → libvirt (Fedora 39)
+# ============================================
+# Description: Export Fedora 39 VM from vSphere and prepare for libvirt/KVM
+# Use Case: Modern Fedora workstation/server migration
+# Prerequisites:
+#   - govc installed
+#   - vCenter credentials
+#   - Fedora 39 VM
+# ============================================
+
+cmd: vsphere
+
+# vSphere Connection
+vcenter: vcenter.example.com
+username: administrator@vsphere.local
+password_file: ~/.vcenter_password
+datacenter: Production-DC
+cluster: Linux-Cluster
+
+# VM Selection
+vm_name: fedora-39-workstation
+# Alternative: vm_path: /Production-DC/vm/Fedora/fedora-39-workstation
+
+# vSphere Export
+vs_action: export
+export_method: govc
+export_format: ova
+
+# Snapshot Configuration
+create_snapshot: true
+snapshot_name: pre-kvm-migration-$(date +%Y%m%d)
+snapshot_description: Snapshot before KVM migration
+snapshot_memory: false
+snapshot_quiesce: true
+delete_snapshot_after: true
+
+# Disk Processing
+flatten: true
+compress: true
+disk_format: qcow2
+
+# Fedora 39 Specific Fixes
+fix_fstab: true
+fix_grub: true
+fix_initramfs: true
+fix_network: true
+remove_vmware_tools: true
+
+# Network Configuration (Fedora 39 uses NetworkManager)
+network_config_type: networkmanager
+network_fix_level: full
+remove_mac_binding: true
+setup_dhcp: true
+preserve_static_ip: false
+remove_vmware_network_files: true
+
+# Bootloader Configuration (GRUB2 with BLS)
+bootloader_type: grub2
+firmware_type: uefi  # Fedora 39 default is UEFI
+regenerate_grub: true
+update_grub_config: true
+grub_timeout: 5
+grubby_update: true  # Fedora uses grubby for kernel args
+
+# Dracut Configuration (Fedora uses dracut)
+update_initramfs: true
+dracut_force_rebuild: true
+install_virtio_modules: true
+dracut_add_drivers:
+  - virtio
+  - virtio_blk
+  - virtio_scsi
+  - virtio_net
+  - virtio_pci
+  - virtio_balloon
+
+# SELinux Configuration
+selinux_relabel: true
+selinux_mode: enforcing
+
+# System Configuration
+clean_ssh_keys: false
+clean_machine_id: true
+preserve_hostname: true
+timezone: America/New_York
+
+# Output Configuration
+to_output: /data/kvm/fedora-39-workstation.qcow2
+output_format: qcow2
+output_dir: /data/kvm/
+
+# libvirt Domain XML Generation
+generate_libvirt_xml: true
+libvirt_xml_path: /data/kvm/fedora-39-workstation.xml
+libvirt_domain_name: fedora-39-workstation
+
+# libvirt Hardware Configuration
+memory_mb: 8192
+vcpus: 8
+cpu_mode: host-passthrough
+cpu_topology:
+  sockets: 1
+  cores: 4
+  threads: 2
+machine_type: q35
+
+# UEFI Configuration (Fedora 39 defaults to UEFI)
+firmware_type: uefi
+uefi_loader: /usr/share/edk2/ovmf/OVMF_CODE.fd
+uefi_nvram_template: /usr/share/edk2/ovmf/OVMF_VARS.fd
+secure_boot: true  # Fedora 39 supports Secure Boot
+
+# Storage Configuration
+disk_bus: virtio
+disk_cache: writeback
+disk_io: threads
+disk_discard: unmap
+disk_detect_zeroes: unmap
+
+# Network Configuration
+network_type: bridge
+network_bridge: virbr0
+network_model: virtio
+
+# Graphics Configuration (for workstation)
+enable_serial_console: true
+enable_vnc: false
+enable_spice: true
+spice_listen: 127.0.0.1
+graphics_type: spice
+
+# Audio and USB
+enable_audio: true
+enable_usb_tablet: true
+enable_usb_keyboard: true
+
+# QEMU Guest Agent
+qemu_guest_agent: true
+
+# Additional Devices
+enable_rng: true  # Random number generator
+
+# Validation
+libvirt_test: true
+boot_timeout: 300
+validate_network: true
+
+# Reporting
+report: /var/log/migrations/fedora-39-$(date +%Y%m%d-%H%M%S).md
+log_level: INFO
+verbose: true
+
+# Recovery Configuration
+enable_recovery: true
+recovery_checkpoint_dir: /tmp/hyper2kvm-checkpoints
+
+# Post-Migration Script
+post_migration_script: |
+  #!/bin/bash
+  set -e
+
+  # Import domain
+  virsh define /data/kvm/fedora-39-workstation.xml
+
+  # Set autostart
+  virsh autostart fedora-39-workstation
+
+  # Start VM
+  virsh start fedora-39-workstation
+
+  # Wait for boot
+  echo "Waiting for Fedora to boot..."
+  sleep 60
+
+  # Check VM status
+  virsh list | grep fedora-39-workstation
+
+  # Relabel SELinux if needed
+  echo "SELinux relabeling will occur on first boot"
+
+  echo "Fedora 39 migration complete"
+  echo "Connect via: virt-manager or virt-viewer fedora-39-workstation"

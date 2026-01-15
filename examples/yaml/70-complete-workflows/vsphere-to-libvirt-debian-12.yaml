@@ -1,0 +1,162 @@
+# ============================================
+# Complete Workflow: vSphere → libvirt (Debian 12 Bookworm)
+# ============================================
+# Description: Export Debian 12 VM from vSphere and prepare for libvirt/KVM
+# Use Case: Stable Debian deployment migration
+# Prerequisites:
+#   - govc installed
+#   - vCenter credentials
+#   - Debian 12 VM with standard configuration
+# ============================================
+
+cmd: vsphere
+
+# vSphere Connection
+vcenter: vcenter.example.com
+username: administrator@vsphere.local
+password_file: ~/.vcenter_password
+datacenter: Production-DC
+cluster: Debian-Cluster
+
+# VM Selection
+vm_name: debian-12-app-server
+# Alternative: vm_uuid: 502d5b64-0a7e-b2a5-45f9-065cbf375a77
+
+# vSphere Export
+vs_action: export
+export_method: govc
+export_format: ova
+
+# Snapshot Configuration
+create_snapshot: true
+snapshot_name: migration-snapshot-$(date +%Y%m%d-%H%M%S)
+snapshot_description: Pre-KVM migration snapshot
+snapshot_memory: false
+snapshot_quiesce: true
+delete_snapshot_after: true
+
+# Disk Processing
+flatten: true
+compress: true
+disk_format: qcow2
+
+# Debian 12 Specific Fixes
+fix_fstab: true
+fix_grub: true
+fix_initramfs: true
+fix_network: true
+remove_vmware_tools: true
+
+# Network Configuration (Debian 12 uses ifupdown or NetworkManager)
+network_config_type: ifupdown  # or networkmanager
+network_fix_level: full
+remove_mac_binding: true
+setup_dhcp: true
+preserve_static_ip: false
+network_config_path: /etc/network/interfaces
+
+# Bootloader Configuration
+bootloader_type: grub2
+firmware_type: auto  # auto-detect BIOS or UEFI
+regenerate_grub: true
+update_grub_config: true
+grub_timeout: 5
+grub_cmdline_add:
+  - quiet
+  - splash
+
+# Initramfs Configuration (Debian uses update-initramfs)
+update_initramfs: true
+install_virtio_modules: true
+initramfs_tools_config: true
+initramfs_modules:
+  - virtio_blk
+  - virtio_scsi
+  - virtio_net
+  - virtio_pci
+
+# System Configuration
+clean_ssh_keys: false
+clean_machine_id: true
+preserve_hostname: true
+timezone: UTC
+
+# Output Configuration
+to_output: /data/kvm/debian-12-app-server.qcow2
+output_format: qcow2
+output_dir: /data/kvm/
+
+# libvirt Domain XML Generation
+generate_libvirt_xml: true
+libvirt_xml_path: /data/kvm/debian-12-app-server.xml
+libvirt_domain_name: debian-12-app-server
+
+# libvirt Hardware Configuration
+memory_mb: 4096
+vcpus: 4
+cpu_mode: host-model
+cpu_topology:
+  sockets: 1
+  cores: 2
+  threads: 2
+machine_type: q35
+
+# Firmware Configuration
+firmware_type: auto
+uefi_loader: /usr/share/OVMF/OVMF_CODE.fd
+uefi_nvram_template: /usr/share/OVMF/OVMF_VARS.fd
+
+# Storage Configuration
+disk_bus: virtio
+disk_cache: none
+disk_io: native
+disk_discard: unmap
+
+# Network Configuration
+network_type: bridge
+network_bridge: br0
+network_model: virtio
+
+# Console and Graphics
+enable_serial_console: true
+enable_vnc: true
+vnc_listen: 127.0.0.1
+vnc_password: false
+
+# QEMU Guest Agent
+qemu_guest_agent: true
+
+# Validation
+libvirt_test: true
+boot_timeout: 300
+validate_network: true
+
+# Reporting
+report: /var/log/migrations/debian-12-$(date +%Y%m%d-%H%M%S).md
+log_level: INFO
+verbose: true
+
+# Recovery Configuration
+enable_recovery: true
+recovery_checkpoint_dir: /tmp/hyper2kvm-checkpoints
+
+# Post-Migration Script
+post_migration_script: |
+  #!/bin/bash
+  set -e
+
+  # Import domain
+  virsh define /data/kvm/debian-12-app-server.xml
+
+  # Start VM
+  virsh start debian-12-app-server
+
+  # Wait for boot
+  echo "Waiting for VM to boot..."
+  sleep 45
+
+  # Check VM status
+  virsh list | grep debian-12-app-server
+
+  echo "Debian 12 migration complete"
+  echo "Connect via: virsh console debian-12-app-server"
