@@ -19,7 +19,7 @@ from typing import Any, Optional
 
 # Import from sibling module
 from ..core.utils import U
-from .vmware_utils import is_tty as _is_tty, create_console as _create_console
+from .vmware_utils import is_tty as _is_tty, create_console as _console
 
 # Optional: Rich UI
 try:
@@ -52,11 +52,6 @@ except Exception:
 # --------------------------------------------------------------------------------------
 # Helper Functions
 # --------------------------------------------------------------------------------------
-def _console() -> Optional[Any]:
-    """Wrapper for backward compatibility - calls shared create_console."""
-    return _create_console()
-
-
 def _rich_construct(cls: Any, *args: Any, **kwargs: Any) -> Any:
     """
     Construct a Rich column in a way that is compatible across Rich versions.

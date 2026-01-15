@@ -30,7 +30,7 @@ import guestfs  # type: ignore
 import hivex  # type: ignore
 
 from ..core.utils import U
-from ..core.logging_utils import safe_logger
+from ..core.logging_utils import safe_logger as _safe_logger_base
 from .registry_encoding import (
     _close_best_effort,
     _commit_best_effort,
@@ -57,8 +57,8 @@ from .registry_mount import _ensure_windows_root, _guest_path_join
 
 
 def _safe_logger(self) -> logging.Logger:
-    """Wrapper for backward compatibility - calls shared safe_logger."""
-    return safe_logger(self, "hyper2kvm.windows_registry")
+    """Get logger from instance or create default for registry modules."""
+    return _safe_logger_base(self, "hyper2kvm.windows_registry")
 
 
 # ---------------------------------------------------------------------------

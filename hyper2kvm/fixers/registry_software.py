@@ -39,12 +39,12 @@ from .registry_encoding import (
 from .registry_system import _hive_backup_best_effort
 
 # Import shared logging utilities
-from ..core.logging_utils import safe_logger
+from ..core.logging_utils import safe_logger as _safe_logger_base
 
 
 def _safe_logger(self) -> logging.Logger:
     """Get logger from self or create default logger."""
-    return safe_logger(self, "hyper2kvm.windows_registry")
+    return _safe_logger_base(self, "hyper2kvm.windows_registry")
 
 # ---------------------------------------------------------------------------
 # Public: SOFTWARE hive DevicePath append

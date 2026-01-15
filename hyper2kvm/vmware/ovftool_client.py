@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-from .vmware_utils import is_tty as _is_tty, create_console as _create_console
+from .vmware_utils import is_tty as _is_tty
 
 # Optional: select for single-flow multiplexing stdout/stderr without threads
 try:  # pragma: no cover
@@ -186,8 +186,13 @@ class OvfDeployOptions:
 # UI helpers (Rich Panel when possible, otherwise plain box-drawing)
 # --------------------------------------------------------------------------------------
 def _console() -> Optional[Any]:
-    """Wrapper for backward compatibility - calls shared create_console."""
-    return _create_console()
+    """Create Rich Console if available and running in TTY."""
+    if not (RICH_AVAILABLE and Console and _is_tty()):
+        return None
+    try:
+        return Console(stderr=False)
+    except Exception:
+        return None
 
 
 def _print_panel(title: str, body: str = "") -> None:

@@ -102,13 +102,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import guestfs  # type: ignore
 
 from ..core.utils import U
-from ..core.logging_utils import (
-    safe_logger,
-    emoji_for_level,
-    log_with_emoji,
-    log_step,
-)
-from ..core.guest_utils import guest_mkdir_p, guest_write_text, deep_merge_dict
+from ..core.logging_utils import safe_logger as _safe_logger_base, emoji_for_level as _emoji, log_with_emoji as _log, log_step as _step
+from ..core.guest_utils import guest_mkdir_p as _guest_mkdir_p, guest_write_text as _guest_write_text, deep_merge_dict as _deep_merge_dict
 from ..core.list_utils import dedup_preserve_order_str
 from .windows_registry import (
     provision_firstboot_payload_and_service,
@@ -116,30 +111,13 @@ from .windows_registry import (
 )
 
 # -----------------------------------------------------------------------------
-# Logging helpers (wrappers for backward compatibility)
+# Logging helpers
 # -----------------------------------------------------------------------------
 
 
 def _safe_logger(self) -> logging.Logger:
-    """Wrapper for backward compatibility - calls shared safe_logger."""
-    return safe_logger(self, "hyper2kvm.windows_network_fixer")
-
-
-def _emoji(level: int) -> str:
-    """Wrapper for backward compatibility - calls shared emoji_for_level."""
-    return emoji_for_level(level)
-
-
-def _log(logger: logging.Logger, level: int, msg: str, *args: Any) -> None:
-    """Wrapper for backward compatibility - calls shared log_with_emoji."""
-    log_with_emoji(logger, level, msg, *args)
-
-
-@contextmanager
-def _step(logger: logging.Logger, title: str):
-    """Wrapper for backward compatibility - calls shared log_step."""
-    with log_step(logger, title):
-        yield
+    """Get logger from instance or create default for windows_network_fixer."""
+    return _safe_logger_base(self, "hyper2kvm.windows_network_fixer")
 
 
 # -----------------------------------------------------------------------------
@@ -180,14 +158,6 @@ def _resolve_windows_system_paths(g: guestfs.GuestFS) -> WindowsSystemPaths:
     )
 
 
-def _guest_mkdir_p(g: guestfs.GuestFS, path: str, *, dry_run: bool) -> None:
-    """Wrapper for backward compatibility - calls shared guest_mkdir_p."""
-    return guest_mkdir_p(g, path, dry_run=dry_run)
-
-
-def _guest_write_text(g: guestfs.GuestFS, path: str, content: str, *, dry_run: bool) -> None:
-    """Wrapper for backward compatibility - calls shared guest_write_text."""
-    return guest_write_text(g, path, content, dry_run=dry_run)
 
 
 def _guestfs_to_windows_path(p: str) -> str:
@@ -601,11 +571,6 @@ def _choose_best_network_payload(snapshot: Dict[str, Any]) -> Optional[Dict[str,
 # -----------------------------------------------------------------------------
 # Override loading/staging
 # -----------------------------------------------------------------------------
-
-
-def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Wrapper for backward compatibility - calls shared deep_merge_dict."""
-    return deep_merge_dict(base, override)
 
 
 def _normalize_override(obj: Dict[str, Any]) -> Dict[str, Any]:
