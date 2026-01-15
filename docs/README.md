@@ -219,7 +219,7 @@ Found an error or want to improve docs?
 
 ## Version History
 
-See [CHANGELOG.md](../CHANGELOG.md) for version history and release notes.
+See CHANGELOG.md for version history and release notes.
 
 ---
 
