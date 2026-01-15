@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
-from ..vmware.vmware_utils import is_tty
+from ..vmware.utils.utils import is_tty
 
 # Optional: colors
 try:

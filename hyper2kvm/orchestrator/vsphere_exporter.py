@@ -20,7 +20,7 @@ from ..core.utils import U
 
 # Conditional imports
 try:
-    from ..vmware.vmware_client import VMwareClient, V2VExportOptions
+    from ..vmware.clients.client import VMwareClient, V2VExportOptions
 
     VSPHERE_V2V_AVAILABLE = True
 except Exception:
@@ -29,7 +29,7 @@ except Exception:
     VSPHERE_V2V_AVAILABLE = False
 
 try:
-    from ..vmware.vmware_client import PYVMOMI_AVAILABLE
+    from ..vmware.clients.client import PYVMOMI_AVAILABLE
 except ImportError:
     PYVMOMI_AVAILABLE = False
 

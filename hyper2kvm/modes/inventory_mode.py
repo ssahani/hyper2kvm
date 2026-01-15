@@ -13,11 +13,11 @@ from ..core.exceptions import Fatal
 from ..core.utils import U
 from ..ssh.ssh_client import SSHClient
 from ..ssh.ssh_config import SSHConfig
-from ..vmware.vmware_client import PYVMOMI_AVAILABLE, REQUESTS_AVAILABLE
+from ..vmware.clients.client import PYVMOMI_AVAILABLE, REQUESTS_AVAILABLE
 
 # Optional: reuse your existing building blocks (present in your tree)
 from ..converters.fetch import Fetch
-from ..vmware.vmdk_parser import VMDK
+from ..vmware.utils.vmdk_parser import VMDK
 
 
 @dataclass

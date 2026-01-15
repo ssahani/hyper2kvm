@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vmware/vmware_v2v.py
+# hyper2kvm/vmware/utils/v2v.py
 from __future__ import annotations
 
 """
@@ -37,12 +37,12 @@ except Exception:  # pragma: no cover
     select = None  # type: ignore
     SELECT_AVAILABLE = False
 
-# Import VMwareError from http_download_client or fallback
+# Import VMwareError from http_client or fallback
 try:
-    from .http_download_client import VMwareError
+    from ..transports.http_client import VMwareError
 except Exception:  # pragma: no cover
     try:
-        from ..core.exceptions import VMwareError  # type: ignore
+        from ...core.exceptions import VMwareError  # type: ignore
     except Exception:  # pragma: no cover
 
         class VMwareError(RuntimeError):
@@ -51,7 +51,7 @@ except Exception:  # pragma: no cover
 
 # Import V2VExportOptions from vmware_client
 try:
-    from .vmware_client import V2VExportOptions
+    from ..clients.client import V2VExportOptions
 except Exception:  # pragma: no cover
     # For standalone usage, define a minimal version
     from dataclasses import dataclass

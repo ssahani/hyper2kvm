@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vsphere/http_download_client.py
+# hyper2kvm/vmware/transports/http_client.py
 """
 HTTP/HTTPS datastore file download client for vSphere.
 Handles downloading files from vSphere datastores via /folder HTTP interface.
@@ -49,17 +49,17 @@ class VMwareError(HTTPDownloadError):
 
 # Try to import the real VMwareError
 try:
-    from ..core.exceptions import VMwareError as CoreVMwareError  # type: ignore
+    from ...core.exceptions import VMwareError as CoreVMwareError  # type: ignore
 
     VMwareError = CoreVMwareError  # type: ignore[misc,assignment]
 except Exception:
     pass  # Keep our fallback
 
 # Import utility functions
-from ..core.utils import U
+from ...core.utils import U
 
 # Import progress reporters
-from .http_progress_reporters import (
+from .http_progress import (
     ProgressReporter,
     create_progress_reporter,
 )

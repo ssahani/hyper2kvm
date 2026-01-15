@@ -18,8 +18,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 # Import from sibling module
-from ..core.utils import U
-from .vmware_utils import is_tty as _is_tty, create_console as _console
+from ...core.utils import U
+from ..utils.utils import is_tty as _is_tty, create_console as _console
 
 # Optional: Rich UI
 try:

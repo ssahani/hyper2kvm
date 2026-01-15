@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vmware/vmware_client.py
+# hyper2kvm/vmware/clients/client.py
 from __future__ import annotations
 
 """
@@ -72,13 +72,13 @@ except Exception:  # pragma: no cover
 
 # govc helpers (single source of truth)
 try:
-    from .govc_common import GovcRunner
+    from ..transports.govc_common import GovcRunner
 except Exception:  # pragma: no cover
     GovcRunner = None  # type: ignore
 
 # OVF Tool client
 try:
-    from .ovftool_client import (
+    from ..transports.ovftool_client import (
         find_ovftool,
         ovftool_version,
         export_to_ova,
@@ -102,11 +102,11 @@ except Exception:  # pragma: no cover
 
 # HTTP/HTTPS download client
 try:
-    from .http_download_client import HTTPDownloadClient, VMwareError
+    from ..transports.http_client import HTTPDownloadClient, VMwareError
 except Exception:  # pragma: no cover
     HTTPDownloadClient = None  # type: ignore
     try:
-        from ..core.exceptions import VMwareError  # type: ignore
+        from ...core.exceptions import VMwareError  # type: ignore
     except Exception:  # pragma: no cover
 
         class VMwareError(RuntimeError):
@@ -115,10 +115,10 @@ except Exception:  # pragma: no cover
 
 # ✅ shared credential resolver (supports vs_password_env + vc_password_env)
 try:
-    from ..core.cred import resolve_vsphere_creds  # type: ignore
+    from ...core.cred import resolve_vsphere_creds  # type: ignore
 except Exception:  # pragma: no cover
     try:
-        from ..core.creds import resolve_vsphere_creds  # type: ignore
+        from ...core.creds import resolve_vsphere_creds  # type: ignore
     except Exception:  # pragma: no cover
         resolve_vsphere_creds = None  # type: ignore
 
@@ -142,7 +142,7 @@ except Exception:  # pragma: no cover
 
 # ✅ VDDK client (ALL heavy logic in vddk_client.py)
 try:
-    from .vddk_client import VDDKConnectionSpec, VDDKESXClient  # type: ignore
+    from ..transports.vddk_client import VDDKConnectionSpec, VDDKESXClient  # type: ignore
 
     VDDK_CLIENT_AVAILABLE = True
 except Exception:  # pragma: no cover
@@ -151,7 +151,7 @@ except Exception:  # pragma: no cover
     VDDK_CLIENT_AVAILABLE = False
 
 
-from .vmware_utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path
+from ..utils.utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path
 
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
 
@@ -264,7 +264,7 @@ class V2VExportOptions:
 # ---------------------------------------------------------------------------
 
 # Import datastore operations
-from .vmware_datastore import (
+from ..utils.datastore import (
     list_datacenters as _datastore_list_datacenters,
     get_datacenter_by_name as _datastore_get_datacenter_by_name,
     datacenter_exists as _datastore_datacenter_exists,
@@ -286,12 +286,12 @@ from .vmware_datastore import (
 )
 
 # Import v2v operations
-from .vmware_v2v import (
+from ..utils.v2v import (
     v2v_export_vm as _v2v_export_vm,
 )
 
 # Import ovftool operations
-from .vmware_ovftool import (
+from ..transports.ovftool_loader import (
     govc_export_ovf as _ovftool_govc_export_ovf,
     govc_export_ova as _ovftool_govc_export_ova,
     ovftool_export_vm as _ovftool_ovftool_export_vm,
@@ -299,7 +299,7 @@ from .vmware_ovftool import (
 )
 
 # Import vddk operations
-from .vmware_vddk import (
+from ..transports.vddk_loader import (
     vddk_download_disk as _vddk_download_disk,
     vm_disks as _vddk_vm_disks,
     select_disk as _vddk_select_disk,

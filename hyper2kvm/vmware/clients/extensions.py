@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from .vmware_client import V2VExportOptions, VMwareClient, VMwareError
+from .client import V2VExportOptions, VMwareClient, VMwareError
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 

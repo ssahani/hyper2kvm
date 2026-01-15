@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vsphere/govc_export.py
+# hyper2kvm/vmware/transports/govc_export.py
 from __future__ import annotations
 
 """
@@ -27,8 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
-from ..core.exceptions import VMwareError
-from .vmware_utils import is_tty as _is_tty
+from ...core.exceptions import VMwareError
+from ..utils.utils import is_tty as _is_tty
 
 try:  # pragma: no cover
     from rich.console import Console

@@ -12,10 +12,10 @@ from typing import Any, List, Optional
 
 # Import VMwareError
 try:
-    from .http_download_client import VMwareError
+    from .http_client import VMwareError
 except Exception:  # pragma: no cover
     try:
-        from ..core.exceptions import VMwareError  # type: ignore
+        from ...core.exceptions import VMwareError  # type: ignore
     except Exception:  # pragma: no cover
 
         class VMwareError(Exception):  # type: ignore
@@ -24,7 +24,7 @@ except Exception:  # pragma: no cover
 
 # Import V2VExportOptions
 try:
-    from .vmware_client import V2VExportOptions, _safe_vm_name
+    from ..clients.client import V2VExportOptions, _safe_vm_name
 except Exception:  # pragma: no cover
     V2VExportOptions = None  # type: ignore
     _safe_vm_name = None  # type: ignore

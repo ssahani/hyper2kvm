@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vmware/vmware_datastore.py
+# hyper2kvm/vmware/utils/datastore.py
 
 """
 Datastore operations, VM discovery, and download-only mode for VMware
@@ -26,11 +26,11 @@ except Exception:  # pragma: no cover
 
 # HTTP download client
 try:
-    from .http_download_client import HTTPDownloadClient, VMwareError
+    from ..transports.http_client import HTTPDownloadClient, VMwareError
 except Exception:  # pragma: no cover
     HTTPDownloadClient = None  # type: ignore
     try:
-        from ..core.exceptions import VMwareError  # type: ignore
+        from ...core.exceptions import VMwareError  # type: ignore
     except Exception:  # pragma: no cover
 
         class VMwareError(RuntimeError):
@@ -39,12 +39,12 @@ except Exception:  # pragma: no cover
 
 # govc helpers
 try:
-    from .govc_common import GovcRunner
+    from ..transports.govc_common import GovcRunner
 except Exception:  # pragma: no cover
     GovcRunner = None  # type: ignore
 
 
-from .vmware_utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path, ensure_output_dir as _ensure_output_dir
+from .utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path, ensure_output_dir as _ensure_output_dir
 
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
 

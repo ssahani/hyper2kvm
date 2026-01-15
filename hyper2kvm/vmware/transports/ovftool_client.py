@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vsphere/ovftool_client.py
+# hyper2kvm/vmware/transports/ovftool_client.py
 from __future__ import annotations
 
 """
@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-from .vmware_utils import is_tty as _is_tty
+from ..utils.utils import is_tty as _is_tty
 
 # Optional: select for single-flow multiplexing stdout/stderr without threads
 try:  # pragma: no cover

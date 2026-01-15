@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/vmware/vsphere_command.py
+# hyper2kvm/vmware/vsphere/command.py
 # -*- coding: utf-8 -*-
 """
 vsphere_command - Main command orchestration layer for vSphere operations.
@@ -39,13 +39,13 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from ..core.exceptions import VMwareError
-from ..core.utils import U
-from .govc_common import GovcRunner, normalize_ds_path
-from .vmware_client import V2VExportOptions, VMwareClient
+from ...core.exceptions import VMwareError
+from ...core.utils import U
+from ..transports.govc_common import GovcRunner, normalize_ds_path
+from ..clients.client import V2VExportOptions, VMwareClient
 
 # Import from split modules
-from .vsphere_errors import (
+from .errors import (
     VsphereExitCode,
     _classify_exit_code,
     _is_auth_error,
@@ -56,7 +56,7 @@ from .vsphere_errors import (
     _is_tool_missing_error,
     _is_usage_error,
 )
-from .vsphere_govc import (
+from .govc import (
     GovmomiCLI,
     _Emitter,
     _arg_any,
