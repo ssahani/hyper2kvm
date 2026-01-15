@@ -1,0 +1,96 @@
+# ==============================================================================
+# ☁️ vSphere → virt-v2v RHEL 10 Export
+# ==============================================================================
+#
+# Exports RHEL 10 VM from vSphere using virt-v2v with VDDK transport
+#
+# Usage:
+#   export VC_PASSWORD='your-password'
+#   hyper2kvm --config 20-vsphere-v2v-rhel-10-export.yaml vsphere
+#
+# Features:
+#   ✅ virt-v2v export (full OS conversion)
+#   ✅ VDDK transport (fast, efficient)
+#   ✅ QCOW2 output with compression
+#   ✅ Optional smoke testing
+#
+# Requirements:
+#   - virt-v2v installed
+#   - VMware VDDK library at /opt/vmware-vix-disklib-distrib
+#   - vCenter access credentials
+# ==============================================================================
+
+cmd: vsphere
+
+# vCenter Credentials (pyvmomi control-plane)
+vcenter: 192.168.73.42
+vc_user: administrator@vsphere.local
+vc_password_env: VC_PASSWORD
+vc_insecure: true
+vc_port: 443
+
+# Inventory alignment
+dc_name: data
+
+# Legacy aliases (some code paths require these)
+vs_host: 10.73.213.134
+vs_user: administrator@vsphere.local
+vs_password_env: VC_PASSWORD
+
+# virt-v2v TLS policy
+vs_no_verify: true
+
+# Action: export VM (not download-only)
+vs_action: export_vm
+
+# Export Target
+vs_vm: mtv-ubuntu22-server
+vs_datacenter: data
+
+# Transport: vddk | ssh
+vs_transport: vddk
+
+# VDDK Configuration
+vs_vddk_libdir: /opt/vmware-vix-disklib-distrib
+# vs_vddk_thumbprint: "AA:BB:CC:..."  # Optional: only if vs_no_verify:false
+
+# Optional advanced VDDK transports override
+# vs_vddk_transports: "nbdssl:nbd"
+
+# Snapshot Controls (disabled by default)
+vs_create_snapshot: false
+# vs_snapshot_moref: snapshot-123
+
+# Concurrency (keep 1 for safety)
+vs_v2v_concurrency: 1
+
+# Extra virt-v2v flags
+vs_v2v_extra_args:
+  - "-v"
+  - "-x"
+
+# Output Configuration
+output_dir: ./out/v2v/mtv-ubuntu22-server
+out_format: qcow2
+compress: true
+
+# Export Mode Flags
+vs_v2v: true
+vs_download_only: false
+
+# Do NOT run internal pipeline or post-v2v stages
+use_v2v: false
+post_v2v: false
+
+# Optional Smoke Testing (disabled)
+libvirt_test: false
+qemu_test: false
+uefi: true
+memory: 2048
+vcpus: 1
+timeout: 90
+headless: true
+
+# Logging & Reporting
+verbose: 1
+report: v2v-export-report.md
