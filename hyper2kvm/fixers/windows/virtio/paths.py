@@ -14,9 +14,7 @@ import guestfs  # type: ignore
 from .utils import _safe_logger, _log_mountpoints_best_effort
 
 
-# ---------------------------
 # Logging helper (imported from utils, but need _log here)
-# ---------------------------
 
 def _log(logger: logging.Logger, level: int, msg: str, *args) -> None:
     """Local helper for logging with emoji (matches utils pattern)"""
@@ -31,9 +29,7 @@ def _log(logger: logging.Logger, level: int, msg: str, *args) -> None:
     logger.log(level, f"{_emoji(level)} {msg}", *args)
 
 
-# ---------------------------
 # Windows path model (WindowsRoot + System32 + drivers + hives)
-# ---------------------------
 
 @dataclass(frozen=True)
 class WindowsSystemPaths:

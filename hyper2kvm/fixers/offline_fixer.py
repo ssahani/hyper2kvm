@@ -51,9 +51,7 @@ from .offline.validation import OfflineValidationManager
 _T = TypeVar("_T")
 
 
-# ---------------------------------------------------------------------
 # VMware removal result wrapper (report-friendly)
-# ---------------------------------------------------------------------
 @dataclass
 class VmwareRemovalResult:
     enabled: bool = True
@@ -90,9 +88,7 @@ class VmwareRemovalResult:
         }
 
 
-# ---------------------------------------------------------------------
 # OfflineFSFix (thin orchestrator)
-# ---------------------------------------------------------------------
 class OfflineFSFix:
     """
     Offline (libguestfs) fix engine (thin orchestrator):

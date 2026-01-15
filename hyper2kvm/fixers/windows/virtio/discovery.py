@@ -13,9 +13,7 @@ from .config import DriverType, DriverStartType, _parse_start_type
 from .detection import WindowsVirtioPlan, DriverFile, _bucket_candidates
 
 
-# ---------------------------
 # Driver discovery helpers
-# ---------------------------
 
 def _get_driver_definitions(cfg: Dict[str, Any], dt: DriverType) -> List[Dict[str, Any]]:
     d = cfg.get("drivers") or {}

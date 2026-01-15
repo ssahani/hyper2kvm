@@ -34,9 +34,7 @@ from .network.model import FixLevel
 __all__ = ["NetworkFixer", "fix_network_config", "fix_network_config_compat"]
 
 
-# -----------------------------------------------------------------------------
 # Optional compatibility wrapper (for project style)
-# -----------------------------------------------------------------------------
 
 
 def fix_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:

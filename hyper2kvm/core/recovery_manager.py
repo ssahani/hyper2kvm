@@ -23,9 +23,7 @@ except Exception:  # pragma: no cover
     fcntl = None  # type: ignore
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 _STAGE_SAFE_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
@@ -104,9 +102,7 @@ def _read_text_best_effort(p: Path, *, encoding: str = "utf-8") -> Optional[str]
         return None
 
 
-# ---------------------------------------------------------------------------
 # Exit codes + errors (automation-friendly)
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class ExitCode:
@@ -136,9 +132,7 @@ class RecoveryError(RuntimeError):
         self.path = path
 
 
-# ---------------------------------------------------------------------------
 # Stage definitions + deterministic recovery constraints
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class StageDef:
@@ -150,9 +144,7 @@ class StageDef:
     description: Optional[str] = None
 
 
-# ---------------------------------------------------------------------------
 # Run manifest (audit trail)
-# ---------------------------------------------------------------------------
 
 @dataclass
 class RunManifest:
@@ -186,9 +178,7 @@ class RunManifest:
         )
 
 
-# ---------------------------------------------------------------------------
 # Checkpoint model (with integrity + scopes)
-# ---------------------------------------------------------------------------
 
 @dataclass
 class Checkpoint:
@@ -273,9 +263,7 @@ class Checkpoint:
         return _sha256_text(canon) == self.sha256
 
 
-# ---------------------------------------------------------------------------
 # Recovery decision object (CLI can print this nicely)
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class RecoveryDecision:
@@ -287,9 +275,7 @@ class RecoveryDecision:
     reason: str
 
 
-# ---------------------------------------------------------------------------
 # RecoveryManager
-# ---------------------------------------------------------------------------
 
 class RecoveryManager:
     """

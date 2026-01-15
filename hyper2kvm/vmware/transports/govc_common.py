@@ -43,9 +43,7 @@ except Exception:  # pragma: no cover
     export_vm_govc = None  # type: ignore
 
 
-# --------------------------------------------------------------------------------------
 # Datastore path normalization (accepts "[ds] path" or "path")
-# --------------------------------------------------------------------------------------
 
 _DS_BACKING_RE = re.compile(r"^\[(?P<ds>[^\]]+)\]\s*(?P<path>.+)$")
 

@@ -21,18 +21,14 @@ from ....core.logging_utils import safe_logger as _safe_logger_base, emoji_for_l
 from ....core.guest_utils import guest_mkdir_p as _guest_mkdir_p, guest_write_text as _guest_write_text, deep_merge_dict as _deep_merge_dict
 
 
-# ---------------------------
 # Logging helpers
-# ---------------------------
 
 def _safe_logger(self) -> logging.Logger:
     """Get logger from instance or create default for windows_virtio modules."""
     return _safe_logger_base(self, "hyper2kvm.windows_virtio")
 
 
-# ---------------------------
 # Misc helpers
-# ---------------------------
 
 def _is_probably_driver_payload(p: Path) -> bool:
     """Check if a file is likely a driver payload file.
