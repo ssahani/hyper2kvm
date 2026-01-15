@@ -63,6 +63,7 @@ from .windows_virtio_config import (
     DriverType,
     WindowsRelease,
     _load_virtio_config,
+    _parse_start_type,
     _validate_virtio_config,
 )
 
@@ -77,7 +78,6 @@ from .windows_virtio_utils import (
     _log,
     _log_mountpoints_best_effort,
     _normalize_product_name,
-    _parse_start_type,
     _safe_logger,
     _sha256_path,
     _step,
@@ -100,13 +100,12 @@ from .windows_virtio_detection import (
     _choose_driver_plan,
     _detect_windows_release,
     _plan_to_dict,
-    _warn_if_driver_defs_suspicious,
     _windows_version_info,
     is_windows,
 )
 
 # Import from split modules - discovery
-from .windows_virtio_discovery import _discover_virtio_drivers
+from .windows_virtio_discovery import _discover_virtio_drivers, _warn_if_driver_defs_suspicious
 
 # Import from split modules - installation
 from .windows_virtio_install import (

@@ -31,9 +31,9 @@ from .windows_virtio_utils import (
     _guest_write_text,
     _guest_sha256,
 )
-from .windows_virtio_config import DriverStartType, _parse_start_type
+from .windows_virtio_config import DriverStartType, DriverType, _parse_start_type
 from .windows_virtio_paths import WindowsSystemPaths, _guestfs_to_windows_path
-from .windows_virtio_detection import WindowsVirtioPlan, DriverFile, _plan_to_dict, DriverType
+from .windows_virtio_detection import WindowsVirtioPlan, DriverFile, _plan_to_dict
 
 
 def _sha256_path(p: Path) -> str:
