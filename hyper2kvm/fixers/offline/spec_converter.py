@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/offline_spec_converter.py
+# hyper2kvm/fixers/offline/spec_converter.py
 # -*- coding: utf-8 -*-
 """
 Device identifier and fstab/crypttab spec conversion utilities.
@@ -17,8 +17,8 @@ from typing import Optional, Tuple
 
 import guestfs  # type: ignore
 
-from ..core.utils import U
-from .fstab_rewriter import (
+from ...core.utils import U
+from ..filesystem.fstab import (
     _BYPATH_PREFIX,
     FstabMode,
     Ident,

@@ -12,7 +12,7 @@ from ..config.config_loader import Config
 from ..config.systemd_template import SYSTEMD_UNIT_TEMPLATE
 from ..core.logger import c
 from ..core.utils import U
-from ..fixers.fstab_rewriter import FstabMode
+from ..fixers.filesystem.fstab import FstabMode
 from .help_texts import FEATURE_SUMMARY, SYSTEMD_EXAMPLE, YAML_EXAMPLE
 
 

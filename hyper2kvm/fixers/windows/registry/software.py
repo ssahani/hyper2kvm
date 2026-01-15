@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/registry_software.py
+# hyper2kvm/fixers/windows/registry/software.py
 # -*- coding: utf-8 -*-
 """
 SOFTWARE hive editing for DevicePath and RunOnce entries.
@@ -24,9 +24,9 @@ import guestfs  # type: ignore
 import hivex  # type: ignore
 
 # Import helper functions from registry sub-modules
-from .registry_io import _download_hive_local, _log_mountpoints_best_effort
-from .registry_mount import _ensure_windows_root
-from .registry_encoding import (
+from .io import _download_hive_local, _log_mountpoints_best_effort
+from .mount import _ensure_windows_root
+from .encoding import (
     _close_best_effort,
     _commit_best_effort,
     _ensure_child,
@@ -36,10 +36,10 @@ from .registry_encoding import (
     _set_expand_sz,
     _set_sz,
 )
-from .registry_system import _hive_backup_best_effort
+from .system import _hive_backup_best_effort
 
 # Import shared logging utilities
-from ..core.logging_utils import safe_logger as _safe_logger_base
+from ....core.logging_utils import safe_logger as _safe_logger_base
 
 
 def _safe_logger(self) -> logging.Logger:

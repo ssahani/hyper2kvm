@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/network_topology.py
+# hyper2kvm/fixers/network/topology.py
 """
 Network topology graph building and interface rename planning.
 
@@ -13,8 +13,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
-from ..config.config_loader import YAML_AVAILABLE, yaml
-from .network_model import (
+from ...config.config_loader import YAML_AVAILABLE, yaml
+from .model import (
     DeviceKind,
     FixLevel,
     IfcfgKV,

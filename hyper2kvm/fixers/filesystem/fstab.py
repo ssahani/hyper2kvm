@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
-from ..core.logger import Log
-from ..core.utils import U
+from ...core.logger import Log
+from ...core.utils import U
 
 if TYPE_CHECKING:  # pragma: no cover
     import guestfs  # type: ignore

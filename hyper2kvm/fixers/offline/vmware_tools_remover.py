@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from ..core.utils import U
+from ...core.utils import U
 
 
 @dataclass

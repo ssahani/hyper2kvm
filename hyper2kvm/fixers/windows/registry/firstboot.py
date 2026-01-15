@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/registry_firstboot.py
+# hyper2kvm/fixers/windows/registry/firstboot.py
 # -*- coding: utf-8 -*-
 """
 First-boot provisioning for Windows VMs.
@@ -29,9 +29,9 @@ from typing import Any, Dict, List, Optional
 import guestfs  # type: ignore
 import hivex  # type: ignore
 
-from ..core.utils import U
-from ..core.logging_utils import safe_logger as _safe_logger_base
-from .registry_encoding import (
+from ....core.utils import U
+from ....core.logging_utils import safe_logger as _safe_logger_base
+from .encoding import (
     _close_best_effort,
     _commit_best_effort,
     _detect_current_controlset,
@@ -47,8 +47,8 @@ from .registry_encoding import (
     _set_sz,
     _upload_bytes,
 )
-from .registry_io import _download_hive_local, _log_mountpoints_best_effort
-from .registry_mount import _ensure_windows_root, _guest_path_join
+from .io import _download_hive_local, _log_mountpoints_best_effort
+from .mount import _ensure_windows_root, _guest_path_join
 
 
 # ---------------------------------------------------------------------------

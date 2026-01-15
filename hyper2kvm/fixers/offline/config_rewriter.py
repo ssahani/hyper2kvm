@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/offline_config_rewriter.py
+# hyper2kvm/fixers/offline/config_rewriter.py
 # -*- coding: utf-8 -*-
 """
 In-guest configuration file rewriting (fstab, crypttab).
@@ -19,15 +19,15 @@ from typing import Any, Dict, List, Tuple
 import guestfs  # type: ignore
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from ..core.utils import U
-from .fstab_rewriter import (
+from ...core.utils import U
+from ..filesystem.fstab import (
     _BYPATH_PREFIX,
     IGNORE_MOUNTPOINTS,
     Change,
     FstabMode,
     Ident,
 )
-from .offline_spec_converter import SpecConverter
+from .spec_converter import SpecConverter
 
 
 class FstabCrypttabRewriter:

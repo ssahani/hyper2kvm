@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_virtio.py
+# hyper2kvm/fixers/windows/virtio/core.py
 # -*- coding: utf-8 -*-
 """
 Windows VirtIO driver injection orchestration layer.
@@ -33,7 +33,7 @@ The split architecture enables:
 
 Usage:
 ------
-    from hyper2kvm.fixers.windows_virtio import WindowsFixer, inject_virtio_drivers
+    from hyper2kvm.fixers.windows.virtio.core import WindowsFixer, inject_virtio_drivers
 
     fixer = WindowsFixer()
     result = fixer.inject_virtio_drivers(guestfs_handle)
@@ -54,10 +54,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import guestfs  # type: ignore
 
-from ..core.utils import U
+from ....core.utils import U
 
 # Import from split modules - configuration
-from .windows_virtio_config import (
+from .config import (
     DEFAULT_VIRTIO_CONFIG,
     DriverStartType,
     DriverType,
@@ -68,7 +68,7 @@ from .windows_virtio_config import (
 )
 
 # Import from split modules - utilities
-from .windows_virtio_utils import (
+from .utils import (
     _deep_merge_dict,
     _emoji,
     _guest_download_bytes,
@@ -85,7 +85,7 @@ from .windows_virtio_utils import (
 )
 
 # Import from split modules - paths
-from .windows_virtio_paths import (
+from .paths import (
     WindowsSystemPaths,
     _find_windows_root,
     _guestfs_to_windows_path,
@@ -93,7 +93,7 @@ from .windows_virtio_paths import (
 )
 
 # Import from split modules - detection
-from .windows_virtio_detection import (
+from .detection import (
     DriverFile,
     WindowsVirtioPlan,
     _bucket_candidates,
@@ -105,10 +105,10 @@ from .windows_virtio_detection import (
 )
 
 # Import from split modules - discovery
-from .windows_virtio_discovery import _discover_virtio_drivers, _warn_if_driver_defs_suspicious
+from .discovery import _discover_virtio_drivers, _warn_if_driver_defs_suspicious
 
 # Import from split modules - installation
-from .windows_virtio_install import (
+from .install import (
     _virtio_bcd_backup,
     _virtio_copy_sys_binaries,
     _virtio_edit_registry_system,

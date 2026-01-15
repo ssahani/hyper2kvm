@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_virtio_discovery.py
+# hyper2kvm/fixers/windows/virtio/discovery.py
 """VirtIO driver file discovery and matching"""
 # -*- coding: utf-8 -*-
 from __future__ import annotations
@@ -8,9 +8,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .windows_virtio_utils import _safe_logger, _log, _sha256_path, _is_probably_driver_payload
-from .windows_virtio_config import DriverType, DriverStartType, _parse_start_type
-from .windows_virtio_detection import WindowsVirtioPlan, DriverFile, _bucket_candidates
+from .utils import _safe_logger, _log, _sha256_path, _is_probably_driver_payload
+from .config import DriverType, DriverStartType, _parse_start_type
+from .detection import WindowsVirtioPlan, DriverFile, _bucket_candidates
 
 
 # ---------------------------
@@ -71,8 +71,8 @@ def _pick_best_match(paths: List[Path]) -> Path:
 
 
 def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan, cfg: Dict[str, Any]) -> List["DriverFile"]:
-    # Local import to avoid circular dependency (windows_virtio imports this module)
-    from .windows_virtio import _materialize_virtio_source
+    # Local import to avoid circular dependency (core imports this module)
+    from .core import _materialize_virtio_source
 
     logger = _safe_logger(self)
     drivers: List[DriverFile] = []

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_virtio_detection.py
+# hyper2kvm/fixers/windows/virtio/detection.py
 # -*- coding: utf-8 -*-
 """Windows version detection and driver plan selection"""
 from __future__ import annotations
@@ -13,10 +13,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import guestfs  # type: ignore
 
-from ..core.utils import U
-from .windows_virtio_config import WindowsRelease
-from .windows_virtio_paths import WindowsSystemPaths, _resolve_windows_system_paths
-from .windows_virtio_utils import (
+from ....core.utils import U
+from .config import WindowsRelease
+from .paths import WindowsSystemPaths, _resolve_windows_system_paths
+from .utils import (
     _log,
     _log_mountpoints_best_effort,
     _normalize_product_name,

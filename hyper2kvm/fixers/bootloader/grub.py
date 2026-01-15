@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/grub_fixer.py
+# hyper2kvm/fixers/bootloader/grub.py
 # -*- coding: utf-8 -*-
 # ---------------------------------------------------------------------
 # GRUB/root= stabilization + device.map cleanup + initramfs + bootloader regen
@@ -32,8 +32,8 @@ import shlex
 
 import guestfs  # type: ignore
 
-from ..core.utils import U, guest_has_cmd
-from .fstab_rewriter import Ident, parse_btrfsvol_spec
+from ...core.utils import U, guest_has_cmd
+from ..filesystem.fstab import Ident, parse_btrfsvol_spec
 
 
 # ---------------------------------------------------------------------

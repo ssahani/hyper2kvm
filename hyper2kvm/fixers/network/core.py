@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/network_fixer_core.py
+# hyper2kvm/fixers/network/core.py
 """
 Network configuration fixer orchestrator.
 
@@ -24,11 +24,11 @@ from typing import Any, Callable, Dict, List, Optional
 
 import guestfs  # type: ignore
 
-from .network_discovery import NetworkDiscovery
-from .network_fixers_backend import NetworkFixersBackend
-from .network_model import FixLevel, FixResult, NetworkConfig, NetworkConfigType
-from .network_topology import NetworkTopology
-from .network_validation import NetworkValidation
+from .discovery import NetworkDiscovery
+from .backend import NetworkFixersBackend
+from .model import FixLevel, FixResult, NetworkConfig, NetworkConfigType
+from .topology import NetworkTopology
+from .validation import NetworkValidation
 
 
 class NetworkFixer:
