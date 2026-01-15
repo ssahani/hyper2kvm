@@ -15,47 +15,55 @@ from typing import Any, Dict, Optional
 
 import guestfs  # type: ignore
 
+# Import shared logging utilities
+from ..core.logging_utils import safe_logger, emoji_for_level, log_with_emoji, log_step
+# Import shared guest utilities
+from ..core.guest_utils import guest_mkdir_p, guest_write_text, deep_merge_dict
+
 
 # ---------------------------
-# Logging helpers (emoji + steps)
+# Logging helpers (wrappers for shared utilities)
 # ---------------------------
 
 def _safe_logger(self) -> logging.Logger:
-    lg = getattr(self, "logger", None)
-    if isinstance(lg, logging.Logger):
-        return lg
-    return logging.getLogger("hyper2kvm.windows_virtio")
+    """Get logger from instance or create default."""
+    return safe_logger(self, "hyper2kvm.windows_virtio")
 
 
 def _emoji(level: int) -> str:
-    if level >= logging.ERROR:
-        return "❌"
-    if level >= logging.WARNING:
-        return "⚠️"
-    if level >= logging.INFO:
-        return "✅"
-    return "🔍"
+    """Return emoji for log level."""
+    return emoji_for_level(level)
 
 
 def _log(logger: logging.Logger, level: int, msg: str, *args: Any) -> None:
-    logger.log(level, f"{_emoji(level)} {msg}", *args)
+    """Log with emoji prefix."""
+    log_with_emoji(logger, level, msg, *args)
 
 
-@contextmanager
 def _step(logger: logging.Logger, title: str):
-    t0 = time.time()
-    _log(logger, logging.INFO, "%s ...", title)
-    try:
-        yield
-        _log(logger, logging.INFO, "%s done (%.2fs)", title, time.time() - t0)
-    except Exception as e:
-        _log(logger, logging.ERROR, "%s failed (%.2fs): %s", title, time.time() - t0, e)
-        raise
+    """Context manager for logging and timing operation steps."""
+    return log_step(logger, title)
 
 
 # ---------------------------
 # Misc helpers
 # ---------------------------
+
+def _is_probably_driver_payload(p: Path) -> bool:
+    """Check if a file is likely a driver payload file.
+
+    Args:
+        p: Path to check
+
+    Returns:
+        True if the file extension indicates a driver payload file
+
+    Note:
+        Checks for .inf, .cat, .sys, .dll, .mui extensions.
+    """
+    ext = p.suffix.lower()
+    return ext in (".inf", ".cat", ".sys", ".dll", ".mui")
+
 
 def _to_int(v: Any, default: int = 0) -> int:
     if isinstance(v, int):
@@ -104,32 +112,15 @@ def _log_mountpoints_best_effort(logger: logging.Logger, g: guestfs.GuestFS) -> 
 
 
 def _guest_mkdir_p(g: guestfs.GuestFS, path: str, *, dry_run: bool) -> None:
-    if dry_run:
-        return
-    try:
-        if not g.is_dir(path):
-            g.mkdir_p(path)
-    except Exception:
-        g.mkdir_p(path)
+    """Wrapper for backward compatibility - calls shared guest_mkdir_p."""
+    return guest_mkdir_p(g, path, dry_run=dry_run)
 
 
 def _guest_write_text(g: guestfs.GuestFS, path: str, content: str, *, dry_run: bool) -> None:
-    if dry_run:
-        return
-    g.write(path, content.encode("utf-8", errors="ignore"))
+    """Wrapper for backward compatibility - calls shared guest_write_text."""
+    return guest_write_text(g, path, content, dry_run=dry_run)
 
 
 def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Deep merge dicts:
-      - dict values merge recursively
-      - lists are replaced (override wins)
-      - scalars replaced
-    """
-    out: Dict[str, Any] = dict(base)
-    for k, v in override.items():
-        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
-            out[k] = _deep_merge_dict(out[k], v)
-        else:
-            out[k] = v
-    return out
+    """Wrapper for backward compatibility - calls shared deep_merge_dict."""
+    return deep_merge_dict(base, override)

@@ -30,6 +30,7 @@ from .windows_virtio_utils import (
     _guest_mkdir_p,
     _guest_write_text,
     _guest_sha256,
+    _is_probably_driver_payload,
 )
 from .windows_virtio_config import DriverStartType, DriverType, _parse_start_type
 from .windows_virtio_paths import WindowsSystemPaths, _guestfs_to_windows_path
@@ -38,11 +39,6 @@ from .windows_virtio_detection import WindowsVirtioPlan, DriverFile, _plan_to_di
 
 def _sha256_path(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
-
-
-def _is_probably_driver_payload(p: Path) -> bool:
-    ext = p.suffix.lower()
-    return ext in (".inf", ".cat", ".sys", ".dll", ".mui")
 
 
 # ---------------------------

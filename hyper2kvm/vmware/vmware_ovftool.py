@@ -55,8 +55,7 @@ except Exception:  # pragma: no cover
             pass
 
 
-def _safe_vm_name(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", (name or "vm").strip()) or "vm"
+from .vmware_utils import safe_vm_name as _safe_vm_name
 
 
 def _quote_inventory_path(path: str) -> str:

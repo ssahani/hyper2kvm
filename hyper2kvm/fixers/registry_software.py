@@ -38,15 +38,13 @@ from .registry_encoding import (
 )
 from .registry_system import _hive_backup_best_effort
 
-# Import logging helper (defined in windows_registry.py as it's used across all modules)
-import logging
+# Import shared logging utilities
+from ..core.logging_utils import safe_logger
+
 
 def _safe_logger(self) -> logging.Logger:
     """Get logger from self or create default logger."""
-    lg = getattr(self, "logger", None)
-    if isinstance(lg, logging.Logger):
-        return lg
-    return logging.getLogger("hyper2kvm.windows_registry")
+    return safe_logger(self, "hyper2kvm.windows_registry")
 
 # ---------------------------------------------------------------------------
 # Public: SOFTWARE hive DevicePath append

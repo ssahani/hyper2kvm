@@ -30,16 +30,20 @@ import guestfs  # type: ignore
 import hivex  # type: ignore
 
 from ..core.utils import U
+from ..core.logging_utils import safe_logger
 from .registry_encoding import (
     _close_best_effort,
     _commit_best_effort,
     _detect_current_controlset,
     _encode_windows_cmd_script,
     _ensure_child,
+    _mk_reg_value,
     _mkdir_p_guest,
     _node_id,
     _open_hive_local,
+    _reg_sz,
     _set_dword,
+    _set_expand_sz,
     _set_sz,
     _upload_bytes,
 )
@@ -53,33 +57,8 @@ from .registry_mount import _ensure_windows_root, _guest_path_join
 
 
 def _safe_logger(self) -> logging.Logger:
-    lg = getattr(self, "logger", None)
-    if isinstance(lg, logging.Logger):
-        return lg
-    return logging.getLogger("hyper2kvm.windows_registry")
-
-
-# ---------------------------------------------------------------------------
-# Registry encoding helper for REG_EXPAND_SZ
-# ---------------------------------------------------------------------------
-
-
-def _reg_sz(s: str) -> bytes:
-    """Encode a string as UTF-16LE with null terminator for registry storage."""
-    return (s + "\0").encode("utf-16le")
-
-
-def _mk_reg_value(name: str, t: int, value: bytes) -> Dict[str, Any]:
-    """Create a registry value dict for hivex.node_set_value()."""
-    return {"key": name, "t": int(t), "value": value}
-
-
-def _set_expand_sz(h: hivex.Hivex, node: int, key: str, s: str) -> None:
-    """Set a REG_EXPAND_SZ registry value (type 2)."""
-    nid = _node_id(node)
-    if nid == 0:
-        raise RuntimeError(f"invalid registry node for setting {key}=REG_EXPAND_SZ")
-    h.node_set_value(nid, _mk_reg_value(key, 2, _reg_sz(s)))
+    """Wrapper for backward compatibility - calls shared safe_logger."""
+    return safe_logger(self, "hyper2kvm.windows_registry")
 
 
 # ---------------------------------------------------------------------------

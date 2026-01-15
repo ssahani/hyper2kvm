@@ -53,25 +53,13 @@ from .registry_encoding import (
     _set_sz,
 )
 
-# Import logging helper
+# Import shared logging utilities
+from ..core.logging_utils import safe_logger
+
+
 def _safe_logger(self) -> logging.Logger:
     """Get logger from self or create default logger."""
-    lg = getattr(self, "logger", None)
-    if isinstance(lg, logging.Logger):
-        return lg
-    return logging.getLogger("hyper2kvm.windows_registry")
-
-
-# ---------------------------------------------------------------------------
-# Logging helper
-# ---------------------------------------------------------------------------
-
-
-def _safe_logger(self) -> logging.Logger:
-    lg = getattr(self, "logger", None)
-    if isinstance(lg, logging.Logger):
-        return lg
-    return logging.getLogger("hyper2kvm.registry_system")
+    return safe_logger(self, "hyper2kvm.registry_system")
 
 
 # ---------------------------------------------------------------------------

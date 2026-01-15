@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .windows_virtio_utils import _safe_logger, _log, _sha256_path
+from .windows_virtio_utils import _safe_logger, _log, _sha256_path, _is_probably_driver_payload
 from .windows_virtio_config import DriverType, DriverStartType, _parse_start_type
 from .windows_virtio_detection import WindowsVirtioPlan, DriverFile, _bucket_candidates
 
@@ -16,11 +16,6 @@ from .windows_virtio_detection import WindowsVirtioPlan, DriverFile, _bucket_can
 # ---------------------------
 # Driver discovery helpers
 # ---------------------------
-
-def _is_probably_driver_payload(p: Path) -> bool:
-    ext = p.suffix.lower()
-    return ext in (".inf", ".cat", ".sys", ".dll", ".mui")
-
 
 def _get_driver_definitions(cfg: Dict[str, Any], dt: DriverType) -> List[Dict[str, Any]]:
     d = cfg.get("drivers") or {}
