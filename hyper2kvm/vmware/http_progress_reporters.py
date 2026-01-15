@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 # Import from sibling module
 from ..core.utils import U
+from .vmware_utils import is_tty as _is_tty, create_console as _create_console
 
 # Optional: Rich UI
 try:
@@ -51,21 +52,9 @@ except Exception:
 # --------------------------------------------------------------------------------------
 # Helper Functions
 # --------------------------------------------------------------------------------------
-def _is_tty() -> bool:
-    try:
-        return sys.stdout.isatty()
-    except Exception:
-        return False
-
-
 def _console() -> Optional[Any]:
-    if not (RICH_AVAILABLE and Console and _is_tty()):
-        return None
-    try:
-        # Use stdout (default) unless you explicitly want stderr.
-        return Console()
-    except Exception:
-        return None
+    """Wrapper for backward compatibility - calls shared create_console."""
+    return _create_console()
 
 
 def _rich_construct(cls: Any, *args: Any, **kwargs: Any) -> Any:

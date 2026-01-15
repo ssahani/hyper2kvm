@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+from .vmware_utils import is_tty as _is_tty, create_console as _create_console
+
 # Optional: select for single-flow multiplexing stdout/stderr without threads
 try:  # pragma: no cover
     import select  # type: ignore
@@ -183,20 +185,9 @@ class OvfDeployOptions:
 # --------------------------------------------------------------------------------------
 # UI helpers (Rich Panel when possible, otherwise plain box-drawing)
 # --------------------------------------------------------------------------------------
-def _is_tty() -> bool:
-    try:
-        return sys.stdout.isatty()
-    except Exception:
-        return False
-
-
 def _console() -> Optional[Any]:
-    if not (RICH_AVAILABLE and Console and _is_tty()):
-        return None
-    try:
-        return Console(stderr=False)
-    except Exception:
-        return None
+    """Wrapper for backward compatibility - calls shared create_console."""
+    return _create_console()
 
 
 def _print_panel(title: str, body: str = "") -> None:
