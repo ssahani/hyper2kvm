@@ -93,7 +93,12 @@ class NetworkFixer:
         self.discovery = NetworkDiscovery(logger=logger, backup_suffix=self.backup_suffix)
         self.topology = NetworkTopology(logger=logger, fix_level=fix_level)
         self.validation = NetworkValidation(logger=logger)
-        self.backend = NetworkFixersBackend(logger=logger, fix_level=fix_level)
+        self.backend = NetworkFixersBackend(
+            logger=logger,
+            fix_level=fix_level,
+            vmware_drivers=self.VMWARE_DRIVERS,
+            mac_pinning_patterns=self.MAC_PINNING_PATTERNS,
+        )
 
     # ---------------------------
     # Main orchestration pipeline
