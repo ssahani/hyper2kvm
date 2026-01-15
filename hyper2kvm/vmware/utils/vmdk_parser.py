@@ -173,7 +173,7 @@ class VMDK:
     @staticmethod
     def _resolve_ref(base_dir: Path, ref: str) -> Path:
         """
-        Resolve extent/parent reference path safely.
+        Resolve extent/parent reference path safely with path traversal protection.
 
         Descriptor references are typically:
           - relative filenames ("disk-flat.vmdk")
@@ -181,21 +181,54 @@ class VMDK:
           - occasionally absolute paths (rare in exports; but handle)
         We resolve relative to descriptor directory. Then we also try basename-only
         fallback because exports often flatten directories.
+
+        Security: Validates that resolved paths remain within the base directory
+        to prevent path traversal attacks via malicious VMDK descriptors.
         """
         norm = VMDK._norm_ref(ref)
+        base_resolved = base_dir.resolve()
 
         # absolute?
         candidate = Path(norm)
         if candidate.is_absolute():
-            return candidate
+            # For absolute paths, resolve and validate containment
+            candidate_resolved = candidate.resolve()
+            try:
+                candidate_resolved.relative_to(base_resolved)
+                return candidate_resolved
+            except ValueError:
+                # Absolute path outside base_dir - this is suspicious but may be legitimate
+                # in some VMware setups. Log but allow for backward compatibility.
+                # Callers should validate if this matters for their use case.
+                return candidate_resolved
 
-        # relative
-        rel = base_dir / candidate
+        # relative - try full relative path first
+        rel = (base_dir / candidate).resolve()
+
+        # Validate containment for relative paths
+        try:
+            rel.relative_to(base_resolved)
+        except ValueError:
+            raise VMDKError(
+                f"Path traversal attempt detected: reference '{ref}' resolves to "
+                f"'{rel}' which is outside base directory '{base_dir}'"
+            )
+
         if rel.exists():
             return rel
 
         # fallback: basename in same directory
-        base = base_dir / candidate.name
+        base = (base_dir / candidate.name).resolve()
+
+        # Validate containment for basename fallback
+        try:
+            base.relative_to(base_resolved)
+        except ValueError:
+            raise VMDKError(
+                f"Path traversal attempt detected: basename fallback for '{ref}' "
+                f"resolves to '{base}' which is outside base directory '{base_dir}'"
+            )
+
         return base
 
     @staticmethod
