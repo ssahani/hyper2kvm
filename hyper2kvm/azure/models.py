@@ -101,6 +101,7 @@ class AzureFetchReport:
     errors: List[str] = field(default_factory=list)
 
     def sas_hash10(self, sas_url: str) -> str:
+        """Return first 10 chars of SHA256 hash for audit preview (not cryptographically secure)."""
         return hashlib.sha256(sas_url.encode("utf-8")).hexdigest()[:10]
 
     def to_jsonable(self) -> Dict[str, Any]:
@@ -127,13 +128,13 @@ class AzureShutdownConfig:
 @dataclass
 class AzureExportConfig:
     use_snapshots: bool = True
-    stage_disk_from_snapshot: bool = True
+    stage_disk_from_snapshot: bool = False
     keep_snapshots: bool = False
     keep_temp_disks: bool = False
     sas_duration_s: int = 3600
     tag_resources: bool = True
     run_tag: Optional[str] = None
-    consistency: str = "crash"  # crash|best_effort_quiesce
+    consistency: str = "crash_consistent"  # crash_consistent|best_effort_quiesce
     disks: str = "all"          # os|data|all
 
 

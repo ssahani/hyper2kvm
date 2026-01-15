@@ -7,6 +7,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import os
+import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -190,6 +191,10 @@ class AzureSourceProvider:
         if not cfg.select.resource_group and not cfg.select.allow_all_rgs:
             raise AzureCLIError("Refusing to search whole subscription by default. Set resource_group or allow_all_rgs=true.")
 
+        # Early exit for list_only mode to avoid any destructive operations
+        if cfg.select.list_only:
+            logger.info("List-only mode: discovering VMs without export")
+
         raw_vms = cli.list_vms(cfg.select.resource_group)
         selected: List[AzureVMRef] = []
 
@@ -245,6 +250,28 @@ class AzureSourceProvider:
         if cfg.select.list_only:
             return rep, []
 
+        # Check available disk space
+        total_size_gb = sum(d.size_gb for vm in selected for d in vm.disks)
+        try:
+            disk_usage = shutil.disk_usage(cfg.output_dir)
+            free_gb = disk_usage.free // (1024 ** 3)
+            if total_size_gb > free_gb * 0.9:  # Leave 10% margin
+                logger.warning(
+                    f"Low disk space: need ~{total_size_gb}GB for VHD downloads, "
+                    f"have {free_gb}GB free at {cfg.output_dir}"
+                )
+        except Exception as e:
+            logger.debug(f"Could not check disk space: {e}")
+
+        # Validate export configuration for running VMs
+        if not cfg.export.use_snapshots:
+            for vm in selected:
+                if vm.power_state == "running" and cfg.shutdown.mode == "none":
+                    raise AzureCLIError(
+                        f"Cannot export running VM '{vm.name}' without snapshots. "
+                        f"Enable use_snapshots or configure shutdown mode (stop/deallocate)."
+                    )
+
         should_shutdown = cfg.shutdown.mode != "none" and (cfg.shutdown.force or not cfg.export.use_snapshots)
         if should_shutdown:
             for vm in selected:
@@ -260,9 +287,22 @@ class AzureSourceProvider:
             TimeElapsedColumn(),
             TimeRemainingColumn(),
         ) as prog:
-            max_workers = min(max(1, int(cfg.download.parallel)), 16)
+            # Validate and limit chunk size (1-128 MB)
+            chunk_mb = max(1, min(int(cfg.download.chunk_mb), 128))
+            if chunk_mb != cfg.download.chunk_mb:
+                logger.warning(f"Chunk size adjusted from {cfg.download.chunk_mb}MB to {chunk_mb}MB (valid range: 1-128)")
 
             def _export_one(vm: AzureVMRef, d: AzureDiskRef) -> Tuple[AzureExportItem, Optional[DiskArtifact], List[str], List[str]]:
+                """
+                Export a single disk from Azure VM.
+
+                Args:
+                    vm: Azure VM reference
+                    d: Azure disk reference
+
+                Returns:
+                    Tuple of (export_item, disk_artifact, created_resource_ids, deleted_resource_ids)
+                """
                 created: List[str] = []
                 deleted: List[str] = []
 
@@ -343,7 +383,7 @@ class AzureSourceProvider:
 
                     item.sas_hash10 = rep.sas_hash10(sas_url)
 
-                    chunk = max(1, int(cfg.download.chunk_mb)) * 1024 * 1024
+                    chunk = chunk_mb * 1024 * 1024
                     res = download_with_resume(
                         url=sas_url,
                         dest=local_vhd,
@@ -416,8 +456,9 @@ class AzureSourceProvider:
                         if item.expected_bytes is not None:
                             prog.update(task, completed=item.bytes_downloaded or 0, total=item.expected_bytes)
                         prog.update(task, description=f"{vm.name}: {local_vhd.name} ({'ok' if item.ok else 'failed'})")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Progress update errors should not fail the export
+                        logger.debug(f"Failed to update progress for {vm.name}/{d.name}: {e}")
 
             jobs: List[Tuple[AzureVMRef, AzureDiskRef]] = []
             for vm in selected:
@@ -427,6 +468,9 @@ class AzureSourceProvider:
                     if cfg.export.disks == "data" and d.is_os_disk:
                         continue
                     jobs.append((vm, d))
+
+            # Limit max workers by configured parallel, hard cap of 16, and actual job count
+            max_workers = min(max(1, int(cfg.download.parallel)), 16, len(jobs))
 
             with ThreadPoolExecutor(max_workers=max_workers) as ex:
                 futs = {ex.submit(_export_one, vm, d): (vm, d) for (vm, d) in jobs}

@@ -21,10 +21,10 @@ from ..core.utils import U
 try:
     from ..azure import AzureConfig, AzureSourceProvider
     from ..azure.models import (
-        SelectConfig,
-        ShutdownConfig,
-        ExportConfig,
-        DownloadConfig,
+        AzureSelectConfig,
+        AzureShutdownConfig,
+        AzureExportConfig,
+        AzureDownloadConfig,
     )
 
     AZURE_AVAILABLE = True
@@ -84,22 +84,22 @@ class AzureExporter:
 
     def _build_config(self, out_root: Path) -> "AzureConfig":
         """Build AzureConfig from args."""
-        select = SelectConfig(
-            resource_group=getattr(self.args, "azure_resource_group", None) or "",
+        select = AzureSelectConfig(
+            resource_group=getattr(self.args, "azure_resource_group", None),
             vm_names=self._get_vm_names(),
             tags=self._get_tags(),
-            power_state=getattr(self.args, "azure_power_state", None) or "",
+            power_state=getattr(self.args, "azure_power_state", None),
             list_only=bool(getattr(self.args, "azure_list_only", False)),
             allow_all_rgs=bool(getattr(self.args, "azure_allow_all_rgs", False)),
         )
 
-        shutdown = ShutdownConfig(
+        shutdown = AzureShutdownConfig(
             mode=getattr(self.args, "azure_shutdown_mode", None) or "none",
             force=bool(getattr(self.args, "azure_shutdown_force", False)),
             wait=bool(getattr(self.args, "azure_shutdown_wait", True)),
         )
 
-        export = ExportConfig(
+        export = AzureExportConfig(
             use_snapshots=bool(getattr(self.args, "azure_use_snapshots", True)),
             stage_disk_from_snapshot=bool(getattr(self.args, "azure_stage_disk", False)),
             disks=getattr(self.args, "azure_disks", None) or "all",
@@ -111,7 +111,7 @@ class AzureExporter:
             sas_duration_s=int(getattr(self.args, "azure_sas_duration", 3600)),
         )
 
-        download = DownloadConfig(
+        download = AzureDownloadConfig(
             parallel=int(getattr(self.args, "azure_parallel", 4)),
             chunk_mb=int(getattr(self.args, "azure_chunk_mb", 4)),
             resume=bool(getattr(self.args, "azure_resume", True)),
@@ -126,8 +126,8 @@ class AzureExporter:
         )
 
         return AzureConfig(
-            subscription=getattr(self.args, "azure_subscription", None) or "",
-            tenant=getattr(self.args, "azure_tenant", None) or "",
+            subscription=getattr(self.args, "azure_subscription", None),
+            tenant=getattr(self.args, "azure_tenant", None),
             output_dir=out_root,
             select=select,
             shutdown=shutdown,
