@@ -29,7 +29,7 @@ from rich.progress import (
 
 from hyper2kvm.ssh.ssh_client import SSHClient
 from ..core.utils import U
-from ..vmware.vmdk_parser import VMDK
+from ..vmware.utils.vmdk_parser import VMDK
 
 
 # -----------------------------

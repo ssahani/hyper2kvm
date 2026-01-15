@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
+from ..core.xml_utils import xml_escape_attr as _xml_escape_attr, xml_escape_text as _xml_escape_text
+from .libvirt_utils import sanitize_name as _sanitize_name
+
 WinStage = Literal["bootstrap", "final"]
 
 
@@ -86,19 +89,6 @@ class WinDomainPaths:
 # Small utilities
 # -----------------------------------------------------------------------------
 
-_VALID_NAME_RE = re.compile(r"[^A-Za-z0-9._+-]+")
-
-
-def _sanitize_name(s: str) -> str:
-    """
-    Make a name safe for filenames + libvirt-ish identifiers (not a strict libvirt validator).
-    """
-    s2 = (s or "").strip()
-    s2 = _VALID_NAME_RE.sub("-", s2)
-    s2 = s2.strip("-")
-    return s2 or "vm"
-
-
 def _default_libvirt_images_dir() -> Path:
     return Path("/var/lib/libvirt/images")
 
@@ -126,30 +116,6 @@ def _require_file(path: str | Path, *, label: str) -> Path:
     if not p.exists():
         raise FileNotFoundError(f"{label} not found: {p}")
     return p
-
-
-def _xml_escape_attr(s: str) -> str:
-    """
-    Minimal XML attribute escaping (we only use it for file paths and listen address).
-    """
-    return (
-        s.replace("&", "&amp;")
-        .replace("'", "&apos;")
-        .replace('"', "&quot;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
-
-
-def _xml_escape_text(s: str) -> str:
-    """
-    Minimal XML text escaping (for name/description).
-    """
-    return (
-        s.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
 
 
 # -----------------------------------------------------------------------------

@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple
 
 from ..core.utils import U
 from ..ssh.ssh_client import SSHClient
-from ..vmware.vmdk_parser import VMDK
+from ..vmware.utils.vmdk_parser import VMDK
 
 
 # -----------------------------
