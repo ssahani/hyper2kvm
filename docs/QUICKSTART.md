@@ -393,6 +393,6 @@ sudo python -m hyper2kvm --log-level DEBUG local --vmdk INPUT.vmdk --to-output O
 
 ---
 
-**You're ready to start migrating VMs! 🚀**
+**You're ready to start migrating VMs! **
 
 For detailed information, see the full documentation in the `docs/` directory.
