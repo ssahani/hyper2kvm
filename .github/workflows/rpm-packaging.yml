@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fedora-version: ["39", "40", "rawhide"]
+        fedora-version: ["41", "42", "43"]
 
     container:
       image: fedora:${{ matrix.fedora-version }}
@@ -201,7 +201,7 @@ jobs:
     needs: build-rpm
 
     container:
-      image: fedora:40
+      image: fedora:43
 
     steps:
     - name: Install dependencies
@@ -218,7 +218,7 @@ jobs:
     - name: Download RPM artifact
       uses: actions/download-artifact@v4
       with:
-        name: rpm-packages-fedora-40
+        name: rpm-packages-fedora-43
 
     - name: Test RPM installation
       run: |
