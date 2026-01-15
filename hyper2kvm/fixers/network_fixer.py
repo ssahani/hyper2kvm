@@ -7,13 +7,13 @@ This module provides backward-compatible imports and compatibility wrappers
 for the network fixer functionality, which has been refactored into focused
 single-responsibility modules:
 
-- network_discovery.py: File discovery and I/O operations
-- network_topology.py: Topology building and rename planning
-- network_validation.py: Configuration validation
-- network_fixers_backend.py: Backend-specific fix implementations
-- network_fixer_core.py: Main orchestrator
+- network/discovery.py: File discovery and I/O operations
+- network/topology.py: Topology building and rename planning
+- network/validation.py: Configuration validation
+- network/backend.py: Backend-specific fix implementations
+- network/core.py: Main orchestrator
 
-The NetworkFixer class is now imported from network_fixer_core and re-exported
+The NetworkFixer class is now imported from network.core and re-exported
 here for backward compatibility with existing code.
 """
 
@@ -25,10 +25,10 @@ from typing import Any, Dict
 import guestfs  # type: ignore
 
 # Import main orchestrator (re-export for backward compatibility)
-from .network_fixer_core import NetworkFixer
+from .network.core import NetworkFixer
 
 # Import model types for compatibility
-from .network_model import FixLevel
+from .network.model import FixLevel
 
 # Re-export for backward compatibility
 __all__ = ["NetworkFixer", "fix_network_config", "fix_network_config_compat"]

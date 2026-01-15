@@ -39,13 +39,13 @@ from .report_writer import write_report
 from . import filesystem_fixer  # type: ignore
 from . import network_fixer  # type: ignore
 from . import grub_fixer  # type: ignore
-from . import windows_fixer  # type: ignore
+from .windows import fixer as windows_fixer  # type: ignore
 from .offline_vmware_tools_remover import OfflineVmwareToolsRemover
 
 # Extracted modules for focused functionality
-from .offline_spec_converter import SpecConverter
-from .offline_config_rewriter import FstabCrypttabRewriter
-from .offline_validation import OfflineValidationManager
+from .offline.spec_converter import SpecConverter
+from .offline.config_rewriter import FstabCrypttabRewriter
+from .offline.validation import OfflineValidationManager
 
 
 _T = TypeVar("_T")

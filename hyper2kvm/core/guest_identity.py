@@ -13,9 +13,9 @@ import guestfs  # type: ignore
 
 from .utils import U
 
-# Canonical Windows detection from your repo (fixers/windows_virtio.py)
+# Canonical Windows detection from your repo (fixers/windows/virtio/core.py)
 try:
-    from ..fixers.windows_virtio import is_windows as _wv_is_windows  # type: ignore
+    from ..fixers.windows.virtio.core import is_windows as _wv_is_windows  # type: ignore
 
     _WIN_VIRTIO_DETECT_OK = True
 except Exception:  # pragma: no cover
