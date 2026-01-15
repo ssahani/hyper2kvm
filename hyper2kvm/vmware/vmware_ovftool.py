@@ -55,22 +55,7 @@ except Exception:  # pragma: no cover
             pass
 
 
-from .vmware_utils import safe_vm_name as _safe_vm_name
-
-
-def _quote_inventory_path(path: str) -> str:
-    """
-    Quote inventory path segments for vi:// URLs while keeping '/' as a separator.
-    Spaces and special characters do appear in vCenter inventory.
-    """
-    # keep common safe characters plus '/' separators
-    return quote(path, safe="/-_.()@")
-
-
-def _ensure_output_dir(client: Any, base: Path) -> Path:
-    out = Path(base).expanduser().resolve()
-    out.mkdir(parents=True, exist_ok=True)
-    return out
+from .vmware_utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path, ensure_output_dir as _ensure_output_dir
 
 
 def govc_export_ovf(client: Any, opt: Any) -> Path:
@@ -78,7 +63,7 @@ def govc_export_ovf(client: Any, opt: Any) -> Path:
     if g is None:
         raise VMwareError("govc not available (or disabled); cannot run OVF export")
 
-    out_base = _ensure_output_dir(client, opt.output_dir)
+    out_base = _ensure_output_dir(opt.output_dir)
     out_dir = out_base / f"{_safe_vm_name(opt.vm_name)}.ovfdir"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -97,7 +82,7 @@ def govc_export_ova(client: Any, opt: Any) -> Path:
     if g is None:
         raise VMwareError("govc not available (or disabled); cannot run OVA export")
 
-    out_base = _ensure_output_dir(client, opt.output_dir)
+    out_base = _ensure_output_dir(opt.output_dir)
     out_file = out_base / f"{_safe_vm_name(opt.vm_name)}.ova"
 
     g.export_ova(
@@ -214,7 +199,7 @@ def ovftool_export_vm(client: Any, opt: Any) -> Path:
     if export_to_ova is None:
         raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
 
-    out_dir = _ensure_output_dir(client, opt.output_dir)
+    out_dir = _ensure_output_dir(opt.output_dir)
     ova_path = out_dir / f"{_safe_vm_name(opt.vm_name)}.ova"
     source_url = _build_ovftool_source_url(client, opt.vm_name)
     options = _ovftool_export_options(client, opt)

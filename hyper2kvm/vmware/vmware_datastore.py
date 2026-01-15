@@ -44,20 +44,9 @@ except Exception:  # pragma: no cover
     GovcRunner = None  # type: ignore
 
 
-from .vmware_utils import safe_vm_name as _safe_vm_name
+from .vmware_utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path, ensure_output_dir as _ensure_output_dir
 
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
-
-
-def _quote_inventory_path(path: str) -> str:
-    """
-    Quote inventory path segments for vi:// URLs while keeping '/' as a separator.
-    Spaces and special characters do appear in vCenter inventory.
-    """
-    from urllib.parse import quote
-
-    # keep common safe characters plus '/' separators
-    return quote(path, safe="/-_.()@")
 
 
 # ---------------------------
@@ -508,7 +497,7 @@ def download_only_vm(client: Any, opt: Any) -> Path:
         max_files=int(opt.download_only_max_files or 0),
     )
 
-    out_dir = _ensure_output_dir(client, opt.output_dir)
+    out_dir = _ensure_output_dir(opt.output_dir)
 
     client.logger.info(
         "Download-only VM folder: dc=%s ds=%s folder=%s files=%d (selected=%d)",
@@ -557,7 +546,7 @@ def _download_only_vm_force_https(client: Any, opt: Any) -> Path:
         max_files=int(opt.download_only_max_files or 0),
     )
 
-    out_dir = _ensure_output_dir(client, opt.output_dir)
+    out_dir = _ensure_output_dir(opt.output_dir)
 
     client.logger.info(
         "FORCED HTTPS fallback: dc=%s ds=%s folder=%s files=%d (selected=%d)",
@@ -601,9 +590,3 @@ def _content(client: Any) -> Any:
         return client.si.RetrieveContent()
     except Exception as e:
         raise VMwareError(f"Failed to retrieve content: {e}")
-
-
-def _ensure_output_dir(client: Any, base: Path) -> Path:
-    out = Path(base).expanduser().resolve()
-    out.mkdir(parents=True, exist_ok=True)
-    return out
