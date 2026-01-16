@@ -62,7 +62,7 @@ flowchart TD
 ## Table of Contents
 
 - [Design Philosophy](#design-philosophy)
-- [📌 Where This Applies](#-where-this-applies)
+- [📌 Where This Applies](#where-this-applies)
 - [YAML → JSON: Network Override (Recommended)](#yaml-json-network-override-recommended)
   - [YAML configuration](#yaml-configuration)
   - [JSON payload (`windows-network.json`)](#json-payload-windows-networkjson)
@@ -73,9 +73,11 @@ flowchart TD
 - [YAML → JSON: Driver Metadata](#yaml-json-driver-metadata)
   - [YAML configuration](#yaml-configuration)
   - [JSON: Core VirtIO Metadata (`virtio-drivers.json`)](#json-core-virtio-metadata-virtio-driversjson)
-- [🏭 Vendor / OEM Overrides (Optional)](#-vendor-oem-overrides-optional)
+- [🏭 Vendor / OEM Overrides (Optional)](#vendor-oem-overrides-optional)
   - [Vendor JSON (`virtio-vendors.json`)](#vendor-json-virtio-vendorsjson)
   - [YAML to activate vendor overlay](#yaml-to-activate-vendor-overlay)
+- [Next Steps](#next-steps)
+- [Getting Help](#getting-help)
 
 ---
 ##  Design Philosophy
