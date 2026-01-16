@@ -2,44 +2,7 @@
 # hyper2kvm/fixers/windows/virtio/core.py
 # -*- coding: utf-8 -*-
 """
-Windows VirtIO driver injection orchestration layer.
-
-This module serves as the main entry point for Windows VirtIO driver injection,
-coordinating several specialized sub-modules:
-
-Architecture:
--------------
-- windows_virtio_config: Configuration loading, driver definitions, OS bucket mapping
-- windows_virtio_utils: Utility functions (logging, file ops, hashing, type conversions)
-- windows_virtio_paths: Windows filesystem path resolution and directory structure
-- windows_virtio_detection: Windows release detection, driver plan creation
-- windows_virtio_discovery: VirtIO driver discovery from source directory/ISO
-- windows_virtio_install: Registry editing, driver installation, firstboot provisioning
-
-This file contains:
-------------------
-1. Public API re-exports from sub-modules
-2. _materialize_virtio_source() - Context manager for ISO extraction
-3. windows_bcd_actual_fix() - BCD backup and discovery (PUBLIC API)
-4. _virtio_finalize() - Result finalization and reporting
-5. inject_virtio_drivers() - Main injection orchestration (PUBLIC API)
-6. WindowsFixer - Thin wrapper class providing the public interface
-
-The split architecture enables:
-- Better testability (each module can be tested independently)
-- Clear separation of concerns (config vs detection vs installation)
-- Easier maintenance (changes to config logic don't affect installation logic)
-- Reduced cognitive load (each module has a focused purpose)
-
-Usage:
-------
-    from hyper2kvm.fixers.windows.virtio.core import WindowsFixer, inject_virtio_drivers
-
-    fixer = WindowsFixer()
-    result = fixer.inject_virtio_drivers(guestfs_handle)
-
-    # Or use the function directly:
-    result = inject_virtio_drivers(self, guestfs_handle)
+Windows VirtIO driver injection for VMware to KVM migration.
 """
 from __future__ import annotations
 
@@ -535,25 +498,7 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
 class WindowsFixer:
     """
-    Thin wrapper providing the Windows VirtIO injection public API.
-
-    This class provides a clean interface to the VirtIO injection functionality,
-    delegating to the module-level functions for actual implementation.
-
-    The class can be mixed into other fixer classes or used standalone.
-
-    Example:
-        fixer = WindowsFixer()
-        fixer.virtio_drivers_dir = Path("/path/to/virtio-win")
-        fixer.inspect_root = "/dev/sda2"
-        fixer.dry_run = False
-
-        with guestfs.GuestFS() as g:
-            g.add_drive_opts(disk_path, format="qcow2")
-            g.launch()
-            result = fixer.inject_virtio_drivers(g)
-            if result.get("success"):
-                print("VirtIO drivers injected successfully")
+    Windows VirtIO driver injection interface.
     """
 
     def is_windows(self, g: guestfs.GuestFS) -> bool:

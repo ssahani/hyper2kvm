@@ -65,9 +65,7 @@ class OfflineMountEngine:
 
         self._luks_opened: Dict[str, str] = {}  # luks_dev -> /dev/mapper/name
 
-    # -----------------------
     # safe helpers
-    # -----------------------
 
     @staticmethod
     def safe_umount_all(g: guestfs.GuestFS) -> None:
@@ -76,9 +74,7 @@ class OfflineMountEngine:
         except Exception:
             pass
 
-    # -----------------------
     # LUKS / LVM
-    # -----------------------
 
     def _read_luks_key_bytes(self) -> Optional[bytes]:
         try:
@@ -169,9 +165,7 @@ class OfflineMountEngine:
             _ = self.activate_lvm(g)
         return audit
 
-    # -----------------------
     # mdraid/zfs — additive
-    # -----------------------
 
     def _guestfs_can_run(self, g: guestfs.GuestFS, prog: str) -> bool:
         try:
@@ -220,9 +214,7 @@ class OfflineMountEngine:
         audit["lvm"] = self.activate_lvm(g)
         return audit
 
-    # -----------------------
     # mount logic
-    # -----------------------
 
     def _try_mount_root(self, g: guestfs.GuestFS, dev: str, subvol: Optional[str], mode: str) -> None:
         # mode: "rw" | "ro" | "opts:<csv>"

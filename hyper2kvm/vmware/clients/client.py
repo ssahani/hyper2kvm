@@ -4,36 +4,7 @@
 from __future__ import annotations
 
 """
-vSphere / vCenter client for hyper2kvm - Unified API with split implementation
-
-Architecture (stable by default):
-  This module provides a unified VMwareClient API that delegates to specialized
-  modules for different operations:
-
-  - vmware_datastore.py: Datastore operations, VM discovery, download-only mode
-  - vmware_v2v.py: virt-v2v orchestration
-  - vmware_ovftool.py: OVF Tool and govc export operations
-  - vmware_vddk.py: VDDK disk download (experimental)
-
-  The VMwareClient class maintains backward compatibility by delegating method
-  calls to the appropriate module functions. This split architecture improves
-  maintainability while preserving the existing API surface.
-
-Policy (stable by default):
-  ✅ Default export path is govc OVF (automation-friendly, debuggable)
-     - export_mode="ovf_export" (default)
-     - fallback chain: OVF -> OVA -> FORCED HTTPS /folder download-only
-  ✅ VDDK raw disk download stays EXPERIMENTAL:
-     - only runs when export_mode explicitly requests it ("vddk_download")
-     - all VDDK logic lives in vmware_vddk.py (this file only orchestrates)
-  ✅ virt-v2v is kept as a power-user path ("v2v")
-  ✅ OVF Tool support added as alternative export/deployment method
-
-Implementation:
-  - Core connection management and client initialization stay in VMwareClient
-  - All operation-specific logic delegated to specialized modules
-  - Helper methods (_govc, _http_download_client, _ovftool) stay in VMwareClient
-  - Unified export_vm method orchestrates the fallback chain
+vSphere / vCenter client for hyper2kvm.
 """
 
 import logging
@@ -174,26 +145,7 @@ class GovmomiCLI(GovcRunner):
 @dataclass
 class V2VExportOptions:
     """
-    Export / download options.
-
-    Stable default policy:
-      - export_mode="ovf_export" is the default: stable and debuggable.
-      - Fallback chain: OVF -> OVA -> HTTPS /folder download-only.
-      - VDDK raw pull is experimental and only runs when explicitly requested.
-      - OVF Tool support added as alternative export method.
-
-    Modes:
-      - export_mode="ovf_export" (default): govc export.ovf
-      - export_mode="ova_export": govc export.ova
-      - export_mode="ovftool_export": OVF Tool export to OVA
-      - export_mode="download_only": list VM folder (pyvmomi) + download selected files
-      - export_mode="v2v": virt-v2v (power user)
-      - export_mode="vddk_download": experimental raw VMDK pull via VDDK (explicit)
-
-    IMPORTANT:
-      - datacenter defaults to "auto"
-      - compute defaults to "auto" and we resolve a HOST SYSTEM path:
-          host/<cluster-or-compute>/<esx-host>
+    Export and download options for vSphere VMs.
     """
 
     vm_name: str
@@ -309,16 +261,7 @@ from ..transports.vddk_loader import (
 
 class VMwareClient:
     """
-    Minimal vSphere/vCenter client (SYNC):
-      - pyvmomi control-plane (inventory, compute path, snapshots, datastore browser)
-      - HTTPS /folder downloads via HTTPDownloadClient
-      - virt-v2v orchestrator (sync subprocess)
-      - govc stable exporter (OVF/OVA) via govc_common.GovcRunner
-      - ✅ VDDK raw download is EXPERIMENTAL and lives in vmware_vddk.py
-      - ✅ OVF Tool support for export/deployment
-
-    This class serves as a thin delegation layer to specialized modules while
-    maintaining backward compatibility with the existing API.
+    vSphere/vCenter client for VM operations and export.
     """
 
     def __init__(
@@ -363,9 +306,7 @@ class VMwareClient:
 
         self._rich_console = Console(stderr=True) if (RICH_AVAILABLE and Console is not None) else None
 
-    # ---------------------------------------------------------------------
     # build from config using shared resolver (vs_* + vc_* + *_env)
-    # ---------------------------------------------------------------------
 
     @classmethod
     def from_config(
@@ -399,9 +340,7 @@ class VMwareClient:
     def has_creds(self) -> bool:
         return bool(self.host and self.user and self.password)
 
-    # ---------------------------
     # Internal helpers: tool handles
-    # ---------------------------
 
     def _govc(self) -> Optional[GovmomiCLI]:
         """
@@ -457,9 +396,7 @@ class VMwareClient:
                 raise VMwareError(f"OVF Tool not found: {e}")
         return self._ovftool_paths
 
-    # ---------------------------
     # Context managers
-    # ---------------------------
 
     def __enter__(self) -> "VMwareClient":
         self.connect()
@@ -473,9 +410,7 @@ class VMwareClient:
                 self.logger.error("Exception in context: %s: %s", getattr(exc_type, "__name__", exc_type), exc_val)
         return False
 
-    # ---------------------------
     # Connection
-    # ---------------------------
 
     def _require_pyvmomi(self) -> None:
         if not PYVMOMI_AVAILABLE:
@@ -561,9 +496,7 @@ class VMwareClient:
         except Exception as e:
             raise VMwareError(f"Failed to retrieve content: {e}")
 
-    # ---------------------------
     # Datacenters / Hosts - Delegate to vmware_datastore
-    # ---------------------------
 
     def _refresh_datacenter_cache(self) -> None:
         return _datastore_refresh_datacenter_cache(self)
@@ -583,9 +516,7 @@ class VMwareClient:
     def list_host_names(self, *, refresh: bool = False) -> List[str]:
         return _datastore_list_host_names(self, refresh=refresh)
 
-    # ---------------------------
     # VM lookup - Delegate to vmware_datastore
-    # ---------------------------
 
     def get_vm_by_name(self, name: str) -> Any:
         return _datastore_get_vm_by_name(self, name)
@@ -618,9 +549,7 @@ class VMwareClient:
     def resolve_compute_for_vm(self, vm_name: str, preferred: Optional[str]) -> str:
         return _datastore_resolve_compute_for_vm(self, vm_name, preferred)
 
-    # ---------------------------
     # govc export (stable) - Delegate to vmware_ovftool
-    # ---------------------------
 
     def _ensure_output_dir(self, base: Path) -> Path:
         out = Path(base).expanduser().resolve()
@@ -633,9 +562,7 @@ class VMwareClient:
     def govc_export_ova(self, opt: V2VExportOptions) -> Path:
         return _ovftool_govc_export_ova(self, opt)
 
-    # ---------------------------
     # OVF Tool export/deploy - Delegate to vmware_ovftool
-    # ---------------------------
 
     def _vm_inventory_path_under_vmfolder(self, vm_obj: Any, dc_obj: Any) -> str:
         """
@@ -736,9 +663,7 @@ class VMwareClient:
     def ovftool_deploy_ova(self, source_ova: Path, opt: V2VExportOptions) -> None:
         return _ovftool_ovftool_deploy_ova(self, source_ova, opt)
 
-    # ---------------------------
     # Datastore parsing + HTTPS /folder download - Delegate to vmware_datastore
-    # ---------------------------
 
     @staticmethod
     def parse_backing_filename(file_name: str) -> Tuple[str, str]:
@@ -800,9 +725,7 @@ class VMwareClient:
             force_https=force_https,
         )
 
-    # ---------------------------
     # Download-only (list via DatastoreBrowser, download via govc/https) - Delegate to vmware_datastore
-    # ---------------------------
 
     def wait_for_task(self, task: Any) -> None:
         return _datastore_wait_for_task(self, task)
@@ -941,9 +864,7 @@ class VMwareClient:
         """
         return _datastore_download_only_vm_force_https(self, opt)
 
-    # ---------------------------
     # virt-v2v (power user path) - Delegate to vmware_v2v
-    # ---------------------------
 
     def _vpx_uri(self, *, datacenter: str, compute: str, no_verify: bool) -> str:
         q = "?no_verify=1" if no_verify else ""
@@ -1152,9 +1073,7 @@ class VMwareClient:
     def v2v_export_vm(self, opt: V2VExportOptions) -> Path:
         return _v2v_export_vm(self, opt)
 
-    # ---------------------------
     # VDDK raw disk download (experimental orchestration only) - Delegate to vmware_vddk
-    # ---------------------------
 
     def _require_vddk_client(self) -> None:
         if not VDDK_CLIENT_AVAILABLE:
@@ -1192,9 +1111,7 @@ class VMwareClient:
     def vddk_download_disk(self, opt: V2VExportOptions) -> Path:
         return _vddk_download_disk(self, opt)
 
-    # ---------------------------
     # Unified entrypoint (policy) - refactored into smaller handlers
-    # ---------------------------
 
     @staticmethod
     def _normalize_export_mode(mode: Optional[str]) -> str:
@@ -1245,21 +1162,7 @@ class VMwareClient:
 
     def export_vm(self, opt: V2VExportOptions) -> Path:
         """
-        Unified entrypoint (SYNC).
-
-        Policy (STRICT + stable default):
-          - Default is govc OVF export: export_mode="ovf_export"
-          - Fallback chain for stable export:
-              1) govc export.ovf
-              2) govc export.ova
-              3) HTTPS /folder download-only (FORCED; bypass govc)
-          - VDDK only when explicitly requested:
-              * export_mode="vddk_download" -> VDDK raw disk download (experimental)
-          - OVF Tool when explicitly requested:
-              * export_mode="ovftool_export" -> OVF Tool export to OVA
-          - Back-compat:
-              * "v2v" keeps virt-v2v behavior
-              * "download_only" keeps folder download behavior
+        Export VM using specified export mode.
         """
         mode = self._normalize_export_mode(opt.export_mode)
 

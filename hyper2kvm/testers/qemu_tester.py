@@ -235,9 +235,7 @@ class QemuTest:
         # Extra args last so caller can override
         cmd += list(extra_args)
 
-        # ----------------------------
         # Logging
-        # ----------------------------
         U.banner(logger, "🧪 QEMU smoke test")
         logger.info("🧾 QEMU: %s", qemu_bin)
         logger.info("💽 Disk: %s (format=%s, if=%s)", disk, img_fmt, disk_if)
@@ -260,9 +258,7 @@ class QemuTest:
 
         logger.debug("🧾 QEMU command:\n %s", " ".join(shlex.quote(x) for x in cmd))
 
-        # ----------------------------
         # Execute
-        # ----------------------------
         try:
             if timeout_s is None:
                 logger.info("🚀 Launching QEMU (no timeout; exit manually)…")
@@ -294,9 +290,7 @@ class QemuTest:
                 except Exception as e:
                     logger.debug("Could not remove temp OVMF VARS %s: %s", tmp_ovmf_vars, e)
 
-    # ----------------------------
     # Helpers
-    # ----------------------------
 
     @staticmethod
     def _detect_img_format(logger: logging.Logger, disk: Path) -> str:
@@ -378,9 +372,7 @@ class QemuTest:
         U.run_cmd(logger, ["cp", "-f", ovmf_vars, dst], check=True, capture=False)
         return dst
 
-    # ----------------------------
     # Windows additions
-    # ----------------------------
 
     @staticmethod
     def _disk_if_for_profile(prof: GuestProfile) -> str:

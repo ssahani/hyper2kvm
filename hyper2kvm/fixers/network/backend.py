@@ -62,9 +62,7 @@ class NetworkFixersBackend:
         self.vmware_drivers = vmware_drivers
         self.mac_pinning_patterns = mac_pinning_patterns
 
-    # ---------------------------
     # Edge helpers (topology safety)
-    # ---------------------------
 
     def _edge_touches(self, e: TopoEdge, name: str) -> bool:
         """Check if an edge touches a given interface name."""
@@ -83,9 +81,7 @@ class NetworkFixersBackend:
         """Check if interface is a lower-layer member (slave/port/vlan)."""
         return any(self._is_lower_layer_member_edge(e, name) for e in edges)
 
-    # ---------------------------
     # Compatibility helpers
-    # ---------------------------
 
     def _ifcfg_kind_and_links(self, ifcfg: IfcfgKV) -> Any:
         """
@@ -100,9 +96,7 @@ class NetworkFixersBackend:
             self.logger.debug("Topology: ifcfg_kind_and_links parse failed: %s", e)
             return (DeviceKind.UNKNOWN, [])
 
-    # ---------------------------
     # Intent helpers
-    # ---------------------------
 
     def _ifcfg_has_static_intent(self, ifcfg: IfcfgKV) -> bool:
         """
@@ -124,9 +118,7 @@ class NetworkFixersBackend:
         """
         return any(k in iface_cfg for k in ("addresses", "gateway4", "gateway6", "routes", "routing-policy", "nameservers"))
 
-    # ---------------------------
     # Netplan helpers
-    # ---------------------------
 
     def _netplan_collect_member_refs(self, nw: Dict[str, Any]) -> Set[str]:
         """
@@ -182,9 +174,7 @@ class NetworkFixersBackend:
                         aliases[str(ifname)] = sn.strip()
         return aliases
 
-    # ---------------------------
     # Interfaces helper
-    # ---------------------------
 
     def _interfaces_block_has_address(self, block_lines: List[str]) -> bool:
         """
@@ -197,9 +187,7 @@ class NetworkFixersBackend:
                 return True
         return False
 
-    # ---------------------------
     # Backend-specific fixers
-    # ---------------------------
 
     def fix_ifcfg_rh(
         self,

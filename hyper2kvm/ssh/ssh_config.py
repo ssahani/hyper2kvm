@@ -115,9 +115,7 @@ class SSHConfig:
             if v < 0:
                 raise ValueError(f"{name} must be >= 0 (got {v})")
 
-    # -------------------------
     # Rendering helpers
-    # -------------------------
 
     def target(self) -> str:
         # Using bracket form is harmless for ssh and consistent with scp.

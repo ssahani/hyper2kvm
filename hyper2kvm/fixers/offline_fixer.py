@@ -196,9 +196,7 @@ class OfflineFSFix:
         )
         self._validation_manager = OfflineValidationManager(logger=self.logger)
 
-    # ---------------------------------------------------------------------
     # stage runner (timing + per-stage error capture)
-    # ---------------------------------------------------------------------
     @contextlib.contextmanager
     def _time_stage(self, name: str) -> Any:
         t0 = time.time()
@@ -269,9 +267,7 @@ class OfflineFSFix:
         except Exception:
             pass
 
-    # ---------------------------------------------------------------------
     # guestfs open/close helpers
-    # ---------------------------------------------------------------------
     def open(self) -> guestfs.GuestFS:
         g = guestfs.GuestFS(python_return_dict=True)
         if self.logger.isEnabledFor(logging.DEBUG):
@@ -292,9 +288,7 @@ class OfflineFSFix:
         except Exception:
             pass
 
-    # -----------------------
     # LUKS / LVM
-    # -----------------------
     def _read_luks_key_bytes(self) -> Optional[bytes]:
         # Keyfile wins
         try:
@@ -380,9 +374,7 @@ class OfflineFSFix:
             self._activate_lvm(g)
         return audit
 
-    # -----------------------
     # storage stack activation (mdraid/zfs) — additive
-    # -----------------------
     def _guestfs_can_run(self, g: guestfs.GuestFS, prog: str) -> bool:
         try:
             return bool(getattr(g, "command", None)) and guest_has_cmd(g, prog)
@@ -449,9 +441,7 @@ class OfflineFSFix:
             audit["lvm"] = {"attempted": True, "ok": False, "error": str(e)}
         return audit
 
-    # ---------------------------------------------------------------------
     # mount logic (safe + robust)
-    # ---------------------------------------------------------------------
     def _mount_root_direct(self, g: guestfs.GuestFS, dev: str, subvol: Optional[str]) -> None:
         """
         Enhanced (non-breaking): keep original behavior, but add a safe mount fallback ladder
@@ -873,9 +863,7 @@ class OfflineFSFix:
 
         U.die(self.logger, "Failed to mount root filesystem.", 1)
 
-    # ---------------------------------------------------------------------
     # normalize validation results (bool/dict compatibility)
-    # ---------------------------------------------------------------------
     @staticmethod
     def _normalize_validation_results(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         """Delegate to validation manager."""
@@ -886,9 +874,7 @@ class OfflineFSFix:
         """Delegate to validation manager."""
         return OfflineValidationManager.summarize_validation(norm)
 
-    # ---------------------------------------------------------------------
     # Configuration rewriting (delegated to modules)
-    # ---------------------------------------------------------------------
     def backup_file(self, g: guestfs.GuestFS, path: str) -> None:
         """Delegate to config rewriter."""
         self._config_rewriter.backup_file(g, path)
@@ -908,15 +894,11 @@ class OfflineFSFix:
         """Delegate to config rewriter."""
         return self._config_rewriter.rewrite_crypttab(g)
 
-    # ---------------------------------------------------------------------
     # Filesystem fixer (delegated)
-    # ---------------------------------------------------------------------
     def fix_filesystems(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         return filesystem_fixer.fix_filesystems(self, g)
 
-    # ---------------------------------------------------------------------
     # Delegated fixers (explicit wrappers; no monkey-patching)
-    # ---------------------------------------------------------------------
     def fix_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         return network_fixer.fix_network_config(self, g)
 
@@ -939,9 +921,7 @@ class OfflineFSFix:
     def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         return windows_fixer.inject_virtio_drivers(self, g)
 
-    # ---------------------------------------------------------------------
     # VMware tools removal (mounted tree remover)
-    # ---------------------------------------------------------------------
     def _mount_local_run_threaded(
         self,
         g: guestfs.GuestFS,
@@ -1063,9 +1043,7 @@ class OfflineFSFix:
             except Exception:
                 pass
 
-    # ---------------------------------------------------------------------
     # disk usage analysis
-    # ---------------------------------------------------------------------
     def analyze_disk_space(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         """Delegate to validation manager."""
         return self._validation_manager.analyze_disk_space(g)
@@ -1074,9 +1052,7 @@ class OfflineFSFix:
         """Delegate to validation manager."""
         return self._validation_manager.create_validation_suite(g)
 
-    # ---------------------------------------------------------------------
     # resizing (image-level)
-    # ---------------------------------------------------------------------
     def _resize_image_container(self) -> Optional[Dict[str, Any]]:
         if not self.resize:
             return None
@@ -1109,15 +1085,11 @@ class OfflineFSFix:
             self.logger.error(f"Image resize failed: {e}")
             return {"image_resize": "failed", "error": str(e)}
 
-    # ---------------------------------------------------------------------
     # report writer
-    # ---------------------------------------------------------------------
     def write_report(self) -> None:
         write_report(self)
 
-    # ---------------------------------------------------------------------
     # main run
-    # ---------------------------------------------------------------------
     def run(self) -> None:
         U.banner(self.logger, "Offline guest fix (libguestfs)")
         self.logger.info(f"Opening offline image: {self.image}")
