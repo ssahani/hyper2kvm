@@ -33,6 +33,97 @@ Complete documentation for the hyper2kvm VM migration toolkit.
 
 ---
 
+## Quick Start Examples
+
+### Basic Linux VM Migration
+
+```bash
+# Convert VMware VMDK to KVM qcow2
+sudo python -m hyper2kvm local \
+  --vmdk /data/ubuntu-server.vmdk \
+  --flatten \
+  --to-output /var/lib/libvirt/images/ubuntu.qcow2 \
+  --fix-fstab \
+  --fix-grub \
+  --fix-network \
+  --compress
+```
+
+### Windows VM with VirtIO
+
+```bash
+# Download VirtIO drivers first
+wget https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso
+
+# Convert Windows VM
+sudo python -m hyper2kvm local \
+  --vmdk /data/windows10.vmdk \
+  --windows \
+  --inject-virtio \
+  --virtio-win-iso ./virtio-win.iso \
+  --to-output /var/lib/libvirt/images/windows10.qcow2 \
+  --compress
+```
+
+### Fetch from ESXi
+
+```bash
+# Fetch and convert VM from ESXi host
+sudo python -m hyper2kvm fetch-and-fix \
+  --host esxi.example.com \
+  --user root \
+  --remote /vmfs/volumes/datastore1/vm/vm.vmdk \
+  --fetch-all \
+  --flatten \
+  --to-output /data/vm.qcow2
+```
+
+### Using Configuration Files
+
+```yaml
+# Create config.yaml
+cmd: local
+vmdk: /data/production-web.vmdk
+flatten: true
+to_output: /var/lib/libvirt/images/production-web.qcow2
+compress: true
+fix_fstab: true
+fix_grub: true
+fix_network: true
+libvirt_test: true
+```
+
+```bash
+# Run with config file
+sudo python -m hyper2kvm --config config.yaml
+```
+
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "hyper2kvm Migration Pipeline"
+        Input[Source VM<br/>VMDK/VHD/OVA] --> Fetch[FETCH]
+        Fetch --> Flatten[FLATTEN]
+        Flatten --> Inspect[INSPECT]
+        Inspect --> Fix[FIX]
+        Fix --> Convert[CONVERT]
+        Convert --> Test[TEST]
+        Test --> Output[Bootable qcow2]
+        
+        Fix --> FixFstab[Fix fstab]
+        Fix --> FixGrub[Fix GRUB]
+        Fix --> FixNetwork[Fix Network]
+        Fix --> VirtIO[Inject VirtIO]
+    end
+    
+    style Input fill:#e1f5e1
+    style Output fill:#c8e6c9
+    style Fix fill:#ffebee
+```
+
+
 ## Quick Links
 
 ### For New Users

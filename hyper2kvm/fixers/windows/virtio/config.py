@@ -300,7 +300,7 @@ def _read_structured_file(path: Path) -> Dict[str, Any]:
 
     Supported:
       - *.json
-      - *.yml / *.yaml  (requires YAML_AVAILABLE)
+      - *.yml / *.yaml (requires YAML_AVAILABLE)
     """
     sfx = path.suffix.lower()
     raw = path.read_text(encoding="utf-8", errors="replace")
@@ -354,10 +354,10 @@ def _load_virtio_config(self) -> Dict[str, Any]:
     """
     Load VirtIO config (drivers + OS bucket logic) from **any** of:
 
-    1) self.virtio_config (dict)                     [highest priority]
-    2) self.virtio_config_inline_json (str JSON)     (or self.virtio_config_json for compat)
-    3) self.virtio_config_path (Path|str)            JSON/YAML file
-    4) self.config (merged YAML app config dict)     keys: windows_virtio/virtio/fixers.windows_virtio
+    1) self.virtio_config (dict) [highest priority]
+    2) self.virtio_config_inline_json (str JSON) (or self.virtio_config_json for compat)
+    3) self.virtio_config_path (Path|str) JSON/YAML file
+    4) self.config (merged YAML app config dict) keys: windows_virtio/virtio/fixers.windows_virtio
     5) baked DEFAULT_VIRTIO_CONFIG
 
     Merge semantics:

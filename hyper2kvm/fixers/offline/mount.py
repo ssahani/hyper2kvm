@@ -229,10 +229,10 @@ class OfflineMountEngine:
         if subvol:
             opts = f"subvol={subvol}"
             if self.dry_run or mode == "ro":
-                opts = f"ro,{opts}"
+                opts = f"ro, {opts}"
             if mode.startswith("opts:"):
                 extra = mode.split(":", 1)[1]
-                opts = f"{extra},{opts}"
+                opts = f"{extra}, {opts}"
             g.mount_options(opts, dev, "/")
             return
 
@@ -245,7 +245,7 @@ class OfflineMountEngine:
         if mode.startswith("opts:"):
             opts = mode.split(":", 1)[1]
             if self.dry_run and "ro" not in opts:
-                opts = f"ro,{opts}"
+                opts = f"ro, {opts}"
             g.mount_options(opts, dev, "/")
             return
 
@@ -268,7 +268,7 @@ class OfflineMountEngine:
             last_err: Exception = first_err  # type: ignore[assignment]
 
         # 2) fallback ladder
-        tries = ["ro", "opts:noload", "opts:ro,noload", "opts:ro,norecovery"]
+        tries = ["ro", "opts:noload", "opts:ro, noload", "opts:ro, norecovery"]
         for t in tries:
             self.safe_umount_all(g)
             try:
@@ -449,7 +449,7 @@ class OfflineMountEngine:
                     filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                     opts = f"subvol={sv}"
                     if self.dry_run:
-                        opts = f"ro,{opts}"
+                        opts = f"ro, {opts}"
                     g.mount_options(opts, dev, "/")
                     if self.looks_like_root(g):
                         sc = self.score_root(g)
@@ -465,7 +465,7 @@ class OfflineMountEngine:
             self.safe_umount_all(g)
             opts = f"subvol={sv}"
             if self.dry_run:
-                opts = f"ro,{opts}"
+                opts = f"ro, {opts}"
             g.mount_options(opts, dev, "/")
             return RootMountResult(
                 inspect_root=None,

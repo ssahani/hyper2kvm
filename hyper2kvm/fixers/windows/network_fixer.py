@@ -87,7 +87,7 @@ Minimal schemas (examples):
 Notes:
   - "mask" is subnet mask; PowerShell converts it to PrefixLength.
   - If gateway is omitted/empty, we apply IP/prefix without a default route.
-  - dns_servers accepts list or a single string "1.1.1.1,8.8.8.8"
+  - dns_servers accepts list or a single string "1.1.1.1, 8.8.8.8"
 """
 
 import json
@@ -152,8 +152,6 @@ def _resolve_windows_system_paths(g: guestfs.GuestFS) -> WindowsSystemPaths:
         temp_dir=temp,
         system_hive=f"{cfg}/SYSTEM",
     )
-
-
 
 
 def _guestfs_to_windows_path(p: str) -> str:
@@ -305,7 +303,7 @@ def _read_dword(g: guestfs.GuestFS, h: int, node: Any, name: str) -> Optional[in
 # Parsing helpers
 
 
-_IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
+_IP_RE = re.compile(r"\b(\d{1, 3}(?:\.\d{1, 3}){3})\b")
 
 
 def _split_multi_sz(s: Optional[str]) -> List[str]:
@@ -318,7 +316,7 @@ def _split_multi_sz(s: Optional[str]) -> List[str]:
         return []
     # Normalize NUL separators to spaces, then split on common delimiters.
     t = s.replace("\x00", " ")
-    parts = re.split(r"[,\s;]+", t)
+    parts = re.split(r"[, \s;]+", t)
     out: List[str] = []
     for p in parts:
         p = p.strip()
@@ -589,7 +587,7 @@ def _normalize_override(obj: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(v, list):
             return [str(x).strip() for x in v if str(x).strip()]
         if isinstance(v, str):
-            return [x.strip() for x in re.split(r"[,\s;]+", v) if x.strip()]
+            return [x.strip() for x in re.split(r"[, \s;]+", v) if x.strip()]
         return []
 
     st = o.get("static")

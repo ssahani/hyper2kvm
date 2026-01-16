@@ -1057,15 +1057,15 @@ class ValidationSuite:
         Context policy knobs:
           - strict_process_checks: bool
               If True, subprocess-required checks FAIL (not fallback) when pickle/subprocess fails.
-          - process_context_keys: [str,...]
+          - process_context_keys: [str, ...]
               If provided, only these keys are passed into child processes.
-          - missing_required_tools: [str,...]
+          - missing_required_tools: [str, ...]
               If non-empty:
                 - if fail_fast_on_missing_required_tools True: suite stops early; marks all checks skipped
                 - else: skips checks whose tags intersect expensive_tags
           - fail_fast_on_missing_required_tools: bool (default True)
-          - expensive_tags: [str,...] default ["expensive","guestfs"]
-          - redact_keys: [str,...] global redaction tokens
+          - expensive_tags: [str, ...] default ["expensive","guestfs"]
+          - redact_keys: [str, ...] global redaction tokens
           - max_workers: int default min(4, cpu_count)
         """
         started = time.monotonic()

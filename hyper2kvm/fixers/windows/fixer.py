@@ -7,9 +7,9 @@ from __future__ import annotations
 Thin façade for Windows fixing.
 
 This module intentionally stays small and delegates the heavy lifting to:
-  - virtio/core.py             (driver discovery + injection + staging + BCD backup hints)
-  - registry_core.py           (offline hive edits: SYSTEM services/CDD + SOFTWARE DevicePath)
-  - network_fixer.py           (best-effort network config retention via firstboot PowerShell)
+  - virtio/core.py (driver discovery + injection + staging + BCD backup hints)
+  - registry_core.py (offline hive edits: SYSTEM services/CDD + SOFTWARE DevicePath)
+  - network_fixer.py (best-effort network config retention via firstboot PowerShell)
 """
 
 import logging

@@ -190,7 +190,7 @@ def _print_panel(title: str, body: str = "") -> None:
     Render a panel like:
 
     ╭─────────────────────────────────────────────────────────╮
-    │            ✓ Export completed successfully!              │
+    │ ✓ Export completed successfully! │
     ╰─────────────────────────────────────────────────────────╯
     """
     con = _console()
@@ -228,7 +228,7 @@ def _warn_line(msg: str) -> None:
 
 def _ok_line(msg: str) -> None:
     # match your sample: "  ✓ Removed: cdrom-1000"
-    print(f"  ✓ {msg}")
+    print(f" ✓ {msg}")
 
 
 def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
@@ -315,8 +315,8 @@ def export_to_ovf_or_ova(
 
     Examples:
       source: "vi://administrator@vsphere.local:pass@vcenter.example/DC/vm/MyVM"
-      destination: "/var/tmp/MyVM.ova"   (OVA)
-      destination: "/var/tmp/MyVM-ovf/"  (OVF dir)
+      destination: "/var/tmp/MyVM.ova" (OVA)
+      destination: "/var/tmp/MyVM-ovf/" (OVF dir)
 
     Important:
       - Do NOT embed passwords in logs. This module masks vi:// credentials on logging.

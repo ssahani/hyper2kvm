@@ -10,6 +10,36 @@ a VMware VMDK to qcow2 and applying offline fixes
 
 ---
 
+## Prerequisites
+
+Before migrating this platform, ensure:
+
+- ✓ hyper2kvm installed ([Installation Guide](02-Installation.md))
+- ✓ Familiarity with [Quick Start Guide](03-Quick-Start.md)
+- ✓ Root/sudo access
+- ✓ Source VM accessible
+
+
+
+## Table of Contents
+
+- [Host Requirements (Fedora)](#host-requirements-fedora)
+- [Image Under Test (Ubuntu 24.04.3)](#image-under-test-ubuntu-24043)
+- [BIOS + GUI libvirt XML (Most Compatible)](#bios-gui-libvirt-xml-most-compatible)
+- [Define and Start the VM](#define-and-start-the-vm)
+- [Connect to the Console / GUI](#connect-to-the-console-gui)
+  - [Option 1: virt-viewer (recommended)](#option-1-virt-viewer-recommended)
+  - [Option 2: VNC](#option-2-vnc)
+- [Expected Boot Sequence (Ubuntu 24.04.3)](#expected-boot-sequence-ubuntu-24043)
+- [Troubleshooting](#troubleshooting)
+  - [Drops to `grub>` prompt](#drops-to-grub-prompt)
+  - [Drops to `(initramfs)` shell](#drops-to-initramfs-shell)
+  - [Black screen after GRUB](#black-screen-after-grub)
+  - [“No bootable device”](#no-bootable-device)
+  - [Boots but no GUI](#boots-but-no-gui)
+- [Notes (24.04.x specifics)](#notes-2404x-specifics)
+
+---
 ## Host Requirements (Fedora)
 
 Install required virtualization tools:

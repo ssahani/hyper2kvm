@@ -8,6 +8,16 @@ It covers the big three you already run in production (**local**, **live-fix**, 
 
 ---
 
+## Prerequisites
+
+Before following this guide, you should have:
+
+- ✓ Completed the [Installation](02-Installation.md)
+- ✓ Familiarity with basic hyper2kvm concepts
+- ✓ Root/sudo access to your system
+- ✓ Source VM files ready for migration
+
+
 ## Table of contents
 
 - [Running configs](#running-configs)
@@ -38,7 +48,7 @@ Merge multiple configs (later overrides earlier):
 
 ```bash
 sudo ./hyper2kvm.py --config base.yaml --config overrides.yaml local
-```
+```yaml
 
 ### Multi-VM configs
 
@@ -54,7 +64,7 @@ vms:
 
 compress: true        # default for all VMs
 out_format: qcow2
-```
+```yaml
 
 ---
 
@@ -155,7 +165,7 @@ remove_vmware_tools: true
 
 report: local-report.md
 verbose: 1
-```
+```yaml
 
 ### Advanced: Windows virtio injection + safety backups
 
@@ -177,7 +187,7 @@ enable_recovery: true
 report: windows-report.md
 checksum: true
 verbose: 2
-```
+```yaml
 
 ### Multi-VM batch (shared defaults + overrides)
 
@@ -206,7 +216,7 @@ vms:
   - vmdk: /path/to/win.vmdk
     to_output: win.qcow2
     virtio_drivers_dir: /path/to/virtio-win
-```
+```yaml
 
 ---
 
@@ -230,7 +240,7 @@ remove_vmware_tools: true
 
 verbose: 2
 log_file: live-fix.log
-```
+```yaml
 
 ### Advanced: custom key + SSH opts + dry-run
 
@@ -248,7 +258,7 @@ fstab_mode: bypath-only
 no_grub: true
 dry_run: true
 verbose: 2
-```
+```yaml
 
 ---
 
@@ -272,7 +282,7 @@ to_output: esxi-vm-fixed.qcow2
 out_format: qcow2
 compress: true
 report: fetch-fix.md
-```
+```yaml
 
 ### Advanced: full chain + test boot
 
@@ -297,7 +307,7 @@ timeout: 120
 
 enable_recovery: true
 report: esxi-report.md
-```
+```yaml
 
 ---
 
@@ -319,7 +329,7 @@ compress: true
 compress_level: 6
 
 report: ova-report.md
-```
+```yaml
 
 ---
 
@@ -338,7 +348,7 @@ flatten: true
 to_output: ovf-vm.qcow2
 out_format: qcow2
 compress: true
-```
+```yaml
 
 ### OVF “fragile guest” mode (avoid GRUB mutation)
 
@@ -355,7 +365,7 @@ flatten: true
 to_output: ovf-safe.qcow2
 out_format: qcow2
 report: ovf-safe.md
-```
+```yaml
 
 ---
 
@@ -381,7 +391,7 @@ compress_level: 6
 enable_recovery: true
 log_file: /var/log/hyper2kvm-daemon.log
 verbose: 1
-```
+```yaml
 
 ---
 
@@ -406,7 +416,7 @@ vc_password_env: VC_PASSWORD
 vc_insecure: true   # set false in real environments with trusted certs
 vc_port: 443
 json: true
-```
+```yaml
 
 ### List VM names (bulk)
 
@@ -419,7 +429,7 @@ vc_insecure: true
 
 vs_action: list_vm_names
 json: true
-```
+```yaml
 
 ### Get VM details
 
@@ -433,7 +443,7 @@ vc_insecure: true
 vs_action: get_vm_by_name
 name: myVM
 json: true
-```
+```yaml
 
 ### List disks for a VM
 
@@ -447,7 +457,7 @@ vc_insecure: true
 vs_action: vm_disks
 vm_name: myVM
 json: true
-```
+```yaml
 
 ### Download a datastore file (HTTP `/folder`)
 
@@ -465,7 +475,7 @@ ds_path: "myVM/myVM.vmdk"          # IMPORTANT: datastore-relative (your CLI bui
 local_path: ./downloads/myVM.vmdk
 chunk_size: 1048576
 json: true
-```
+```yaml
 
 ### Download a VM disk (select by index/label → backing filename → HTTP pull)
 
@@ -482,7 +492,7 @@ disk: 0
 local_path: ./downloads/myVM-disk0.vmdk
 chunk_size: 1048576
 json: true
-```
+```yaml
 
 ### Download-only VM folder pull (byte-for-byte VM directory)
 
@@ -515,7 +525,7 @@ vs_fail_on_missing: false
 
 dc_name: ha-datacenter
 json: true
-```
+```yaml
 
 ### Snapshot + CBT + changed areas (control-plane)
 
@@ -534,7 +544,7 @@ quiesce: true
 memory: false
 description: "Created by hyper2kvm"
 json: true
-```
+```yaml
 
 ```yaml
 command: vsphere
@@ -547,7 +557,7 @@ vc_insecure: true
 vs_action: enable_cbt
 vm_name: myVM
 json: true
-```
+```yaml
 
 ```yaml
 command: vsphere
@@ -564,7 +574,7 @@ disk: 0
 start_offset: 0
 change_id: "*"
 json: true
-```
+```yaml
 
 ### CBT delta sync (base download once, then patch deltas)
 
@@ -586,7 +596,7 @@ change_id: "*"
 
 dc_name: ha-datacenter
 json: true
-```
+```yaml
 
 ---
 
@@ -615,7 +625,7 @@ fstab_mode: stabilize-all
 regen_initramfs: true
 remove_vmware_tools: true
 report: post-v2v.md
-```
+```yaml
 
 ### Pattern B: vSphere control-plane + virt-v2v data-plane (engine mode)
 
@@ -642,7 +652,7 @@ output_format: qcow2
 post_fix: true
 fstab_mode: stabilize-all
 regen_initramfs: true
-```
+```yaml
 
 ---
 
@@ -667,7 +677,7 @@ compress_level: 6
 checksum: true
 report: report.md
 verbose: 1
-```
+```yaml
 
 ### `overrides.yaml` (per VM / per customer)
 
@@ -678,13 +688,13 @@ to_output: customer-vm.qcow2
 remove_vmware_tools: false
 no_grub: true     # fragile guest
 dry_run: false
-```
+```yaml
 
 Run:
 
 ```bash
 sudo ./hyper2kvm.py --config base.yaml --config overrides.yaml local
-```
+```yaml
 
 ---
 
@@ -697,7 +707,7 @@ Use:
 ```yaml
 libvirt_test: true
 headless: true
-```
+```yaml
 
 ### Windows boots to recovery / INACCESSIBLE_BOOT_DEVICE after migration
 
@@ -708,7 +718,7 @@ Ensure virtio injection is enabled and you keep safety backups:
 virtio_drivers_dir: /path/to/virtio-win
 # windows_bcd_backup: true
 # windows_reg_backup: true
-```
+```yaml
 
 ### Snapshot chain conversions are slow / fail
 
@@ -730,3 +740,17 @@ Common causes:
 
 Usually key mismatch vs argparse destination name.
 Prefer the exact names your CLI expects (`to_output`, `out_format`, `vm_name`, `vs_action`, etc.).
+
+## Next Steps
+
+Continue your migration journey:
+
+- **[CLI Reference](04-CLI-Reference.md)** - Complete command options
+- **[YAML Examples](05-YAML-Examples.md)** - Configuration templates
+- **[Cookbook](06-Cookbook.md)** - Common scenarios
+- **[Troubleshooting](90-Failure-Modes.md)** - When things go wrong
+
+## Getting Help
+
+Found an issue? [Report it on GitHub](https://github.com/hyper2kvm/hyper2kvm/issues)
+

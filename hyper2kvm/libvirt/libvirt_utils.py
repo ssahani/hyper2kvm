@@ -34,7 +34,7 @@ def sanitize_name(s: str) -> str:
     Example:
         >>> sanitize_name("My VM (test)")
         'My-VM--test-'
-        >>> sanitize_name("   ")
+        >>> sanitize_name(" ")
         'vm'
         >>> sanitize_name("linux-server-01.example.com")
         'linux-server-01.example.com'

@@ -138,7 +138,7 @@ class PlanMode:
         self.logger.info(f"Plans written: {plans_dir}")
         self.logger.info(f"Summary written: {summary_md}")
 
- 
+
     def _summary_md(self, plan_index: List[Dict[str, Any]], inv_path: Path) -> str:
         lines: List[str] = []
         lines.append("# hyper2kvm migration plan\n")
@@ -158,4 +158,3 @@ class PlanMode:
             return _yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
         except Exception:
             return json.dumps(data, indent=2)
-

@@ -34,7 +34,7 @@ def parse_btrfsvol_spec(spec: str) -> Tuple[str, Optional[str]]:
     _LOG.debug("🧩 parse_btrfsvol_spec: input=%r", spec)
 
     if not spec.startswith("btrfsvol:"):
-        _LOG.debug("⏭️  not a btrfsvol spec")
+        _LOG.debug("⏭️ not a btrfsvol spec")
         return spec, None
 
     s = spec[len("btrfsvol:"):]
@@ -79,7 +79,7 @@ class Ident:
             return out
         except Exception as e:
             # keep behavior: return {}
-            _LOG.debug("⚠️  blkid failed: dev=%r err=%s", dev, e, exc_info=True)
+            _LOG.debug("⚠️ blkid failed: dev=%r err=%s", dev, e, exc_info=True)
             return {}
 
     @staticmethod
@@ -130,7 +130,7 @@ class Ident:
         _LOG.debug("🧭 infer_partition_from_bypath: spec=%r root_dev=%r", spec, root_dev)
 
         if not root_dev or not spec.startswith(_BYPATH_PREFIX):
-            _LOG.debug("⏭️  bypath inference skipped (no root_dev or not by-path)")
+            _LOG.debug("⏭️ bypath inference skipped (no root_dev or not by-path)")
             return None
 
         m = re.search(r"-part(\d+)$", spec)

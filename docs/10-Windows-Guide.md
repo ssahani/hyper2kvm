@@ -6,6 +6,44 @@ This is the safest “first boot” profile for Windows images that were convert
 
 That sequence prevents **INACCESSIBLE_BOOT_DEVICE** when the VirtIO storage driver isn’t boot-ready yet.
 
+
+## Table of Contents
+
+- [Step-by-step: first boot validation with SATA + UEFI (libvirt)](#step-by-step-first-boot-validation-with-sata-uefi-libvirt)
+  - [0) Host prerequisites (Fedora/RHEL family)](#0-host-prerequisites-fedorarhel-family)
+  - [1) Put the qcow2 where libvirt/qemu can read it](#1-put-the-qcow2-where-libvirtqemu-can-read-it)
+  - [2) Create a per-VM OVMF VARS file](#2-create-a-per-vm-ovmf-vars-file)
+  - [3) Save the domain XML](#3-save-the-domain-xml)
+  - [4) Define and boot the VM](#4-define-and-boot-the-vm)
+  - [5) Connect a viewer](#5-connect-a-viewer)
+- [After Windows boots: install VirtIO drivers (so you can switch to VirtIO safely)](#after-windows-boots-install-virtio-drivers-so-you-can-switch-to-virtio-safely)
+- [Troubleshooting quick hits](#troubleshooting-quick-hits)
+  - [VM won’t start / “Permission denied”](#vm-wont-start-permission-denied)
+  - [Black screen](#black-screen)
+  - [INACCESSIBLE_BOOT_DEVICE on VirtIO boot](#inaccessible_boot_device-on-virtio-boot)
+- [Problem statement](#problem-statement)
+- [Driver injection model](#driver-injection-model)
+  - [Supported driver classes](#supported-driver-classes)
+- [Registry editing (offline)](#registry-editing-offline)
+  - [SYSTEM hive operations](#system-hive-operations)
+  - [Required service values](#required-service-values)
+- [CriticalDeviceDatabase (CDD)](#criticaldevicedatabase-cdd)
+- [BCD handling](#bcd-handling)
+  - [What we do](#what-we-do)
+  - [What we do NOT do](#what-we-do-not-do)
+- [Common failure prevented](#common-failure-prevented)
+
+---
+
+## Prerequisites
+
+For Windows VM migration, you need:
+
+- ✓ hyper2kvm installed ([Installation Guide](02-Installation.md))
+- ✓ VirtIO drivers ISO downloaded
+- ✓ Windows source VM disk (VMDK, VHD, etc.)
+- ✓ Understanding of [Windows Boot Cycle](11-Windows-Boot-Cycle.md)
+
 ### 0) Host prerequisites (Fedora/RHEL family)
 
 ```bash
@@ -17,7 +55,7 @@ sudo dnf install -y \
 
 sudo systemctl enable --now libvirtd
 sudo virsh net-start default 2>/dev/null || true
-```
+```bash
 
 ### 1) Put the qcow2 where libvirt/qemu can read it
 
@@ -29,7 +67,7 @@ Libvirt often runs QEMU under a confined user/service context. Even if the qcow2
 sudo mkdir -p /var/lib/libvirt/images
 sudo cp -a /home/ssahani/tt/hyper2kvm/out/windows10-fixed.qcow2 /var/lib/libvirt/images/
 sudo chmod 644 /var/lib/libvirt/images/windows10-fixed.qcow2
-```
+```bash
 
 (If you *must* keep it under `/home/...`, ensure directory execute bits allow traversal; on SELinux systems you may also need proper labeling.)
 
@@ -40,7 +78,7 @@ UEFI NVRAM state must be unique per VM.
 ```bash
 sudo cp -a /usr/share/edk2/ovmf/OVMF_VARS.fd /var/tmp/win10-fixed-sata_VARS.fd
 sudo chmod 644 /var/tmp/win10-fixed-sata_VARS.fd
-```
+```bash
 
 ### 3) Save the domain XML
 
@@ -130,20 +168,20 @@ Create `win10-sata-uefi.xml` with the contents below.
     </console>
   </devices>
 </domain>
-```
+```bash
 
 ### 4) Define and boot the VM
 
 ```bash
 sudo virsh define win10-sata-uefi.xml
 sudo virsh start win10-fixed-sata
-```
+```bash
 
 ### 5) Connect a viewer
 
 ```bash
 virt-viewer win10-fixed-sata
-```
+```bash
 
 You should now see the Windows boot sequence. On the first boot, expect Windows to do some hardware detection and driver setup.
 
@@ -216,9 +254,9 @@ It boots based on **boot-critical drivers registered correctly**.
 - Optional: virtiofs, input, GPU
 
 Drivers are copied to:
-```
+```bash
 Windows/System32/drivers/
-```
+```bash
 
 ---
 
@@ -247,9 +285,9 @@ Without CDD entries, Windows may:
 - blue-screen at boot
 
 Entries are created under:
-```
+```bash
 HKLM\SYSTEM\ControlSetXXX\Control\CriticalDeviceDatabase
-```
+```bash
 
 Mapped by PCI vendor/device IDs.
 
@@ -280,3 +318,17 @@ Caused by:
 - wrong storage driver selected
 
 `hyper2kvm` fixes all three before first boot.
+
+## Next Steps
+
+For Windows migrations:
+
+- **[Windows Boot Cycle](11-Windows-Boot-Cycle.md)** - Understanding Windows boot process
+- **[Windows Troubleshooting](12-Windows-Troubleshooting.md)** - Common Windows issues
+- **[Windows Networking](13-Windows-Networking.md)** - Network and driver configuration
+
+## Getting Help
+
+- [Troubleshooting Guide](90-Failure-Modes.md)
+- [GitHub Issues](https://github.com/hyper2kvm/hyper2kvm/issues)
+
