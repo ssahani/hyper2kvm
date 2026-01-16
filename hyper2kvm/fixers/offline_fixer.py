@@ -19,18 +19,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 import guestfs  # type: ignore
-from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from .. import __version__
 from ..core.recovery_manager import RecoveryManager
-from ..core.utils import U, blinking_progress, guest_has_cmd, guest_ls_glob
+from ..core.utils import U, blinking_progress, guest_has_cmd
 from ..core.validation_suite import ValidationSuite
 from .filesystem.fstab import (
-    IGNORE_MOUNTPOINTS,
-    _BYPATH_PREFIX,
     Change,
     FstabMode,
-    Ident,
     parse_btrfsvol_spec,
 )
 from .report_writer import write_report

@@ -6,39 +6,22 @@ vSphere command orchestration for hyper2kvm.
 """
 from __future__ import annotations
 
-import errno
-import fnmatch
-import socket
-import subprocess
-from dataclasses import asdict, is_dataclass
-from enum import IntEnum
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from ...core.exceptions import VMwareError
-from ...core.utils import U
-from ..transports.govc_common import GovcRunner, normalize_ds_path
 from ..clients.client import V2VExportOptions, VMwareClient
 
 # Import from split modules
 from .errors import (
     VsphereExitCode,
     _classify_exit_code,
-    _is_auth_error,
-    _is_external_tool_error,
-    _is_local_io_error,
-    _is_network_error,
-    _is_not_found_error,
-    _is_tool_missing_error,
-    _is_usage_error,
 )
 from .govc import (
     GovmomiCLI,
     _Emitter,
     _arg_any,
-    _as_payload,
     _merged_cfg,
-    _normalize_ds_path,
     _p,
     _prefer_govc,
     _require,

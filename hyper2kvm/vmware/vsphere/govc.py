@@ -20,8 +20,6 @@ except ImportError:
     GovcRunner = None
     normalize_ds_path = None
 
-from ..clients.client import VMwareClient
-from .errors import VsphereExitCode, _classify_exit_code
 
 
 # Small generic helpers

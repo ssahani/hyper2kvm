@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import contextmanager
-from typing import Any, Generator, Optional
+from typing import Any, Generator
 
 
 def safe_logger(instance: Any, default_name: str = "hyper2kvm") -> logging.Logger:

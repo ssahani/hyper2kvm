@@ -3,7 +3,6 @@
 # hyper2kvm/config/systemd_template.py
 from __future__ import annotations
 
-import getpass
 import os
 import shlex
 from dataclasses import dataclass

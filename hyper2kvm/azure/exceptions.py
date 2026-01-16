@@ -17,7 +17,6 @@ class AzureError(Hyper2KvmError):
     - Exit codes, context tracking, cause chaining
     - Secret redaction, user messages, JSON serialization
     """
-    pass
 
 
 class AzureCLIError(AzureError):
@@ -26,7 +25,6 @@ class AzureCLIError(AzureError):
 
     Used when 'az' commands fail (non-zero exit, parsing errors, etc.).
     """
-    pass
 
 
 class AzureAuthError(AzureError):
@@ -35,7 +33,6 @@ class AzureAuthError(AzureError):
 
     Used when Azure login/credential issues occur.
     """
-    pass
 
 
 class AzureDownloadError(AzureError):
@@ -44,7 +41,6 @@ class AzureDownloadError(AzureError):
 
     Used when VHD/blob downloads fail (network, resume, verification, etc.).
     """
-    pass
 
 
 # Convenience wrapper functions (following core/exceptions.py pattern)
