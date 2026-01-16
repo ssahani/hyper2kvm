@@ -100,9 +100,7 @@ class NetworkFixer:
             mac_pinning_patterns=self.MAC_PINNING_PATTERNS,
         )
 
-    # ---------------------------
     # Main orchestration pipeline
-    # ---------------------------
 
     def fix_network_config(
         self,
@@ -281,9 +279,7 @@ class NetworkFixer:
         else:
             return FixResult(new_content=config.content, applied_fixes=[], backup_created=False)
 
-    # ---------------------------
     # Fix application and validation
-    # ---------------------------
 
     def apply_fix(
         self,
@@ -356,9 +352,7 @@ class NetworkFixer:
 
             return False
 
-    # ---------------------------
     # Summary and recommendations
-    # ---------------------------
 
     def generate_recommendations(self, stats: Dict[str, Any]) -> List[str]:
         """

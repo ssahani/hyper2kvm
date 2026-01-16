@@ -167,9 +167,7 @@ class Flatten:
     # RW <sectors> FLAT "disk-flat.vmdk" 0
     _RE_VMDK_FLAT = re.compile(r'^\s*RW\s+\d+\s+FLAT\s+"([^"]+)"\s+\d+\s*$', re.MULTILINE)
 
-    # -----------------------------
     # Public entry
-    # -----------------------------
 
     @staticmethod
     def to_working(logger: logging.Logger, src: Path, outdir: Path, fmt: str) -> Path:
@@ -362,9 +360,7 @@ class Flatten:
         assert last_err is not None
         raise last_err
 
-    # -----------------------------
     # qemu-img runner (robust stderr)
-    # -----------------------------
 
     @staticmethod
     def _run_qemu_img_with_live_progress(
@@ -665,9 +661,7 @@ class Flatten:
             except Exception:
                 pass
 
-    # -----------------------------
     # Misc
-    # -----------------------------
 
     @staticmethod
     def _qemu_img_info(logger: logging.Logger, src: Path) -> dict:

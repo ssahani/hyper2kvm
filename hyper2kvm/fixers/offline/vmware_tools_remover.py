@@ -138,9 +138,7 @@ class OfflineVmwareToolsRemover:
             warnings=[],
         )
 
-    # ---------------------------
     # Path safety helpers
-    # ---------------------------
     def _resolve_path(self, rel_path: str) -> Path:
         # Ensure a caller can't escape mount_point with "../"
         # We resolve and then validate prefix.
@@ -232,9 +230,7 @@ class OfflineVmwareToolsRemover:
             self._result.errors.append(f"remove:{path}:{e}")
             self.logger.warning(f"Failed removing {path}: {e}")
 
-    # ---------------------------
     # Distro detection
-    # ---------------------------
     def _detect_distro_id(self) -> str:
         os_release = self._read_remote_file("/etc/os-release")
         # robust parse: ID=... may be quoted
@@ -243,9 +239,7 @@ class OfflineVmwareToolsRemover:
         self._result.distro_id = distro
         return distro
 
-    # ---------------------------
     # Unit / service disabling
-    # ---------------------------
     def _unlink_if_symlink(self, path: str) -> None:
         try:
             p = self._resolve_path(path)
@@ -315,9 +309,7 @@ class OfflineVmwareToolsRemover:
                     else:
                         self._remove_remote_path(rel)
 
-    # ---------------------------
     # Known files / dirs removal
-    # ---------------------------
     def _remove_known_files(self, patterns: List[str]) -> None:
         # Patterns may include globs like /usr/bin/vmware-*
         for pat in patterns:
@@ -340,9 +332,7 @@ class OfflineVmwareToolsRemover:
                 self._result.errors.append(f"glob:{pat}:{e}")
                 self.logger.debug(f"Glob failed for {pat}: {e}")
 
-    # ---------------------------
     # Offline "package removal" hints / optional chroot mode
-    # ---------------------------
     def _package_manager_hints(self, distro: str) -> List[str]:
         pkgs = ["open-vm-tools", "open-vm-tools-desktop", "vmware-tools", "vmware-tools-desktop", "vgauth"]
         # Keep hints as commands the user can run after boot (or in chroot)
@@ -387,9 +377,7 @@ class OfflineVmwareToolsRemover:
         self._result.warnings.append("Chroot mode is enabled, but automatic execution is intentionally not performed here.")
         self.logger.warning("Chroot mode enabled, but automatic package manager execution is intentionally not performed.")
 
-    # ---------------------------
     # Extra hardening: neutralize misc autostart hooks
-    # ---------------------------
     def _neutralize_autostart_hooks(self) -> None:
         """
         Some distros start vmtoolsd via:
@@ -424,9 +412,7 @@ class OfflineVmwareToolsRemover:
                 self._write_remote_file_atomic(rc, "".join(out), mode=0o755)
                 self._result.touched_files.append(rc)
 
-    # ---------------------------
     # Public API
-    # ---------------------------
     def run(self) -> RemovalResult:
         U.banner(self.logger, "VMware tools removal (OFFLINE)")
 

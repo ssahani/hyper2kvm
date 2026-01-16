@@ -353,9 +353,7 @@ class RecoveryManager:
         if self.enable_lock:
             self._acquire_lock()
 
-    # ---------------------------
     # Paths
-    # ---------------------------
 
     def _manifest_path(self) -> Path:
         return self.workdir / "run.json"
@@ -391,9 +389,7 @@ class RecoveryManager:
         name = "_".join(pieces) + ".json"
         return self.workdir / name
 
-    # ---------------------------
     # Locking
-    # ---------------------------
 
     def _acquire_lock(self) -> None:
         if fcntl is None:
@@ -440,9 +436,7 @@ class RecoveryManager:
             # Do not delete lock file; its contents help debugging stale runs.
             pass
 
-    # ---------------------------
     # Manifest
-    # ---------------------------
 
     def _write_manifest(self) -> None:
         _atomic_write_text(self._manifest_path(), _json_dumps(self._manifest.to_dict(), indent=2))
@@ -459,9 +453,7 @@ class RecoveryManager:
         self._manifest.error = (error or "")[:2000]
         self._write_manifest()
 
-    # ---------------------------
     # Index (JSONL event log)
-    # ---------------------------
 
     def _append_index_event(self, event: Dict[str, Any]) -> None:
         if not self.enable_index:
@@ -480,9 +472,7 @@ class RecoveryManager:
         except Exception as e:
             self.logger.debug("Failed to append checkpoint index event (%s): %s", p, e)
 
-    # ---------------------------
     # Progress
-    # ---------------------------
 
     def _maybe_progress(self):
         if not self.show_progress:
@@ -495,9 +485,7 @@ class RecoveryManager:
             TimeRemainingColumn(),
         )
 
-    # ---------------------------
     # Stage safety helpers
-    # ---------------------------
 
     def _stage_def(self, stage: str) -> Optional[StageDef]:
         return self.stage_defs.get(_safe_stage(stage))
@@ -524,9 +512,7 @@ class RecoveryManager:
                 stage=next_stage,
             )
 
-    # ---------------------------
     # Save / complete
-    # ---------------------------
 
     def save_checkpoint(
         self,
@@ -665,9 +651,7 @@ class RecoveryManager:
             # pointer failure should never break the run
             pass
 
-    # ---------------------------
     # Query helpers
-    # ---------------------------
 
     def list_checkpoints(self, *, completed_only: bool = False) -> List[Checkpoint]:
         cps = [cp for _, cp in self._load_all_checkpoint_files()]
@@ -696,9 +680,7 @@ class RecoveryManager:
             return cp
         return None
 
-    # ---------------------------
     # Loading / scanning
-    # ---------------------------
 
     def _find_checkpoint_files(
         self,
@@ -798,9 +780,7 @@ class RecoveryManager:
         except Exception:
             return None
 
-    # ---------------------------
     # Recovery (describe + perform)
-    # ---------------------------
 
     def describe_recovery(
         self,
@@ -963,9 +943,7 @@ class RecoveryManager:
         )
         return cp.data
 
-    # ---------------------------
     # Retention / cleanup
-    # ---------------------------
 
     def cleanup_old_checkpoints(
         self,
