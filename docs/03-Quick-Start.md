@@ -5,16 +5,16 @@ Get started with hyper2kvm in 5 minutes ⚡
 
 ## Table of Contents
 
-- [Prerequisites ✅](#prerequisites-)
-- [1. Install System Dependencies 🔧](#1-install-system-dependencies-)
-  - [Fedora / RHEL / CentOS Stream 🎩](#fedora-rhel-centos-stream-)
+- [Prerequisites ✅](#prerequisites)
+- [1. Install System Dependencies 🔧](#1-install-system-dependencies)
+  - [Fedora / RHEL / CentOS Stream 🎩](#fedora-rhel-centos-stream)
   - [Ubuntu / Debian](#ubuntu-debian)
   - [Verify libguestfs](#verify-libguestfs)
 - [2. Install hyper2kvm](#2-install-hyper2kvm)
   - [Option A: Install from Source (Recommended for Development)](#option-a-install-from-source-recommended-for-development)
   - [Option B: Install from PyPI (When Available)](#option-b-install-from-pypi-when-available)
-- [3. Your First Migration 🎯](#3-your-first-migration-)
-  - [Scenario: Convert a Local VMDK to QCOW2 💫](#scenario-convert-a-local-vmdk-to-qcow2-)
+- [3. Your First Migration 🎯](#3-your-first-migration)
+  - [Scenario: Convert a Local VMDK to QCOW2 💫](#scenario-convert-a-local-vmdk-to-qcow2)
     - [Step 1: Locate Your VMDK](#step-1-locate-your-vmdk)
     - [Step 2: Run the Conversion](#step-2-run-the-conversion)
     - [Step 3: Verify the Output](#step-3-verify-the-output)
@@ -44,6 +44,15 @@ Get started with hyper2kvm in 5 minutes ⚡
   - [Try Advanced Features](#try-advanced-features)
   - [Get Help](#get-help)
 - [10. Command Cheat Sheet](#10-command-cheat-sheet)
+  - [Advanced Examples](#advanced-examples)
+    - [Example: Batch Migration](#example-batch-migration)
+    - [Example: Cloud-Init Injection](#example-cloud-init-injection)
+- [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+    - [Issue: Command fails with permission denied](#issue-command-fails-with-permission-denied)
+    - [Issue: libguestfs fails to mount disk](#issue-libguestfs-fails-to-mount-disk)
+- [Next Steps](#next-steps)
+- [Getting Help](#getting-help)
 
 ---
 ## Prerequisites ✅
