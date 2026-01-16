@@ -51,6 +51,13 @@ pip install hyper2kvm[vsphere]
 - ✅ CBT (Changed Block Tracking)
 - ✅ Snapshot management
 
+**Note:** vSphere has a flexible architecture:
+- **Primary (Recommended):** Use `govc` CLI tool (install separately, no Python deps needed)
+- **Alternative:** Use `ovftool` CLI tool (install separately, no Python deps needed)
+- **Fallback:** Use `pyvmomi` Python library (only if govc/ovftool not available)
+
+If you have govc or ovftool installed, you don't need the `[vsphere]` extras!
+
 ### With Azure Support
 
 For Microsoft Azure VM migrations:
@@ -90,7 +97,8 @@ Regardless of Python package installation method, these system packages are requ
 ### Optional
 - `virt-v2v` - Alternative migration path (not required for basic usage)
 - `libvirt` - For running smoke tests
-- `govc` - Alternative vSphere export method
+- `govc` - **PRIMARY vSphere control plane (highly recommended for vSphere migrations)**
+- `ovftool` - Alternative vSphere export method
 
 ## RHEL 10 Installation Example
 
@@ -116,13 +124,17 @@ The following packages require PyPI or external repos:
 - `rich` - Progress bars and colored output (optional)
 
 **Cloud/Virtualization SDKs:**
-- `pyvmomi` - VMware vSphere SDK (only for vSphere integration)
+- `pyvmomi` - VMware vSphere SDK (OPTIONAL - only if not using govc/ovftool)
 - `azure-identity`, `azure-mgmt-*`, `azure-storage-blob` - Azure SDK (only for Azure)
 - `paramiko` - SSH client (only for SSH operations)
 
 **Utility Libraries:**
 - `click` - CLI framework (required, but small - from PyPI)
 - `pycdlib` - ISO extraction (optional, can use system isoinfo instead)
+
+**External CLI Tools (NOT Python packages):**
+- `govc` - VMware govc CLI (primary control plane for vSphere) - install from binary
+- `ovftool` - VMware OVF Tool (alternative for vSphere) - install from binary
 
 All core migration functionality works with only system packages + click from PyPI.
 
@@ -180,14 +192,17 @@ hyper2kvm --version --verbose
 
 ## Feature Matrix
 
-| Feature | Minimal | +UI | +vSphere | +Azure | +Full |
-|---------|---------|-----|----------|--------|-------|
-| Local disk conversion | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Offline guest fixes | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Progress bars | ❌ | ✅ | ✅ | ✅ | ✅ |
-| vSphere export | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Azure export | ❌ | ❌ | ❌ | ✅ | ✅ |
-| HTTP downloads | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Feature | Minimal | +UI | +govc | +vSphere (pyvmomi) | +Azure | +Full |
+|---------|---------|-----|-------|-------------------|--------|-------|
+| Local disk conversion | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Offline guest fixes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Progress bars | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| vSphere export | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ |
+| Azure export | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| HTTP downloads | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Python packages from PyPI** | click, pyyaml | +rich | **none** | +pyvmomi, requests | +azure-* | all |
+
+**Note:** The "+govc" column shows using the govc binary (no Python packages needed beyond minimal).
 
 ## Troubleshooting
 
@@ -246,7 +261,7 @@ Rich is not available in RHEL 10 base repositories. Options:
 |---------|---------|-------------|---------------|
 | rich | Progress bars, UI | Optional (recommended) | `[ui]` |
 | click | CLI framework | Always | Core dependency |
-| pyvmomi | VMware vSphere SDK | vSphere migrations | `[vsphere]` |
+| pyvmomi | VMware vSphere SDK (fallback) | vSphere without govc/ovftool | `[vsphere]` |
 | requests | HTTP client | vSphere/Azure | `[vsphere]` or `[azure]` |
 | azure-identity | Azure auth | Azure migrations | `[azure]` |
 | azure-mgmt-compute | Azure VM management | Azure migrations | `[azure]` |
@@ -255,6 +270,70 @@ Rich is not available in RHEL 10 base repositories. Options:
 | azure-storage-blob | Azure storage | Azure migrations | `[azure]` |
 | paramiko | SSH client | SSH operations | Optional |
 | pycdlib | ISO extraction | VirtIO ISO sources | Optional |
+
+### External CLI Tools (NOT Python Packages)
+
+These are installed separately as binaries, not via pip:
+
+| Tool | Purpose | When Needed | Install Method |
+|------|---------|-------------|----------------|
+| **govc** | vSphere control plane (PRIMARY) | vSphere migrations (recommended) | Binary from GitHub/brew/dnf |
+| **ovftool** | OVF/OVA export/import | vSphere migrations (alternative) | Binary from VMware |
+| virt-v2v | Alternative migration engine | Optional experimental path | dnf install virt-v2v |
+| libvirt | VM testing and validation | Optional smoke tests | dnf install libvirt |
+
+### vSphere Architecture: Control Plane Options
+
+hyper2kvm supports **three control plane options** for vSphere, in order of preference:
+
+#### Option 1: govc (PRIMARY - Recommended)
+
+```bash
+# Install govc binary (NO Python packages needed)
+# On Fedora/RHEL
+sudo dnf install govmomi
+
+# Or from binary
+curl -L https://github.com/vmware/govmomi/releases/download/v0.33.0/govc_Linux_x86_64.tar.gz | tar -C /usr/local/bin -xvzf - govc
+
+# No pip install needed for vSphere!
+pip install hyper2kvm  # Just core
+```
+
+**Advantages:**
+- ✅ No Python dependencies
+- ✅ Faster and more stable
+- ✅ Official VMware tool
+- ✅ Works on RHEL without any PyPI packages
+
+#### Option 2: ovftool (Alternative)
+
+```bash
+# Download from VMware website (requires VMware account)
+# Install the binary
+
+# No pip install needed for vSphere!
+pip install hyper2kvm  # Just core
+```
+
+**Advantages:**
+- ✅ No Python dependencies
+- ✅ Official VMware tool
+- ✅ OVF/OVA export/import
+
+#### Option 3: pyvmomi (Fallback)
+
+```bash
+# ONLY if you cannot install govc or ovftool
+pip install hyper2kvm[vsphere]  # Includes pyvmomi
+```
+
+**When to use:**
+- ❌ govc not available
+- ❌ ovftool not available
+- ✅ Need pure Python solution (air-gapped, restricted environments)
+
+**Summary:** If you have govc or ovftool, skip the `[vsphere]` extra entirely!
 
 ### Installation Strategy for RHEL 10
 
@@ -289,13 +368,24 @@ pip install --user hyper2kvm[ui]
 # ✅ Real-time speed display
 ```
 
-**Option 3: With vSphere**
+**Option 3: With vSphere (Using govc - Recommended)**
 ```bash
-# For VMware vSphere migrations
+# Install govc binary first (no Python deps)
+sudo dnf install govmomi  # or download binary
+
+# Install hyper2kvm minimal
+pip install --user hyper2kvm
+
+# You're done! No [vsphere] extra needed with govc
+```
+
+**Option 3b: With vSphere (Using pyvmomi - Fallback)**
+```bash
+# ONLY if govc/ovftool not available
 pip install --user hyper2kvm[vsphere]
 
 # Adds:
-# ✅ Direct vSphere VM export
+# ✅ Direct vSphere VM export (via pyvmomi)
 # ✅ VDDK support
 # ✅ Snapshot management
 # ✅ CBT (Changed Block Tracking)
