@@ -2,31 +2,7 @@
 # hyper2kvm/vmware/vsphere/command.py
 # -*- coding: utf-8 -*-
 """
-vsphere_command - Main command orchestration layer for vSphere operations.
-
-This module serves as the primary command orchestration layer that coordinates
-vSphere operations by composing functionality from specialized sub-modules:
-
-Architecture (Split Design):
-  - vsphere_errors: Exit code enumerations and error classification logic
-  - vsphere_govc: govmomi CLI integration, subprocess execution, output policy
-  - vsphere_command: Command routing, action handlers, main entry point (this file)
-
-This split architecture provides:
-  - Clear separation of concerns (errors, CLI tools, commands)
-  - Better testability of individual components
-  - Easier maintenance and extension
-  - Reduced file size and cognitive load
-
-Main Responsibilities (vsphere_command.py):
-  - VsphereCommands class: High-level action handlers (list VMs, download files, etc.)
-  - Command routing: Maps action strings to handler methods
-  - Client management: VMwareClient lifecycle and configuration
-  - Snapshot helpers: VM snapshot tree navigation
-  - Entry point: run_vsphere_command() orchestrates the full execution flow
-
-The module maintains backward compatibility with existing CLI arguments and
-configuration while enabling future refactoring and feature additions.
+vSphere command orchestration for hyper2kvm.
 """
 from __future__ import annotations
 
