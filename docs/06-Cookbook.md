@@ -9,6 +9,55 @@ If something matters, put it in YAML.
 
 ---
 
+## Prerequisites
+
+Before following this guide, you should have:
+
+- ✓ Completed the [Installation](02-Installation.md)
+- ✓ Familiarity with basic hyper2kvm concepts
+- ✓ Root/sudo access to your system
+- ✓ Source VM files ready for migration
+
+
+
+## Table of Contents
+
+- [Usage cookbook (CLI ↔ YAML side by side)](#usage-cookbook-cli-yaml-side-by-side)
+- [1. Local mode — Linux VMDK → qcow2](#1-local-mode-linux-vmdk-qcow2)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [2. Local mode — Windows VMDK with VirtIO pre-staging](#2-local-mode-windows-vmdk-with-virtio-pre-staging)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [3. Dry-run inspection (no writes)](#3-dry-run-inspection-no-writes)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [4. Fetch-and-fix — ESXi over SSH](#4-fetch-and-fix-esxi-over-ssh)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [5. Live-fix — running Linux VM over SSH](#5-live-fix-running-linux-vm-over-ssh)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [6. OVA appliance conversion](#6-ova-appliance-conversion)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [7. OVF descriptor conversion](#7-ovf-descriptor-conversion)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [8. vSphere — list VMs (pyvmomi control-plane)](#8-vsphere-list-vms-pyvmomi-control-plane)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [9. vSphere — download a VM disk](#9-vsphere-download-a-vm-disk)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [10. vSphere — download entire VM folder (HTTP data-plane)](#10-vsphere-download-entire-vm-folder-http-data-plane)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+- [11. vSphere — CBT delta sync](#11-vsphere-cbt-delta-sync)
+  - [CLI](#cli)
+  - [YAML](#yaml)
+
+---
 ## 1. Local mode — Linux VMDK → qcow2
 
 ### CLI
@@ -43,7 +92,7 @@ remove_vmware_tools: true
 
 checksum: true
 verbose: 1
-```
+```bash
 
 ---
 
@@ -61,7 +110,7 @@ sudo ./hyper2kvm.py \
   --virtio-drivers-dir /path/to/virtio-win \
   --checksum \
   -v
-```
+```bash
 
 ### YAML
 
@@ -77,7 +126,7 @@ virtio_drivers_dir: /path/to/virtio-win
 
 checksum: true
 verbose: 1
-```
+```bash
 
 This injects BOOT_START VirtIO drivers and registry entries **before first KVM boot**.
 
@@ -94,7 +143,7 @@ sudo ./hyper2kvm.py \
   local \
   --vmdk /path/to/vm.vmdk \
   -vv
-```
+```bash
 
 ### YAML
 
@@ -105,7 +154,7 @@ vmdk: /path/to/vm.vmdk
 dry_run: true
 print_fstab: true
 verbose: 2
-```
+```bash
 
 Use this to understand **exactly what would change**.
 
@@ -126,7 +175,7 @@ sudo ./hyper2kvm.py \
   --flatten \
   --to-output esxi-fixed.qcow2 \
   -v
-```
+```bash
 
 ### YAML
 
@@ -143,7 +192,7 @@ flatten: true
 to_output: esxi-fixed.qcow2
 
 verbose: 1
-```
+```bash
 
 This fetches the **entire snapshot chain**, flattens it, and converts offline.
 
@@ -163,7 +212,7 @@ sudo ./hyper2kvm.py \
   --regen-initramfs \
   --remove-vmware-tools \
   -v
-```
+```bash
 
 ### YAML
 
@@ -179,7 +228,7 @@ regen_initramfs: true
 remove_vmware_tools: true
 
 verbose: 1
-```
+```bash
 
 Live-fix is **post-migration hygiene**, not a replacement for offline repair.
 
@@ -197,7 +246,7 @@ sudo ./hyper2kvm.py \
   --flatten \
   --to-output appliance.qcow2 \
   -v
-```
+```bash
 
 ### YAML
 
@@ -210,7 +259,7 @@ flatten: true
 to_output: appliance.qcow2
 
 verbose: 1
-```
+```bash
 
 ---
 
@@ -226,7 +275,7 @@ sudo ./hyper2kvm.py \
   --flatten \
   --to-output appliance.qcow2 \
   -v
-```
+```bash
 
 ### YAML
 
@@ -239,7 +288,7 @@ flatten: true
 to_output: appliance.qcow2
 
 verbose: 1
-```
+```bash
 
 ---
 
@@ -255,7 +304,7 @@ verbose: 1
   --vc-insecure \
   list_vm_names \
   --json
-```
+```bash
 
 ### YAML
 
@@ -269,7 +318,7 @@ vc_insecure: true
 
 vs_action: list_vm_names
 json: true
-```
+```bash
 
 ---
 
@@ -287,7 +336,7 @@ json: true
   --vm-name myVM \
   --disk 0 \
   --local-path ./downloads/myVM-disk0.vmdk
-```
+```bash
 
 ### YAML
 
@@ -303,7 +352,7 @@ vs_action: download_vm_disk
 vm_name: myVM
 disk: 0
 local_path: ./downloads/myVM-disk0.vmdk
-```
+```bash
 
 ---
 
@@ -320,7 +369,7 @@ local_path: ./downloads/myVM-disk0.vmdk
   download_only_vm \
   --vm-name myVM \
   --output-dir ./downloads/myVM
-```
+```bash
 
 ### YAML
 
@@ -339,7 +388,7 @@ output_dir: ./downloads/myVM
 vs_include_glob: ["*"]
 vs_exclude_glob: ["*.log"]
 vs_concurrency: 6
-```
+```bash
 
 This uses:
 
@@ -366,7 +415,7 @@ This uses:
   --enable-cbt \
   --snapshot-name hyper2kvm-cbt \
   --change-id "*"
-```
+```bash
 
 ### YAML
 
@@ -386,4 +435,58 @@ local_path: ./downloads/myVM-disk0.vmdk
 enable_cbt: true
 snapshot_name: hyper2kvm-cbt
 change_id: "*"
+```bash
+
+## Troubleshooting
+
+### Common Issues
+
+#### Issue: Command fails with permission denied
+
+**Symptoms:**
+- Error: "Permission denied" when accessing disk images
+- Cannot write to output directory
+
+**Solution:**
+```bash
+# Run with sudo
+sudo python -m hyper2kvm --config your-config.yaml
+
+# Or fix permissions
+sudo chown $(whoami) /path/to/output/directory
 ```
+
+#### Issue: libguestfs fails to mount disk
+
+**Symptoms:**
+- Error: "guestfs_mount: failed"
+- Cannot inspect guest OS
+
+**Solution:**
+```bash
+# Test libguestfs
+sudo libguestfs-test-tool
+
+# Check KVM permissions
+sudo usermod -aG kvm $(whoami)
+# Log out and back in
+
+# Verify disk image
+qemu-img info /path/to/disk.vmdk
+```
+
+For more issues, see [Failure Modes](90-Failure-Modes.md).
+
+## Next Steps
+
+Continue your migration journey:
+
+- **[CLI Reference](04-CLI-Reference.md)** - Complete command options
+- **[YAML Examples](05-YAML-Examples.md)** - Configuration templates
+- **[Cookbook](06-Cookbook.md)** - Common scenarios
+- **[Troubleshooting](90-Failure-Modes.md)** - When things go wrong
+
+## Getting Help
+
+Found an issue? [Report it on GitHub](https://github.com/hyper2kvm/hyper2kvm/issues)
+

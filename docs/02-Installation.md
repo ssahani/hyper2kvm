@@ -28,7 +28,7 @@ python -m pip install -e .
 python -m hyper2kvm --help
 # or, if you keep the launcher:
 python ./hyper2kvm.py --help
-```
+```bash
 
 ### System dependencies by OS
 
@@ -59,7 +59,7 @@ sudo dnf install -y \
 
 # For libguestfs on Fedora/RHEL: "libguestfs-test-tool" is handy
 sudo dnf install -y libguestfs-test-tool
-```
+```bash
 
 #### Ubuntu / Debian
 
@@ -72,7 +72,7 @@ sudo apt-get install -y \
   openssh-client rsync \
   libvirt-clients libvirt-daemon-system qemu-system-x86 \
   virt-v2v
-```
+```bash
 
 #### openSUSE / SLES
 
@@ -84,7 +84,7 @@ sudo zypper install -y \
   openssh rsync \
   libvirt-client libvirt-daemon-qemu \
   virt-v2v
-```
+```bash
 
 #### Arch Linux / Manjaro
 
@@ -99,7 +99,7 @@ sudo pacman -Syu --noconfirm \
 
 # Enable and start libvirtd service
 sudo systemctl enable --now libvirtd
-```
+```bash
 
 #### Alpine Linux
 
@@ -116,7 +116,7 @@ sudo apk add --no-cache \
 # Start services
 sudo rc-service libvirtd start
 sudo rc-update add libvirtd
-```
+```bash
 
 ---
 
@@ -138,7 +138,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
-```
+```bash
 
 **Note:** libguestfs is **not available** on macOS. You can use qemu-img for conversions, but offline inspection/fixing won't work.
 
@@ -156,7 +156,7 @@ docker run -it --rm \
   -v $(pwd)/input:/input \
   -v $(pwd)/output:/output \
   hyper2kvm local --vmdk /input/disk.vmdk --to-output /output/disk.qcow2
-```
+```bash
 
 ### Option 3: Use a Linux VM
 
@@ -209,7 +209,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
-```
+```bash
 
 ### Known WSL2 Limitations
 
@@ -226,7 +226,7 @@ docker run -it --rm --privileged `
   -v C:\VMs\input:/input `
   -v C:\VMs\output:/output `
   hyper2kvm local --vmdk /input/disk.vmdk --to-output /output/disk.qcow2
-```
+```bash
 
 ---
 
@@ -236,7 +236,7 @@ If `libguestfs` can’t launch its appliance, everything else becomes sadness.
 
 ```bash
 sudo libguestfs-test-tool
-```
+```bash
 
 If that fails, it's usually KVM permissions, missing kernel modules, or a broken appliance setup.
 
@@ -267,7 +267,7 @@ RUN python3 -m pip install --no-cache-dir -r requirements.txt && \
     python3 -m pip install -e .
 
 ENTRYPOINT ["python3", "-m", "hyper2kvm"]
-```
+```bash
 
 Build and run:
 
@@ -277,7 +277,7 @@ docker run -it --rm --privileged \
   -v /path/to/input:/input \
   -v /path/to/output:/output \
   hyper2kvm local --vmdk /input/disk.vmdk --to-output /output/disk.qcow2
-```
+```bash
 
 ### Using Podman
 
@@ -289,7 +289,7 @@ podman run -it --rm --privileged \
   -v /path/to/input:/input:Z \
   -v /path/to/output:/output:Z \
   hyper2kvm local --vmdk /input/disk.vmdk --to-output /output/disk.qcow2
-```
+```bash
 
 **Note:** The `:Z` suffix is required for SELinux systems (Fedora/RHEL).
 
@@ -313,7 +313,7 @@ python -m hyper2kvm --help
 
 # Deactivate when done
 deactivate
-```
+```bash
 
 ---
 
@@ -337,7 +337,7 @@ ls -l /dev/kvm
 
 # Test again
 sudo libguestfs-test-tool
-```
+```bash
 
 ### "could not access KVM kernel module"
 
@@ -358,7 +358,7 @@ sudo modprobe kvm_amd
 echo "kvm_intel" | sudo tee -a /etc/modules
 # or
 echo "kvm_amd" | sudo tee -a /etc/modules
-```
+```bash
 
 ### "No matching distribution found for libguestfs"
 
@@ -384,7 +384,7 @@ sudo pacman -S qemu-img
 # Verify
 which qemu-img
 qemu-img --version
-```
+```bash
 
 ### virt-v2v not found
 
@@ -398,7 +398,7 @@ sudo dnf install virt-v2v
 
 # Ubuntu/Debian
 sudo apt-get install virt-v2v
-```
+```bash
 
 Or skip features that require it (don't use `--use-v2v` or `--post-v2v` flags).
 
@@ -418,7 +418,7 @@ sudo apt-get install python3.12 python3.12-venv
 
 # Then use python3.12 explicitly
 python3.12 -m venv .venv
-```
+```bash
 
 ### SELinux blocks libguestfs (Fedora/RHEL)
 
@@ -437,7 +437,7 @@ sudo setenforce 1
 
 # Permanent fix: Use audit2allow to create policy
 # (Advanced - consult SELinux documentation)
-```
+```bash
 
 Or run in a container with `--privileged`.
 
@@ -453,7 +453,7 @@ python -m hyper2kvm --help
 
 # or your top-level script
 python ./hyper2kvm.py --help
-```
+```bash
 
 Examples:
 
@@ -461,7 +461,7 @@ Examples:
 sudo python -m hyper2kvm local --vmdk ./mtv-ubuntu22-4.vmdk --flatten --to-output ubuntu.qcow2 --compress
 sudo python -m hyper2kvm fetch-and-fix --host esxi.example.com --remote /vmfs/volumes/ds/vm/vm.vmdk --fetch-all --flatten --to-output vm.qcow2
 sudo python -m hyper2kvm live-fix --host 192.168.1.50 --sudo --print-fstab
-```
+```bash
 
 ---
 
@@ -494,7 +494,7 @@ mypy hyper2kvm/ --ignore-missing-imports
 
 # Run security scan
 bandit -r hyper2kvm/
-```
+```bash
 
 ### Continuous Integration
 

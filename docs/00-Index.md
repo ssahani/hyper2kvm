@@ -76,7 +76,7 @@ graph LR
     C --> F[KVM QCOW2]
     D --> F
     E --> F
-```
+```bash
 
 ### Export Methods
 
@@ -103,7 +103,7 @@ out_format: qcow2
 compress: true
 fstab_mode: stabilize-all
 regen_initramfs: true
-```
+```bash
 
 **JSON Example:**
 ```json
@@ -114,7 +114,7 @@ regen_initramfs: true
   "out_format": "qcow2",
   "compress": true
 }
-```
+```bash
 
 ### Configuration Examples
 
@@ -144,7 +144,7 @@ Enable verbose logging for troubleshooting:
 
 ```bash
 hyper2kvm --config config.yaml --verbose 2 local
-```
+```bash
 
 Generate detailed report:
 
@@ -152,7 +152,7 @@ Generate detailed report:
 verbose: 2
 log_file: /tmp/hyper2kvm.log
 report: /tmp/hyper2kvm-report.md
-```
+```bash
 
 ---
 
