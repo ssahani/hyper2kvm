@@ -45,20 +45,53 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "rich>=10.0.0",
+    # Core dependencies (required for basic functionality)
     "click>=8.0.0",
     "pyyaml>=5.4.0",
-    "requests>=2.25.0",
-    "pyvmomi>=7.0.0",
 ]
 
 [project.optional-dependencies]
+# UI enhancements (recommended but not required)
+ui = [
+    "rich>=10.0.0",
+]
+
+# VMware vSphere support
+vsphere = [
+    "pyvmomi>=7.0.0",
+    "requests>=2.25.0",
+]
+
+# Azure support
+azure = [
+    "azure-identity>=1.10.0",
+    "azure-mgmt-compute>=29.0.0",
+    "azure-mgmt-network>=22.0.0",
+    "azure-mgmt-resource>=22.0.0",
+    "azure-storage-blob>=12.14.0",
+    "requests>=2.25.0",
+]
+
+# Full installation with all optional dependencies
+full = [
+    "rich>=10.0.0",
+    "pyvmomi>=7.0.0",
+    "requests>=2.25.0",
+    "azure-identity>=1.10.0",
+    "azure-mgmt-compute>=29.0.0",
+    "azure-mgmt-network>=22.0.0",
+    "azure-mgmt-resource>=22.0.0",
+    "azure-storage-blob>=12.14.0",
+]
+
+# Development tools
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=3.0.0",
     "black>=22.0.0",
     "flake8>=4.0.0",
     "mypy>=0.950",
+    "autoflake>=1.4",
 ]
 
 [project.urls]

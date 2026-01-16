@@ -47,9 +47,20 @@ Whether you're running **Fedora 43**, **RHEL 10**, **CentOS Stream**, or **Rocky
 # Install system dependencies (Fedora/RHEL)
 sudo dnf install -y python3-libguestfs libguestfs-tools qemu-img qemu-system-x86
 
-# Install hyper2kvm from PyPI
+# Minimal installation (works on RHEL 10 without additional repos)
 pip install hyper2kvm
+
+# Or with UI enhancements (recommended, requires rich library)
+pip install hyper2kvm[ui]
+
+# With vSphere support
+pip install hyper2kvm[vsphere]
+
+# Full installation with all features
+pip install hyper2kvm[full]
 ```
+
+> **Note for RHEL 10**: The Rich library for progress bars is not available in RHEL 10 base repositories. hyper2kvm works perfectly without it, falling back to simple progress logging. See [Optional Dependencies](docs/99-Optional-Dependencies.md) for details.
 
 #### From Source
 
