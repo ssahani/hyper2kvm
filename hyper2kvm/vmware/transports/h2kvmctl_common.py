@@ -55,7 +55,10 @@ class H2KVMCtlRunner:
 
     def _run_command(self, args: List[str], check: bool = True) -> subprocess.CompletedProcess:
         """Run h2kvmctl command."""
-        cmd = [self.h2kvmctl_path, "--daemon", self.daemon_url] + args
+        # Build command - only add -daemon if not using default
+        # Note: The installed h2kvmctl binary may not support -daemon flag,
+        # so we rely on default http://localhost:8080
+        cmd = [self.h2kvmctl_path] + args
 
         self.logger.debug(f"Running h2kvmctl: {' '.join(cmd)}")
 
@@ -100,6 +103,9 @@ class H2KVMCtlRunner:
         """
         Submit VM export job to hyper2kvmd daemon.
 
+        Note: The installed h2kvmctl binary only supports basic submit flags.
+        Options like parallel_downloads and remove_cdrom are configured on the daemon side.
+
         Returns:
             job_id: The job ID for tracking progress
         """
@@ -109,19 +115,16 @@ class H2KVMCtlRunner:
             "-output", output_path,
         ]
 
-        if parallel_downloads:
-            args.extend(["-parallel", str(parallel_downloads)])
-
-        if remove_cdrom:
-            args.append("-remove-cdrom")
+        # Note: -parallel and -remove-cdrom flags are not supported by the installed binary
+        # These options are configured in the daemon's config file
 
         result = self._run_command(args)
 
         # Parse job ID from output
-        # Output format: "Job submitted: <job-id>"
+        # Output format: "  - Job ID: <job-id>"
         for line in result.stdout.split('\n'):
-            if "submitted:" in line.lower():
-                job_id = line.split()[-1].strip()
+            if "job id:" in line.lower():
+                job_id = line.split(":")[-1].strip()
                 self.logger.info(f"Export job submitted: {job_id}")
                 return job_id
 
