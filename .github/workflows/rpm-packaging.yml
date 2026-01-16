@@ -58,27 +58,21 @@ jobs:
         VERSION="${{ steps.get_version.outputs.version }}"
         TARBALL_NAME="hyper2kvm-${VERSION}"
 
-        # Create tarball directly with exclusions (no rsync needed)
-        tar czf ~/rpmbuild/SOURCES/${TARBALL_NAME}.tar.gz \
-          --exclude='.git' \
-          --exclude='*.pyc' \
-          --exclude='__pycache__' \
-          --exclude='*.egg-info' \
-          --exclude='dist' \
-          --exclude='build' \
-          --exclude='.pytest_cache' \
-          --exclude='.coverage' \
-          --exclude='htmlcov' \
-          --exclude='.venv' \
-          --exclude='venv' \
-          --exclude='*.swp' \
-          --exclude='*.swo' \
-          --exclude='*~' \
-          --transform="s,^,${TARBALL_NAME}/," \
-          .
+        # Create tarball from git repository using git archive
+        # This is the standard way for RPM packaging - clean source from VCS
+        git archive --format=tar.gz \
+          --prefix="${TARBALL_NAME}/" \
+          -o ~/rpmbuild/SOURCES/${TARBALL_NAME}.tar.gz \
+          HEAD
 
-        echo "Source tarball created: ~/rpmbuild/SOURCES/${TARBALL_NAME}.tar.gz"
+        echo "Source tarball created from git repository"
+        echo "Tarball: ~/rpmbuild/SOURCES/${TARBALL_NAME}.tar.gz"
         ls -lh ~/rpmbuild/SOURCES/
+
+        # Verify tarball contents
+        echo ""
+        echo "Tarball contents (first 20 files):"
+        tar tzf ~/rpmbuild/SOURCES/${TARBALL_NAME}.tar.gz | head -20
 
     - name: Copy spec file to rpmbuild SPECS
       run: |
