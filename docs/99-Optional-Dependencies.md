@@ -68,8 +68,32 @@ pip install hyper2kvm[azure]
 
 **Additional features:**
 - ✅ Azure VM discovery and download
-- ✅ Managed disk export
-- ✅ Azure authentication
+- ✅ Managed disk export (VHD/VHDX)
+- ✅ Azure authentication (Service Principal, Managed Identity, Azure CLI)
+- ✅ Snapshot management
+- ✅ Resource group operations
+
+**Note:** Azure has a flexible architecture:
+- **Primary (Recommended):** Use Azure CLI (`az`) tool (install separately, no Python deps needed for auth)
+- **Alternative:** Use Python SDK directly (included in `[azure]` extras)
+
+If you have Azure CLI installed and authenticated (`az login`), hyper2kvm can use those credentials automatically without requiring the `[azure]` extras for authentication!
+
+### With AWS Support
+
+For AWS AMI/EBS extraction:
+
+```bash
+pip install hyper2kvm  # No extras needed - AMI extraction included in core
+```
+
+**Features:**
+- ✅ AMI tarball extraction
+- ✅ EBS snapshot extraction from AMI bundles
+- ✅ Nested archive handling
+- ✅ Automatic disk discovery
+
+**Note:** Unlike Azure, AWS support is built-in for AMI extraction. Full AWS integration (EC2 instance export, snapshot downloads) is not yet implemented.
 
 ### Full Installation
 
@@ -196,13 +220,16 @@ hyper2kvm --version --verbose
 |---------|---------|-----|-------|-------------------|--------|-------|
 | Local disk conversion | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Offline guest fixes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| AMI/EBS extraction | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Progress bars | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ |
 | vSphere export | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ |
-| Azure export | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Azure VM export | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | HTTP downloads | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | **Python packages from PyPI** | click, pyyaml | +rich | **none** | +pyvmomi, requests | +azure-* | all |
 
-**Note:** The "+govc" column shows using the govc binary (no Python packages needed beyond minimal).
+**Notes:**
+- The "+govc" column shows using the govc binary (no Python packages needed beyond minimal).
+- AMI/EBS extraction is built into core - no extras needed.
 
 ## Troubleshooting
 
@@ -279,6 +306,7 @@ These are installed separately as binaries, not via pip:
 |------|---------|-------------|----------------|
 | **govc** | vSphere control plane (PRIMARY) | vSphere migrations (recommended) | Download binary from [GitHub releases](https://github.com/vmware/govmomi/releases) → /usr/local/bin |
 | **ovftool** | OVF/OVA export/import | vSphere migrations (alternative) | Download ZIP from [Broadcom](https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest) (v5.0.0) |
+| **az** (Azure CLI) | Azure authentication & operations | Azure migrations (recommended) | [Install via package manager](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) or dnf install azure-cli |
 | virt-v2v | Alternative migration engine | Optional experimental path | dnf install virt-v2v |
 | libvirt | VM testing and validation | Optional smoke tests | dnf install libvirt |
 
@@ -360,6 +388,66 @@ pip install hyper2kvm[vsphere]  # Includes pyvmomi
 
 **Summary:** If you have govc or ovftool, skip the `[vsphere]` extra entirely!
 
+### Azure Architecture: Authentication Options
+
+hyper2kvm supports **two authentication options** for Azure, in order of preference:
+
+#### Option 1: Azure CLI (PRIMARY - Recommended)
+
+```bash
+# Install Azure CLI
+# For RHEL/Fedora:
+sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+echo -e "[azure-cli]
+name=Azure CLI
+baseurl=https://packages.microsoft.com/yumrepos/azure-cli
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.microsoft.com/keys/microsoft.asc" | sudo tee /etc/yum.repos.d/azure-cli.repo
+sudo dnf install -y azure-cli
+
+# Or download directly:
+# https://learn.microsoft.com/en-us/cli/azure/install-azure-cli
+
+# Authenticate
+az login
+
+# Install hyper2kvm minimal (no [azure] extras needed for auth!)
+pip install hyper2kvm
+```
+
+**Advantages:**
+- ✅ No Python dependencies for authentication
+- ✅ Official Microsoft tool
+- ✅ Credentials shared with other Azure tools
+- ✅ Supports all Azure auth methods (browser, device code, service principal)
+- ✅ Automatic token refresh
+- ✅ Works on RHEL without PyPI packages
+
+**How it works:**
+- hyper2kvm uses `DefaultAzureCredential` which checks for Azure CLI credentials first
+- If `az login` was run, credentials are available at `~/.azure/`
+- You still need `[azure]` extras for Azure SDK (VM operations), but NOT for authentication
+
+#### Option 2: Python SDK Only (Fallback)
+
+```bash
+# ONLY if you cannot install Azure CLI
+pip install hyper2kvm[azure]  # Includes all Azure SDKs
+```
+
+**When to use:**
+- ❌ Azure CLI not available
+- ✅ Need pure Python solution (air-gapped, restricted environments)
+- ✅ Using Service Principal or Managed Identity directly in code
+
+**Authentication methods available:**
+- Environment variables (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`)
+- Managed Identity (when running on Azure VMs)
+- Interactive browser (fallback)
+
+**Summary:** If you have Azure CLI installed and authenticated, you only need the `[azure]` extra for Azure SDK operations, not for authentication!
+
 ### Installation Strategy for RHEL 10
 
 **Option 1: Minimal (Most Restrictive Environment)**
@@ -416,6 +504,36 @@ pip install --user hyper2kvm[vsphere]
 # ✅ VDDK support
 # ✅ Snapshot management
 # ✅ CBT (Changed Block Tracking)
+```
+
+**Option 3c: With Azure (Using Azure CLI - Recommended)**
+```bash
+# Install Azure CLI (from Microsoft repo)
+sudo dnf install -y azure-cli
+
+# Authenticate
+az login
+
+# Install hyper2kvm with Azure SDK
+pip install --user hyper2kvm[azure]
+
+# Adds:
+# ✅ Azure VM discovery and export
+# ✅ Managed disk download (VHD/VHDX)
+# ✅ Snapshot operations
+# ✅ Resource group management
+# ✅ Authentication via Azure CLI (no extra config needed)
+```
+
+**Option 3d: With Azure (Python SDK only - Fallback)**
+```bash
+# ONLY if Azure CLI not available
+pip install --user hyper2kvm[azure]
+
+# Configure authentication via environment variables:
+export AZURE_CLIENT_ID="your-client-id"
+export AZURE_CLIENT_SECRET="your-client-secret"
+export AZURE_TENANT_ID="your-tenant-id"
 ```
 
 **Option 4: Full Featured**
