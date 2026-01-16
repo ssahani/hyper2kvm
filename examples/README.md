@@ -773,10 +773,10 @@ sudo python -m hyper2kvm --config my-migration.yaml
 ## Getting Help
 
 **Documentation:**
-- [Quick Start Guide](../docs/QUICKSTART.md)
-- [CLI Reference](../docs/CLI_REFERENCE.md)
-- [YAML Configuration Guide](../docs/YAML-EXAMPLES.md)
-- [Troubleshooting](../docs/FAILURE_MODES.md)
+- [Quick Start Guide](../docs/03-Quick-Start.md)
+- [CLI Reference](../docs/04-CLI-Reference.md)
+- [YAML Configuration Guide](../docs/05-YAML-Examples.md)
+- [Troubleshooting](../docs/90-Failure-Modes.md)
 
 **Command-Line Help:**
 ```bash

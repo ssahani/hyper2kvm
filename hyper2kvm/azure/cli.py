@@ -1,0 +1,281 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+# hyper2kvm/azure/cli.py
+
+from __future__ import annotations
+
+import json
+import logging
+import random
+import subprocess
+import time
+from typing import Any, Dict, List, Optional
+
+from .exceptions import AzureCLIError, AzureAuthError
+
+LOG = logging.getLogger(__name__)
+
+
+def _is_transient(stderr: str) -> bool:
+    s = (stderr or "").lower()
+    return any(
+        x in s
+        for x in (
+            "throttle",
+            "too many requests",
+            "timeout",
+            "timed out",
+            "temporarily unavailable",
+            "internal server error",
+            "gateway timeout",
+            "connection reset",
+            "connection aborted",
+            "rate limit",
+            "server busy",
+            "retry later",
+        )
+    )
+
+
+def _backoff_sleep(attempt: int, base: float, cap: float) -> None:
+    # exp backoff with jitter
+    t = min(cap, base * (2 ** attempt))
+    t = t * (0.7 + random.random() * 0.6)
+    time.sleep(t)
+
+
+def run_az_json(args: List[str], *, timeout_s: int = 300, retries: int = 3) -> Any:
+    """
+    Run 'az <args> --output json --only-show-errors' and parse JSON.
+    Retries transient failures.
+    """
+    cmd = ["az"] + args + ["--output", "json", "--only-show-errors"]
+
+    last_err = ""
+    for attempt in range(max(1, retries)):
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+        except FileNotFoundError:
+            raise AzureCLIError("Azure CLI 'az' not found. Install Azure CLI.")
+        except subprocess.TimeoutExpired:
+            last_err = f"az timed out after {timeout_s}s"
+            if attempt + 1 < retries:
+                _backoff_sleep(attempt, 1.0, 15.0)
+                continue
+            raise AzureCLIError(last_err)
+
+        if p.returncode == 0:
+            out = (p.stdout or "").strip()
+            if out == "":
+                return None
+            try:
+                return json.loads(out)
+            except Exception as e:
+                raise AzureCLIError(f"Failed to parse az JSON output: {e}")
+
+        last_err = (p.stderr or p.stdout or "").strip()
+        if attempt + 1 < retries and _is_transient(last_err):
+            _backoff_sleep(attempt, 1.0, 15.0)
+            continue
+
+        raise AzureCLIError(f"az failed: {' '.join(args)} :: {last_err}")
+
+    raise AzureCLIError(f"az failed: {' '.join(args)} :: {last_err}")
+
+
+def validate_account(subscription: Optional[str], tenant: Optional[str]) -> Dict[str, Any]:
+    # Verify logged in
+    try:
+        acct = run_az_json(["account", "show"], timeout_s=30, retries=2)
+    except AzureCLIError as e:
+        raise AzureAuthError(f"Azure CLI not logged in or not usable: {e}")
+
+    if subscription:
+        run_az_json(["account", "set", "--subscription", subscription], timeout_s=60, retries=2)
+        acct = run_az_json(["account", "show"], timeout_s=30, retries=2)
+
+    if tenant and str(acct.get("tenantId")) != str(tenant):
+        raise AzureAuthError(f"Tenant mismatch: expected {tenant}, got {acct.get('tenantId')}")
+
+    return acct
+
+
+def list_vms(resource_group: Optional[str], *, show_details: bool = False) -> List[Dict[str, Any]]:
+    """
+    List VMs, optionally with instance details (including power state).
+
+    Args:
+        resource_group: Optional resource group filter
+        show_details: If True, includes instance view with power state (slower but more complete)
+
+    Returns:
+        List of VM dictionaries
+    """
+    args = ["vm", "list"]
+    if resource_group:
+        args += ["--resource-group", resource_group]
+    if show_details:
+        args += ["--show-details"]
+    data = run_az_json(args, timeout_s=180, retries=3)  # Increased timeout for --show-details
+    return list(data or [])
+
+
+def get_vm_show(rg: str, name: str) -> Dict[str, Any]:
+    return run_az_json(["vm", "show", "--resource-group", rg, "--name", name], timeout_s=120, retries=3)
+
+
+def extract_power_state_from_vm_dict(vm: Dict[str, Any]) -> Optional[str]:
+    """
+    Extract power state from VM dictionary (requires --show-details in list_vms).
+
+    Args:
+        vm: VM dictionary from az vm list --show-details
+
+    Returns:
+        Power state string (e.g., "running", "stopped", "deallocated") or None if not available
+    """
+    # Check for powerState field (added by --show-details)
+    ps = vm.get("powerState")
+    if ps:
+        # Format is "VM running" or "VM stopped", extract the status part
+        parts = str(ps).lower().split()
+        if len(parts) >= 2:
+            return parts[1]  # "running", "stopped", "deallocated"
+        return ps.lower()
+
+    # Fallback: check instance view if embedded
+    iv = vm.get("instanceView")
+    if iv:
+        statuses = iv.get("statuses") or []
+        for st in statuses:
+            code = st.get("code") or ""
+            if code.lower().startswith("powerstate/"):
+                return code.split("/", 1)[1].lower()
+
+    return None
+
+
+def get_vm_power_state(rg: str, name: str) -> str:
+    """Get VM power state via dedicated API call (slower, use extract_power_state_from_vm_dict when possible)."""
+    # instance view is slower, but accurate
+    iv = run_az_json(["vm", "get-instance-view", "--resource-group", rg, "--name", name], timeout_s=120, retries=3)
+    statuses = (iv or {}).get("statuses") or []
+    for st in statuses:
+        code = st.get("code") or ""
+        if code.lower().startswith("powerstate/"):
+            return code.split("/", 1)[1].lower()
+    return "unknown"
+
+
+def disk_show_by_id(disk_id: str) -> Dict[str, Any]:
+    return run_az_json(["disk", "show", "--ids", disk_id], timeout_s=120, retries=3)
+
+
+def snapshot_create(*, rg: str, name: str, source_disk_id: str, location: str, tags: Dict[str, str]) -> Dict[str, Any]:
+    args = [
+        "snapshot",
+        "create",
+        "--resource-group",
+        rg,
+        "--name",
+        name,
+        "--source",
+        source_disk_id,
+        "--location",
+        location,
+    ]
+    if tags:
+        args += ["--tags"] + [f"{k}={v}" for k, v in tags.items()]
+    return run_az_json(args, timeout_s=600, retries=5)
+
+
+def disk_create_from_snapshot(*, rg: str, name: str, snapshot_id: str, location: str, tags: Dict[str, str]) -> Dict[str, Any]:
+    args = [
+        "disk",
+        "create",
+        "--resource-group",
+        rg,
+        "--name",
+        name,
+        "--source",
+        snapshot_id,
+        "--location",
+        location,
+    ]
+    if tags:
+        args += ["--tags"] + [f"{k}={v}" for k, v in tags.items()]
+    return run_az_json(args, timeout_s=600, retries=5)
+
+
+def disk_grant_access_by_id(*, disk_id: str, duration_s: int) -> str:
+    out = run_az_json(
+        ["disk", "grant-access", "--ids", disk_id, "--duration-in-seconds", str(duration_s), "--access-level", "Read"],
+        timeout_s=180,
+        retries=5,
+    )
+    sas = (out or {}).get("accessSas")
+    if not sas:
+        raise AzureCLIError("disk grant-access returned no accessSas")
+    return sas
+
+
+def disk_revoke_access_by_id(*, disk_id: str) -> None:
+    run_az_json(["disk", "revoke-access", "--ids", disk_id], timeout_s=180, retries=5)
+
+
+def snapshot_grant_access_by_id(*, snapshot_id: str, duration_s: int) -> str:
+    out = run_az_json(
+        ["snapshot", "grant-access", "--ids", snapshot_id, "--duration-in-seconds", str(duration_s), "--access-level", "Read"],
+        timeout_s=180,
+        retries=5,
+    )
+    sas = (out or {}).get("accessSas")
+    if not sas:
+        raise AzureCLIError("snapshot grant-access returned no accessSas")
+    return sas
+
+
+def snapshot_revoke_access_by_id(*, snapshot_id: str) -> None:
+    run_az_json(["snapshot", "revoke-access", "--ids", snapshot_id], timeout_s=180, retries=5)
+
+
+def resource_delete_by_id(*, resource_id: str) -> None:
+    # generic delete
+    run_az_json(["resource", "delete", "--ids", resource_id], timeout_s=600, retries=5)
+
+
+def vm_stop_or_deallocate(*, rg: str, name: str, mode: str, wait: bool) -> None:
+    mode = (mode or "none").lower()
+    if mode == "none":
+        return
+    if mode == "stop":
+        args = ["vm", "stop", "--resource-group", rg, "--name", name]
+    elif mode == "deallocate":
+        args = ["vm", "deallocate", "--resource-group", rg, "--name", name]
+    else:
+        raise AzureCLIError(f"Unknown shutdown.mode={mode}")
+
+    if not wait:
+        args.append("--no-wait")
+    run_az_json(args, timeout_s=600, retries=5)
+
+    if wait:
+        # poll until stopped/deallocated
+        for _ in range(120):
+            ps = get_vm_power_state(rg, name)
+            if mode == "stop" and ps in ("stopped", "stoppedallocated"):
+                return
+            if mode == "deallocate" and ps == "deallocated":
+                return
+            time.sleep(5)
+        raise AzureCLIError(f"VM did not reach expected power state after {mode}: {rg}/{name}")
+
+
+def best_effort_quiesce_vm(rg: str, name: str, guest_hint: Optional[str]) -> None:
+    # Stub: leave this as best-effort hook.
+    # In practice you may implement:
+    # - Linux: fsfreeze via run-command
+    # - Windows: VSS via run-command / agents
+    # Keep it non-fatal.
+    _ = (rg, name, guest_hint)
+    return

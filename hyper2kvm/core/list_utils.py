@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/core/list_utils.py
 """Shared list manipulation utilities
 
 Provides common helpers for list operations to avoid duplication across modules.

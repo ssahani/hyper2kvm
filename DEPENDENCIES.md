@@ -336,6 +336,6 @@ sudo dnf upgrade libguestfs-tools qemu-img
 
 ## Related Documentation
 
-- [Installation Guide](docs/INSTALL.md)
-- [Quick Start](docs/QUICKSTART.md)
-- [Troubleshooting](docs/FAILURE_MODES.md)
+- [Installation Guide](docs/02-Installation.md)
+- [Quick Start](docs/03-Quick-Start.md)
+- [Troubleshooting](docs/90-Failure-Modes.md)
