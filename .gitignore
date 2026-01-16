@@ -112,4 +112,12 @@ tests/fixtures/images/
 *.qcow2
 *.vmdk
 *.img
+
+# =================================================
+# Planning / proposal documents (never commit)
+# =================================================
+*_PLAN.md
+*_PROPOSAL.md
+DOCS_IMPROVEMENT_PLAN.md
+LIBRARY_API_PROPOSAL.md
 LINKEDIN_POST.md
