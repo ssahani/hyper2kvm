@@ -219,15 +219,15 @@ if %ERRORLEVEL%==0 (
     "$apps=Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { ($_.DisplayName -match 'VMware Tools') -or ($_.Publisher -match 'VMware') };" ^
     "if(-not $apps){ 'No VMware Tools uninstall entry found (DisplayName/Publisher)' | Out-File -Append -Encoding ascii $env:LOG; exit 0 }" ^
     "foreach($a in $apps){" ^
-    "  ('Found: ' + $a.DisplayName + ' [' + $a.Publisher + ']') | Out-File -Append -Encoding ascii $env:LOG;" ^
-    "  $u=$a.QuietUninstallString; if(-not $u){ $u=$a.UninstallString };" ^
-    "  if(-not $u){ 'No uninstall string' | Out-File -Append -Encoding ascii $env:LOG; continue }" ^
-    "  ('UninstallString: ' + $u) | Out-File -Append -Encoding ascii $env:LOG;" ^
-    "  try {" ^
-    "    if($u -match 'msiexec'){ if($u -notmatch '/qn'){ $u += ' /qn' }; if($u -notmatch '/norestart'){ $u += ' /norestart' } }" ^
-    "    $p=Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ' + $u) -Wait -PassThru;" ^
-    "    ('rc=' + $p.ExitCode) | Out-File -Append -Encoding ascii $env:LOG;" ^
-    "  } catch { $_ | Out-File -Append -Encoding ascii $env:LOG }" ^
+    " ('Found: ' + $a.DisplayName + ' [' + $a.Publisher + ']') | Out-File -Append -Encoding ascii $env:LOG;" ^
+    " $u=$a.QuietUninstallString; if(-not $u){ $u=$a.UninstallString };" ^
+    " if(-not $u){ 'No uninstall string' | Out-File -Append -Encoding ascii $env:LOG; continue }" ^
+    " ('UninstallString: ' + $u) | Out-File -Append -Encoding ascii $env:LOG;" ^
+    " try {" ^
+    " if($u -match 'msiexec'){ if($u -notmatch '/qn'){ $u += ' /qn' }; if($u -notmatch '/norestart'){ $u += ' /norestart' } }" ^
+    " $p=Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ' + $u) -Wait -PassThru;" ^
+    " ('rc=' + $p.ExitCode) | Out-File -Append -Encoding ascii $env:LOG;" ^
+    " } catch { $_ | Out-File -Append -Encoding ascii $env:LOG }" ^
     "}" ^
     >> "%LOG%" 2>&1
 ) else (
@@ -397,7 +397,7 @@ echo StageDir=%STAGE%>> "%LOG%"
 echo --- Disk / Volume sanity --- >> "%LOG%"
 where wmic >> "%LOG%" 2>&1
 if %ERRORLEVEL%==0 (
-  wmic logicaldisk get deviceid,volumename,filesystem,freespace,size >> "%LOG%" 2>&1
+  wmic logicaldisk get deviceid, volumename, filesystem, freespace, size >> "%LOG%" 2>&1
 ) else (
   echo wmic not available >> "%LOG%"
 )

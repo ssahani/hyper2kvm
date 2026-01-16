@@ -456,7 +456,7 @@ class SanityChecker:
             self.report.notes["disk_free"] = self._bytes(free_bytes)
             self.report.notes["disk_input_known"] = self._bytes(known_bytes)
             self.report.notes["disk_need_est"] = self._bytes(estimated_needed)
-            self.report.notes["disk_model"] = f"out={factor_out:.2f},tmp={factor_tmp:.2f},slack={self._bytes(slack)}"
+            self.report.notes["disk_model"] = f"out={factor_out:.2f}, tmp={factor_tmp:.2f}, slack={self._bytes(slack)}"
             if unknown:
                 self.report.notes["disk_input_unknown"] = "yes"
 

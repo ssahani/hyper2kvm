@@ -1322,9 +1322,9 @@ class VsphereMode:
             if errors:
                 print("Some downloads failed:")
                 for e in errors[:20]:
-                    print(f"  - {e}")
+                    print(f" - {e}")
                 if len(errors) > 20:
-                    print(f"  ... and {len(errors)-20} more")
+                    print(f" ... and {len(errors)-20} more")
         return 0
 
     def _download_vm_files_with_progress(

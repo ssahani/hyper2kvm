@@ -225,7 +225,7 @@ def _read_windows_build_from_software_hive(self, g: guestfs.GuestFS, software_hi
             s = _val(key)
             if not s:
                 continue
-            m = re.search(r"(\d{4,6})", s)
+            m = re.search(r"(\d{4, 6})", s)
             if m:
                 return int(m.group(1))
         return None

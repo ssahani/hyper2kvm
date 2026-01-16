@@ -158,7 +158,7 @@ def emit_from_args(
             logger.warning("emit_domain_xml requested for Windows but windows_domain not available")
             return None
 
-        Log.step(logger, "➡️  Emit libvirt domain XML (Windows)")
+        Log.step(logger, "➡️ Emit libvirt domain XML (Windows)")
 
         stage = str(getattr(args, "win_stage", None) or getattr(args, "stage", None) or "bootstrap").strip().lower()
         if stage not in ("bootstrap", "final"):
@@ -215,7 +215,7 @@ def emit_from_args(
 
     cloudinit_iso = getattr(args, "cloudinit_iso", None) or getattr(args, "cloudinit_seed_iso", None)
 
-    Log.step(logger, "➡️  Emit libvirt domain XML (Linux)")
+    Log.step(logger, "➡️ Emit libvirt domain XML (Linux)")
     paths = emit_linux_domain(  # type: ignore[misc]
         name=name,
         image_path=img,

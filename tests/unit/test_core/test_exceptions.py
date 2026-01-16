@@ -13,7 +13,7 @@ class TestExceptionHierarchy:
     def test_base_exception_creation(self):
         """Test creating base Hyper2KvmError."""
         err = Hyper2KvmError(code=1, msg="Test error")
-        
+
         assert err.code == 1
         assert err.msg == "Test error"
         assert err.cause is None
@@ -22,7 +22,7 @@ class TestExceptionHierarchy:
     def test_fatal_exception(self):
         """Test Fatal exception subclass."""
         err = Fatal(code=2, msg="Fatal error")
-        
+
         assert isinstance(err, Hyper2KvmError)
         assert err.code == 2
         assert err.msg == "Fatal error"
@@ -30,7 +30,7 @@ class TestExceptionHierarchy:
     def test_vmware_exception(self):
         """Test VMwareError subclass."""
         err = VMwareError(msg="vSphere connection failed")
-        
+
         assert isinstance(err, Hyper2KvmError)
         assert "vSphere" in err.msg
 
@@ -40,7 +40,7 @@ class TestExceptionHierarchy:
             vm_name="test-vm",
             operation="export"
         )
-        
+
         assert err.context["vm_name"] == "test-vm"
         assert err.context["operation"] == "export"
 
@@ -48,7 +48,7 @@ class TestExceptionHierarchy:
         """Test exception cause chaining."""
         cause = ValueError("Original error")
         err = Hyper2KvmError(code=1, msg="Wrapper", cause=cause)
-        
+
         assert err.cause is cause
         assert isinstance(err.cause, ValueError)
 
@@ -64,10 +64,10 @@ class TestSecretRedaction:
             password="super_secret_123",
             host="vcenter.local"
         )
-        
+
         # Convert to dict to check redaction
         err_dict = err.to_dict()
-        
+
         # Password should be redacted
         assert err_dict["context"]["password"] == "***REDACTED***"
         # Other fields should be visible
@@ -82,9 +82,9 @@ class TestSecretRedaction:
             auth="basic-auth-789",
             normal_field="visible"
         )
-        
+
         err_dict = err.to_dict()
-        
+
         # All secret fields redacted
         assert err_dict["context"]["api_key"] == "***REDACTED***"
         assert err_dict["context"]["token"] == "***REDACTED***"
@@ -100,9 +100,9 @@ class TestSecretRedaction:
                 "username": "admin"
             }
         )
-        
+
         err_dict = err.to_dict()
-        
+
         # Nested password should be redacted
         assert err_dict["context"]["credentials"]["password"] == "***REDACTED***"
         assert err_dict["context"]["credentials"]["username"] == "admin"
@@ -122,7 +122,7 @@ class TestExceptionExitCodes:
         """Test invalid exit codes raise ValueError."""
         with pytest.raises(ValueError):
             Hyper2KvmError(code=256, msg="Test")
-        
+
         with pytest.raises(ValueError):
             Hyper2KvmError(code=-1, msg="Test")
 
@@ -131,7 +131,7 @@ class TestExceptionExitCodes:
         # Boundary test
         Hyper2KvmError(code=0, msg="Min")
         Hyper2KvmError(code=255, msg="Max")
-        
+
         # Out of bounds
         with pytest.raises(ValueError):
             Hyper2KvmError(code=256, msg="Too high")

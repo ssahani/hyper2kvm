@@ -8,8 +8,8 @@ This module serves as the primary command orchestration layer that coordinates
 vSphere operations by composing functionality from specialized sub-modules:
 
 Architecture (Split Design):
-  - vsphere_errors:  Exit code enumerations and error classification logic
-  - vsphere_govc:    govmomi CLI integration, subprocess execution, output policy
+  - vsphere_errors: Exit code enumerations and error classification logic
+  - vsphere_govc: govmomi CLI integration, subprocess execution, output policy
   - vsphere_command: Command routing, action handlers, main entry point (this file)
 
 This split architecture provides:

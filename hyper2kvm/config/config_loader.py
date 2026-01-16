@@ -125,7 +125,7 @@ class Config:
 
         list_mode:
           - replace: override list replaces base list
-          - append:  base + override (concatenate)
+          - append: base + override (concatenate)
           - extend_unique: concatenate but keep first occurrence (hashable only)
         """
         out: Dict[str, Any] = dict(base)
@@ -335,7 +335,7 @@ class Config:
     def _canonicalize_aliases(d: Dict[str, Any]) -> Dict[str, Any]:
         """
         Canonicalize common alias keys so YAML can stay stable while code evolves.
-        
+
         """
         # command <-> cmd
         if "command" in d and "cmd" not in d:
@@ -472,9 +472,9 @@ class Config:
 
         msg_lines: List[str] = ["Config file(s) not found:"]
         for m in missing[:20]:
-            msg_lines.append(f"  - {m}")
+            msg_lines.append(f" - {m}")
         if len(missing) > 20:
-            msg_lines.append(f"  ... and {len(missing) - 20} more")
+            msg_lines.append(f" ... and {len(missing) - 20} more")
 
         msg_lines.append("")
         msg_lines.append(Config._missing_config_help(missing[0], original_spec=None))
@@ -501,7 +501,7 @@ class Config:
 
         if original_spec and (("*" in original_spec) or ("?" in original_spec) or ("[" in original_spec and "]" in original_spec)):
             lines.append(f"Note: the config argument looked like a glob pattern: {original_spec!r}")
-            lines.append("      It expanded to zero matching files (or matched paths that don't exist).")
+            lines.append(" It expanded to zero matching files (or matched paths that don't exist).")
 
         if parent.exists() and parent.is_dir():
             candidates: List[Path] = []
@@ -511,9 +511,9 @@ class Config:
             if candidates:
                 lines.append("Configs found in that directory:")
                 for c in candidates[:10]:
-                    lines.append(f"  - {c.resolve()}")
+                    lines.append(f" - {c.resolve()}")
                 if len(candidates) > 10:
-                    lines.append(f"  ... and {len(candidates) - 10} more")
+                    lines.append(f" ... and {len(candidates) - 10} more")
             else:
                 lines.append("That directory exists, but no *.yaml/*.yml/*.json configs were found there.")
         else:

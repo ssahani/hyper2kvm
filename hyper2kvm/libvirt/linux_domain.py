@@ -259,28 +259,28 @@ def _render_default_xml(spec: LinuxDomainSpec) -> str:
 
     # OS / firmware block
     os_lines: list[str] = [
-        "  <os>",
-        f"    <type arch='x86_64' machine='{_xml(spec.machine)}'>hvm</type>",
+        " <os>",
+        f" <type arch='x86_64' machine='{_xml(spec.machine)}'>hvm</type>",
     ]
 
     if spec.firmware == "uefi":
         if not os.path.exists(spec.ovmf_code):
             raise FileNotFoundError(f"OVMF_CODE not found: {spec.ovmf_code}")
 
-        os_lines.append(f"    <loader readonly='yes' type='pflash'>{_xml(spec.ovmf_code)}</loader>")
+        os_lines.append(f" <loader readonly='yes' type='pflash'>{_xml(spec.ovmf_code)}</loader>")
 
-        nvram_line = "    <nvram"
+        nvram_line = " <nvram"
         if spec.ovmf_vars_template:
             nvram_line += f" template='{_xml(spec.ovmf_vars_template)}'"
         nvram_line += f">{_xml(spec.nvram_vars)}</nvram>"
         os_lines.append(nvram_line)
 
     elif spec.firmware == "bios":
-        os_lines.append("    <boot dev='hd'/>")
+        os_lines.append(" <boot dev='hd'/>")
     else:
         raise ValueError(f"invalid firmware: {spec.firmware}")
 
-    os_lines.append("  </os>")
+    os_lines.append(" </os>")
 
     clock_xml = f"""  <clock offset='{_xml(spec.clock)}'>
     <timer name='rtc' tickpolicy='catchup'/>
@@ -310,8 +310,8 @@ def _render_default_xml(spec: LinuxDomainSpec) -> str:
     cache_attr = f" cache='{_xml(spec.disk_cache)}'" if spec.disk_cache else ""
     io_attr = f" io='{_xml(spec.disk_io)}'" if spec.disk_io else ""
     discard_attr = f" discard='{_xml(spec.disk_discard)}'" if spec.disk_discard else ""
-    disk_driver = f"      <driver name='qemu' type='{_xml(spec.disk_type)}'{cache_attr}{io_attr}{discard_attr}/>"
-    disk_boot = f"      <boot order='{spec.disk_boot_order}'/>" if spec.disk_boot_order else ""
+    disk_driver = f" <driver name='qemu' type='{_xml(spec.disk_type)}'{cache_attr}{io_attr}{discard_attr}/>"
+    disk_boot = f" <boot order='{spec.disk_boot_order}'/>" if spec.disk_boot_order else ""
 
     # Graphics / video / input / usb
     graphics_xml = ""
@@ -321,17 +321,17 @@ def _render_default_xml(spec: LinuxDomainSpec) -> str:
 
     if spec.graphics != "none":
         graphics_xml = (
-            f"    <graphics type='{_xml(spec.graphics)}' autoport='yes' listen='{_xml(spec.graphics_listen)}'/>"
+            f" <graphics type='{_xml(spec.graphics)}' autoport='yes' listen='{_xml(spec.graphics_listen)}'/>"
         )
         heads_attr = f" heads='{spec.video_heads}'" if spec.video_heads else ""
-        video_xml = f"    <video><model type='{_xml(spec.video)}'{heads_attr}/></video>"
+        video_xml = f" <video><model type='{_xml(spec.video)}'{heads_attr}/></video>"
         if spec.usb_tablet:
-            input_xml = "    <input type='tablet' bus='usb'/>"
-            usb_controller_xml = "    <controller type='usb' index='0' model='qemu-xhci'/>"
+            input_xml = " <input type='tablet' bus='usb'/>"
+            usb_controller_xml = " <controller type='usb' index='0' model='qemu-xhci'/>"
 
     # Console
-    serial_xml = "    <serial type='pty'><target port='0'/></serial>" if spec.serial_pty else ""
-    console_xml = "    <console type='pty'><target type='serial' port='0'/></console>" if spec.console_pty else ""
+    serial_xml = " <serial type='pty'><target port='0'/></serial>" if spec.serial_pty else ""
+    console_xml = " <console type='pty'><target type='serial' port='0'/></console>" if spec.console_pty else ""
 
     guest_agent_xml = """    <channel type='unix'>
       <source mode='bind'/>
@@ -342,7 +342,7 @@ def _render_default_xml(spec: LinuxDomainSpec) -> str:
       <backend model='random'>/dev/urandom</backend>
     </rng>"""
 
-    memballoon_xml = "    <memballoon model='virtio'/>"
+    memballoon_xml = " <memballoon model='virtio'/>"
 
     return (
         f"""<domain type='kvm'>

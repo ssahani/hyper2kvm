@@ -220,12 +220,12 @@ class VsphereExporter:
                     Log.trace(self.logger, "📤 export_vm returned: %r", out_path)
 
                     if export_mode == "download_only":
-                        self.logger.info("⬇️  vSphere download-only OK: %s -> %s", vm_name, out_path)
+                        self.logger.info("⬇️ vSphere download-only OK: %s -> %s", vm_name, out_path)
                         continue
 
                     if export_mode == "vddk_download":
                         out_images.append(Path(out_path))
-                        self.logger.info("⬇️  vSphere VDDK download OK: %s -> %s", vm_name, out_path)
+                        self.logger.info("⬇️ vSphere VDDK download OK: %s -> %s", vm_name, out_path)
                         continue
 
                     # export_mode == "v2v": discover artifacts

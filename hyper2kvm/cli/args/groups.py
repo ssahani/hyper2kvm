@@ -529,7 +529,7 @@ def _add_ovftool_knobs(p: argparse.ArgumentParser) -> None:
     # OVF Tool deploy-only targeting knobs
     p.add_argument("--ovftool-target-folder", dest="ovftool_target_folder", default=None, help="OVF Tool deploy: target inventory folder under /vm (relative path). Example: 'Prod/Linux'.")
     p.add_argument("--ovftool-target-resource-pool", dest="ovftool_target_resource_pool", default=None, help="OVF Tool deploy: target resource pool path under /host (advanced; exact format depends on vCenter inventory).")
-    p.add_argument("--ovftool-network-map", dest="ovftool_network_map", default=None, help="OVF Tool deploy: network mapping 'src:dst,src2:dst2'. Example: 'VM Network:KVM-Bridge'.")
+    p.add_argument("--ovftool-network-map", dest="ovftool_network_map", default=None, help="OVF Tool deploy: network mapping 'src:dst, src2:dst2'. Example: 'VM Network:KVM-Bridge'.")
     p.add_argument("--ovftool-power-on", dest="ovftool_power_on", action="store_true", help="OVF Tool deploy: power on after deploy.")
     p.add_argument("--ovftool-vm-name", dest="ovftool_vm_name", default=None, help="OVF Tool deploy: override VM name (--name in ovftool).")
     p.add_argument("--ovftool-datastore", dest="ovftool_datastore", default=None, help="OVF Tool deploy: target datastore name.")
@@ -620,7 +620,7 @@ def _add_azure_knobs(p: argparse.ArgumentParser) -> None:
     # VM selection
     p.add_argument("--azure-resource-group", dest="azure_resource_group", default=None, help="Azure resource group (required unless --azure-allow-all-rgs)")
     p.add_argument("--azure-vm-names", dest="azure_vm_names", nargs="*", default=None, help="VM name patterns (glob supported, e.g., 'web-*', 'db-prod-01')")
-    p.add_argument("--azure-tags", dest="azure_tags", default=None, help="Filter VMs by tags (format: key1=val1,key2=val2)")
+    p.add_argument("--azure-tags", dest="azure_tags", default=None, help="Filter VMs by tags (format: key1=val1, key2=val2)")
     p.add_argument("--azure-power-state", dest="azure_power_state", default=None, help="Filter by power state (running, stopped, deallocated)")
     p.add_argument("--azure-list-only", dest="azure_list_only", action="store_true", help="List VMs only, don't download")
     p.add_argument("--azure-allow-all-rgs", dest="azure_allow_all_rgs", action="store_true", help="Allow searching all resource groups (dangerous)")
