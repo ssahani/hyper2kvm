@@ -1,5 +1,7 @@
 # hyper2kvm 🚀
 
+[![PyPI version](https://badge.fury.io/py/hyper2kvm.svg)](https://pypi.org/project/hyper2kvm/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/hyper2kvm)](https://pypi.org/project/hyper2kvm/)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![GitHub stars](https://img.shields.io/github/stars/hyper2kvm/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/hyper2kvm/hyper2kvm/stargazers/)
@@ -39,16 +41,34 @@ Whether you're running **Fedora 43**, **RHEL 10**, **CentOS Stream**, or **Rocky
 
 ### Installation
 
+#### From PyPI (Recommended)
+
 ```bash
 # Install system dependencies (Fedora/RHEL)
 sudo dnf install -y python3-libguestfs libguestfs-tools qemu-img qemu-system-x86
 
-# Install hyper2kvm
-git clone https://github.com/hyper2kvm/hyper2kvm.git
+# Install hyper2kvm from PyPI
+pip install hyper2kvm
+```
+
+#### From Source
+
+```bash
+# Install system dependencies (Fedora/RHEL)
+sudo dnf install -y python3-libguestfs libguestfs-tools qemu-img qemu-system-x86
+
+# Clone and install
+git clone https://github.com/ssahani/hyper2kvm.git
 cd hyper2kvm
-pip install -r requirements.txt
 pip install -e .
 ```
+
+#### Package Locations
+
+- **PyPI:** https://pypi.org/project/hyper2kvm/
+- **GitHub:** https://github.com/ssahani/hyper2kvm
+- **Documentation:** [docs/](docs/)
+- **Examples:** [examples/](examples/)
 
 See [docs/INSTALL.md](docs/02-Installation.md) for Ubuntu/Debian, Arch, Alpine, macOS, and Windows (WSL).
 
