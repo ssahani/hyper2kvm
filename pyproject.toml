@@ -1,0 +1,97 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hyper2kvm"
+version = "0.0.1"
+description = "Production-Grade Hypervisor to KVM/QEMU Migration Toolkit"
+readme = "README.md"
+authors = [
+    {name = "Susant Sahani", email = "ssahani@redhat.com"}
+]
+maintainers = [
+    {name = "Susant Sahani", email = "ssahani@redhat.com"}
+]
+license = {text = "LGPL-3.0-or-later"}
+keywords = [
+    "kvm",
+    "qemu",
+    "virtualization",
+    "vm-migration",
+    "hypervisor",
+    "vmware",
+    "vsphere",
+    "azure",
+    "hyper-v",
+    "libvirt",
+    "virt-v2v",
+    "cloud-migration",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: System :: Installation/Setup",
+    "Topic :: Utilities",
+    "Environment :: Console",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "rich>=10.0.0",
+    "click>=8.0.0",
+    "pyyaml>=5.4.0",
+    "requests>=2.25.0",
+    "pyvmomi>=7.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+    "mypy>=0.950",
+]
+
+[project.urls]
+Homepage = "https://github.com/ssahani/hyper2kvm"
+Documentation = "https://github.com/ssahani/hyper2kvm/tree/main/docs"
+Repository = "https://github.com/ssahani/hyper2kvm"
+"Bug Tracker" = "https://github.com/ssahani/hyper2kvm/issues"
+Changelog = "https://github.com/ssahani/hyper2kvm/releases"
+
+[project.scripts]
+hyper2kvm = "hyper2kvm.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hyper2kvm*"]
+exclude = ["tests*", "docs*", "examples*"]
+
+[tool.setuptools.package-data]
+hyper2kvm = ["*.yaml", "*.json", "*.conf"]
+
+[tool.black]
+line-length = 120
+target-version = ['py310', 'py311', 'py312']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--verbose --cov=hyper2kvm --cov-report=html --cov-report=term"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
