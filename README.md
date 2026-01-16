@@ -109,6 +109,46 @@ sudo python -m hyper2kvm live-fix \
 
 For more examples, see [docs/QUICKSTART.md](docs/03-Quick-Start.md) and [examples/README.md](examples/README.md).
 
+### High-Performance vSphere Exports (Optional) ⚡
+
+For **3-5x faster** VM exports from vSphere/ESXi, install the optional [hyper2kvm-providers](https://github.com/hyper2kvm/hyper2kvm-providers) daemon:
+
+```bash
+# Install hyper2kvm-providers (Fedora/RHEL)
+sudo dnf install hyper2kvm-providers
+sudo systemctl start hyper2kvmd
+sudo systemctl enable hyper2kvmd
+
+# Or from source
+git clone https://github.com/hyper2kvm/hyper2kvm-providers
+cd hyper2kvm-providers
+go build -o hyper2kvmd ./cmd/hyper2kvmd
+sudo ./install.sh
+```
+
+Once installed, hyper2kvm automatically detects and uses h2kvmctl for exports:
+
+```python
+from hyper2kvm.vmware.transports import H2KVMCTL_AVAILABLE, export_vm_h2kvmctl
+
+if H2KVMCTL_AVAILABLE:
+    # Use high-performance daemon (parallel downloads, resume support)
+    result = export_vm_h2kvmctl(
+        vm_path="/datacenter/vm/my-vm",
+        output_path="/output/",
+        parallel_downloads=8,  # Concurrent downloads
+    )
+```
+
+**Benefits:**
+- ⚡ **3-5x faster** exports via parallel downloads
+- 🔄 **Resumable downloads** with automatic retry
+- 📊 **Real-time progress** tracking
+- 🚀 **Background daemon** mode for automation
+- 📦 **Batch processing** for multiple VMs
+
+See [docs/H2KVMCTL_INTEGRATION.md](docs/H2KVMCTL_INTEGRATION.md) and [INTEGRATION_SUMMARY.md](INTEGRATION_SUMMARY.md) for details.
+
 ---
 
 ## Features ✨
@@ -131,7 +171,7 @@ For more examples, see [docs/QUICKSTART.md](docs/03-Quick-Start.md) and [example
 - **Resume Support:** Crash recovery with checkpointing 🔄
 - **Dry-Run Mode:** Preview changes without applying them 👀
 - **Detailed Reporting:** Comprehensive migration reports and logs 📊
-- **vSphere Integration:** Native API support via govc and pyvmomi ☁️
+- **vSphere Integration:** Native API support via govc, pyvmomi, and h2kvmctl (high-performance provider) ☁️
 
 ### Safety Mechanisms 🔒
 
@@ -161,7 +201,7 @@ For more examples, see [docs/QUICKSTART.md](docs/03-Quick-Start.md) and [example
 ### Platform-Specific 🖥️
 
 - **[Windows Migrations](docs/10-Windows-Guide.md)** - Windows-specific guide and VirtIO driver injection 🪟
-- **[vSphere Integration](docs/30-vSphere-V2V.md)** - vSphere export strategies ☁️
+- **[vSphere Integration](docs/30-vSphere-V2V.md)** - vSphere export strategies (govc, pyvmomi, h2kvmctl) ☁️
 - **[PhotonOS](docs/21-Photon-OS.md)** - VMware PhotonOS specific notes 🐧
 - **[RHEL 10](docs/20-RHEL-10.md)** - RHEL 10 migration guide 🎩
 
@@ -448,6 +488,7 @@ hyper2kvm/
 
 **transports/** - Data-plane download/export methods:
 - **http_client.py** - HTTPS download with progress and resume support
+- **h2kvmctl_common.py** - h2kvmctl CLI wrapper (hyper2kvm-providers daemon, 3-5x faster than govc)
 - **ssh_client.py** - SSH/SCP fallback transport
 - **ovftool_client.py** - ovftool wrapper for OVF/OVA export
 - **session_cookie.py** - vSphere session cookie management
@@ -935,6 +976,7 @@ hyper2kvm builds on excellent open-source projects:
 - **[QEMU](https://www.qemu.org/)** - Disk format conversion and virtualization
 - **[govc](https://github.com/vmware/govmomi/tree/master/govc)** - vSphere CLI
 - **[pyvmomi](https://github.com/vmware/pyvmomi)** - VMware vSphere API Python SDK
+- **[hyper2kvm-providers](https://github.com/hyper2kvm/hyper2kvm-providers)** - High-performance multi-cloud provider daemon (optional, 3-5x faster exports)
 - **[libvirt](https://libvirt.org/)** - Virtualization management
 
 Special thanks to all [contributors](https://github.com/hyper2kvm/hyper2kvm/graphs/contributors).
