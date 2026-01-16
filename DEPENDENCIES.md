@@ -81,7 +81,6 @@ sudo zypper install -y \
 
 | Package | Purpose |
 |---------|---------|
-| `virt-v2v` | Alternative conversion tool |
 | `openssh-client` | SSH for remote operations |
 | `rsync` | File synchronization |
 

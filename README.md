@@ -186,13 +186,12 @@ For more examples, see [docs/QUICKSTART.md](docs/03-Quick-Start.md) and [example
 12. Multi-VM and Batch Processing
 13. Live-Fix Mode (SSH)
 14. ESXi and vSphere Integration
-15. virt-v2v Integration Strategy (Experimental)
-16. Safety Mechanisms
-17. Daemon Mode and Automation
-18. Testing and Verification
-19. Failure Modes and Troubleshooting
-20. When Not to Use This Tool
-21. Documentation Index and References  
+15. Safety Mechanisms
+16. Daemon Mode and Automation
+17. Testing and Verification
+18. Failure Modes and Troubleshooting
+19. When Not to Use This Tool
+20. Documentation Index and References  
 
 ---
 
@@ -337,7 +336,7 @@ hyper2kvm/
 │   ├── orchestrator.py    # Main pipeline coordinator (358 lines)
 │   ├── disk_processor.py  # Disk processing (335 lines)
 │   ├── vsphere_exporter.py # vSphere export (264 lines)
-│   ├── virt_v2v_converter.py # virt-v2v integration (268 lines)
+│   ├── virt_v2v_converter.py # Optional integration wrapper (268 lines)
 │   └── disk_discovery.py  # Disk discovery (247 lines)
 │
 └── vmware/                # VMware integration
@@ -436,7 +435,7 @@ hyper2kvm/
 - **orchestrator.py** - Main pipeline coordinator (358 lines)
 - **disk_processor.py** - Disk processing logic (335 lines)
 - **vsphere_exporter.py** - vSphere export coordination (264 lines)
-- **virt_v2v_converter.py** - virt-v2v integration (268 lines)
+- **virt_v2v_converter.py** - Optional integration wrapper (268 lines)
 - **disk_discovery.py** - Disk discovery and metadata extraction (247 lines)
 
 #### `vmware/`
@@ -733,7 +732,6 @@ flowchart TB
     HTTP["HTTP /folder + Range"]
     VDDK["VDDK (high-throughput disk reads)"]
     SSH["SSH / SCP fallback"]
-    V2V["virt-v2v (experimental option)"]
     RESUME["resume + verify + atomic publish"]
   end
 
@@ -825,7 +823,6 @@ YAML is treated as **code**:
 * Batch processing
 * Live-fix mode (SSH)
 * ESXi and vSphere integration
-* virt-v2v coordination (experimental, never default)
 * Safety mechanisms
 * Daemon and automation modes
 * Testing and failure analysis

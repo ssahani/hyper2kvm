@@ -119,7 +119,6 @@ Regardless of Python package installation method, these system packages are requ
 - `libguestfs-tools` - Guest inspection utilities
 
 ### Optional
-- `virt-v2v` - Alternative migration path (not required for basic usage)
 - `libvirt` - For running smoke tests
 - `govc` - **PRIMARY vSphere control plane (highly recommended for vSphere migrations)**
 - `ovftool` - Alternative vSphere export method
@@ -307,7 +306,6 @@ These are installed separately as binaries, not via pip:
 | **govc** | vSphere control plane (PRIMARY) | vSphere migrations (recommended) | Download binary from [GitHub releases](https://github.com/vmware/govmomi/releases) → /usr/local/bin |
 | **ovftool** | OVF/OVA export/import | vSphere migrations (alternative) | Download ZIP from [Broadcom](https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest) (v5.0.0) |
 | **az** (Azure CLI) | Azure authentication & operations | Azure migrations (recommended) | [Install via package manager](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) or dnf install azure-cli |
-| virt-v2v | Alternative migration engine | Optional experimental path | dnf install virt-v2v |
 | libvirt | VM testing and validation | Optional smoke tests | dnf install libvirt |
 
 ### vSphere Architecture: Control Plane Options
