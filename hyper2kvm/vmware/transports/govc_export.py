@@ -17,7 +17,6 @@ Design: callers pass a GovcExportSpec; this module runs the workflow.
 """
 
 import os
-import sys
 import time
 import shutil
 import tarfile
@@ -89,7 +88,6 @@ class GovcExportSpec:
 
 class GovcExportError(VMwareError):
     """Specialized error for govc export failures."""
-    pass
 
 
 # UI helpers (Rich if possible, otherwise plain prints)

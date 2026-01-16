@@ -26,7 +26,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import re
-import shlex
 
 import guestfs  # type: ignore
 

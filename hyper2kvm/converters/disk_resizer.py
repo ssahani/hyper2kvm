@@ -3,4 +3,3 @@
 # hyper2kvm/converters/disk_resizer.py
 from __future__ import annotations
 
-from .qemu.converter import Convert

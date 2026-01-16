@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict
 
 
 def make_tags(*, enable: bool, run_tag: str, vm_name: str) -> Dict[str, str]:

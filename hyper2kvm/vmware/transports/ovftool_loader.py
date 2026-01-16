@@ -6,12 +6,9 @@
 OVF Tool and govc export operations for VMware
 """
 
-import logging
-import re
 import time
 from pathlib import Path
 from typing import Any, List
-from urllib.parse import quote
 
 # govc helpers (single source of truth)
 try:

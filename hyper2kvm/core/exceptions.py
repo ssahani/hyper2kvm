@@ -130,7 +130,6 @@ class Fatal(Hyper2KvmError):
     """
     User-facing fatal error (exit code should be honored by top-level main()).
     """
-    pass
 
 
 class VMwareError(Hyper2KvmError):
@@ -138,7 +137,6 @@ class VMwareError(Hyper2KvmError):
     vSphere/vCenter operation failed.
     Use for pyvmomi / SDK / ESXi errors.
     """
-    pass
 
 
 def wrap_fatal(msg: str, exc: Optional[BaseException] = None, code: int = 1, **context: Any) -> Fatal:
