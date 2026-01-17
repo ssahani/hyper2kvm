@@ -104,6 +104,15 @@ except Exception:  # pragma: no cover
     vim = None  # type: ignore
     PYVMOMI_AVAILABLE = False
 
+# Optional: requests library for HTTP operations
+try:  # pragma: no cover
+    import requests  # type: ignore
+
+    REQUESTS_AVAILABLE = True
+except Exception:  # pragma: no cover
+    requests = None  # type: ignore
+    REQUESTS_AVAILABLE = False
+
 # Optional: silence urllib3 TLS warnings when verify=False
 try:  # pragma: no cover
     import urllib3  # type: ignore

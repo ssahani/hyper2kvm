@@ -4,10 +4,10 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
-from hyper2kvm.testers.qemu_tester import QemuTester
+from hyper2kvm.testers.qemu_tester import QemuTest
 
 
-class TestQemuTester(unittest.TestCase):
+class TestQemuTest(unittest.TestCase):
     """Test QEMU-based VM testing."""
 
     def setUp(self):
@@ -22,7 +22,7 @@ class TestQemuTester(unittest.TestCase):
             disk = Path(td) / "test.qcow2"
             disk.write_bytes(b"fake disk")
 
-            tester = QemuTester(self.logger, disk)
+            tester = QemuTest(self.logger, disk)
 
             # Should detect missing QEMU
             with self.assertRaises((SystemExit, RuntimeError)):
@@ -43,7 +43,7 @@ class TestQemuTester(unittest.TestCase):
             disk = Path(td) / "test.qcow2"
             disk.write_bytes(b"fake disk")
 
-            tester = QemuTester(self.logger, disk)
+            tester = QemuTest(self.logger, disk)
 
             try:
                 tester.boot_test(timeout=1, headless=True)
@@ -59,7 +59,7 @@ class TestQemuTester(unittest.TestCase):
             disk = Path(td) / "test.qcow2"
             disk.write_bytes(b"fake disk")
 
-            tester = QemuTester(self.logger, disk, memory_mb=2048)
+            tester = QemuTest(self.logger, disk, memory_mb=2048)
 
             self.assertEqual(tester.memory_mb, 2048)
 
@@ -69,7 +69,7 @@ class TestQemuTester(unittest.TestCase):
             disk = Path(td) / "test.qcow2"
             disk.write_bytes(b"fake disk")
 
-            tester = QemuTester(self.logger, disk, vcpus=4)
+            tester = QemuTest(self.logger, disk, vcpus=4)
 
             self.assertEqual(tester.vcpus, 4)
 
@@ -79,13 +79,13 @@ class TestQemuTester(unittest.TestCase):
             disk = Path(td) / "test.qcow2"
             disk.write_bytes(b"fake disk")
 
-            tester = QemuTester(self.logger, disk)
+            tester = QemuTest(self.logger, disk)
 
             # Headless mode should disable graphics
             self.assertTrue(hasattr(tester, 'boot_test'))
 
 
-class TestQemuTesterCommandBuilding(unittest.TestCase):
+class TestQemuTestCommandBuilding(unittest.TestCase):
     """Test QEMU command line building."""
 
     def setUp(self):
@@ -97,7 +97,7 @@ class TestQemuTesterCommandBuilding(unittest.TestCase):
             disk = Path(td) / "test.qcow2"
             disk.write_bytes(b"fake disk")
 
-            tester = QemuTester(self.logger, disk)
+            tester = QemuTest(self.logger, disk)
             cmd = tester.build_qemu_command()
 
             self.assertIn("qemu-system-x86_64", " ".join(cmd))
@@ -109,7 +109,7 @@ class TestQemuTesterCommandBuilding(unittest.TestCase):
             disk = Path(td) / "test.qcow2"
             disk.write_bytes(b"fake disk")
 
-            tester = QemuTester(self.logger, disk, enable_kvm=True)
+            tester = QemuTest(self.logger, disk, enable_kvm=True)
             cmd = tester.build_qemu_command()
 
             self.assertIn("-enable-kvm", cmd)
@@ -120,7 +120,7 @@ class TestQemuTesterCommandBuilding(unittest.TestCase):
             disk = Path(td) / "test.qcow2"
             disk.write_bytes(b"fake disk")
 
-            tester = QemuTester(self.logger, disk, snapshot=True)
+            tester = QemuTest(self.logger, disk, snapshot=True)
             cmd = tester.build_qemu_command()
 
             self.assertIn("-snapshot", cmd)

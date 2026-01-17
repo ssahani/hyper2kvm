@@ -6,10 +6,10 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 import xml.etree.ElementTree as ET
 
-from hyper2kvm.libvirt.linux_domain import LinuxDomain
+from hyper2kvm.libvirt.linux_domain import LinuxDomainSpec
 
 
-class TestLinuxDomain(unittest.TestCase):
+class TestLinuxDomainSpec(unittest.TestCase):
     """Test Linux domain XML generation."""
 
     def setUp(self):
@@ -30,7 +30,7 @@ class TestLinuxDomain(unittest.TestCase):
                 graphics=False,
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
 
             # Parse XML to verify it's valid
             root = ET.fromstring(xml_str)
@@ -50,7 +50,7 @@ class TestLinuxDomain(unittest.TestCase):
                 disk=[str(disk)],
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
             root = ET.fromstring(xml_str)
 
             name = root.find("name")
@@ -70,7 +70,7 @@ class TestLinuxDomain(unittest.TestCase):
                 disk=[str(disk)],
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
             root = ET.fromstring(xml_str)
 
             memory = root.find("memory")
@@ -91,7 +91,7 @@ class TestLinuxDomain(unittest.TestCase):
                 disk=[str(disk)],
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
             root = ET.fromstring(xml_str)
 
             vcpu = root.find("vcpu")
@@ -111,7 +111,7 @@ class TestLinuxDomain(unittest.TestCase):
                 disk=[str(disk)],
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
             root = ET.fromstring(xml_str)
 
             devices = root.find("devices")
@@ -136,7 +136,7 @@ class TestLinuxDomain(unittest.TestCase):
                 disk=[str(disk1), str(disk2)],
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
             root = ET.fromstring(xml_str)
 
             devices = root.find("devices")
@@ -159,7 +159,7 @@ class TestLinuxDomain(unittest.TestCase):
                 network="default",
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
             root = ET.fromstring(xml_str)
 
             devices = root.find("devices")
@@ -179,13 +179,13 @@ class TestLinuxDomain(unittest.TestCase):
                 disk=[str(disk)],
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
 
             # virtio is the preferred driver for Linux VMs
             self.assertIn("virtio", xml_str)
 
 
-class TestLinuxDomainFeatures(unittest.TestCase):
+class TestLinuxDomainSpecFeatures(unittest.TestCase):
     """Test Linux domain feature configuration."""
 
     def setUp(self):
@@ -204,7 +204,7 @@ class TestLinuxDomainFeatures(unittest.TestCase):
                 disk=[str(disk)],
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
             root = ET.fromstring(xml_str)
 
             os_elem = root.find("os")
@@ -227,7 +227,7 @@ class TestLinuxDomainFeatures(unittest.TestCase):
                 disk=[str(disk)],
             )
 
-            xml_str = LinuxDomain.generate(self.logger, args)
+            xml_str = LinuxDomainSpec.generate(self.logger, args)
             root = ET.fromstring(xml_str)
 
             features = root.find("features")
