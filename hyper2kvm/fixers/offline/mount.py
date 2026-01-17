@@ -39,6 +39,61 @@ class OfflineMountEngine:
     _ROOT_HINT_FILES = ["/etc/fstab", "/etc/os-release", "/bin/sh", "/sbin/init"]
     _ROOT_STRONG_HINTS = ["/etc/passwd", "/usr/bin/env", "/var/lib", "/proc"]  # heuristic only
 
+    @staticmethod
+    def _sanitize_subvol_path(subvol: str) -> str:
+        """
+        Sanitize BTRFS subvolume path to prevent path traversal and option injection.
+
+        SECURITY: Validates subvolume paths to prevent:
+        - Path traversal attacks (../)
+        - Mount option injection (commas, special chars)
+        - Command injection attempts
+
+        Args:
+            subvol: BTRFS subvolume path to validate
+
+        Returns:
+            Sanitized subvolume path
+
+        Raises:
+            ValueError: If subvolume path contains dangerous characters
+        """
+        if not subvol:
+            raise ValueError("Subvolume path cannot be empty")
+
+        # Check for path traversal attempts
+        if ".." in subvol:
+            raise ValueError(f"Invalid subvolume path: contains '..': {subvol!r}")
+
+        # Check for null bytes (path truncation attack)
+        if "\x00" in subvol:
+            raise ValueError(f"Invalid subvolume path: contains null byte: {subvol!r}")
+
+        # Check for mount option injection attempts (commas separate mount options)
+        if "," in subvol:
+            raise ValueError(f"Invalid subvolume path: contains comma: {subvol!r}")
+
+        # Check for shell metacharacters (defense in depth)
+        dangerous_chars = [";", "&", "|", "`", "$", "(", ")", "<", ">", "\n", "\r"]
+        for char in dangerous_chars:
+            if char in subvol:
+                raise ValueError(f"Invalid subvolume path: contains dangerous character: {subvol!r}")
+
+        # Normalize path separators and remove redundant slashes
+        normalized = subvol.replace("\\", "/")
+        # Remove double slashes but preserve leading slash
+        parts = [p for p in normalized.split("/") if p]
+        if normalized.startswith("/"):
+            normalized = "/" + "/".join(parts)
+        else:
+            normalized = "/".join(parts)
+
+        # Additional length check (defense in depth)
+        if len(normalized) > 4096:
+            raise ValueError(f"Subvolume path too long (max 4096): {len(normalized)}")
+
+        return normalized
+
     def __init__(
         self,
         logger: logging.Logger,
@@ -216,7 +271,14 @@ class OfflineMountEngine:
     def _try_mount_root(self, g: guestfs.GuestFS, dev: str, subvol: Optional[str], mode: str) -> None:
         # mode: "rw" | "ro" | "opts:<csv>"
         if subvol:
-            opts = f"subvol={subvol}"
+            # SECURITY: Validate subvolume path to prevent path traversal and option injection
+            try:
+                sanitized_subvol = self._sanitize_subvol_path(subvol)
+            except ValueError as e:
+                self.logger.error(f"Rejecting dangerous subvolume path: {e}")
+                raise RuntimeError(f"Invalid subvolume path: {e}") from e
+
+            opts = f"subvol={sanitized_subvol}"
             if self.dry_run or mode == "ro":
                 opts = f"ro, {opts}"
             if mode.startswith("opts:"):
