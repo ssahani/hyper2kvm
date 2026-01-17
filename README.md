@@ -758,15 +758,18 @@ If you separate them, you get repeatable ones.
 flowchart TB
   subgraph CP["CONTROL PLANE (decide)"]
     GOVC["govc (primary)"]
-    PYVM["pyvmomi / pyVim (fallback / deep inspection)"]
-    INV["Inventory: VM, disks, firmware, snapshots"]
-    PLAN["Plans: snapshot flatten, disk map, export intent"]
-    DS["Datastore browsing & artifact resolution"]
-    CBT["CBT discovery + changed ranges planning"]
+    HYPERCTL["hyperctl → hypervisord<br/>high-performance daemon"]
+    PYVM["pyvmomi / pyVim<br/>fallback / deep inspection"]
+    INV["Inventory: VM, disks,<br/>firmware, snapshots"]
+    PLAN["Plans: snapshot flatten,<br/>disk map, export intent"]
+    DS["Datastore browsing &<br/>artifact resolution"]
+    CBT["CBT discovery +<br/>changed ranges planning"]
 
     GOVC --> INV
+    HYPERCTL --> INV
     GOVC --> DS
     GOVC --> CBT
+    HYPERCTL --> CBT
     PYVM --> INV
     PYVM --> CBT
     INV --> PLAN
@@ -777,16 +780,18 @@ flowchart TB
   META["plans + metadata<br/>explicit, auditable"]
 
   subgraph DP["DATA PLANE (move bytes)"]
-    GOVCEXP["govc export.ovf / export.ova"]
-    OVFTOOL["ovftool OVF/OVA export/import"]
-    HTTP["HTTP /folder + Range"]
-    VDDK["VDDK high-throughput disk reads"]
-    SSH["SSH / SCP fallback"]
-    RESUME["resume + verify + atomic publish"]
+    GOVCEXP["govc export.ovf /<br/>export.ova"]
+    HYPEREXP["hypervisord export<br/>parallel downloads<br/>3-5x faster, resumable"]
+    OVFTOOL["ovftool<br/>OVF/OVA export/import"]
+    HTTP["HTTP /folder +<br/>Range requests"]
+    VDDK["VDDK<br/>high-throughput disk reads"]
+    SSH["SSH / SCP<br/>fallback"]
+    RESUME["resume + verify +<br/>atomic publish"]
   end
 
   CP --> META --> DP
   GOVCEXP --> RESUME
+  HYPEREXP --> RESUME
   OVFTOOL --> RESUME
   HTTP --> RESUME
   VDDK --> RESUME
@@ -796,7 +801,9 @@ flowchart TB
   style DP fill:#4CAF50,stroke:#2E7D32,color:#fff
   style META fill:#9C27B0,stroke:#6A1B9A,color:#fff
   style GOVC fill:#FF9800,stroke:#E65100,color:#fff
-  style PYVM fill:#FF9800,stroke:#E65100,color:#fff
+  style HYPERCTL fill:#F44336,stroke:#C62828,color:#fff
+  style HYPEREXP fill:#F44336,stroke:#C62828,color:#fff
+  style PYVM fill:#FFC107,stroke:#F57C00,color:#000
   style RESUME fill:#00BCD4,stroke:#006064,color:#fff
 ```
 
