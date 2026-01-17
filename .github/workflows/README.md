@@ -74,9 +74,9 @@ Standardized PR checklist ensuring:
 Add these to your README.md:
 
 ```markdown
-[![Tests](https://github.com/YOUR_USERNAME/hyper2kvm/workflows/Tests/badge.svg)](https://github.com/YOUR_USERNAME/hyper2kvm/actions/workflows/tests.yml)
-[![Security](https://github.com/YOUR_USERNAME/hyper2kvm/workflows/Security%20Checks/badge.svg)](https://github.com/YOUR_USERNAME/hyper2kvm/actions/workflows/security.yml)
-[![codecov](https://codecov.io/gh/YOUR_USERNAME/hyper2kvm/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/hyper2kvm)
+[![Tests](https://github.com/ssahani/hyper2kvm/workflows/Tests/badge.svg)](https://github.com/ssahani/hyper2kvm/actions/workflows/tests.yml)
+[![Security](https://github.com/ssahani/hyper2kvm/workflows/Security%20Checks/badge.svg)](https://github.com/ssahani/hyper2kvm/actions/workflows/security.yml)
+[![codecov](https://codecov.io/gh/ssahani/hyper2kvm/branch/main/graph/badge.svg)](https://codecov.io/gh/ssahani/hyper2kvm)
 ```
 
 ## Secrets Required

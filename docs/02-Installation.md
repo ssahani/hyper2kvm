@@ -14,7 +14,7 @@
 ### Quick start (recommended: editable install)
 
 ```bash
-git clone https://github.com/<you>/hyper2kvm.git
+git clone https://github.com/ssahani/hyper2kvm.git
 cd hyper2kvm
 
 python3 -m venv .venv
@@ -202,7 +202,7 @@ sudo apt-get install -y \
   libvirt-clients libvirt-daemon-system
 
 # Clone and install hyper2kvm
-git clone https://github.com/<you>/hyper2kvm.git
+git clone https://github.com/ssahani/hyper2kvm.git
 cd hyper2kvm
 
 python3 -m venv .venv

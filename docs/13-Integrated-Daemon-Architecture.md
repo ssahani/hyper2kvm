@@ -890,7 +890,7 @@ restorecon -Rv /var/lib/hyper2kvm/
 sudo pip3 install hyper2kvm
 
 # Go daemon
-sudo wget https://github.com/ssahani/hypervisord/releases/latest/download/hypervisord
+sudo wget https://github.com/ssahani/hypersdk/releases/latest/download/hypervisord
 sudo chmod +x hypervisord
 sudo mv hypervisord /usr/local/bin/
 
