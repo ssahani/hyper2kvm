@@ -638,7 +638,16 @@ flowchart LR
 
   D --> P[hyper2kvm Pipeline]
   P --> K[KVM / QEMU]
-````
+
+  style HV1 fill:#FF9800,stroke:#E65100,color:#fff
+  style HV2 fill:#FF9800,stroke:#E65100,color:#fff
+  style HV3 fill:#FF9800,stroke:#E65100,color:#fff
+  style HV4 fill:#FF9800,stroke:#E65100,color:#fff
+  style HV5 fill:#FF9800,stroke:#E65100,color:#fff
+  style D fill:#9C27B0,stroke:#6A1B9A,color:#fff
+  style P fill:#4CAF50,stroke:#2E7D32,color:#fff
+  style K fill:#2196F3,stroke:#1565C0,color:#fff
+```
 
 The moment disks are available, **all inputs converge**.
 
@@ -765,13 +774,13 @@ flowchart TB
     CBT --> PLAN
   end
 
-  META["plans + metadata (explicit, auditable)"]
+  META["plans + metadata<br/>explicit, auditable"]
 
   subgraph DP["DATA PLANE (move bytes)"]
     GOVCEXP["govc export.ovf / export.ova"]
-    OVFTOOL["ovftool (OVF/OVA export/import)"]
+    OVFTOOL["ovftool OVF/OVA export/import"]
     HTTP["HTTP /folder + Range"]
-    VDDK["VDDK (high-throughput disk reads)"]
+    VDDK["VDDK high-throughput disk reads"]
     SSH["SSH / SCP fallback"]
     RESUME["resume + verify + atomic publish"]
   end
@@ -782,7 +791,13 @@ flowchart TB
   HTTP --> RESUME
   VDDK --> RESUME
   SSH --> RESUME
-  V2V --> RESUME
+
+  style CP fill:#2196F3,stroke:#1565C0,color:#fff
+  style DP fill:#4CAF50,stroke:#2E7D32,color:#fff
+  style META fill:#9C27B0,stroke:#6A1B9A,color:#fff
+  style GOVC fill:#FF9800,stroke:#E65100,color:#fff
+  style PYVM fill:#FF9800,stroke:#E65100,color:#fff
+  style RESUME fill:#00BCD4,stroke:#006064,color:#fff
 ```
 
 **Rule**

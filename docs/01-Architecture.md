@@ -228,14 +228,14 @@ flowchart LR
     PLAN --> FIX[FIX<br/>Apply Patches]
     FIX --> CONVERT[CONVERT<br/>Format Transform]
     CONVERT --> VALIDATE[VALIDATE/TEST<br/>Boot Tests]
-    
-    style FETCH fill:#e1f5e1
-    style FLATTEN fill:#e3f2fd
-    style INSPECT fill:#fff3e0
-    style PLAN fill:#f3e5f5
-    style FIX fill:#ffebee
-    style CONVERT fill:#e0f2f1
-    style VALIDATE fill:#f1f8e9
+
+    style FETCH fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style FLATTEN fill:#2196F3,stroke:#1565C0,color:#fff
+    style INSPECT fill:#FF9800,stroke:#E65100,color:#fff
+    style PLAN fill:#9C27B0,stroke:#6A1B9A,color:#fff
+    style FIX fill:#F44336,stroke:#C62828,color:#fff
+    style CONVERT fill:#00BCD4,stroke:#006064,color:#fff
+    style VALIDATE fill:#8BC34A,stroke:#558B2F,color:#fff
 ```
 
 **Key Invariants:**

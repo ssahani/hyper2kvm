@@ -107,7 +107,7 @@ The vSphere integration follows these core principles:
 
 ```mermaid
 graph TB
-    subgraph "hyper2kvm vSphere Integration"
+    subgraph HV["hyper2kvm vSphere Integration"]
         CLI[VsphereMode.py<br/>CLI Entrypoint<br/>Sync w/ Threads]
         Engine[VMwareClient.py<br/>Reusable Engine<br/>Async-First]
         DataPlane[Data-Plane<br/>Bytes Movement]
@@ -115,7 +115,7 @@ graph TB
         CLI <--> Engine
         Engine <--> DataPlane
 
-        subgraph "Control-Plane"
+        subgraph CP["Control-Plane"]
             CP1[pyvmomi/pyVim]
             CP2[Connect/Session]
             CP3[DC/Host Cache]
@@ -125,18 +125,18 @@ graph TB
             CP7[DS Browsing]
         end
 
-        subgraph "Actions/Flags"
+        subgraph AF["Actions/Flags"]
             AF1[Wires to Options]
             AF2[Calls Engine]
         end
 
-        subgraph "Data-Plane Modes"
+        subgraph DP["Data-Plane Modes"]
             DP1[virt-v2v Export]
             DP2[HTTP Download]
             DP3[VDDK Disk Pull]
         end
 
-        subgraph "CBT Sync Workflow"
+        subgraph CBT["CBT Sync Workflow"]
             CBT1[1. Enable CBT]
             CBT2[2. Quiesced Snap]
             CBT3[3. Query Changes]
@@ -159,20 +159,31 @@ graph TB
         DataPlane --> DP2
         DataPlane --> DP3
     end
-```bash
+
+    style CLI fill:#FF9800,stroke:#E65100,color:#fff
+    style Engine fill:#2196F3,stroke:#1565C0,color:#fff
+    style DataPlane fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style CP fill:#9C27B0,stroke:#6A1B9A,color:#fff
+    style DP fill:#00BCD4,stroke:#006064,color:#fff
+    style CBT fill:#F44336,stroke:#C62828,color:#fff
+```
 
 ### Export Modes
 
 ```mermaid
 graph LR
-    subgraph "Export Mode Options via V2VExportOptions.export_mode"
-        V2V["v2v (Default)<br/>---<br/>✓ Converted Output<br/>✓ qcow2/raw Local<br/>✓ Uses virt-v2v<br/>✓ VDDK/SSH Transport"]
+    subgraph Modes["Export Mode Options via V2VExportOptions.export_mode"]
+        V2V["v2v Default<br/>━━━━━━━<br/>✓ Converted Output<br/>✓ qcow2/raw Local<br/>✓ Uses virt-v2v<br/>✓ VDDK/SSH Transport"]
 
-        Download["download_only<br/>---<br/>✓ Exact VM Folder<br/>✓ Byte-for-Byte<br/>✓ HTTPS /folder<br/>✓ Globs/Concurrency"]
+        Download["download_only<br/>━━━━━━━<br/>✓ Exact VM Folder<br/>✓ Byte-for-Byte<br/>✓ HTTPS /folder<br/>✓ Globs/Concurrency"]
 
-        VDDK["vddk_download<br/>---<br/>✓ Single Disk Raw<br/>✓ Fast VDDK Pull<br/>✓ No Conversion<br/>✓ Sector Reads"]
+        VDDK["vddk_download<br/>━━━━━━━<br/>✓ Single Disk Raw<br/>✓ Fast VDDK Pull<br/>✓ No Conversion<br/>✓ Sector Reads"]
     end
-```bash
+
+    style V2V fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style Download fill:#2196F3,stroke:#1565C0,color:#fff
+    style VDDK fill:#FF9800,stroke:#E65100,color:#fff
+```
 
 ### Export Flow
 
@@ -189,7 +200,18 @@ flowchart TD
     V2VExport --> Output1[Local qcow2/raw]
     DownloadOnly --> Output2[VM Folder Files]
     VDDKDownload --> Output3[Raw Disk Image]
-```bash
+
+    style User fill:#9C27B0,stroke:#6A1B9A,color:#fff
+    style VsphereMode fill:#FF9800,stroke:#E65100,color:#fff
+    style AsyncExport fill:#2196F3,stroke:#1565C0,color:#fff
+    style ModeCheck fill:#FFC107,stroke:#F57C00,color:#000
+    style V2VExport fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style DownloadOnly fill:#00BCD4,stroke:#006064,color:#fff
+    style VDDKDownload fill:#F44336,stroke:#C62828,color:#fff
+    style Output1 fill:#8BC34A,stroke:#558B2F,color:#fff
+    style Output2 fill:#8BC34A,stroke:#558B2F,color:#fff
+    style Output3 fill:#8BC34A,stroke:#558B2F,color:#fff
+```
 
 ## Detailed Architecture Breakdown
 ### Where pyvmomi Ends and Data-Plane Begins
