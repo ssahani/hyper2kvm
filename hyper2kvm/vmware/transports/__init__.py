@@ -12,26 +12,26 @@ This package provides various transport methods for downloading VM data:
 - ovftool_loader: ovftool binary loader
 - govc_common: Common govc utility functions
 - govc_export: govc-based export functionality
-- h2kvmctl_common: hyper2kvm-providers daemon integration (NEW)
+- hyperctl_common: hypersdk daemon integration (NEW)
 """
 
-# Try to import h2kvmctl support
+# Try to import hyperctl support
 try:
-    from .h2kvmctl_common import (
-        H2KVMCtlRunner,
-        create_h2kvmctl_runner,
-        export_vm_h2kvmctl,
+    from .hyperctl_common import (
+        HyperCtlRunner,
+        create_hyperctl_runner,
+        export_vm_hyperctl,
     )
-    H2KVMCTL_AVAILABLE = True
+    HYPERCTL_AVAILABLE = True
 except ImportError:
-    H2KVMCTL_AVAILABLE = False
-    H2KVMCtlRunner = None
-    create_h2kvmctl_runner = None
-    export_vm_h2kvmctl = None
+    HYPERCTL_AVAILABLE = False
+    HyperCtlRunner = None
+    create_hyperctl_runner = None
+    export_vm_hyperctl = None
 
 __all__ = [
-    "H2KVMCTL_AVAILABLE",
-    "H2KVMCtlRunner",
-    "create_h2kvmctl_runner",
-    "export_vm_h2kvmctl",
+    "HYPERCTL_AVAILABLE",
+    "HyperCtlRunner",
+    "create_hyperctl_runner",
+    "export_vm_hyperctl",
 ]
