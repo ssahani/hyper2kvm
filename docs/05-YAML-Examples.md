@@ -375,23 +375,53 @@ Use for pipelines: “drop VMDKs here → get qcow2 there”.
 
 ### Basic daemon watch
 
+Daemon mode uses **watchdog** to monitor a directory for new disk files and automatically processes them through the conversion pipeline.
+
+**Supported file types:**
+- `.vmdk` - VMware disks
+- `.ova`, `.ovf` - OVF archives
+- `.vhd`, `.vhdx` - Hyper-V disks
+- `.raw`, `.img` - Raw disk images
+- `.ami` - AWS AMI images
+
+**How it works:**
+1. Monitors `watch_dir` for new files using filesystem events
+2. When a file appears, queues it for processing
+3. Processes each file through the full conversion pipeline
+4. Archives completed files to `.processed/` subdirectory
+5. Moves failed files to `.errors/` subdirectory
+6. Runs continuously until stopped (Ctrl+C or SIGTERM)
+
 ```yaml
 command: daemon
 daemon: true
 
+# Directory to watch (will be created if missing)
 watch_dir: /srv/incoming-vmdk
+
+# Output directory for converted VMs
 output_dir: /srv/out
+
+# Working directory for temporary files
 workdir: /srv/out/work
 
+# Conversion options
 flatten: true
 out_format: qcow2
 compress: true
 compress_level: 6
 
+# Enable recovery mode for resumable conversions
 enable_recovery: true
+
+# Logging
 log_file: /var/log/hyper2kvm-daemon.log
 verbose: 1
-```yaml
+
+# Guest OS fixes (applied to all conversions)
+fstab_mode: stabilize-all
+regen_initramfs: true
+```
 
 ---
 
@@ -416,7 +446,7 @@ vc_password_env: VC_PASSWORD
 vc_insecure: true   # set false in real environments with trusted certs
 vc_port: 443
 json: true
-```yaml
+```
 
 ### List VM names (bulk)
 

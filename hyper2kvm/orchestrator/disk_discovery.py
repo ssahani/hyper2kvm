@@ -240,6 +240,11 @@ class DiskDiscovery:
             # Return empty - live-fix doesn't produce disks
             return [], None
 
+        elif cmd == "daemon":
+            # Daemon mode is handled by orchestrator, not DiskDiscovery
+            # Return empty - daemon mode doesn't use the normal disk discovery flow
+            return [], None
+
         else:
             U.die(self.logger, f"Unknown command: {cmd}", 1)
 

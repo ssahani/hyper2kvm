@@ -301,6 +301,17 @@ class Orchestrator:
 
         U.banner(self.logger, f"Mode: {self.args.cmd}")
 
+        # Handle daemon mode
+        if self.args.cmd == "daemon":
+            if not getattr(self.args, "watch_dir", None):
+                from ..core.exceptions import Fatal
+                raise Fatal(2, "Daemon mode requires --watch-dir or config: watch_dir")
+
+            from ..daemon.daemon_watcher import DaemonWatcher
+            watcher = DaemonWatcher(self.logger, self.args)
+            watcher.run()
+            return  # Daemon runs until stopped
+
         # Check if write operations needed
         write_actions = (
             (not getattr(self.args, "dry_run", False))
@@ -319,7 +330,7 @@ class Orchestrator:
 
         # Discover disks
         temp_dir = self._discover_disks(out_root)
-        if temp_dir is None and getattr(self.args, "cmd", None) in ("live-fix", "vsphere", "azure"):
+        if temp_dir is None and getattr(self.args, "cmd", None) in ("live-fix", "vsphere", "azure", "daemon"):
             if getattr(self.args, "cmd", None) == "vsphere" and self.disks:
                 Log.trace(self.logger, "🌐 vsphere: continuing pipeline with exported disks=%d", len(self.disks))
             elif getattr(self.args, "cmd", None) == "azure" and self.disks:
