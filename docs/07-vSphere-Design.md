@@ -353,5 +353,5 @@ Continue your migration journey:
 
 ## Getting Help
 
-Found an issue? [Report it on GitHub](https://github.com/hyper2kvm/hyper2kvm/issues)
+Found an issue? [Report it on GitHub](https://github.com/ssahani/hyper2kvm/issues)
 

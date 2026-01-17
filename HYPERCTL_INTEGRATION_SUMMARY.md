@@ -243,7 +243,7 @@ else:
 
 - 📖 [HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) - Full integration guide
 - 📝 [export_with_hyperctl.py](examples/export_with_hyperctl.py) - Example script
-- 🔗 [hypersdk](https://github.com/hyper2kvm/hypersdk) - Provider repository
+- 🔗 [hypersdk](https://github.com/ssahani/hypersdk) - Provider repository
 
 ## ✅ Summary
 

@@ -224,7 +224,7 @@ set-priority    - Change job priority
 ```ini
 [Unit]
 Description=Hyper2KVM Conversion Daemon
-Documentation=https://github.com/hyper2kvm/hyper2kvm
+Documentation=https://github.com/ssahani/hyper2kvm
 After=network.target libvirtd.service
 Wants=libvirtd.service
 
@@ -272,7 +272,7 @@ WantedBy=multi-user.target
 ```ini
 [Unit]
 Description=Hyper2KVM Export Daemon (Go)
-Documentation=https://github.com/hyper2kvm/hyper2kvm
+Documentation=https://github.com/ssahani/hyper2kvm
 After=network-online.target
 Wants=network-online.target hyper2kvm-daemon.service
 
@@ -890,7 +890,7 @@ restorecon -Rv /var/lib/hyper2kvm/
 sudo pip3 install hyper2kvm
 
 # Go daemon
-sudo wget https://github.com/hyper2kvm/hypervisord/releases/latest/download/hypervisord
+sudo wget https://github.com/ssahani/hypervisord/releases/latest/download/hypervisord
 sudo chmod +x hypervisord
 sudo mv hypervisord /usr/local/bin/
 

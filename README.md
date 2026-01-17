@@ -4,9 +4,9 @@
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/hyper2kvm)](https://pypi.org/project/hyper2kvm/)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![GitHub stars](https://img.shields.io/github/stars/hyper2kvm/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/hyper2kvm/hyper2kvm/stargazers/)
-[![CI](https://github.com/hyper2kvm/hyper2kvm/workflows/tests/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions)
-[![Security](https://github.com/hyper2kvm/hyper2kvm/workflows/security/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions)
+[![GitHub stars](https://img.shields.io/github/stars/hyper2kvm/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/ssahani/hyper2kvm/stargazers/)
+[![CI](https://github.com/ssahani/hyper2kvm/workflows/tests/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
+[![Security](https://github.com/ssahani/hyper2kvm/workflows/security/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
 
 **Production-Grade Hypervisor to KVM/QEMU Migration Toolkit** ⚡
 
@@ -111,7 +111,7 @@ For more examples, see [docs/QUICKSTART.md](docs/03-Quick-Start.md) and [example
 
 ### High-Performance vSphere Exports (Optional) ⚡
 
-For **3-5x faster** VM exports from vSphere/ESXi, install the optional [hypersdk](https://github.com/hyper2kvm/hypersdk) daemon:
+For **3-5x faster** VM exports from vSphere/ESXi, install the optional [hypersdk](https://github.com/ssahani/hypersdk) daemon:
 
 ```bash
 # Install hypersdk (Fedora/RHEL)
@@ -120,7 +120,7 @@ sudo systemctl start hypervisord
 sudo systemctl enable hypervisord
 
 # Or from source
-git clone https://github.com/hyper2kvm/hypersdk
+git clone https://github.com/ssahani/hypersdk
 cd hypersdk
 go build -o hypervisord ./cmd/hypervisord
 sudo ./install.sh
@@ -891,7 +891,7 @@ We welcome contributions! Here's how to get started:
 
 ```bash
 # Clone the repository
-git clone https://github.com/hyper2kvm/hyper2kvm.git
+git clone https://github.com/ssahani/hyper2kvm.git
 cd hyper2kvm
 
 # Install development dependencies
@@ -963,7 +963,7 @@ See [LICENSE](LICENSE) for full license text.
 ### Professional Support
 
 For enterprise support, consulting, or custom development:
-- Open a [support request issue](https://github.com/hyper2kvm/hyper2kvm/issues/new?template=support.md)
+- Open a [support request issue](https://github.com/ssahani/hyper2kvm/issues/new?template=support.md)
 - Contact the maintainers directly
 
 ---
@@ -976,10 +976,10 @@ hyper2kvm builds on excellent open-source projects:
 - **[QEMU](https://www.qemu.org/)** - Disk format conversion and virtualization
 - **[govc](https://github.com/vmware/govmomi/tree/master/govc)** - vSphere CLI
 - **[pyvmomi](https://github.com/vmware/pyvmomi)** - VMware vSphere API Python SDK
-- **[hypersdk](https://github.com/hyper2kvm/hypersdk)** - High-performance multi-cloud provider daemon (optional, 3-5x faster exports)
+- **[hypersdk](https://github.com/ssahani/hypersdk)** - High-performance multi-cloud provider daemon (optional, 3-5x faster exports)
 - **[libvirt](https://libvirt.org/)** - Virtualization management
 
-Special thanks to all [contributors](https://github.com/hyper2kvm/hyper2kvm/graphs/contributors).
+Special thanks to all [contributors](https://github.com/ssahani/hyper2kvm/graphs/contributors).
 
 ---
 
@@ -987,9 +987,9 @@ Special thanks to all [contributors](https://github.com/hyper2kvm/hyper2kvm/grap
 
 **Current Status:** Active development
 
-- **Latest Release:** Check [releases](https://github.com/hyper2kvm/hyper2kvm/releases)
-- **Build Status:** [![CI](https://github.com/hyper2kvm/hyper2kvm/workflows/tests/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions)
-- **Security:** [![Security](https://github.com/hyper2kvm/hyper2kvm/workflows/security/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions)
+- **Latest Release:** Check [releases](https://github.com/ssahani/hyper2kvm/releases)
+- **Build Status:** [![CI](https://github.com/ssahani/hyper2kvm/workflows/tests/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
+- **Security:** [![Security](https://github.com/ssahani/hyper2kvm/workflows/security/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
 
 ---
 

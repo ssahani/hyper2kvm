@@ -257,8 +257,8 @@ See the main [README](../README.md) for contribution guidelines.
 
 ## 📧 Support
 
-- **Issues:** [GitHub Issues](https://github.com/hyper2kvm/hyper2kvm/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/hyper2kvm/hyper2kvm/discussions)
+- **Issues:** [GitHub Issues](https://github.com/ssahani/hyper2kvm/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/ssahani/hyper2kvm/discussions)
 - **Email:** ssahani@redhat.com
 
 ---

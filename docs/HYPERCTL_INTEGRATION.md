@@ -30,7 +30,7 @@ sudo systemctl enable hypervisord
 ### Option 2: From Source
 
 ```bash
-git clone https://github.com/hyper2kvm/hypersdk
+git clone https://github.com/ssahani/hypersdk
 cd hypersdk
 go build -o hypervisord ./cmd/hypervisord
 go build -o hyperctl ./cmd/hyperctl
@@ -41,8 +41,8 @@ sudo ./install.sh
 
 ```bash
 # Download latest release
-wget https://github.com/hyper2kvm/hypersdk/releases/latest/download/hypervisord
-wget https://github.com/hyper2kvm/hypersdk/releases/latest/download/hyperctl
+wget https://github.com/ssahani/hypersdk/releases/latest/download/hypervisord
+wget https://github.com/ssahani/hypersdk/releases/latest/download/hyperctl
 
 # Install
 chmod +x hypervisord hyperctl
@@ -313,9 +313,9 @@ sudo dnf install hypersdk
 
 ## See Also
 
-- [hypersdk Repository](https://github.com/hyper2kvm/hypersdk)
+- [hypersdk Repository](https://github.com/ssahani/hypersdk)
 - [Example: export_with_hyperctl.py](../examples/export_with_hyperctl.py)
-- [REST API Documentation](https://github.com/hyper2kvm/hypersdk/blob/main/docs/API.md)
+- [REST API Documentation](https://github.com/ssahani/hypersdk/blob/main/docs/API.md)
 
 ---
 
