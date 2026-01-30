@@ -3511,6 +3511,70 @@ class VMCraft:
         result = run_sudo(self.logger, chroot_cmd, check=True, capture=True, failure_log_level=logging.DEBUG)
         return result.stdout
 
+    def command_with_mounts(self, cmd: list[str], quiet: bool = False) -> str:
+        """
+        Execute command in guest filesystem with /proc, /dev, /sys bind-mounted.
+
+        This provides a more complete chroot environment needed by bootloader tools
+        like grub2-mkconfig, which require access to /proc/self/mountinfo and /dev.
+
+        Args:
+            cmd: Command to execute inside chroot
+            quiet: If True, log failures at DEBUG level only
+
+        Returns:
+            Command stdout
+
+        Raises:
+            RuntimeError: If not launched or if command fails (when not quiet)
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        mount_root = Path(self._mount_root)
+        mounts_to_cleanup = []
+
+        try:
+            # Set up bind mounts for /proc, /dev, /sys
+            for mount_point in ["proc", "dev", "sys"]:
+                target = mount_root / mount_point
+
+                # Create mount point if it doesn't exist
+                if not target.exists():
+                    target.mkdir(parents=True, exist_ok=True)
+
+                # Check if already mounted (avoid double-mount)
+                check_cmd = ["mountpoint", "-q", str(target)]
+                check_result = run_sudo(self.logger, check_cmd, check=False, capture=True)
+
+                if check_result.returncode != 0:  # Not mounted
+                    # Bind mount
+                    mount_cmd = ["mount", "--bind", f"/{mount_point}", str(target)]
+                    run_sudo(self.logger, mount_cmd, check=True, capture=True)
+                    mounts_to_cleanup.append(str(target))
+                    self.logger.debug(f"Bind-mounted /{mount_point} to {target}")
+
+            # Execute command in chroot
+            chroot_cmd = ["chroot", str(self._mount_root)] + cmd
+            if quiet:
+                result = run_sudo(self.logger, chroot_cmd, check=True, capture=True,
+                                failure_log_level=logging.DEBUG)
+            else:
+                result = run_sudo(self.logger, chroot_cmd, check=True, capture=True)
+
+            return result.stdout
+
+        finally:
+            # Clean up bind mounts in reverse order
+            for mount_path in reversed(mounts_to_cleanup):
+                try:
+                    umount_cmd = ["umount", mount_path]
+                    run_sudo(self.logger, umount_cmd, check=False, capture=True,
+                           failure_log_level=logging.DEBUG)
+                    self.logger.debug(f"Unmounted {mount_path}")
+                except Exception as e:
+                    self.logger.debug(f"Failed to unmount {mount_path}: {e}")
+
     # Windows-specific operations (delegate to Windows modules)
 
     def win_inject_driver(self, driver_path: str, inf_file: str | None = None) -> dict[str, Any]:

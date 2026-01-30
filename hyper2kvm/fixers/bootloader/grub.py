@@ -132,21 +132,40 @@ def _glob(g: guestfs.GuestFS, pattern: str) -> list[str]:
 def _run_guestfs_cmd(self, g: guestfs.GuestFS, cmd: list[str]) -> tuple[bool, str]:
     """
     Best-effort command execution via libguestfs appliance.
-    Not a perfect chroot, but works for many boot tools.
 
-    Note: These commands often fail in offline/chroot environments (e.g., grub2-mkconfig
-    can't access /proc). Failures are logged at DEBUG level only via command_quiet.
+    For bootloader commands (grub2-mkconfig, update-grub, etc.), uses command_with_mounts
+    to provide /proc, /dev, /sys access. Falls back to command_quiet for other commands.
+
+    Note: Bootloader commands need /proc/self/mountinfo and /dev to work properly.
+    Failures are logged at DEBUG level only.
     """
     try:
         _log_info(self, f"Running (guestfs): {' '.join(cmd)}")
-        # Use command_quiet if available (VMCraft) to suppress error logging for expected failures
+
+        # Bootloader commands that need /proc, /dev, /sys mounted
+        bootloader_commands = [
+            "grub2-mkconfig", "grub-mkconfig", "update-grub", "update-grub2",
+            "grub2-install", "grub-install", "grub2-probe", "grub-probe"
+        ]
+
+        # Check if this is a bootloader command
+        is_bootloader_cmd = any(cmd[0] == bc for bc in bootloader_commands) if cmd else False
+
+        # Try command_with_mounts for bootloader commands (VMCraft only)
+        if is_bootloader_cmd and hasattr(g, 'command_with_mounts'):
+            _log_debug(self, f"Using enhanced chroot with bind mounts for {cmd[0]}")
+            out = g.command_with_mounts(cmd, quiet=True)
+            return True, U.to_text(out)
+
+        # Fall back to standard command_quiet
         if hasattr(g, 'command_quiet'):
             out = g.command_quiet(cmd)
         else:
             out = g.command(cmd)
         return True, U.to_text(out)
+
     except Exception as e:
-        # Failure is expected in offline mode; already logged at DEBUG level by command_quiet
+        # Failure is expected in offline mode; already logged at DEBUG level
         return False, str(e)
 
 
