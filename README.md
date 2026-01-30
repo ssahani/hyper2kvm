@@ -169,6 +169,10 @@ regen_initramfs: true
 
 Run:
 ```bash
+# Using primary command (recommended)
+h2kvmctl --config live-fix.yaml
+
+# Or using legacy command
 hyper2kvm --config live-fix.yaml
 ```
 
@@ -194,6 +198,10 @@ compress: true
 
 Run:
 ```bash
+# Using primary command (recommended)
+h2kvmctl --config db-migration.yaml
+
+# Or using legacy command
 hyper2kvm --config db-migration.yaml
 ```
 
@@ -231,6 +239,10 @@ timeout: 300
 
 Run with automatic testing:
 ```bash
+# Using primary command (recommended)
+h2kvmctl --config migration-with-test.yaml
+
+# Or using legacy command
 hyper2kvm --config migration-with-test.yaml
 ```
 
@@ -305,6 +317,10 @@ Create `migrations.json`:
 
 Run batch:
 ```bash
+# Using primary command (recommended)
+h2kvmctl --config batch.yaml
+
+# Or using legacy command
 hyper2kvm --config batch.yaml
 ```
 
@@ -371,7 +387,8 @@ hyper2kvm --config batch.yaml
 - **[Backup Integration API](docs/api/backup-api.md)** - Backup restore and DR testing
 
 ### Guides
-- **[CLI Reference](docs/guides/cli/reference.md)** - Command-line documentation
+- **[h2kvmctl Guide](docs/guides/cli/h2kvmctl-guide.md)** - Primary CLI command (kubectl-style)
+- **[CLI Reference](docs/guides/cli/reference.md)** - Complete command-line documentation
 - **[Batch Migration](docs/guides/migration/batch-features.md)** - Multi-VM migration
 - **[Security Best Practices](docs/guides/security-best-practices.md)** - Secure workflows
 - **[Troubleshooting](docs/guides/troubleshooting.md)** - Diagnose and fix issues
@@ -464,7 +481,8 @@ ruff check hyper2kvm/
 
 ### Example 1: Local VMDK Migration
 ```bash
-hyper2kvm --cmd local \
+# Using h2kvmctl (recommended)
+h2kvmctl --cmd local \
     --vmdk /vmware/server.vmdk \
     --output-dir /kvm \
     --to-output server.qcow2 \
@@ -476,7 +494,8 @@ hyper2kvm --cmd local \
 
 ### Example 2: Remote Fetch from ESXi
 ```bash
-hyper2kvm --cmd fetch-and-fix \
+# Using h2kvmctl (recommended)
+h2kvmctl --cmd fetch-and-fix \
     --host 192.168.1.100 \
     --user root \
     --remote /vmfs/volumes/datastore1/vm/vm.vmdk \
@@ -487,7 +506,8 @@ hyper2kvm --cmd fetch-and-fix \
 
 ### Example 3: OVA Extraction
 ```bash
-hyper2kvm --cmd ova \
+# Using h2kvmctl (recommended)
+h2kvmctl --cmd ova \
     --ova /downloads/appliance.ova \
     --output-dir /kvm \
     --to-output appliance.qcow2 \
@@ -496,12 +516,15 @@ hyper2kvm --cmd ova \
 
 ### Example 4: Live SSH Fix
 ```bash
-hyper2kvm --cmd live-fix \
+# Using h2kvmctl (recommended)
+h2kvmctl --cmd live-fix \
     --host 192.168.1.50 \
     --user root \
     --fstab-mode stabilize-all \
     --regen-initramfs
 ```
+
+> **Note:** All examples work identically with `hyper2kvm` command for backwards compatibility.
 
 **More Examples:** [Migration Recipes](docs/recipes/01-common-scenarios.md)
 
