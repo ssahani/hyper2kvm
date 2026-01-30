@@ -425,10 +425,22 @@ class VMwareClient:
             raise VMwareError("pyvmomi not installed. Install: pip install pyvmomi")
 
     def _ssl_context(self) -> ssl.SSLContext:
+        """
+        Create SSL context for vSphere connections.
+
+        SECURITY WARNING: When insecure=True, TLS certificate verification is completely
+        disabled, making connections vulnerable to Man-in-the-Middle attacks. Only use
+        insecure mode in trusted network environments with self-signed certificates.
+        """
         if self.insecure:
+            self.logger.warning(
+                "TLS certificate verification is DISABLED (insecure=True). "
+                "Connections are vulnerable to Man-in-the-Middle attacks. "
+                "Only use this in trusted environments with self-signed certificates."
+            )
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
+            ctx.check_hostname = False  # SECURITY: Disabled for self-signed cert support
+            ctx.verify_mode = ssl.CERT_NONE  # SECURITY: Disabled for self-signed cert support
             return ctx
         return ssl.create_default_context()
 

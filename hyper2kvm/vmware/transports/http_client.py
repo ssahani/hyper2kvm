@@ -224,8 +224,20 @@ class HTTPDownloadClient:
         return self._session_pool
 
     def _create_session(self) -> Any:
+        """
+        Create HTTP session for datastore downloads.
+
+        SECURITY WARNING: When insecure=True, TLS certificate verification is disabled.
+        """
         session = self._http_client.Session()
-        session.verify = not self.insecure
+        session.verify = not self.insecure  # SECURITY: Controlled by insecure flag
+
+        if self.insecure:
+            self.logger.warning(
+                "HTTP client TLS verification is DISABLED (insecure=True). "
+                "Downloads are vulnerable to Man-in-the-Middle attacks. "
+                "Only use this in trusted environments with self-signed certificates."
+            )
 
         adapter = self._http_client.adapters.HTTPAdapter(
             pool_connections=10,

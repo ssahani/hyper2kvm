@@ -129,10 +129,22 @@ def normalize_thumbprint(tp: str) -> str:
 
 
 def compute_server_thumbprint_sha1(host: str, port: int = 443, timeout: float = 10.0) -> str:
-    """Fetch the server certificate (DER) and return SHA1 thumbprint (colon-separated)."""
+    """
+    Fetch the server certificate (DER) and return SHA1 thumbprint (colon-separated).
+
+    SECURITY NOTE: This function intentionally disables TLS certificate verification
+    because it's used specifically to FETCH the certificate for thumbprint extraction.
+    This is a chicken-and-egg scenario: you need the cert to verify, but you're trying
+    to get the cert to compute its thumbprint for later verification.
+
+    This function should ONLY be used for thumbprint extraction, NOT for data transfer.
+    The computed thumbprint should then be used for proper certificate pinning in
+    subsequent connections.
+    """
+    # SECURITY: Disabled verification is intentional for certificate extraction only
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    ctx.check_hostname = False  # Required to fetch cert without prior verification
+    ctx.verify_mode = ssl.CERT_NONE  # Required to fetch cert without prior verification
     with socket.create_connection((host, port), timeout=timeout) as sock:
         with ctx.wrap_socket(sock, server_hostname=host) as ssock:
             der = ssock.getpeercert(binary_form=True)
@@ -144,11 +156,15 @@ def _peek_tls_cert_sha1(host: str, port: int, timeout: float) -> Tuple[Optional[
     """
     Best-effort: fetch peer cert and return (sha1_thumbprint, subject_str).
     Returns (None, None) on failure.
+
+    SECURITY NOTE: This function intentionally disables TLS certificate verification
+    for certificate inspection purposes only. Do not use for data transfer.
     """
     try:
+        # SECURITY: Disabled verification is intentional for certificate inspection only
         ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        ctx.check_hostname = False  # Required to fetch cert for inspection
+        ctx.verify_mode = ssl.CERT_NONE  # Required to fetch cert for inspection
         with socket.create_connection((host, port), timeout=timeout) as sock:
             with ctx.wrap_socket(sock, server_hostname=host) as ssock:
                 der = ssock.getpeercert(binary_form=True)
