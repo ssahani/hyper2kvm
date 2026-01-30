@@ -81,6 +81,37 @@ class TestSpecConverter(unittest.TestCase):
         self.assertEqual(new_spec, "UUID=12345678-1234-1234-1234-123456789abc")
         self.assertIn("mapped", reason)
 
+    def test_bypath_fails_without_root_dev_and_realpath(self):
+        """
+        REGRESSION TEST: Documents the bug that was fixed in commit 3a545d3.
+
+        When root_dev=None and g.realpath() fails (common in offline mounts),
+        by-path entries CANNOT be converted and are returned unchanged.
+
+        This is the bug that happened when:
+        1. SpecConverter initialized with root_dev=None
+        2. Root detected but spec_converter.root_dev never updated
+        3. rewrite_fstab() called → by-path entries unchanged
+
+        This test ensures we understand the failure mode.
+        """
+        # Remove realpath mapping to simulate g.realpath() failure
+        self.fake_g.realpath_map = {}
+
+        converter = SpecConverter(
+            fstab_mode=FstabMode.STABILIZE_ALL,
+            root_dev=None  # BUG: root_dev not set!
+        )
+
+        spec = "/dev/disk/by-path/pci-0000:00:10.0-scsi-0:0:0:0-part2"
+
+        # Convert the spec
+        new_spec, reason = converter.convert_spec(self.fake_g, spec)
+
+        # WITHOUT root_dev, inference fails and spec is unchanged
+        self.assertEqual(new_spec, spec)  # Returned unchanged!
+        self.assertEqual(reason, "by-path-unresolved")
+
     def test_bypath_converted_to_uuid_in_stabilize_all_mode(self):
         """
         REGRESSION TEST: by-path entries MUST be converted to UUID.
