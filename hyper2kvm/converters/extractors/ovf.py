@@ -332,7 +332,7 @@ class OVF:
 
             last_bucket = {"b": -1}
 
-            def progress_callback(progress: float) -> None:
+            def progress_callback(progress: float, idx=idx, disk=disk, last_bucket=last_bucket) -> None:
                 b = int(progress * 20)  # 0..20
                 if b != last_bucket["b"]:
                     last_bucket["b"] = b

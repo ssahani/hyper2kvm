@@ -1169,7 +1169,7 @@ class ValidationSuite:
             # choose mode
             run_sub = bool(spec.run_in_process) or (use_procs and spec.timeout_s is not None)
 
-            def exec_once() -> CheckResult:
+            def exec_once(spec=spec, run_sub=run_sub) -> CheckResult:
                 if run_sub:
                     return self._run_check_subprocess_once(
                         spec,
@@ -1278,7 +1278,7 @@ class ValidationSuite:
                     # run sequentially (non-parallel-safe) now
                     run_sub = bool(spec.run_in_process) or (use_procs and spec.timeout_s is not None)
 
-                    def exec_once2() -> CheckResult:
+                    def exec_once2(spec=spec, run_sub=run_sub) -> CheckResult:
                         if run_sub:
                             return self._run_check_subprocess_once(
                                 spec,
@@ -1325,7 +1325,7 @@ class ValidationSuite:
                     for spec in candidates:
                         run_sub = bool(spec.run_in_process) or (use_procs and spec.timeout_s is not None)
 
-                        def exec_once3() -> CheckResult:
+                        def exec_once3(spec=spec, run_sub=run_sub) -> CheckResult:
                             if run_sub:
                                 return self._run_check_subprocess_once(
                                     spec,
