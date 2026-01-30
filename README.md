@@ -375,38 +375,86 @@ hyper2kvm --config batch.yaml
 
 ## Documentation 📚
 
-### New to Hyper2KVM?
-- **[Documentation Hub](docs/index.md)** - Start here!
-- **[How Hyper2KVM Works](docs/HOW_HYPER2KVM_WORKS.md)** - Architecture and workflows
-- **[Beginner Tutorial](docs/tutorials/01-beginner-migration.md)** - Your first migration (30 min)
-- **[Installation Guide](docs/getting-started/01-Installation.md)** - Detailed setup
+### ⚡ Quick Access & Decision Tools
+- **[Quick Reference Card](docs/QUICK_REFERENCE.md)** 🌟 - One-page printable command reference
+- **[Migration Decision Tree](docs/MIGRATION_DECISION_TREE.md)** 🌳 - Choose the right migration approach
+- **[Comparison Matrix](docs/COMPARISON_MATRIX.md)** 📊 - Compare methods, formats, and options
+- **[Troubleshooting Flowchart](docs/TROUBLESHOOTING_FLOWCHART.md)** 🔧 - Diagnose and fix issues
+- **[Navigation Map](docs/NAVIGATION_MAP.md)** 🗺️ - Visual guide to finding documentation
+- **[Glossary](docs/GLOSSARY.md)** 🌟 - Complete terminology and acronyms (150+ terms)
+- **[FAQ](docs/FAQ.md)** 🌟 - Frequently asked questions (25+ Q&A)
 
-### Tutorials
+### 📋 Operational Guides (Ready to Use!)
+- **[Migration Checklist](docs/MIGRATION_CHECKLIST.md)** ✅ - Pre/during/post-migration checklists
+- **[Pre-Flight Validation](docs/PRE_FLIGHT_VALIDATION.md)** 🔍 - Verify system readiness (with automated script)
+- **[Migration Runbook Template](docs/MIGRATION_RUNBOOK_TEMPLATE.md)** 📖 - Customizable migration runbook
+- **[Best Practices](docs/BEST_PRACTICES.md)** ⭐ - Proven practices and anti-patterns to avoid
+- **[Examples Library](docs/EXAMPLES_LIBRARY.md)** 📚 - 23+ copy-paste ready configuration examples
+- **[Automation Scripts](docs/AUTOMATION_SCRIPTS.md)** 🤖 - Production-ready automation toolkit (10 scripts)
+- **[Monitoring Guide](docs/MONITORING_GUIDE.md)** 📈 - Monitor and observe migrated VMs in production
+
+### 📖 Start Here
+- **[Documentation Hub](docs/index.md)** ⭐ - Complete documentation index
+- **[Installation Guide](docs/getting-started/01-Installation.md)** - Get started in 5 minutes
+- **[Quick Start](docs/getting-started/02-Quick-Start.md)** - Your first migration
+- **[Beginner Tutorial](docs/tutorials/01-beginner-migration.md)** - Step-by-step walkthrough
+
+### 🎓 Tutorials (By Level)
 - **[Beginner (0-2 hours)](docs/tutorials/01-beginner-migration.md)** - First migration walkthrough
 - **[Intermediate (2-8 hours)](docs/tutorials/02-intermediate-workflows.md)** - Batch migration & automation
 - **[Advanced (8+ hours)](docs/tutorials/03-advanced-features.md)** - Live migration, DR testing
 - **[Enterprise](docs/tutorials/04-enterprise-deployment.md)** - Production deployment
 
-### Migration Recipes
-- **[Common Scenarios](docs/recipes/01-common-scenarios.md)** - 10 real-world migration patterns
-- **[OS-Specific](docs/recipes/02-os-specific.md)** - Windows, Linux, BSD migrations
-- **[Application-Specific](docs/recipes/03-application-specific.md)** - Database, web server, AD migrations
-- **[Troubleshooting](docs/recipes/04-troubleshooting.md)** - Common issues and solutions
+### 🍳 Migration Recipes
+- **[Common Scenarios](docs/recipes/01-common-scenarios.md)** - Real-world migration patterns
+- **[Migration Cookbook](docs/guides/cookbook.md)** - Quick recipes for common tasks
 
-### API Reference
-- **[VMCraft API](docs/api/vmcraft-api.md)** - 480+ guest manipulation methods
-- **[Validation API](docs/api/validation-api.md)** - Post-migration validation
-- **[Rollback API](docs/api/rollback-api.md)** - Rollback and recovery
-- **[CLI API](docs/api/cli-api.md)** - Interactive wizard and configuration
-- **[Live Migration API](docs/api/live-migration-api.md)** - Live migration with HyperSDK
-- **[Backup Integration API](docs/api/backup-api.md)** - Backup restore and DR testing
-
-### Guides
-- **[h2kvmctl Guide](docs/guides/cli/h2kvmctl-guide.md)** - Primary CLI command (kubectl-style)
+### 🛠️ User Guides
 - **[CLI Reference](docs/guides/cli/reference.md)** - Complete command-line documentation
+- **[h2kvmctl Guide](docs/guides/cli/h2kvmctl-guide.md)** - Worker job control CLI
 - **[Batch Migration](docs/guides/migration/batch-features.md)** - Multi-VM migration
 - **[Security Best Practices](docs/guides/security-best-practices.md)** - Secure workflows
 - **[Troubleshooting](docs/guides/troubleshooting.md)** - Diagnose and fix issues
+
+### 🚢 Deployment & Operations
+- **[Production Deployment](docs/deployment/PRODUCTION_DEPLOYMENT_GUIDE.md)** - Enterprise deployment
+- **[OpenShift Guide](docs/deployment/openshift-deployment-guide.md)** - OpenShift Container Platform
+- **[OpenShift Quickstart](docs/deployment/openshift/OPENSHIFT_QUICKSTART.md)** - Get started in 5 minutes
+- **[Kubernetes Integration](docs/deployment/KUBERNETES_INTEGRATION.md)** - Native Kubernetes
+- **[Container Deployment](docs/deployment/container-deployment-guide.md)** - Docker/Podman
+- **[Deployment Index](docs/deployment/README.md)** - All deployment guides
+
+### 🔄 Worker Protocol & Job Management
+- **[Worker Protocol Quickstart](docs/worker/QUICKSTART.md)** - Get started quickly
+- **[Protocol Specification](docs/worker/PROTOCOL_SPEC.md)** - Complete reference
+- **[REST API](docs/worker/REST_API.md)** - HTTP API documentation
+- **[Worker Index](docs/worker/README.md)** - Complete worker documentation
+
+### 🔧 Features & Capabilities
+- **[VMCraft Complete Guide](docs/features/vmcraft/complete-guide.md)** - Native VM manipulation
+- **[VMDK Inspector](docs/features/vmdk-inspector.md)** - Analyze VMDK files
+- **[XFS UUID Regeneration](docs/features/xfs-uuid-regeneration.md)** - Fix cloned VMs
+- **[fstab Stabilization](docs/features/fstab-stabilization.md)** - Automatic fstab repair
+- **[Windows Support](docs/os-support/windows/guide.md)** - Windows migration
+- **[Features Index](docs/features/README.md)** - All features
+
+### 📖 API Reference
+- **[VMCraft API](docs/reference/api/vmcraft.md)** - 480+ guest manipulation methods
+- **[API Reference](docs/reference/api/API-Reference.md)** - Comprehensive API docs
+- **[Library API](docs/reference/api/library-api.md)** - Python library usage
+
+### 🔬 Test Results & Validation
+- **[Test Results](docs/test-results/TEST_RESULTS.md)** - Comprehensive test suite
+- **[CentOS Migration Success](docs/test-results/centos9-migration-success.md)** - CentOS 9 results
+- **[OpenShift Test Summary](docs/test-results/OPENSHIFT_TEST_SUMMARY.md)** - OpenShift testing
+- **[Test Results Index](docs/test-results/README.md)** - All test results
+
+### 🖥️ OS-Specific Guides
+- **[Windows Migration](docs/os-support/windows/guide.md)** - Windows VMs
+- **[RHEL/CentOS](docs/os-support/rhel-10.md)** - Red Hat Enterprise Linux
+- **[Ubuntu](docs/os-support/ubuntu-2404.md)** - Ubuntu/Debian systems
+- **[SUSE](docs/os-support/suse.md)** - openSUSE and SLES
+- **[Photon OS](docs/os-support/photon-os.md)** - VMware Photon OS
 
 ---
 

@@ -1,151 +1,350 @@
 # Hyper2KVM Tutorials
 
-Step-by-step tutorials for mastering VM migration with Hyper2KVM, from beginner to enterprise deployment.
-
----
+Step-by-step tutorials for learning Hyper2KVM, from beginner to enterprise deployment.
 
 ## Learning Path
 
-### 🌱 Beginner (0-2 hours)
-**Start here if you're new to Hyper2KVM**
+Follow these tutorials in order for the best learning experience:
 
-- **[01. Your First VM Migration](01-beginner-migration.md)** (30-45 min)
-  - Install Hyper2KVM and dependencies
-  - Migrate a Windows Server from Hyper-V to KVM
-  - Understand automatic fixes (bootloader, network, storage)
-  - Validate the migrated VM
-  - Import to libvirt and verify functionality
+### 🟢 Level 1: Beginner (0-2 hours)
+**[01 - Beginner Migration](01-beginner-migration.md)**
 
-### 🌿 Intermediate (2-8 hours)
-**Continue here after completing beginner tutorial**
+Your first VM migration with detailed explanations.
 
-- **[02. Batch Migration & Automation](02-intermediate-workflows.md)** (1-2 hours)
-  - Execute batch migrations of 10+ VMs
-  - Create reusable YAML configurations
-  - Automate workflows with cron/CI/CD
-  - Monitor migration progress in real-time
-  - Generate compliance reports
+**Prerequisites**: None - start here!
 
-### 🌳 Advanced (8+ hours)
-**Master advanced features and complex scenarios**
+**What you'll learn:**
+- Installing Hyper2KVM
+- Understanding YAML configuration
+- Running your first migration
+- Importing to libvirt
+- Verifying the migrated VM
 
-- **[03. Advanced Features](03-advanced-features.md)** (2-3 hours)
-  - Live migration with <5s downtime using HyperSDK
-  - Database-aware migrations (PostgreSQL, MySQL)
-  - Container extraction (VM → Kubernetes)
-  - Backup integration and DR testing
-  - Rollback framework for failure recovery
+**Time**: 1-2 hours  
+**Difficulty**: ⭐ Easy
 
-### 🏢 Enterprise (Full deployment knowledge)
-**Production deployment and best practices**
+---
 
-- **[04. Enterprise Deployment](04-enterprise-deployment.md)** (4+ hours)
-  - Production architecture design
-  - Security best practices
-  - Compliance and audit requirements
-  - High-availability considerations
-  - Monitoring and alerting setup
-  - Disaster recovery planning
+### 🟡 Level 2: Intermediate (2-8 hours)
+**[02 - Intermediate Workflows](02-intermediate-workflows.md)**
+
+Batch migrations, automation, and advanced workflows.
+
+**Prerequisites**: Complete beginner tutorial
+
+**What you'll learn:**
+- Batch migration with manifests
+- Automating migrations with scripts
+- Using different input formats (OVA, OVF, VHD)
+- Remote fetch from ESXi
+- Migration validation
+- Rollback procedures
+
+**Time**: 4-8 hours  
+**Difficulty**: ⭐⭐ Moderate
+
+---
+
+### 🟠 Level 3: Advanced (8+ hours)
+**[03 - Advanced Features](03-advanced-features.md)**
+
+Live migration, DR testing, and database-aware migrations.
+
+**Prerequisites**: Complete intermediate tutorial
+
+**What you'll learn:**
+- Live migration techniques
+- Database server migration
+- DR testing workflows
+- Custom fixers and hooks
+- Performance optimization
+- Advanced troubleshooting
+
+**Time**: 8+ hours  
+**Difficulty**: ⭐⭐⭐ Advanced
+
+---
+
+### 🔴 Level 4: Enterprise (Full deployment)
+**[04 - Enterprise Deployment](04-enterprise-deployment.md)**
+
+Production deployment strategies and best practices.
+
+**Prerequisites**: Complete advanced tutorial
+
+**What you'll learn:**
+- Production architecture design
+- High-availability setup
+- Monitoring and alerting
+- Security hardening
+- Compliance and audit
+- Large-scale migration planning
+- Kubernetes/OpenShift deployment
+
+**Time**: Full implementation project  
+**Difficulty**: ⭐⭐⭐⭐ Expert
 
 ---
 
 ## Quick Reference
 
-### Tutorial Comparison
+### By Skill Level
 
-| Tutorial | Duration | Difficulty | VMs Migrated | Features Covered |
-|----------|----------|------------|--------------|------------------|
-| **Beginner** | 30-45 min | ⭐ Easy | 1 | Basic migration, validation, import |
-| **Intermediate** | 1-2 hours | ⭐⭐ Moderate | 10+ | Batch, automation, monitoring |
-| **Advanced** | 2-3 hours | ⭐⭐⭐ Hard | Varies | Live, database, containers, DR |
-| **Enterprise** | 4+ hours | ⭐⭐⭐⭐ Expert | Production | Architecture, security, compliance |
+| Level | Tutorial | Time | Prerequisites |
+|-------|----------|------|---------------|
+| **Beginner** | [01 - Beginner](01-beginner-migration.md) | 1-2h | None |
+| **Intermediate** | [02 - Intermediate](02-intermediate-workflows.md) | 4-8h | Tutorial 01 |
+| **Advanced** | [03 - Advanced](03-advanced-features.md) | 8+h | Tutorial 02 |
+| **Enterprise** | [04 - Enterprise](04-enterprise-deployment.md) | Project | Tutorial 03 |
+
+### By Topic
+
+| Topic | Tutorial | Level |
+|-------|----------|-------|
+| **First Migration** | Tutorial 01 | Beginner |
+| **Batch Migration** | Tutorial 02 | Intermediate |
+| **Live Migration** | Tutorial 03 | Advanced |
+| **Windows VMs** | Tutorial 01, 02 | Beginner/Intermediate |
+| **Linux VMs** | Tutorial 01, 02 | Beginner/Intermediate |
+| **Remote Fetch** | Tutorial 02 | Intermediate |
+| **DR Testing** | Tutorial 03 | Advanced |
+| **Database Migration** | Tutorial 03 | Advanced |
+| **Production Deployment** | Tutorial 04 | Enterprise |
+| **Kubernetes/OpenShift** | Tutorial 04 | Enterprise |
+
+### By Use Case
+
+| Use Case | Recommended Tutorial |
+|----------|---------------------|
+| **Migrate a single VM** | Tutorial 01 |
+| **Migrate 10-50 VMs** | Tutorial 02 |
+| **Migrate 100+ VMs** | Tutorial 04 |
+| **Test DR environment** | Tutorial 03 |
+| **Move database server** | Tutorial 03 |
+| **Production migration** | Tutorial 04 |
+| **Learn the tool** | Tutorial 01 → 02 → 03 |
+| **Quick proof of concept** | Tutorial 01 |
+
+## Tutorial Structure
+
+Each tutorial follows this structure:
+
+### 1. Overview
+- What you'll learn
+- Prerequisites
+- Time required
+- Difficulty level
+
+### 2. Concepts
+- Key concepts introduced
+- Why they matter
+- When to use them
+
+### 3. Hands-On Practice
+- Step-by-step instructions
+- Example configurations
+- Expected outputs
+- Troubleshooting tips
+
+### 4. Validation
+- How to verify success
+- What to check
+- Common issues
+
+### 5. Summary
+- Key takeaways
+- Next steps
+- Additional resources
+
+## Tutorial Prerequisites
+
+### For All Tutorials
+
+**Required:**
+- Linux system (RHEL 9, Ubuntu 22.04+, or similar)
+- Python 3.10+
+- 8 GB RAM minimum
+- 100 GB free disk space
+- Basic Linux command-line knowledge
+
+**Optional:**
+- Test VMs for practice
+- KVM/libvirt installed
+- ESXi host for remote fetch practice
+
+### Tutorial-Specific Prerequisites
+
+**Tutorial 01 (Beginner):**
+- No additional requirements
+
+**Tutorial 02 (Intermediate):**
+- Completed Tutorial 01
+- Multiple test VMs (or sample VMDKs)
+- Understanding of YAML
+
+**Tutorial 03 (Advanced):**
+- Completed Tutorials 01-02
+- Understanding of Linux boot process
+- Database server knowledge (for DB migration)
+
+**Tutorial 04 (Enterprise):**
+- Completed Tutorials 01-03
+- Kubernetes/OpenShift cluster (or access to one)
+- Understanding of enterprise architecture
+- Security and compliance knowledge
+
+## Practice Environment Setup
+
+### Option 1: Local Practice
+
+```bash
+# Install Hyper2KVM
+pip install "hyper2kvm[full]"
+
+# Install libvirt for testing
+sudo dnf install -y libvirt qemu-kvm virt-manager  # Fedora/RHEL
+sudo apt-get install -y libvirt-daemon qemu-kvm  # Ubuntu
+
+# Download sample VMs (if needed)
+# See examples/test-vms/ for sample VMDK files
+```
+
+### Option 2: Lab Environment
+
+Consider setting up a dedicated lab with:
+- ESXi host or VMware Workstation
+- KVM host for target
+- Network connectivity between source and target
+- Sufficient storage for VM images
+
+### Option 3: Cloud-Based Practice
+
+Use cloud providers for practice:
+- AWS EC2 instances
+- Azure VMs
+- Google Cloud Compute
+- Oracle Cloud
+
+**Note**: Some tutorials include cloud-specific examples.
+
+## Getting Help
+
+### During Tutorials
+
+If you get stuck:
+
+1. **Check the Troubleshooting section** in the tutorial
+2. **Review error messages** carefully
+3. **Consult the troubleshooting guide**: [Troubleshooting Guide](../guides/troubleshooting.md)
+4. **Check migration recipes**: [Migration Recipes](../recipes/01-common-scenarios.md)
+5. **Ask for help**: [GitHub Discussions](https://github.com/ssahani/hyper2kvm/discussions)
+
+### Additional Resources
+
+- **[Migration Recipes](../recipes/)** - Quick solutions for common scenarios
+- **[User Guides](../guides/)** - Task-oriented guides
+- **[API Reference](../reference/api/)** - Detailed API documentation
+- **[Troubleshooting Guide](../guides/troubleshooting.md)** - Common issues and solutions
+
+## Time Estimates
+
+### Total Learning Time
+
+| Path | Time | Description |
+|------|------|-------------|
+| **Quick Start** | 2 hours | Tutorial 01 only |
+| **Intermediate** | 12 hours | Tutorials 01-02 |
+| **Advanced** | 24+ hours | Tutorials 01-03 |
+| **Complete** | 40+ hours | All tutorials + practice |
+| **Enterprise Ready** | 80+ hours | All tutorials + production deployment |
+
+### Practice Recommendations
+
+- **Beginner**: 1 week (1-2 hours/day)
+- **Intermediate**: 2-3 weeks (2-3 hours/day)
+- **Advanced**: 4-6 weeks (2-3 hours/day)
+- **Enterprise**: 2-3 months (includes planning and deployment)
+
+## Tutorial Goals
+
+### After Tutorial 01 (Beginner)
+✅ Understand basic migration concepts  
+✅ Perform a simple VM migration  
+✅ Import VM to libvirt  
+✅ Verify migrated VM boots
+
+### After Tutorial 02 (Intermediate)
+✅ Perform batch migrations  
+✅ Use different input formats  
+✅ Fetch VMs remotely  
+✅ Automate migration workflows  
+✅ Validate and rollback migrations
+
+### After Tutorial 03 (Advanced)
+✅ Perform live migrations  
+✅ Migrate database servers safely  
+✅ Test DR scenarios  
+✅ Create custom fixers  
+✅ Optimize performance  
+✅ Troubleshoot complex issues
+
+### After Tutorial 04 (Enterprise)
+✅ Design production architecture  
+✅ Implement HA and monitoring  
+✅ Deploy on Kubernetes/OpenShift  
+✅ Meet security requirements  
+✅ Plan large-scale migrations  
+✅ Ensure compliance
+
+## Related Documentation
+
+### Before Tutorials
+- **[Getting Started](../getting-started/)** - Installation and setup
+- **[Installation Guide](../getting-started/01-Installation.md)** - Install Hyper2KVM
+
+### During Tutorials
+- **[Migration Recipes](../recipes/)** - Quick reference patterns
+- **[Troubleshooting Guide](../guides/troubleshooting.md)** - Fix issues
+- **[User Guides](../guides/)** - Feature-specific guides
+
+### After Tutorials
+- **[API Reference](../reference/api/)** - Complete API docs
+- **[Features](../features/)** - Detailed feature documentation
+- **[Deployment](../deployment/)** - Production deployment guides
+
+## Feedback and Improvements
+
+Help us improve these tutorials:
+
+- **Found an error?** [Open an issue](https://github.com/ssahani/hyper2kvm/issues)
+- **Have a suggestion?** [Start a discussion](https://github.com/ssahani/hyper2kvm/discussions)
+- **Want to contribute?** [See contributing guide](../development/contributing.md)
+
+## What's Next?
+
+Choose your starting point:
+
+### 🎯 I'm brand new to Hyper2KVM
+→ Start with [Tutorial 01 - Beginner](01-beginner-migration.md)
+
+### 🚀 I've done a basic migration before
+→ Jump to [Tutorial 02 - Intermediate](02-intermediate-workflows.md)
+
+### 🔧 I need advanced features
+→ Go to [Tutorial 03 - Advanced](03-advanced-features.md)
+
+### 🏢 I'm planning production deployment
+→ See [Tutorial 04 - Enterprise](04-enterprise-deployment.md)
+
+### 📚 I want to explore features
+→ Check [Features Index](../features/README.md)
 
 ---
 
-## Prerequisites by Level
-
-### Beginner
-- ✅ Basic command-line knowledge
-- ✅ Access to a VM disk file (.vhdx, .vmdk, .qcow2)
-- ✅ Linux system with sudo access
-- ✅ 10GB free disk space
-
-### Intermediate
-- ✅ Completed beginner tutorial
-- ✅ Familiarity with YAML
-- ✅ Access to multiple VMs
-- ✅ 100GB+ free disk space
-
-### Advanced
-- ✅ Completed intermediate tutorial
-- ✅ Understanding of virtualization concepts
-- ✅ Network configuration knowledge
-- ✅ HyperSDK installed (for live migration)
-
-### Enterprise
-- ✅ All advanced prerequisites
-- ✅ Production environment access
-- ✅ Security policy knowledge
-- ✅ Team coordination capabilities
+**Ready to learn?** Start with [Tutorial 01](01-beginner-migration.md) →
 
 ---
 
-## What You'll Build
-
-### By End of Beginner Tutorial
-- Migrate 1 VM from Hyper-V/VMware to KVM
-- Validate migration success
-- Boot VM in KVM environment
-- Understand automatic fixes
-
-### By End of Intermediate Tutorial
-- Batch migrate 10+ VMs efficiently
-- Automate migrations with scheduling
-- Monitor progress in real-time
-- Generate compliance reports
-- Handle failures gracefully
-
-### By End of Advanced Tutorial
-- Live migrate production VMs (<5s downtime)
-- Migrate database servers safely
-- Extract containers from VMs
-- Test DR scenarios from backups
-- Rollback failed migrations
-
-### By End of Enterprise Tutorial
-- Design production migration architecture
-- Implement security controls
-- Set up monitoring and alerting
-- Plan disaster recovery
-- Meet compliance requirements
-
----
-
-## Additional Resources
-
-### Hands-On Practice
-- **[Migration Recipes](../recipes/01-common-scenarios.md)**: 10+ real-world scenarios
-- **[OS-Specific Guides](../os-support/windows/guide.md)**: Windows, Linux, BSD
-- **[Troubleshooting Guide](../guides/troubleshooting.md)**: Common issues and solutions
-
-### API Documentation
-- **[VMCraft API](../api/vmcraft-api.md)**: Guest filesystem manipulation
-- **[Validation API](../api/validation-api.md)**: Post-migration validation
-- **[Rollback API](../api/rollback-api.md)**: Rollback and recovery
-
-### Feature Guides
-- **[Live Migration](../features/live-migration.md)**: Minimal-downtime migration
-- **[Compliance & Audit](../features/compliance-audit.md)**: Reporting and audit trails
-- **[Batch Migration](../guides/migration/batch-features.md)**: Multi-VM migration
-
----
-
-## Support
-
-- **Questions?** Check the [Troubleshooting Guide](../guides/troubleshooting.md)
-- **Issues?** See [Migration Recipes](../recipes/01-common-scenarios.md)
-- **Bugs?** Report on [GitHub Issues](https://github.com/ssahani/hyper2kvm/issues)
-
----
-
-**Start Learning**: [Beginner Tutorial →](01-beginner-migration.md)
+**Last Updated**: February 2026
+**Total Tutorials**: 4
+**Estimated Total Time**: 40+ hours for complete mastery

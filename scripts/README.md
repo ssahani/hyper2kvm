@@ -6,13 +6,86 @@ Utility scripts and tools for hyper2kvm development and operation.
 
 ```
 scripts/
-├── README.md                 # This file
-├── demos/                    # Demo and showcase scripts
-├── inspect_guest.py          # Guest OS inspection utility
-├── run_tui.py                # TUI launcher script
-├── bump-version.sh           # Version bumping utility
-└── publish.sh                # Publishing/release script
+├── README.md                    # This file
+├── demos/                       # Demo and showcase scripts
+├── ops/                         # Operational scripts
+├── inspect_guest.py             # Guest OS inspection utility
+├── run_tui.py                   # TUI launcher script
+├── deploy-k8s-centos8.sh        # Kubernetes CentOS 8 deployment ⭐ NEW
+├── test-k8s-centos8.sh          # Kubernetes CentOS 8 test suite ⭐ NEW
+├── deploy-to-openshift.sh       # OpenShift deployment
+├── bump-version.sh              # Version bumping utility
+├── package-charts.sh            # Helm chart packaging
+└── publish.sh                   # Publishing/release script
 ```
+
+## Deployment & Testing Scripts ⭐ NEW
+
+### deploy-k8s-centos8.sh
+Automated deployment of Hyper2KVM on Kubernetes with CentOS 8 nodes.
+
+```bash
+# Prepare CentOS 8 nodes
+./scripts/deploy-k8s-centos8.sh prepare
+
+# Deploy Hyper2KVM
+./scripts/deploy-k8s-centos8.sh deploy
+
+# Check status
+./scripts/deploy-k8s-centos8.sh status
+
+# Cleanup
+./scripts/deploy-k8s-centos8.sh cleanup
+```
+
+**Features:**
+- Node preparation script generation
+- Automated RBAC and storage setup
+- PVC creation and binding
+- One-command deployment
+- Status checking
+
+**Documentation**: [Kubernetes CentOS 8 Guide](../docs/deployment/kubernetes-centos8-guide.md)
+
+---
+
+### test-k8s-centos8.sh
+Comprehensive test suite for Kubernetes on CentOS 8 deployments.
+
+```bash
+# Run all tests
+./scripts/test-k8s-centos8.sh all
+
+# Run specific tests
+./scripts/test-k8s-centos8.sh prereq    # Prerequisites
+./scripts/test-k8s-centos8.sh deploy    # Deployment
+./scripts/test-k8s-centos8.sh migrate   # Migration
+./scripts/test-k8s-centos8.sh validate  # Validation
+
+# Custom storage class
+STORAGE_CLASS=local-path ./scripts/test-k8s-centos8.sh all
+```
+
+**Features:**
+- 15 automated tests
+- Prerequisites validation
+- Node preparation testing
+- End-to-end migration testing
+- Detailed test reports
+- Color-coded output
+- Cleanup automation
+
+**Tests Include:**
+- kubectl availability
+- Cluster connectivity
+- KVM device availability
+- PVC binding
+- VMDK to QCOW2 migration
+- File integrity validation
+
+**Documentation**: [CentOS 8 Test Plan](../docs/testing/CENTOS8_TEST_PLAN.md)
+
+---
 
 ## Utility Scripts
 

@@ -1,148 +1,27 @@
 # Migration Recipes
 
-Practical, copy-paste-ready recipes for common VM migration scenarios. Each recipe includes prerequisites, step-by-step instructions, validation, and troubleshooting.
+Quick, practical recipes for common VM migration scenarios. Copy, customize, and run.
 
----
+## Quick Navigation
 
-## Recipe Collections
+### 📚 Recipe Collections
+- **[Common Scenarios](01-common-scenarios.md)** - 10+ real-world migration patterns
 
-### 📋 Common Scenarios
-**[View Recipes](01-common-scenarios.md)**
+### 🔍 Find a Recipe
 
-10 frequently encountered migration scenarios with complete solutions.
+**By Source Platform:**
+- [VMware ESXi](#vmware-esxi-recipes)
+- [Hyper-V](#hyper-v-recipes)
+- [AWS/Azure/Cloud](#cloud-recipes)
 
-**Recipes Included**:
-1. **Single Windows Server Migration** - Hyper-V to KVM (Beginner, 15-30 min)
-2. **Linux Web Server Migration** - VMware to KVM with LAMP stack (Beginner, 10-20 min)
-3. **Database Server Migration** - PostgreSQL/MySQL with minimal downtime (Intermediate, 20-40 min)
-4. **Batch Migration of 50+ VMs** - Datacenter migration (Intermediate, 4-8 hours)
-5. **Live Migration** - Production app with <5s downtime (Advanced, 30-60 min)
-6. **DR Testing from Veeam** - Restore and validate from backup (Intermediate, 20-40 min)
-7. **VM to Kubernetes** - Extract containers and deploy to K8s (Advanced, 45-90 min)
-8. **Domain Controller Migration** - Active Directory DC (Advanced, 30-60 min)
-9. **Legacy Application Server** - Old CentOS 6 with legacy apps (Intermediate, 30-50 min)
-10. **HA Cluster Migration** - 2-node Pacemaker/Corosync (Advanced, 2-4 hours)
+**By Guest OS:**
+- [Windows](#windows-recipes)
+- [Linux](#linux-recipes)
+- [Database Servers](#database-recipes)
 
----
-
-### 🖥️ OS-Specific Recipes
-**[View Recipes](02-os-specific.md)**
-
-Operating system specific migration patterns and solutions.
-
-**Categories**:
-- **Windows** (Server 2012-2022, Desktop 7-11)
-  - Domain-joined servers
-  - SQL Server instances
-  - IIS web servers
-  - File servers
-- **Linux** (RHEL, Ubuntu, SUSE, Debian)
-  - systemd vs SysVinit
-  - Network configuration differences
-  - Package manager specifics
-  - Bootloader configurations
-- **BSD** (FreeBSD, OpenBSD)
-  - Boot loader configuration
-  - Network interface naming
-  - Package management
-
----
-
-### 🎯 Application-Specific Recipes
-**[View Recipes](03-application-specific.md)**
-
-Migrations for specific applications and workloads.
-
-**Applications**:
-- **Databases**
-  - PostgreSQL clusters
-  - MySQL/MariaDB replication
-  - MongoDB replica sets
-  - Redis clusters
-- **Web Servers**
-  - Apache with mod_php
-  - Nginx reverse proxy
-  - Tomcat application servers
-  - Node.js applications
-- **Enterprise Applications**
-  - SAP systems
-  - Oracle Database
-  - Microsoft Exchange
-  - SharePoint
-- **Development Tools**
-  - GitLab
-  - Jenkins
-  - Docker registries
-  - Artifactory
-
----
-
-### 🔧 Troubleshooting Recipes
-**[View Recipes](04-troubleshooting.md)**
-
-Common issues and step-by-step solutions.
-
-**Issue Categories**:
-- **Boot Failures**
-  - "No boot device found"
-  - GRUB rescue prompt
-  - Windows "Inaccessible Boot Device"
-  - Kernel panic
-- **Network Issues**
-  - No network connectivity
-  - Interface naming changes
-  - DHCP not working
-  - Static IP lost
-- **Storage Problems**
-  - VirtIO driver missing
-  - Disk not detected
-  - fstab errors (emergency mode)
-  - LVM not found
-- **Performance Issues**
-  - Slow disk I/O
-  - High CPU usage
-  - Memory pressure
-  - Network throughput degradation
-
----
-
-## Quick Recipe Finder
-
-### By Hypervisor Source
-
-| Source | Recipes |
-|--------|---------|
-| **VMware vSphere/ESXi** | Linux Web Server, Batch Migration, Live Migration |
-| **Hyper-V** | Windows Server, Domain Controller, SQL Server |
-| **KVM** | Database Server, HA Cluster |
-| **AWS EC2** | Live Migration (EC2 to KVM) |
-| **Proxmox** | Container Extraction, Backup Restore |
-
-### By Operating System
-
-| OS | Recipes |
-|----|---------|
-| **Windows Server** | Single Server, Domain Controller, SQL Server, IIS |
-| **Ubuntu/Debian** | Web Server, Docker Host, Container Extraction |
-| **RHEL/CentOS** | Database Server, HA Cluster, Legacy Apps |
-| **SUSE/openSUSE** | Enterprise Apps, SAP Systems |
-
-### By Complexity
-
-| Level | Recipes |
-|-------|---------|
-| **Beginner** | Single Windows Server, Linux Web Server |
-| **Intermediate** | Database Server, Batch Migration, DR Testing, Legacy Apps |
-| **Advanced** | Live Migration, Container Extraction, Domain Controller, HA Cluster |
-
-### By Duration
-
-| Duration | Recipes |
-|----------|---------|
-| **<30 min** | Single Server, Linux Web Server |
-| **30-60 min** | Database Server, DR Testing, Domain Controller, Legacy Apps |
-| **1-2 hours** | Container Extraction |
-| **2+ hours** | Batch Migration, HA Cluster |
+**By Complexity:**
+- [Simple Migrations](#simple-recipes)
+- [Advanced Migrations](#advanced-recipes)
 
 ---
 
@@ -150,182 +29,302 @@ Common issues and step-by-step solutions.
 
 Each recipe follows this structure:
 
-### 1. **Scenario**
-Clear description of what you're migrating
+```yaml
+# Recipe Name
+# Use Case: Brief description
+# Time: Estimated completion time
+# Difficulty: ⭐ Easy | ⭐⭐ Moderate | ⭐⭐⭐ Advanced
 
-### 2. **Prerequisites**
-- Required access and permissions
-- Source VM requirements
-- Storage requirements
-- Tools needed
-
-### 3. **Steps**
-Step-by-step commands with explanations
-
-### 4. **Validation**
-How to verify successful migration
-
-### 5. **Troubleshooting**
-Common issues and solutions
+command: <command-type>
+# ... configuration ...
+```
 
 ---
 
-## Using Recipes
+## Quick Recipes
 
-### Copy-Paste Ready
+### Recipe 1: Basic VMware to KVM
 
-All commands in recipes are designed to be copy-paste ready:
+**Use Case**: Migrate a single Linux VM from VMware  
+**Time**: 10 minutes  
+**Difficulty**: ⭐ Easy
+
+```yaml
+command: local
+vmdk: /vmware/centos9-web.vmdk
+output_dir: /kvm/vms
+to_output: centos9-web.qcow2
+out_format: qcow2
+
+# Automatic fixes
+fstab_mode: stabilize-all
+regen_initramfs: true
+update_grub: true
+compress: true
+```
+
+**Run it:**
+```bash
+sudo hyper2kvm --config recipe1.yaml
+```
+
+---
+
+### Recipe 2: Windows Server Migration
+
+**Use Case**: Migrate Windows Server with VirtIO drivers  
+**Time**: 15 minutes  
+**Difficulty**: ⭐⭐ Moderate
+
+```yaml
+command: local
+vmdk: /vmware/windows-server-2019.vmdk
+output_dir: /kvm/vms
+to_output: windows-server-2019.qcow2
+out_format: qcow2
+
+# Windows-specific settings
+windows_drivers: true
+fstab_mode: stabilize-all
+update_grub: true
+compress: true
+report: /kvm/vms/migration-report.md
+```
+
+**Run it:**
+```bash
+sudo hyper2kvm --config recipe2.yaml
+```
+
+---
+
+### Recipe 3: Remote Fetch from ESXi
+
+**Use Case**: Fetch VM directly from ESXi host  
+**Time**: 20-30 minutes  
+**Difficulty**: ⭐⭐ Moderate
+
+```yaml
+command: fetch-and-fix
+host: 192.168.1.100
+user: root
+identity: ~/.ssh/id_rsa
+remote: /vmfs/volumes/datastore1/vm/vm.vmdk
+output_dir: /kvm/vms
+to_output: migrated-vm.qcow2
+
+# Fixes
+fstab_mode: stabilize-all
+regen_initramfs: true
+update_grub: true
+```
+
+**Prerequisites:**
+```bash
+# Set up SSH key authentication
+ssh-copy-id root@192.168.1.100
+```
+
+**Run it:**
+```bash
+sudo hyper2kvm --config recipe3.yaml
+```
+
+---
+
+### Recipe 4: Batch Migration (Multiple VMs)
+
+**Use Case**: Migrate 10 VMs in parallel  
+**Time**: 1-2 hours  
+**Difficulty**: ⭐⭐ Moderate
+
+Create `batch.yaml`:
+```yaml
+command: local
+batch_manifest: migrations.json
+batch_parallel: 3
+batch_continue_on_error: true
+output_dir: /kvm/batch
+```
+
+Create `migrations.json`:
+```json
+{
+  "migrations": [
+    {"vmdk": "/vmware/vm1.vmdk", "to_output": "vm1.qcow2"},
+    {"vmdk": "/vmware/vm2.vmdk", "to_output": "vm2.qcow2"},
+    {"vmdk": "/vmware/vm3.vmdk", "to_output": "vm3.qcow2"},
+    {"vmdk": "/vmware/vm4.vmdk", "to_output": "vm4.qcow2"},
+    {"vmdk": "/vmware/vm5.vmdk", "to_output": "vm5.qcow2"}
+  ]
+}
+```
+
+**Run it:**
+```bash
+sudo hyper2kvm --config batch.yaml
+```
+
+---
+
+### Recipe 5: OVA Import
+
+**Use Case**: Import VMware OVA file  
+**Time**: 15 minutes  
+**Difficulty**: ⭐ Easy
+
+```yaml
+command: ova
+ova: /downloads/exported-vm.ova
+output_dir: /kvm/vms
+to_output: imported-vm.qcow2
+out_format: qcow2
+
+# Fixes
+fstab_mode: stabilize-all
+regen_initramfs: true
+update_grub: true
+compress: true
+```
+
+**Run it:**
+```bash
+sudo hyper2kvm --config recipe5.yaml
+```
+
+---
+
+### Recipe 6: Database Server Migration
+
+**Use Case**: Migrate PostgreSQL/MySQL server  
+**Time**: 30-60 minutes  
+**Difficulty**: ⭐⭐⭐ Advanced
+
+```yaml
+command: local
+vmdk: /vmware/postgres-server.vmdk
+output_dir: /kvm/vms
+to_output: postgres-server.qcow2
+out_format: qcow2
+
+# Database-safe fixes
+fstab_mode: stabilize-all
+regen_initramfs: true
+update_grub: true
+
+# Performance settings
+compress: false  # Don't compress for database VMs
+preallocate: true  # Pre-allocate disk for performance
+```
+
+**Additional steps:**
+```bash
+# 1. Run migration
+sudo hyper2kvm --config recipe6.yaml
+
+# 2. Before starting DB, verify data
+virsh start postgres-server --paused
+# Mount and check database files
+virsh resume postgres-server
+```
+
+---
+
+### Recipe 7: Windows 10/11 Desktop
+
+**Use Case**: Migrate Windows desktop VM  
+**Time**: 15-20 minutes  
+**Difficulty**: ⭐⭐ Moderate
+
+```yaml
+command: local
+vmdk: /vmware/windows11-dev.vmdk
+output_dir: /kvm/vms
+to_output: windows11-dev.qcow2
+out_format: qcow2
+
+# Windows desktop settings
+windows_drivers: true
+fstab_mode: stabilize-all
+compress: true
+
+# Keep snapshots if needed
+keep_sparse: true
+```
+
+**Run it:**
+```bash
+sudo hyper2kvm --config recipe7.yaml
+```
+
+---
+
+### Recipe 8: Live Fix (No Downtime)
+
+**Use Case**: Fix bootloader without migration  
+**Time**: 5-10 minutes  
+**Difficulty**: ⭐⭐ Moderate
+
+```yaml
+command: live-fix
+host: 192.168.1.100
+user: root
+identity: ~/.ssh/id_rsa
+
+# Fixes to apply
+fstab_mode: stabilize-all
+regen_initramfs: true
+update_grub: true
+```
+
+**Run it:**
+```bash
+sudo hyper2kvm --config recipe8.yaml
+```
+
+---
+
+### Recipe 9: RHEL/CentOS with XFS UUID Fix
+
+**Use Case**: Fix cloned VMware VM with duplicate XFS UUIDs  
+**Time**: 10-15 minutes  
+**Difficulty**: ⭐⭐ Moderate
+
+```yaml
+command: local
+vmdk: /vmware/rhel9-clone.vmdk
+output_dir: /kvm/vms
+to_output: rhel9-fixed.qcow2
+out_format: qcow2
+
+# XFS fixes
+xfs_regenerate_uuid: true
+fstab_mode: stabilize-all
+regen_initramfs: true
+update_grub: true
+compress: true
+```
+
+**Run it:**
+```bash
+sudo hyper2kvm --config recipe9.yaml
+```
+
+---
+
+### Recipe 10: Multi-Disk VM
+
+**Use Case**: VM with multiple disks  
+**Time**: 20-30 minutes per disk  
+**Difficulty**: ⭐⭐⭐ Advanced
 
 ```bash
-# Example: Single command to migrate Windows Server
-hyper2kvm migrate /vms/source/windows-server.vhdx \
-    --target /vms/migrated/windows-server.qcow2 \
-    --format qcow2 \
-    --fix-all \
-    --verbose
-```
-
-### Customization
-
-Replace placeholder values with your environment:
-
-```bash
-# Template
-SOURCE=/path/to/source.vmdk
-TARGET=/path/to/target.qcow2
-
-# Your values
-SOURCE=/vmware/prod/app-server.vmdk
-TARGET=/kvm/migrated/app-server.qcow2
-```
-
-### Automation
-
-Convert recipes to scripts:
-
-```bash
-#!/bin/bash
-# migrate-web-server.sh
-
-SOURCE=$1
-TARGET=$2
-
-if [ -z "$SOURCE" ] || [ -z "$TARGET" ]; then
-    echo "Usage: $0 <source> <target>"
-    exit 1
-fi
-
-# Recipe steps
-hyper2kvm migrate $SOURCE \
-    --target $TARGET \
-    --fix-all \
-    --validate
-
-# Post-migration
-virsh define ${TARGET%.qcow2}.xml
-virsh start $(basename ${TARGET%.qcow2})
-```
-
----
-
-## Recipe Workflow
-
-### Standard Migration Recipe
-
-```
-1. Prepare
-   └─ Backup source VM
-   └─ Create snapshot
-   └─ Document current state
-
-2. Migrate
-   └─ Execute migration command
-   └─ Apply automatic fixes
-   └─ Convert disk format
-
-3. Validate
-   └─ Run validation checks
-   └─ Verify boot configuration
-   └─ Test network connectivity
-
-4. Import
-   └─ Define in libvirt
-   └─ Start VM
-   └─ Verify services
-
-5. Verify
-   └─ Application testing
-   └─ Performance checks
-   └─ User acceptance
-```
-
-### Rollback-Safe Recipe
-
-```
-1. Create Snapshot
-   └─ Pre-migration snapshot
-   └─ Compute checksum
-
-2. Migrate with State Tracking
-   └─ Track migration checkpoints
-   └─ Mark reversible states
-
-3. If Failure
-   └─ Execute rollback
-   └─ Verify rollback success
-   └─ Review failure logs
-
-4. If Success
-   └─ Validate migration
-   └─ Clean up snapshots
-   └─ Update documentation
-```
-
----
-
-## Contributing Recipes
-
-Help the community by sharing your migration experiences!
-
-### How to Contribute
-
-1. **Document Your Migration**
-   - Clear scenario description
-   - Complete command sequences
-   - Validation steps
-   - Troubleshooting tips
-
-2. **Test Your Recipe**
-   - Verify commands work
-   - Test on clean environment
-   - Validate all steps
-
-3. **Submit PR**
-   - Add to appropriate recipe collection
-   - Follow existing format
-   - Include expected output
-
-**See**: [Contributing Guide](../development/contributing.md)
-
----
-
-## Recipe Support
-
-- **Questions?** [GitHub Discussions](https://github.com/ssahani/hyper2kvm/discussions)
-- **Issues?** [GitHub Issues](https://github.com/ssahani/hyper2kvm/issues)
-- **Suggestions?** [Feature Requests](https://github.com/ssahani/hyper2kvm/issues/new?labels=enhancement)
-
----
-
-## Related Documentation
-
-- **[Tutorials](../tutorials/)**: Learning path for beginners to experts
-- **[API Reference](../api/)**: Programmatic migration workflows
-- **[Guides](../guides/)**: In-depth feature documentation
-- **[Troubleshooting](../guides/troubleshooting.md)**: Comprehensive issue resolution
-
----
-
-**Start with**: [Common Scenarios →](01-common-scenarios.md)
-
-**Last Updated**: January 2026
+# Migrate each disk separately
+sudo hyper2kvm --config << EOF
+command: local
+vmdk: /vmware/web-server-disk1.vmdk
+output_dir: /kvm/vms
+to_output: web-server-disk1.qcow2
+fstab_mode: stabilize-all
+regen_initramfs: true
+update_grub: true
