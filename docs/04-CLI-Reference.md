@@ -6,6 +6,69 @@ This document is the **interface contract** for the CLI as implemented by your *
 
 ---
 
+## Prerequisites
+
+Before using hyper2kvm commands, ensure you have:
+
+- ✓ hyper2kvm installed (see [Installation Guide](02-Installation.md))
+- ✓ Root/sudo access
+- ✓ Required system dependencies (libguestfs, qemu-img, etc.)
+- ✓ Source VM disk files or access to source infrastructure
+
+
+
+## Table of Contents
+
+  - [Comprehensive CLI Reference ](#comprehensive-cli-reference-)
+- [Design Principles](#design-principles)
+  - [Config-first, automation-friendly](#config-first-automation-friendly)
+  - [Safety is a feature](#safety-is-a-feature)
+  - [Works in the mess](#works-in-the-mess)
+- [How to Run (New Model)](#how-to-run-new-model)
+  - [Standard run (config chooses operation)](#standard-run-config-chooses-operation)
+  - [Merge configs (base + overrides)](#merge-configs-base-overrides)
+  - [Override a knob from CLI (config still drives the run)](#override-a-knob-from-cli-config-still-drives-the-run)
+  - [Inspect merged config (does not require cmd)](#inspect-merged-config-does-not-require-cmd)
+  - [Inspect final parsed args (requires cmd because validation runs)](#inspect-final-parsed-args-requires-cmd-because-validation-runs)
+- [Required Config Keys](#required-config-keys)
+  - [`cmd`](#cmd)
+  - [`vs_action` (only when `cmd: vsphere`)](#vs_action-only-when-cmd-vsphere)
+- [Quick Start Examples (Config-Driven)](#quick-start-examples-config-driven)
+  - [1) Local VMDK → qcow2 with fixes + compression (recommended)](#1-local-vmdk-qcow2-with-fixes-compression-recommended)
+  - [2) Dry-run preview (no writes)](#2-dry-run-preview-no-writes)
+  - [3) Base + override](#3-base-override)
+- [Global Options (CLI flags)](#global-options-cli-flags)
+  - [Configuration & introspection](#configuration-introspection)
+  - [Logging & verbosity](#logging-verbosity)
+  - [Operation selection (new project control)](#operation-selection-new-project-control)
+  - [Paths & behavior](#paths-behavior)
+- [Flatten & Conversion Outputs](#flatten-conversion-outputs)
+- [Fixing Behavior](#fixing-behavior)
+- [Recovery, Performance, virt-v2v Knobs](#recovery-performance-virt-v2v-knobs)
+- [LUKS Knobs](#luks-knobs)
+- [Smoke Tests](#smoke-tests)
+- [Daemon Mode](#daemon-mode)
+- [OVA/OVF Helper Knobs](#ovaovf-helper-knobs)
+- [AMI / Cloud Tarball Helper Knobs](#ami-cloud-tarball-helper-knobs)
+- [Inputs (Selected by `cmd`)](#inputs-selected-by-cmd)
+  - [`cmd: local`](#cmd-local)
+  - [`cmd: ova`](#cmd-ova)
+  - [`cmd: ovf`](#cmd-ovf)
+  - [`cmd: vhd`](#cmd-vhd)
+  - [`cmd: ami`](#cmd-ami)
+  - [`cmd: fetch-and-fix`](#cmd-fetch-and-fix)
+  - [`cmd: live-fix`](#cmd-live-fix)
+- [`cmd: generate-systemd`](#cmd-generate-systemd)
+- [vSphere / vCenter (`cmd: vsphere`)](#vsphere-vcenter-cmd-vsphere)
+  - [Connection flags (required)](#connection-flags-required)
+  - [Action selection](#action-selection)
+  - [Action-scoped flags (available globally)](#action-scoped-flags-available-globally)
+  - [Required fields by action (enforced by validator)](#required-fields-by-action-enforced-by-validator)
+  - [Example: list VM names (config-driven)](#example-list-vm-names-config-driven)
+  - [Example: download a VM disk](#example-download-a-vm-disk)
+- [Dependency Notes (practical)](#dependency-notes-practical)
+
+---
 ## Design Principles
 
 ### Config-first, automation-friendly
@@ -33,31 +96,31 @@ Designed for real VMware → KVM pain: snapshot chains, unstable by-path naming,
 
 ```bash
 sudo python hyper2kvm.py --config job.yaml
-```
+```bash
 
 ### Merge configs (base + overrides)
 
 ```bash
 sudo python hyper2kvm.py --config base.yaml --config override.yaml
-```
+```bash
 
 ### Override a knob from CLI (config still drives the run)
 
 ```bash
 sudo python hyper2kvm.py --config job.yaml --output-dir /var/tmp/out -vv
-```
+```bash
 
 ### Inspect merged config (does not require cmd)
 
 ```bash
 sudo python hyper2kvm.py --config job.yaml --dump-config
-```
+```bash
 
 ### Inspect final parsed args (requires cmd because validation runs)
 
 ```bash
 sudo python hyper2kvm.py --config job.yaml --dump-args
-```
+```bash
 
 ---
 
@@ -117,25 +180,25 @@ print_fstab: true
 
 verbose: 1
 report: ./out/report.md
-```
+```bash
 
 Run:
 
 ```bash
 sudo python hyper2kvm.py --config job.yaml
-```
+```bash
 
 ### 2) Dry-run preview (no writes)
 
 ```bash
 sudo python hyper2kvm.py --config job.yaml --dry-run -vv
-```
+```bash
 
 ### 3) Base + override
 
 ```bash
 sudo python hyper2kvm.py --config base.yaml --config rhel10.yaml
-```
+```bash
 
 ---
 
@@ -332,7 +395,7 @@ Example:
 
 ```bash
 sudo python hyper2kvm.py --config job.yaml --vmdk /path/to/vm.vmdk
-```
+```bash
 
 ### `cmd: ova`
 
@@ -494,13 +557,13 @@ vc_insecure: true
 
 json: true
 verbose: 1
-```
+```bash
 
 Run:
 
 ```bash
 sudo python hyper2kvm.py --config vs-list.yaml
-```
+```bash
 
 ### Example: download a VM disk
 
@@ -520,13 +583,13 @@ disk: "0"
 local_path: ./downloads/myVM-disk0.vmdk
 chunk_size: 1048576
 json: true
-```
+```bash
 
 Run:
 
 ```bash
 sudo python hyper2kvm.py --config vs-dl.yaml
-```
+```bash
 
 ---
 
@@ -538,3 +601,57 @@ sudo python hyper2kvm.py --config vs-dl.yaml
 * vSphere mode requires pyvmomi (and any HTTP libs your implementation uses)
 
 ---
+
+## Troubleshooting
+
+### Common Issues
+
+#### Issue: Command fails with permission denied
+
+**Symptoms:**
+- Error: "Permission denied" when accessing disk images
+- Cannot write to output directory
+
+**Solution:**
+```bash
+# Run with sudo
+sudo python -m hyper2kvm --config your-config.yaml
+
+# Or fix permissions
+sudo chown $(whoami) /path/to/output/directory
+```
+
+#### Issue: libguestfs fails to mount disk
+
+**Symptoms:**
+- Error: "guestfs_mount: failed"
+- Cannot inspect guest OS
+
+**Solution:**
+```bash
+# Test libguestfs
+sudo libguestfs-test-tool
+
+# Check KVM permissions
+sudo usermod -aG kvm $(whoami)
+# Log out and back in
+
+# Verify disk image
+qemu-img info /path/to/disk.vmdk
+```
+
+For more issues, see [Failure Modes](90-Failure-Modes.md).
+
+## Next Steps
+
+Continue your migration journey:
+
+- **[CLI Reference](04-CLI-Reference.md)** - Complete command options
+- **[YAML Examples](05-YAML-Examples.md)** - Configuration templates
+- **[Cookbook](06-Cookbook.md)** - Common scenarios
+- **[Troubleshooting](90-Failure-Modes.md)** - When things go wrong
+
+## Getting Help
+
+Found an issue? [Report it on GitHub](https://github.com/hyper2kvm/hyper2kvm/issues)
+

@@ -1,5 +1,120 @@
 # ARCHITECTURE.md — hyper2kvm Internal Architecture
 
+
+## Table of Contents
+
+- [Purpose](#purpose)
+- [The Canonical Pipeline](#the-canonical-pipeline)
+  - [Pipeline Stages Explained](#pipeline-stages-explained)
+    - [FETCH](#fetch)
+    - [FLATTEN](#flatten)
+    - [INSPECT](#inspect)
+    - [PLAN](#plan)
+    - [FIX](#fix)
+    - [CONVERT](#convert)
+    - [VALIDATE / TEST](#validate-test)
+- [Repository Structure (Authoritative)](#repository-structure-authoritative)
+- [Orchestrator Architecture (Refactored)](#orchestrator-architecture-refactored)
+  - [Component Breakdown](#component-breakdown)
+    - [1. **Orchestrator** (`orchestrator/orchestrator.py`)](#1-orchestrator-orchestratororchestratorpy)
+    - [2. **DiskDiscovery** (`orchestrator/disk_discovery.py`)](#2-diskdiscovery-orchestratordisk_discoverypy)
+    - [3. **DiskProcessor** (`orchestrator/disk_processor.py`)](#3-diskprocessor-orchestratordisk_processorpy)
+    - [4. **VirtV2VConverter** (`orchestrator/virt_v2v_converter.py`)](#4-virtv2vconverter-orchestratorvirt_v2v_converterpy)
+    - [5. **VsphereExporter** (`orchestrator/vsphere_exporter.py`)](#5-vsphereexporter-orchestratorvsphere_exporterpy)
+  - [Refactoring Benefits](#refactoring-benefits)
+- [Control-Plane vs Data-Plane (VMware)](#control-plane-vs-data-plane-vmware)
+  - [Control-Plane: Inventory, Planning, Orchestration](#control-plane-inventory-planning-orchestration)
+    - [Implementation 1: govc (Primary)](#implementation-1-govc-primary)
+    - [Implementation 2: pyvmomi / pyVim (Fallback)](#implementation-2-pyvmomi-pyvim-fallback)
+    - [CLI Glue Layer](#cli-glue-layer)
+  - [Data-Plane: Byte Movement](#data-plane-byte-movement)
+    - [Transport 1: VDDK (Highest Performance)](#transport-1-vddk-highest-performance)
+    - [Transport 2: ovftool (Official VMware Export)](#transport-2-ovftool-official-vmware-export)
+    - [Transport 3: HTTP `/folder` (Datastore Downloads)](#transport-3-http-folder-datastore-downloads)
+    - [Transport 4: SSH/SCP (Universal Fallback)](#transport-4-sshscp-universal-fallback)
+    - [Transport 5: govc export (CLI-Based)](#transport-5-govc-export-cli-based)
+- [Fixer Subsystems (Deep Dive)](#fixer-subsystems-deep-dive)
+  - [Offline Fixing (Default Strategy)](#offline-fixing-default-strategy)
+    - [1. Filesystem Fixing (`fixers/filesystem/`)](#1-filesystem-fixing-fixersfilesystem)
+    - [2. Bootloader Fixing (`fixers/bootloader/`)](#2-bootloader-fixing-fixersbootloader)
+    - [3. Config Rewriting (`fixers/offline/config_rewriter.py`)](#3-config-rewriting-fixersofflineconfig_rewriterpy)
+    - [4. VMware Tools Removal (`fixers/offline/vmware_tools_remover.py`)](#4-vmware-tools-removal-fixersofflinevmware_tools_removerpy)
+  - [Live Fixing (Opt-In Strategy)](#live-fixing-opt-in-strategy)
+  - [Windows Fixing (Hermetically Sealed)](#windows-fixing-hermetically-sealed)
+    - [Registry Subsystem (`fixers/windows/registry/`)](#registry-subsystem-fixerswindowsregistry)
+    - [VirtIO Subsystem (`fixers/windows/virtio/`)](#virtio-subsystem-fixerswindowsvirtio)
+  - [Network Fixing (Cross-Platform)](#network-fixing-cross-platform)
+    - [Discovery (`discovery.py`)](#discovery-discoverypy)
+    - [Topology (`topology.py`)](#topology-topologypy)
+    - [Core (`core.py`)](#core-corepy)
+    - [Validation (`validation.py`)](#validation-validationpy)
+    - [Backend (`backend.py`)](#backend-backendpy)
+- [LibVirt Integration](#libvirt-integration)
+  - [Domain Emitter (`domain_emitter.py`)](#domain-emitter-domain_emitterpy)
+  - [Linux Domain (`linux_domain.py`)](#linux-domain-linux_domainpy)
+  - [Windows Domain (`windows_domain.py`)](#windows-domain-windows_domainpy)
+- [Core Utilities](#core-utilities)
+  - [Essential Utilities](#essential-utilities)
+    - [Guest Identity (`guest_identity.py`)](#guest-identity-guest_identitypy)
+    - [Recovery Manager (`recovery_manager.py`)](#recovery-manager-recovery_managerpy)
+    - [Retry Logic (`retry.py`)](#retry-logic-retrypy)
+    - [Validation Suite (`validation_suite.py`)](#validation-suite-validation_suitepy)
+    - [File Operations (`file_ops.py`)](#file-operations-file_opspy)
+    - [Logging (`logger.py`, `logging_utils.py`)](#logging-loggerpy-logging_utilspy)
+- [Key Architectural Invariants](#key-architectural-invariants)
+  - [1. Offline is the Default Truth](#1-offline-is-the-default-truth)
+  - [2. Inspection Over Assumption](#2-inspection-over-assumption)
+  - [3. `/dev/disk/by-path` is Radioactive](#3-devdiskby-path-is-radioactive)
+  - [4. Windows Logic is Hermetically Sealed](#4-windows-logic-is-hermetically-sealed)
+  - [5. Control-Plane and Data-Plane Never Mix](#5-control-plane-and-data-plane-never-mix)
+  - [6. Idempotent, Best-Effort Behavior](#6-idempotent-best-effort-behavior)
+- [Module Ownership and Responsibilities](#module-ownership-and-responsibilities)
+  - [`cli/`](#cli)
+  - [`config/`](#config)
+  - [`core/`](#core)
+  - [`converters/`](#converters)
+  - [`fixers/`](#fixers)
+  - [`libvirt/`](#libvirt)
+  - [`modes/`](#modes)
+  - [`orchestrator/`](#orchestrator)
+  - [`ssh/`](#ssh)
+  - [`testers/`](#testers)
+  - [`vmware/`](#vmware)
+- [Why This Architecture Works](#why-this-architecture-works)
+  - [Predictability](#predictability)
+  - [Reliability](#reliability)
+  - [Maintainability](#maintainability)
+  - [Extensibility](#extensibility)
+  - [Debuggability](#debuggability)
+- [Adding New Features](#adding-new-features)
+  - [Where Does My Feature Go?](#where-does-my-feature-go)
+    - [1. New Disk Source (e.g., Azure Blob, S3)](#1-new-disk-source-eg-azure-blob-s3)
+    - [2. New Fix (e.g., SELinux relabeling)](#2-new-fix-eg-selinux-relabeling)
+    - [3. New Network Manager (e.g., wicked for SUSE)](#3-new-network-manager-eg-wicked-for-suse)
+    - [4. New Validation Test (e.g., storage performance)](#4-new-validation-test-eg-storage-performance)
+    - [5. New VMware Transport (e.g., NBD direct)](#5-new-vmware-transport-eg-nbd-direct)
+  - [Feature Addition Checklist](#feature-addition-checklist)
+- [Performance Considerations](#performance-considerations)
+  - [Parallel Processing](#parallel-processing)
+    - [Disk Processing](#disk-processing)
+    - [virt-v2v Conversion](#virt-v2v-conversion)
+  - [I/O Optimization](#io-optimization)
+    - [VDDK (VMware)](#vddk-vmware)
+    - [Compression](#compression)
+- [Testing Strategy](#testing-strategy)
+  - [Unit Tests](#unit-tests)
+  - [Integration Tests](#integration-tests)
+  - [Security Tests](#security-tests)
+- [Future Architecture Directions](#future-architecture-directions)
+  - [Plugin System](#plugin-system)
+  - [Cloud-Native Integration](#cloud-native-integration)
+  - [Advanced Recovery](#advanced-recovery)
+  - [Metrics and Telemetry](#metrics-and-telemetry)
+- [Glossary](#glossary)
+- [Contributing](#contributing)
+- [Summary](#summary)
+
+---
 ## Purpose
 
 This document provides an in-depth exploration of **hyper2kvm's module-level architecture**, execution flow, and core architectural principles.
@@ -101,11 +216,38 @@ Ruthless verification:
 
 ---
 
+
+### Pipeline Flow Diagram
+
+```mermaid
+flowchart LR
+    FETCH[FETCH<br/>Acquire Disks] --> FLATTEN[FLATTEN<br/>Collapse Chains]
+    FLATTEN --> INSPECT[INSPECT<br/>Extract Facts]
+    INSPECT --> PLAN[PLAN<br/>Strategy]
+    PLAN --> FIX[FIX<br/>Apply Patches]
+    FIX --> CONVERT[CONVERT<br/>Format Transform]
+    CONVERT --> VALIDATE[VALIDATE/TEST<br/>Boot Tests]
+    
+    style FETCH fill:#e1f5e1
+    style FLATTEN fill:#e3f2fd
+    style INSPECT fill:#fff3e0
+    style PLAN fill:#f3e5f5
+    style FIX fill:#ffebee
+    style CONVERT fill:#e0f2f1
+    style VALIDATE fill:#f1f8e9
+```
+
+**Key Invariants:**
+- Order is sacred: stages can be skipped but never reordered
+- Each stage has clear inputs/outputs
+- Failures are isolated to specific stages
+
+
 ## Repository Structure (Authoritative)
 
 This reflects the **actual codebase structure** as of the latest refactor:
 
-```
+```bash
 hyper2kvm/
 ├── __init__.py                       # Package root
 ├── __main__.py                       # Entry point (python -m hyper2kvm)
@@ -285,7 +427,7 @@ hyper2kvm/
         ├── errors.py                 # vSphere error handling
         ├── govc.py                   # govc-specific operations
         └── mode.py                   # vSphere operational modes
-```
+```bash
 
 **Total:** 27 directories, 117+ Python modules
 
@@ -728,6 +870,69 @@ The foundational layer providing infrastructure for all other modules.
 - Log level management
 
 ---
+
+## Code Examples
+
+### Example 1: Basic Pipeline Usage
+
+```python
+from hyper2kvm.orchestrator.disk_processor import DiskProcessor
+from hyper2kvm.core.guest_identity import GuestIdentity
+
+# Initialize processor
+processor = DiskProcessor()
+
+# Process a VMDK
+result = processor.process_disk(
+    source_path='/data/vm.vmdk',
+    output_path='/data/vm.qcow2',
+    flatten=True,
+    compress=True
+)
+
+# Inspect guest OS
+identity = GuestIdentity.from_disk('/data/vm.qcow2')
+print(f"OS: {identity.os_family}")
+print(f"Firmware: {identity.firmware_type}")
+```
+
+### Example 2: Custom Fixer
+
+```python
+from hyper2kvm.fixers.offline_fixer import OfflineFixer
+
+# Create fixer instance
+fixer = OfflineFixer('/data/vm.qcow2')
+
+# Apply specific fixes
+fixer.fix_fstab(use_uuid=True)
+fixer.fix_grub(regenerate=True)
+fixer.fix_network(clean_mac=True)
+
+# Verify fixes
+fixer.validate()
+```
+
+### Example 3: vSphere Integration
+
+```python
+from hyper2kvm.vmware.clients.client import VMwareClient
+
+# Connect to vCenter
+client = VMwareClient(
+    host='vcenter.example.com',
+    username='administrator@vsphere.local',
+    password='password'
+)
+
+# Export VM
+await client.async_export_vm(
+    vm_name='production-web',
+    output_dir='/data/exports',
+    export_mode='v2v'
+)
+```
+
 
 ## Key Architectural Invariants
 

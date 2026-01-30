@@ -1,6 +1,37 @@
 
 # Windows Boot Cycle (hyper2kvm) ➡➡
 
+
+## Table of Contents
+
+- [Why Windows fails after hypervisor migration](#why-windows-fails-after-hypervisor-migration)
+- [The Windows Boot Cycle (2-Phase)](#the-windows-boot-cycle-2-phase)
+- [Phase A: Offline Fix + Bootstrap Boot (SATA)](#phase-a-offline-fix-bootstrap-boot-sata)
+  - [Goals](#goals)
+  - [What we do offline](#what-we-do-offline)
+    - [1) Discover Windows layout](#1-discover-windows-layout)
+    - [2) Prepare VirtIO driver plan (data-driven)](#2-prepare-virtio-driver-plan-data-driven)
+    - [3) Inject storage driver (the sacred step)](#3-inject-storage-driver-the-sacred-step)
+    - [4) Populate CriticalDeviceDatabase](#4-populate-criticaldevicedatabase)
+    - [5) Optional: Inject NetKVM (VirtIO network)](#5-optional-inject-netkvm-virtio-network)
+    - [6) Optional: Network cleanup policies](#6-optional-network-cleanup-policies)
+    - [7) BCD sanity checks + backups](#7-bcd-sanity-checks-backups)
+  - [Why the bootstrap domain uses SATA / IDE](#why-the-bootstrap-domain-uses-sata-ide)
+- [Phase B: Finalize Boot (VirtIO)](#phase-b-finalize-boot-virtio)
+  - [Mermaid: Bootstrap → Final switch](#mermaid-bootstrap-final-switch)
+- [Appendix: Minimal “Decision Rules”](#appendix-minimal-decision-rules)
+
+---
+
+## Prerequisites
+
+For Windows VM migration, you need:
+
+- ✓ hyper2kvm installed ([Installation Guide](02-Installation.md))
+- ✓ VirtIO drivers ISO downloaded
+- ✓ Windows source VM disk (VMDK, VHD, etc.)
+- ✓ Understanding of [Windows Boot Cycle](11-Windows-Boot-Cycle.md)
+
 This document explains **how hyper2kvm makes Windows reliably boot on KVM/QEMU** after coming from *any* hypervisor (VMware, Hyper-V, cloud images, raw disks).
 
 The core idea is simple:
@@ -130,9 +161,9 @@ This single step prevents:
 
 We map PNP IDs like:
 
-```
+```bash
 PCI\VEN_1AF4&DEV_1001
-```
+```bash
 
 to the correct storage service so Windows binds the driver **early in boot**.
 
@@ -232,7 +263,7 @@ sequenceDiagram
   H->>F: Switch disk + NIC to VirtIO
   F->>W2: Second boot
   W2-->>F: Stable system + network
-```
+```bash
 
 ---
 
@@ -258,4 +289,69 @@ flowchart TD
   I --> Z["Bootstrap SATA domain"]
   Q --> Z
   Z --> Y["Final VirtIO domain"]
+```bash
+
+## Debugging Examples
+
+### Example 1: Check Boot Configuration
+
+```bash
+# Mount Windows disk and inspect boot config
+sudo guestfish -a windows.qcow2 -i
+
+# Inside guestfish
+><fs> cat /Windows/System32/config/BCD-Template
+><fs> ls /Windows/System32/drivers
+><fs> cat /Windows/INF/setupapi.dev.log
 ```
+
+### Example 2: Verify VirtIO Drivers
+
+```bash
+# Check if VirtIO drivers are present
+sudo virt-ls -a windows.qcow2 /Windows/System32/drivers/ | grep virtio
+
+# Expected output:
+# viostor.sys
+# netkvm.sys
+# vioscsi.sys
+```
+
+### Example 3: Test Boot with QEMU
+
+```bash
+# Test Windows boot with serial console
+qemu-system-x86_64 \
+  -m 4096 \
+  -smp 2 \
+  -drive file=windows.qcow2,if=virtio \
+  -net nic,model=virtio \
+  -net user \
+  -enable-kvm \
+  -nographic \
+  -serial mon:stdio
+```
+
+### Example 4: Check Registry for VirtIO
+
+```bash
+# Use virt-win-reg to inspect registry
+virt-win-reg --unsafe-printable-strings windows.qcow2 \
+  'HKLM\SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase' \
+  | grep -i virtio
+```
+
+
+## Next Steps
+
+For Windows migrations:
+
+- **[Windows Boot Cycle](11-Windows-Boot-Cycle.md)** - Understanding Windows boot process
+- **[Windows Troubleshooting](12-Windows-Troubleshooting.md)** - Common Windows issues
+- **[Windows Networking](13-Windows-Networking.md)** - Network and driver configuration
+
+## Getting Help
+
+- [Troubleshooting Guide](90-Failure-Modes.md)
+- [GitHub Issues](https://github.com/hyper2kvm/hyper2kvm/issues)
+

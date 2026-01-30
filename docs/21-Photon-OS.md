@@ -10,6 +10,34 @@ a VMware VMDK to qcow2 and applying offline fixes
 
 ---
 
+## Prerequisites
+
+Before migrating this platform, ensure:
+
+- ✓ hyper2kvm installed ([Installation Guide](02-Installation.md))
+- ✓ Familiarity with [Quick Start Guide](03-Quick-Start.md)
+- ✓ Root/sudo access
+- ✓ Source VM accessible
+
+
+
+## Table of Contents
+
+- [Host Requirements (Fedora)](#host-requirements-fedora)
+- [Image Under Test (Photon OS)](#image-under-test-photon-os)
+- [BIOS + GUI libvirt XML (Most Compatible)](#bios-gui-libvirt-xml-most-compatible)
+- [Define and Start the VM](#define-and-start-the-vm)
+- [Connect to the Console / GUI](#connect-to-the-console-gui)
+  - [Option 1: virt-viewer (recommended)](#option-1-virt-viewer-recommended)
+  - [Option 2: VNC](#option-2-vnc)
+- [Expected Boot Sequence (Photon)](#expected-boot-sequence-photon)
+- [Troubleshooting](#troubleshooting)
+  - [Black screen after GRUB](#black-screen-after-grub)
+  - [“No bootable device”](#no-bootable-device)
+  - [Boots but no GUI](#boots-but-no-gui)
+- [Notes](#notes)
+
+---
 ## Host Requirements (Fedora)
 
 Install required virtualization tools:
@@ -215,4 +243,17 @@ If it reports `multi-user.target`, this is **expected behavior**.
 
 **Status:**  Verified boot for Photon OS (BIOS, KVM/libvirt)
 
+## Next Steps
+
+After migrating this platform:
+
+- **[Test your VM](../examples/README.md)** - Validation examples
+- **[Troubleshooting](90-Failure-Modes.md)** - Common issues
+- **[Cookbook](06-Cookbook.md)** - More migration scenarios
+
+## Related Documentation
+
+- [Quick Start](03-Quick-Start.md)
+- [CLI Reference](04-CLI-Reference.md)
+- [Architecture](01-Architecture.md)
 

@@ -2,6 +2,50 @@
 
 Get started with hyper2kvm in 5 minutes ⚡
 
+
+## Table of Contents
+
+- [Prerequisites ✅](#prerequisites-)
+- [1. Install System Dependencies 🔧](#1-install-system-dependencies-)
+  - [Fedora / RHEL / CentOS Stream 🎩](#fedora-rhel-centos-stream-)
+  - [Ubuntu / Debian](#ubuntu-debian)
+  - [Verify libguestfs](#verify-libguestfs)
+- [2. Install hyper2kvm](#2-install-hyper2kvm)
+  - [Option A: Install from Source (Recommended for Development)](#option-a-install-from-source-recommended-for-development)
+  - [Option B: Install from PyPI (When Available)](#option-b-install-from-pypi-when-available)
+- [3. Your First Migration 🎯](#3-your-first-migration-)
+  - [Scenario: Convert a Local VMDK to QCOW2 💫](#scenario-convert-a-local-vmdk-to-qcow2-)
+    - [Step 1: Locate Your VMDK](#step-1-locate-your-vmdk)
+    - [Step 2: Run the Conversion](#step-2-run-the-conversion)
+    - [Step 3: Verify the Output](#step-3-verify-the-output)
+- [4. Common Scenarios](#4-common-scenarios)
+  - [Linux VM with Network/Bootloader Fixes](#linux-vm-with-networkbootloader-fixes)
+  - [Windows VM with VirtIO Driver Injection](#windows-vm-with-virtio-driver-injection)
+  - [Fetch VMDK from ESXi and Convert](#fetch-vmdk-from-esxi-and-convert)
+  - [Fix Running VM Over SSH (No Conversion)](#fix-running-vm-over-ssh-no-conversion)
+- [5. Using Configuration Files](#5-using-configuration-files)
+  - [Create a Config File (vm-config.json)](#create-a-config-file-vm-configjson)
+  - [Run with Config File](#run-with-config-file)
+  - [Use Example Configs](#use-example-configs)
+- [6. Testing the Converted VM](#6-testing-the-converted-vm)
+  - [Test with QEMU (No LibVirt Required)](#test-with-qemu-no-libvirt-required)
+  - [Test with LibVirt](#test-with-libvirt)
+  - [Manual Boot Test](#manual-boot-test)
+- [7. Deploy to Production](#7-deploy-to-production)
+  - [Create LibVirt Domain](#create-libvirt-domain)
+- [8. Common Issues and Solutions](#8-common-issues-and-solutions)
+  - [Issue: libguestfs-test-tool fails](#issue-libguestfs-test-tool-fails)
+  - [Issue: "Permission denied" errors](#issue-permission-denied-errors)
+  - [Issue: VMDK not found](#issue-vmdk-not-found)
+  - [Issue: Network doesn't work after migration](#issue-network-doesnt-work-after-migration)
+  - [Issue: Windows won't boot](#issue-windows-wont-boot)
+- [9. Next Steps](#9-next-steps)
+  - [Explore Documentation](#explore-documentation)
+  - [Try Advanced Features](#try-advanced-features)
+  - [Get Help](#get-help)
+- [10. Command Cheat Sheet](#10-command-cheat-sheet)
+
+---
 ## Prerequisites ✅
 
 - 🐧 Linux system (Fedora, Ubuntu, RHEL, or SUSE)
@@ -22,7 +66,7 @@ sudo dnf install -y \
   libguestfs libguestfs-tools \
   openssh-clients rsync \
   libvirt-client libvirt-daemon-kvm
-```
+```bash
 
 ### Ubuntu / Debian
 
@@ -34,13 +78,13 @@ sudo apt-get install -y \
   libguestfs-tools \
   openssh-client rsync \
   libvirt-clients libvirt-daemon-system
-```
+```bash
 
 ### Verify libguestfs
 
 ```bash
 sudo libguestfs-test-tool
-```
+```bash
 
 This must pass before proceeding. If it fails, check KVM permissions and kernel modules.
 
@@ -66,14 +110,14 @@ pip install -e .
 
 # Verify installation
 python -m hyper2kvm --help
-```
+```bash
 
 ### Option B: Install from PyPI (When Available)
 
 ```bash
 pip install hyper2kvm
 hyper2kvm --help
-```
+```bash
 
 ---
 
@@ -87,7 +131,7 @@ You have a VMware VMDK file and want to run it on KVM.
 
 ```bash
 ls -lh /path/to/your-vm.vmdk
-```
+```bash
 
 #### Step 2: Run the Conversion
 
@@ -97,7 +141,7 @@ sudo python -m hyper2kvm local \
   --flatten \
   --to-output /var/lib/libvirt/images/your-vm.qcow2 \
   --compress
-```
+```bash
 
 **What this does:**
 - `local` - Process a local disk file
@@ -110,7 +154,7 @@ sudo python -m hyper2kvm local \
 
 ```bash
 qemu-img info /var/lib/libvirt/images/your-vm.qcow2
-```
+```bash
 
 ---
 
@@ -126,7 +170,7 @@ sudo python -m hyper2kvm local \
   --fix-network \
   --fix-bootloader \
   --compress
-```
+```bash
 
 ### Windows VM with VirtIO Driver Injection
 
@@ -143,7 +187,7 @@ sudo python -m hyper2kvm local \
   --inject-virtio \
   --virtio-win-iso ./virtio-win.iso \
   --compress
-```
+```bash
 
 ### Fetch VMDK from ESXi and Convert
 
@@ -155,7 +199,7 @@ sudo python -m hyper2kvm fetch-and-fix \
   --fetch-all \
   --flatten \
   --to-output vm.qcow2
-```
+```bash
 
 ### Fix Running VM Over SSH (No Conversion)
 
@@ -166,7 +210,7 @@ sudo python -m hyper2kvm live-fix \
   --sudo \
   --fix-network \
   --fix-bootloader
-```
+```bash
 
 ---
 
@@ -187,13 +231,13 @@ Instead of long command lines, use config files:
   "fix_bootloader": true,
   "report": "/var/log/migration-report.md"
 }
-```
+```bash
 
 ### Run with Config File
 
 ```bash
 sudo python -m hyper2kvm --config vm-config.json
-```
+```bash
 
 ### Use Example Configs
 
@@ -203,7 +247,7 @@ ls examples/json/
 
 # Use an example
 sudo python -m hyper2kvm --config examples/json/10-local/local-linux-basic.json
-```
+```bash
 
 ---
 
@@ -217,7 +261,7 @@ sudo python -m hyper2kvm local \
   --to-output test.qcow2 \
   --qemu-test \
   --dry-run
-```
+```bash
 
 ### Test with LibVirt
 
@@ -226,7 +270,7 @@ sudo python -m hyper2kvm local \
   --vmdk test.vmdk \
   --to-output test.qcow2 \
   --libvirt-test
-```
+```bash
 
 ### Manual Boot Test
 
@@ -238,7 +282,7 @@ sudo qemu-system-x86_64 \
   -drive file=/var/lib/libvirt/images/your-vm.qcow2,if=virtio \
   -enable-kvm \
   -nographic
-```
+```bash
 
 ---
 
@@ -265,7 +309,7 @@ sudo virsh start your-vm
 # Check status
 sudo virsh list --all
 sudo virsh console your-vm
-```
+```bash
 
 ---
 
@@ -283,7 +327,7 @@ sudo usermod -aG kvm $(whoami)
 # Load KVM modules
 sudo modprobe kvm
 sudo modprobe kvm_intel  # or kvm_amd
-```
+```bash
 
 ### Issue: "Permission denied" errors
 
@@ -294,7 +338,7 @@ sudo python -m hyper2kvm ...
 
 # Or adjust permissions
 sudo chown $(whoami) /var/lib/libvirt/images/
-```
+```bash
 
 ### Issue: VMDK not found
 
@@ -304,7 +348,7 @@ sudo chown $(whoami) /var/lib/libvirt/images/
 sudo python -m hyper2kvm local \
   --vmdk "$(pwd)/vm.vmdk" \
   --to-output "$(pwd)/output.qcow2"
-```
+```bash
 
 ### Issue: Network doesn't work after migration
 
@@ -315,7 +359,7 @@ sudo python -m hyper2kvm local \
   --vmdk vm.vmdk \
   --to-output vm.qcow2 \
   --fix-network
-```
+```bash
 
 ### Issue: Windows won't boot
 
@@ -328,7 +372,7 @@ sudo python -m hyper2kvm local \
   --windows \
   --inject-virtio \
   --virtio-win-iso /path/to/virtio-win.iso
-```
+```bash
 
 ---
 
@@ -389,10 +433,100 @@ sudo python -m hyper2kvm local --vmdk INPUT.vmdk --to-output OUTPUT.qcow2 --repo
 
 # Debug mode
 sudo python -m hyper2kvm --log-level DEBUG local --vmdk INPUT.vmdk --to-output OUTPUT.qcow2
-```
+```bash
 
 ---
 
 **You're ready to start migrating VMs! **
 
 For detailed information, see the full documentation in the `docs/` directory.
+
+### Advanced Examples
+
+#### Example: Batch Migration
+
+```bash
+# Create a list of VMs to migrate
+cat > vms.txt <<VMLIST
+/data/vm1.vmdk
+/data/vm2.vmdk
+/data/vm3.vmdk
+VMLIST
+
+# Migrate all VMs
+while read vmdk; do
+  name=$(basename "$vmdk" .vmdk)
+  sudo python -m hyper2kvm local \
+    --vmdk "$vmdk" \
+    --flatten \
+    --to-output "/var/lib/libvirt/images/${name}.qcow2" \
+    --compress
+done < vms.txt
+```
+
+#### Example: Cloud-Init Injection
+
+```bash
+sudo python -m hyper2kvm local \
+  --vmdk ubuntu-template.vmdk \
+  --to-output cloud-ubuntu.qcow2 \
+  --inject-cloud-init \
+  --compress
+```
+
+
+## Troubleshooting
+
+### Common Issues
+
+#### Issue: Command fails with permission denied
+
+**Symptoms:**
+- Error: "Permission denied" when accessing disk images
+- Cannot write to output directory
+
+**Solution:**
+```bash
+# Run with sudo
+sudo python -m hyper2kvm --config your-config.yaml
+
+# Or fix permissions
+sudo chown $(whoami) /path/to/output/directory
+```
+
+#### Issue: libguestfs fails to mount disk
+
+**Symptoms:**
+- Error: "guestfs_mount: failed"
+- Cannot inspect guest OS
+
+**Solution:**
+```bash
+# Test libguestfs
+sudo libguestfs-test-tool
+
+# Check KVM permissions
+sudo usermod -aG kvm $(whoami)
+# Log out and back in
+
+# Verify disk image
+qemu-img info /path/to/disk.vmdk
+```
+
+For more issues, see [Failure Modes](90-Failure-Modes.md).
+
+## Next Steps
+
+Now that you've completed your first migration:
+
+1. **[Explore Examples](../examples/README.md)** - 40+ ready-to-use configuration files
+2. **[Read the Cookbook](06-Cookbook.md)** - Common migration recipes
+3. **[Understand Architecture](01-Architecture.md)** - How hyper2kvm works internally
+4. **[Windows Migrations](10-Windows-Guide.md)** - If you need to migrate Windows VMs
+
+## Getting Help
+
+- **Issues:** [GitHub Issues](https://github.com/hyper2kvm/hyper2kvm/issues)
+- **Troubleshooting:** [Failure Modes Guide](90-Failure-Modes.md)
+- **Documentation:** All docs in `docs/` directory
+
