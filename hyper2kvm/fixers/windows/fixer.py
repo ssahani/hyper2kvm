@@ -54,6 +54,10 @@ from .performance.balloon import configure_balloon_driver
 from .performance.trim import enable_trim_discard
 from .performance.msi import enable_msi_interrupts
 from .performance.hyperv_cleanup import cleanup_hyperv_enlightenments
+from .bitlocker import detect_bitlocker, check_bitlocker_before_migration, BitLockerDetectionError
+from .rdp import verify_rdp_enabled, enable_rdp_if_disabled
+from .firewall import stage_firewall_export_script, get_firewall_migration_instructions
+from .virtio_warning import warn_no_virtio_drivers, get_virtio_download_url
 
 
 def _safe_logger(self) -> logging.Logger:
@@ -363,6 +367,108 @@ class WindowsFixer:
 
         return results
 
+    def check_bitlocker(self, g: guestfs.GuestFS, root: str) -> Dict[str, Any]:
+        """
+        Check for BitLocker encryption on Windows VM.
+
+        CRITICAL: BitLocker-encrypted disks CANNOT be migrated offline.
+        This method detects encryption and raises an error to block migration.
+
+        Args:
+            g: GuestFS instance
+            root: Windows root path
+
+        Returns:
+            Dict with detection results (only if not encrypted)
+
+        Raises:
+            BitLockerDetectionError: If BitLocker is detected
+        """
+        logger = _safe_logger(self)
+        return check_bitlocker_before_migration(g, root, logger)
+
+    def verify_rdp(self, g: guestfs.GuestFS, root: str) -> Dict[str, Any]:
+        """
+        Verify Remote Desktop Protocol is enabled in Windows.
+
+        Checks RDP configuration and warns if disabled, preventing
+        admin lockout on headless VMs after migration.
+
+        Args:
+            g: GuestFS instance
+            root: Windows root path
+
+        Returns:
+            Dict with RDP configuration status:
+                {
+                    "rdp_enabled": bool,
+                    "nla_enabled": bool,
+                    "rdp_port": int,
+                    "warnings": List[str],
+                    "recommendations": List[str]
+                }
+        """
+        return verify_rdp_enabled(g, root)
+
+    def enable_rdp(self, g: guestfs.GuestFS, root: str) -> Dict[str, Any]:
+        """
+        Enable Remote Desktop if currently disabled.
+
+        Modifies Windows registry to enable RDP access, preventing
+        admin lockout after migration.
+
+        Args:
+            g: GuestFS instance
+            root: Windows root path
+
+        Returns:
+            Dict with modification results:
+                {
+                    "modified": bool,
+                    "previous_state": bool,
+                    "current_state": bool
+                }
+        """
+        logger = _safe_logger(self)
+        return enable_rdp_if_disabled(g, root, logger)
+
+    def stage_firewall_migration(self, g: guestfs.GuestFS, root: str) -> Dict[str, Any]:
+        """
+        Stage Windows Firewall rule migration.
+
+        Creates PowerShell script and scheduled task to preserve
+        firewall rules during migration.
+
+        Args:
+            g: GuestFS instance
+            root: Windows root path
+
+        Returns:
+            Dict with staging results:
+                {
+                    "staged": bool,
+                    "script_path": str,
+                    "task_staged": bool
+                }
+        """
+        return stage_firewall_export_script(g, root)
+
+    def warn_virtio_drivers_missing(self, windows_info: Dict[str, Any] = None) -> None:
+        """
+        Emit warning about missing VirtIO drivers.
+
+        Explains performance impact and provides download/installation
+        instructions when VirtIO drivers are not available.
+
+        Args:
+            windows_info: Optional Windows version info for specific recommendations
+        """
+        logger = _safe_logger(self)
+        virtio_dir = getattr(self, "virtio_drivers_dir", None)
+
+        if not virtio_dir:
+            warn_no_virtio_drivers(logger, windows_info)
+
 
 __all__ = [
     "WindowsFixer",
@@ -387,4 +493,14 @@ __all__ = [
     "enable_trim_discard",
     "enable_msi_interrupts",
     "cleanup_hyperv_enlightenments",
+    # New critical features
+    "detect_bitlocker",
+    "check_bitlocker_before_migration",
+    "BitLockerDetectionError",
+    "verify_rdp_enabled",
+    "enable_rdp_if_disabled",
+    "stage_firewall_export_script",
+    "get_firewall_migration_instructions",
+    "warn_no_virtio_drivers",
+    "get_virtio_download_url",
 ]

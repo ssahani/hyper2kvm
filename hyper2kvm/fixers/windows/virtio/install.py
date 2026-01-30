@@ -48,6 +48,24 @@ def _virtio_preflight(self, g: guestfs.GuestFS) -> Tuple[Optional[Path], Optiona
     virtio_dir = getattr(self, "virtio_drivers_dir", None)
     if not virtio_dir:
         _log(logger, logging.INFO, "VirtIO inject: virtio_drivers_dir not set -> skip")
+
+        # Emit detailed warning about performance impact
+        try:
+            from ..virtio_warning import warn_no_virtio_drivers
+            # Try to get Windows version info for specific recommendations
+            try:
+                from .detection import _windows_version_info
+                from .windows_virtio_paths import _resolve_windows_system_paths
+                paths = _resolve_windows_system_paths(self, g)
+                win_info = _windows_version_info(self, g, paths=paths)
+            except:
+                win_info = None
+
+            warn_no_virtio_drivers(logger, win_info)
+        except Exception as e:
+            # Don't fail if warning fails
+            _log(logger, logging.DEBUG, f"Could not emit VirtIO warning: {e}")
+
         return None, {"injected": False, "reason": "virtio_drivers_dir_not_set"}
 
     virtio_src = Path(str(virtio_dir))
