@@ -3,25 +3,24 @@
 ## Architecture Overview
 
 ```mermaid
-graph TB
-    subgraph CLI["Command Line Mode"]
-        CLI1[User Runs Command] --> CLI2[Process Single VM]
-        CLI2 --> CLI3[Convert & Fix]
-        CLI3 --> CLI4[Output Result]
-        CLI4 --> CLI5[Exit]
-    end
+graph TD
+    CLI1[CLI: User Runs Command] --> CLI2[Process Single VM]
+    CLI2 --> CLI3[Convert & Fix]
+    CLI3 --> CLI4[Output Result]
+    CLI4 --> CLI5[Exit]
 
-    subgraph DAEMON["Daemon Mode"]
-        D1[Watch Directory] --> D2{New File?}
-        D2 -->|Yes| D3[Queue VM]
-        D2 -->|No| D1
-        D3 --> D4[Process Pipeline]
-        D4 --> D5[Archive Source]
-        D5 --> D1
-    end
+    D1[Daemon: Watch Directory] --> D2{New File?}
+    D2 -->|Yes| D3[Queue VM]
+    D2 -->|No| D1
+    D3 --> D4[Process Pipeline]
+    D4 --> D5[Archive Source]
+    D5 --> D1
 
-    style CLI fill:#2196F3,stroke:#1565C0,color:#fff
-    style DAEMON fill:#4CAF50,stroke:#2E7D32,color:#fff
+    classDef cliStyle fill:#2196F3,stroke:#1565C0,color:#fff
+    classDef daemonStyle fill:#4CAF50,stroke:#2E7D32,color:#fff
+
+    class CLI1,CLI2,CLI3,CLI4,CLI5 cliStyle
+    class D1,D2,D3,D4,D5 daemonStyle
 ```
 
 ---
@@ -81,29 +80,31 @@ cp *.vmdk /queue/
 
 ## Pipeline Comparison
 
+### CLI Mode Pipeline
 ```mermaid
-flowchart LR
-    subgraph CLI_FLOW["CLI Mode Pipeline"]
-        direction LR
-        C1[Source] --> C2[Flatten]
-        C2 --> C3[Fix]
-        C3 --> C4[Convert]
-        C4 --> C5[Test]
-        C5 --> C6[Done]
-    end
+graph LR
+    C1[Source] --> C2[Flatten]
+    C2 --> C3[Fix]
+    C3 --> C4[Convert]
+    C4 --> C5[Test]
+    C5 --> C6[Done]
 
-    subgraph DAEMON_FLOW["Daemon Mode Pipeline"]
-        direction LR
-        D1[Watch] --> D2[Detect]
-        D2 --> D3[Flatten]
-        D3 --> D4[Fix]
-        D4 --> D5[Convert]
-        D5 --> D6[Archive]
-        D6 --> D1
-    end
+    classDef cliClass fill:#E3F2FD,stroke:#1976D2
+    class C1,C2,C3,C4,C5,C6 cliClass
+```
 
-    style CLI_FLOW fill:#E3F2FD,stroke:#1976D2
-    style DAEMON_FLOW fill:#E8F5E9,stroke:#388E3C
+### Daemon Mode Pipeline
+```mermaid
+graph LR
+    D1[Watch] --> D2[Detect]
+    D2 --> D3[Flatten]
+    D3 --> D4[Fix]
+    D4 --> D5[Convert]
+    D5 --> D6[Archive]
+    D6 --> D1
+
+    classDef daemonClass fill:#E8F5E9,stroke:#388E3C
+    class D1,D2,D3,D4,D5,D6 daemonClass
 ```
 
 ---
@@ -124,40 +125,32 @@ flowchart LR
 ## Daemon Architecture Detail
 
 ```mermaid
-graph TB
-    subgraph INPUT["Input Layer"]
-        I1[/queue/vm1.vmdk]
-        I2[/queue/vm2.ova]
-        I3[/queue/vm3.vhd]
-    end
+graph TD
+    I1[Input: queue/vm1.vmdk] --> W1[Watchdog: inotify]
+    I2[Input: queue/vm2.ova] --> W1
+    I3[Input: queue/vm3.vhd] --> W1
 
-    subgraph WATCH["Watchdog Monitor"]
-        W1[inotify Events]
-        W2[File Detection]
-        W3[Type Classification]
-    end
+    W1 --> W2[File Detection]
+    W2 --> W3[Type Classification]
 
-    subgraph PROCESS["Processing Engine"]
-        P1[Flatten Chain]
-        P2[Offline Fixes]
-        P3[Format Convert]
-        P4[Validation]
-    end
+    W3 --> P1[Flatten Chain]
+    P1 --> P2[Offline Fixes]
+    P2 --> P3[Format Convert]
+    P3 --> P4[Validation]
 
-    subgraph OUTPUT["Output Layer"]
-        O1[/output/vm1/]
-        O2[/output/vm2/]
-        O3[.processed/archive]
-    end
+    P4 --> O1[Output: output/vm1/]
+    P4 --> O2[Output: output/vm2/]
+    P4 --> O3[Archive: .processed/]
 
-    INPUT --> WATCH
-    WATCH --> PROCESS
-    PROCESS --> OUTPUT
+    classDef inputClass fill:#FFF3E0,stroke:#F57C00
+    classDef watchClass fill:#E1F5FE,stroke:#0277BD
+    classDef processClass fill:#F3E5F5,stroke:#7B1FA2
+    classDef outputClass fill:#E8F5E9,stroke:#2E7D32
 
-    style INPUT fill:#FFF3E0,stroke:#F57C00
-    style WATCH fill:#E1F5FE,stroke:#0277BD
-    style PROCESS fill:#F3E5F5,stroke:#7B1FA2
-    style OUTPUT fill:#E8F5E9,stroke:#2E7D32
+    class I1,I2,I3 inputClass
+    class W1,W2,W3 watchClass
+    class P1,P2,P3,P4 processClass
+    class O1,O2,O3 outputClass
 ```
 
 ---
@@ -166,30 +159,24 @@ graph TB
 
 ```mermaid
 graph LR
-    subgraph SOURCES["VM Sources"]
-        S1[vSphere Export]
-        S2[Manual Drop]
-        S3[Cron Job]
-    end
+    S1[vSphere Export] --> D1[systemd Service]
+    S2[Manual Drop] --> D1
+    S3[Cron Job] --> D1
 
-    subgraph DAEMON["hyper2kvm Daemon"]
-        D1[systemd Service]
-        D2[Watch /queue]
-        D3[Process VMs]
-    end
+    D1 --> D2[Watch Queue]
+    D2 --> D3[Process VMs]
 
-    subgraph DEST["Destinations"]
-        T1[libvirt Pool]
-        T2[Storage Array]
-        T3[Archive]
-    end
+    D3 --> T1[libvirt Pool]
+    D3 --> T2[Storage Array]
+    D3 --> T3[Archive]
 
-    SOURCES --> DAEMON
-    DAEMON --> DEST
+    classDef sourceClass fill:#FFEBEE,stroke:#C62828
+    classDef daemonClass fill:#E8F5E9,stroke:#2E7D32
+    classDef destClass fill:#E3F2FD,stroke:#1565C0
 
-    style SOURCES fill:#FFEBEE,stroke:#C62828
-    style DAEMON fill:#E8F5E9,stroke:#2E7D32
-    style DEST fill:#E3F2FD,stroke:#1565C0
+    class S1,S2,S3 sourceClass
+    class D1,D2,D3 daemonClass
+    class T1,T2,T3 destClass
 ```
 
 ### Deployment Commands
