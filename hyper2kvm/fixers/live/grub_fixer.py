@@ -506,7 +506,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
             return f"{key}={quote}{val2}{quote}"
 
         lines_in = old.splitlines()
-        new_lines = [patch_line(l) for l in lines_in]
+        new_lines = [patch_line(line) for line in lines_in]
 
         if not touched:
             new_lines.append(f'GRUB_CMDLINE_LINUX="root={stable}"')

@@ -5,6 +5,6 @@ setup(
     name="hyper2kvm",
     version="0.0.3",
     packages=find_packages(),
-    install_requires=[l.strip() for l in open("requirements.txt", encoding="utf-8") if l.strip() and not l.startswith("#")],
+    install_requires=[line.strip() for line in open("requirements.txt", encoding="utf-8") if line.strip() and not line.startswith("#")],
     entry_points={"console_scripts": ["hyper2kvm=hyper2kvm.__main__:main"]},
 )

@@ -158,7 +158,7 @@ UUID=test-swap-uuid  none   swap    sw         0  0
     assert "swap" in read_back
 
     # Parse non-comment lines
-    lines = [l for l in read_back.split('\n') if l.strip() and not l.strip().startswith('#')]
+    lines = [line for line in read_back.split('\n') if line.strip() and not line.strip().startswith('#')]
     assert len(lines) == 4, f"Expected 4 mount entries, found {len(lines)}"
 
     g.umount("/")

@@ -338,7 +338,7 @@ class MultiBootloaderFixer:
         lines = content.splitlines()
 
         def has_key(k: str) -> bool:
-            return any(l.strip().startswith(k + "=") for l in lines)
+            return any(line.strip().startswith(k + "=") for line in lines)
 
         changed = False
         if not has_key("GRUB_TERMINAL"):
@@ -495,13 +495,13 @@ class MultiBootloaderFixer:
             lines = old.splitlines()
             changed = False
 
-            if not any(l.strip().startswith("timeout") for l in lines):
+            if not any(line.strip().startswith("timeout") for line in lines):
                 lines.append("timeout 3")
                 fixes["files"].setdefault(loader_conf, {})
                 fixes["files"][loader_conf]["timeout"] = "added"
                 changed = True
 
-            if not any(l.strip().startswith("editor") for l in lines):
+            if not any(line.strip().startswith("editor") for line in lines):
                 lines.append("editor 0")
                 fixes["files"].setdefault(loader_conf, {})
                 fixes["files"][loader_conf]["editor"] = "disabled"
