@@ -22,7 +22,7 @@ Usage as a library:
 See docs/08-Library-API.md for detailed usage examples.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # High-level orchestration
 # Platform providers
