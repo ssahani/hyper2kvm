@@ -49,6 +49,11 @@ from .user_activity import UserActivityAnalyzer
 from .app_framework_detector import AppFrameworkDetector
 from .cloud_detector import CloudDetector
 from .monitoring_detector import MonitoringDetector
+from .vulnerability_scanner import VulnerabilityScanner
+from .license_detector import LicenseDetector
+from .performance_analyzer import PerformanceAnalyzer
+from .migration_planner import MigrationPlanner
+from .dependency_mapper import DependencyMapper
 
 __all__ = [
     # Main API
@@ -84,4 +89,9 @@ __all__ = [
     "AppFrameworkDetector",
     "CloudDetector",
     "MonitoringDetector",
+    "VulnerabilityScanner",
+    "LicenseDetector",
+    "PerformanceAnalyzer",
+    "MigrationPlanner",
+    "DependencyMapper",
 ]

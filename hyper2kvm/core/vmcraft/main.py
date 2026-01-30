@@ -54,6 +54,11 @@ from .user_activity import UserActivityAnalyzer
 from .app_framework_detector import AppFrameworkDetector
 from .cloud_detector import CloudDetector
 from .monitoring_detector import MonitoringDetector
+from .vulnerability_scanner import VulnerabilityScanner
+from .license_detector import LicenseDetector
+from .performance_analyzer import PerformanceAnalyzer
+from .migration_planner import MigrationPlanner
+from .dependency_mapper import DependencyMapper
 
 
 logger = logging.getLogger(__name__)
@@ -121,6 +126,11 @@ class VMCraft:
         self._app_framework_detector: AppFrameworkDetector | None = None
         self._cloud_detector: CloudDetector | None = None
         self._monitoring_detector: MonitoringDetector | None = None
+        self._vulnerability_scanner: VulnerabilityScanner | None = None
+        self._license_detector: LicenseDetector | None = None
+        self._performance_analyzer: PerformanceAnalyzer | None = None
+        self._migration_planner: MigrationPlanner | None = None
+        self._dependency_mapper: DependencyMapper | None = None
 
         # Log backend selection
         self.logger.debug("Using VMCraft backend (qemu-nbd + Linux tools)")
@@ -248,6 +258,11 @@ class VMCraft:
         self._app_framework_detector = AppFrameworkDetector(self.logger, self._file_ops, self._mount_root)
         self._cloud_detector = CloudDetector(self.logger, self._file_ops, self._mount_root)
         self._monitoring_detector = MonitoringDetector(self.logger, self._file_ops, self._mount_root)
+        self._vulnerability_scanner = VulnerabilityScanner(self.logger, self._file_ops, self._mount_root)
+        self._license_detector = LicenseDetector(self.logger, self._file_ops, self._mount_root)
+        self._performance_analyzer = PerformanceAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._migration_planner = MigrationPlanner(self.logger, self._file_ops, self._mount_root)
+        self._dependency_mapper = DependencyMapper(self.logger, self._file_ops, self._mount_root)
 
         total_time = time.time() - start_time
         self._perf_metrics['total_launch'] = total_time
@@ -1634,6 +1649,179 @@ class VMCraft:
         if not self._monitoring_detector:
             raise RuntimeError("Not launched")
         return self._monitoring_detector.check_monitoring_health(agents)
+
+    # Vulnerability Scanning (vulnerability_scanner.py)
+
+    def scan_vulnerabilities(self, os_type: str = "linux") -> dict[str, Any]:
+        """Scan for vulnerabilities comprehensively."""
+        if not self._vulnerability_scanner:
+            raise RuntimeError("Not launched")
+        return self._vulnerability_scanner.scan_vulnerabilities(os_type)
+
+    def get_vulnerability_summary(self, scan: dict[str, Any]) -> dict[str, Any]:
+        """Get vulnerability summary."""
+        if not self._vulnerability_scanner:
+            raise RuntimeError("Not launched")
+        return self._vulnerability_scanner.get_vulnerability_summary(scan)
+
+    def get_critical_vulnerabilities(self, scan: dict[str, Any]) -> list[dict[str, Any]]:
+        """Get critical vulnerabilities only."""
+        if not self._vulnerability_scanner:
+            raise RuntimeError("Not launched")
+        return self._vulnerability_scanner.get_critical_vulnerabilities(scan)
+
+    def get_remediation_priority(self, scan: dict[str, Any]) -> list[dict[str, Any]]:
+        """Get prioritized remediation list."""
+        if not self._vulnerability_scanner:
+            raise RuntimeError("Not launched")
+        return self._vulnerability_scanner.get_remediation_priority(scan)
+
+    def detect_ransomware_indicators(self) -> list[dict[str, Any]]:
+        """Detect potential ransomware indicators."""
+        if not self._vulnerability_scanner:
+            raise RuntimeError("Not launched")
+        return self._vulnerability_scanner.detect_ransomware_indicators()
+
+    def check_kernel_vulnerabilities(self) -> list[dict[str, Any]]:
+        """Check for kernel vulnerabilities."""
+        if not self._vulnerability_scanner:
+            raise RuntimeError("Not launched")
+        return self._vulnerability_scanner.check_kernel_vulnerabilities()
+
+    # License Detection (license_detector.py)
+
+    def detect_licenses(self, os_type: str = "linux") -> dict[str, Any]:
+        """Detect software licenses comprehensively."""
+        if not self._license_detector:
+            raise RuntimeError("Not launched")
+        return self._license_detector.detect_licenses(os_type)
+
+    def get_license_summary(self, licenses: dict[str, Any]) -> dict[str, Any]:
+        """Get license summary."""
+        if not self._license_detector:
+            raise RuntimeError("Not launched")
+        return self._license_detector.get_license_summary(licenses)
+
+    def get_copyleft_packages(self, licenses: dict[str, Any]) -> list[dict[str, Any]]:
+        """Get packages with copyleft licenses."""
+        if not self._license_detector:
+            raise RuntimeError("Not launched")
+        return self._license_detector.get_copyleft_packages(licenses)
+
+    def generate_sbom(self, licenses: dict[str, Any]) -> dict[str, Any]:
+        """Generate Software Bill of Materials (SBOM)."""
+        if not self._license_detector:
+            raise RuntimeError("Not launched")
+        return self._license_detector.generate_sbom(licenses)
+
+    def check_license_compatibility(
+        self,
+        licenses: dict[str, Any],
+        target_license: str = "proprietary"
+    ) -> list[dict[str, Any]]:
+        """Check license compatibility issues."""
+        if not self._license_detector:
+            raise RuntimeError("Not launched")
+        return self._license_detector.check_license_compatibility(licenses, target_license)
+
+    # Performance Analysis (performance_analyzer.py)
+
+    def analyze_performance(self) -> dict[str, Any]:
+        """Analyze performance comprehensively."""
+        if not self._performance_analyzer:
+            raise RuntimeError("Not launched")
+        return self._performance_analyzer.analyze_performance()
+
+    def get_performance_summary(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Get performance summary."""
+        if not self._performance_analyzer:
+            raise RuntimeError("Not launched")
+        return self._performance_analyzer.get_performance_summary(analysis)
+
+    def get_sizing_recommendation(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Get VM sizing recommendation for migration."""
+        if not self._performance_analyzer:
+            raise RuntimeError("Not launched")
+        return self._performance_analyzer.get_sizing_recommendation(analysis)
+
+    def estimate_resource_cost(
+        self,
+        analysis: dict[str, Any],
+        cloud_provider: str = "aws"
+    ) -> dict[str, Any]:
+        """Estimate cloud resource cost."""
+        if not self._performance_analyzer:
+            raise RuntimeError("Not launched")
+        return self._performance_analyzer.estimate_resource_cost(analysis, cloud_provider)
+
+    # Migration Planning (migration_planner.py)
+
+    def plan_migration(
+        self,
+        source_platform: str,
+        target_platform: str,
+        os_info: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Plan migration from source to target platform."""
+        if not self._migration_planner:
+            raise RuntimeError("Not launched")
+        return self._migration_planner.plan_migration(source_platform, target_platform, os_info)
+
+    def get_migration_summary(self, plan: dict[str, Any]) -> dict[str, Any]:
+        """Get migration summary."""
+        if not self._migration_planner:
+            raise RuntimeError("Not launched")
+        return self._migration_planner.get_migration_summary(plan)
+
+    def get_migration_checklist(self, plan: dict[str, Any]) -> list[dict[str, Any]]:
+        """Generate pre-migration checklist."""
+        if not self._migration_planner:
+            raise RuntimeError("Not launched")
+        return self._migration_planner.get_checklist(plan)
+
+    def generate_rollback_plan(self, plan: dict[str, Any]) -> dict[str, Any]:
+        """Generate rollback plan."""
+        if not self._migration_planner:
+            raise RuntimeError("Not launched")
+        return self._migration_planner.generate_rollback_plan(plan)
+
+    def validate_migration_readiness(self, plan: dict[str, Any]) -> dict[str, Any]:
+        """Validate migration readiness."""
+        if not self._migration_planner:
+            raise RuntimeError("Not launched")
+        return self._migration_planner.validate_migration_readiness(plan)
+
+    # Dependency Mapping (dependency_mapper.py)
+
+    def map_dependencies(self) -> dict[str, Any]:
+        """Map dependencies comprehensively."""
+        if not self._dependency_mapper:
+            raise RuntimeError("Not launched")
+        return self._dependency_mapper.map_dependencies()
+
+    def get_dependency_summary(self, mapping: dict[str, Any]) -> dict[str, Any]:
+        """Get dependency summary."""
+        if not self._dependency_mapper:
+            raise RuntimeError("Not launched")
+        return self._dependency_mapper.get_dependency_summary(mapping)
+
+    def get_service_graph(self, mapping: dict[str, Any]) -> dict[str, Any]:
+        """Generate service dependency graph data."""
+        if not self._dependency_mapper:
+            raise RuntimeError("Not launched")
+        return self._dependency_mapper.get_service_graph(mapping)
+
+    def find_critical_services(self, mapping: dict[str, Any]) -> list[dict[str, Any]]:
+        """Find critical services (most dependencies)."""
+        if not self._dependency_mapper:
+            raise RuntimeError("Not launched")
+        return self._dependency_mapper.find_critical_services(mapping)
+
+    def get_port_security_analysis(self, mapping: dict[str, Any]) -> dict[str, Any]:
+        """Analyze port security."""
+        if not self._dependency_mapper:
+            raise RuntimeError("Not launched")
+        return self._dependency_mapper.get_port_security_analysis(mapping)
 
     # Context manager support
 

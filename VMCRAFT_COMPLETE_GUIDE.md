@@ -2,15 +2,15 @@
 
 ## 🚀 The Ultimate VM Disk Image Manipulation Library
 
-VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **197+ methods** across **37 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, forensic analysis, and operational intelligence.
+VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **203+ methods** across **42 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, forensic analysis, operational intelligence, vulnerability scanning, license compliance, performance optimization, and migration planning.
 
 ## 📊 At a Glance
 
 | Metric | Value |
 |--------|-------|
-| **Total Methods** | 197+ |
-| **Modules** | 37 |
-| **Lines of Code** | ~15,200 |
+| **Total Methods** | 203+ |
+| **Modules** | 42 |
+| **Lines of Code** | ~17,900 |
 | **Performance** | **5-10x faster** than libguestfs |
 | **Supported OS** | Windows (NT-12), Linux (all major distros) |
 | **Launch Time** | ~1.9s (vs libguestfs: ~10-13s) |
@@ -1016,13 +1016,16 @@ with VMCraft() as g:
 
 ## 🏆 Key Advantages
 
-✅ **130+ Methods** - Comprehensive API surface
+✅ **203+ Methods** - Comprehensive API surface
 ✅ **5-10x Faster** - NBD-based architecture
 ✅ **Production-Ready** - Tested with real VMs
 ✅ **100% Compatible** - Drop-in libguestfs replacement
-✅ **22 Modules** - Clean, maintainable architecture
+✅ **42 Modules** - Clean, maintainable architecture
 ✅ **Advanced Features** - Windows services, apps, search, export
-✅ **Enterprise-Grade** - Security, audit, compliance
+✅ **Enterprise-Grade** - Security, audit, compliance, vulnerability scanning
+✅ **Migration Planning** - Automated migration planning with risk assessment
+✅ **License Compliance** - OSS license detection and SBOM generation
+✅ **Performance Analysis** - Resource optimization and cloud cost estimation
 ✅ **Well-Documented** - Comprehensive guides and examples
 
 ## 📈 Version History
@@ -1043,12 +1046,18 @@ with VMCraft() as g:
   - Certificate management (SSL/TLS, keystores, expiration tracking)
   - Container analysis (Docker, Podman, containerd)
   - Compliance checking (CIS benchmarks, security hardening)
-- **v5.0**: Operational intelligence platform (**197+ methods, 37 modules, +19 methods**)
+- **v5.0**: Operational intelligence platform (197+ methods, 37 modules, +19 methods)
   - Backup analysis (Bacula, Amanda, rsnapshot, Duplicity, Borg, Restic, Veeam)
   - User activity tracking (login history, sudo usage, command history, SSH keys)
   - Application framework detection (Python, Node.js, Java, PHP, Ruby, Go, .NET)
   - Cloud integration (AWS, Azure, GCP, cloud-init, monitoring agents)
   - Monitoring agents (Prometheus, Datadog, ELK Stack, Zabbix, APM tools)
+- **v6.0**: Advanced security & migration platform (**203+ methods, 42 modules, +25 methods**)
+  - Vulnerability scanning (CVE detection, EOL software, patch status, ransomware indicators)
+  - License detection (OSS licenses, SBOM generation, compliance risk, copyleft detection)
+  - Performance analysis (resource usage, bottleneck detection, sizing recommendations, cloud cost estimation)
+  - Migration planning (platform compatibility, task sequencing, risk assessment, rollback planning)
+  - Dependency mapping (service dependencies, network ports, critical services, dependency graphs)
 
 ## 🤝 Contributing
 
