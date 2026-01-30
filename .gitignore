@@ -135,3 +135,4 @@ win11/
 # Test disk images (specific)
 photon.vmdk
 test-images/
+.claude/
