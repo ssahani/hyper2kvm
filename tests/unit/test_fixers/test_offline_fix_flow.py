@@ -20,6 +20,13 @@ def test_offline_fixer_runs_and_builds_report(monkeypatch, tmp_path):
     except Exception as e:
         pytest.skip(f"Cannot import offline_fixer: {e}")
 
+    # Skip this test when VMCraft backend is used, as it requires real disk images
+    # This is a unit test with FakeGuestFS, but VMCraft doesn't use the fake
+    import os
+    backend = os.environ.get('HYPER2KVM_GUESTFS_BACKEND', 'vmcraft').lower()
+    if backend == 'vmcraft':
+        pytest.skip("Test requires FakeGuestFS, but VMCraft backend uses real system resources")
+
     fake = FakeGuestFS()
     fake.dirs |= {"/etc", "/boot", "/boot/grub2", "/tmp"}
     fake.fs["/etc/fstab"] = b"UUID=111 / ext4 defaults 0 1\n"

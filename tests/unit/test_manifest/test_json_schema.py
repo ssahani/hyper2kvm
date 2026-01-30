@@ -19,7 +19,7 @@ class TestArtifactManifestSchema(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Load JSON schema once for all tests."""
-        schema_path = Path(__file__).parent.parent.parent.parent / "docs" / "artifact-manifest-v1.0.schema.json"
+        schema_path = Path(__file__).parent.parent.parent.parent / "docs" / "reference" / "artifact-manifest-v1.0.schema.json"
         with open(schema_path) as f:
             cls.schema = json.load(f)
 
