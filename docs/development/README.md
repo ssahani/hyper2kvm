@@ -18,8 +18,6 @@ Documentation for contributors and developers.
 - **windows-support-implementation-plan.md** - P0 Advanced Windows Support (license, AD, SQL Server) - 4-6 months
 - **live-migration-implementation-plan.md** - P0 Live Migration with HyperSDK integration - 4-6 months
 
-### Development Summaries
-- **summaries/** - Development progress reports, completion summaries, and status updates
 
 ## Getting Started
 

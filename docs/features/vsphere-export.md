@@ -449,4 +449,4 @@ Complete examples are available in:
 - `examples/json/` - JSON manifest examples
 - `test-confs/` - Test configurations
 
-For more information, see the main [documentation index](00-Index.md).
+For more information, see the main [documentation index](../index.md).

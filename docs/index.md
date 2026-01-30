@@ -10,7 +10,7 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 
 ### 🚀 Getting Started
 - **[Installation Guide](getting-started/01-Installation.md)** - Install Hyper2KVM in 5 minutes
-- **[Quick Start Tutorial](getting-started/00-Quickstart.md)** - Your first migration in 10 minutes
+- **[Quick Start Tutorial](getting-started/02-Quick-Start.md)** - Your first migration in 10 minutes
 - **[Architecture Overview](reference/architecture.md)** - Understand how Hyper2KVM works
 
 ### 📚 Tutorials
@@ -246,7 +246,7 @@ hyper2kvm --config batch.yaml
 
 **Beginner** (0-2 hours):
 1. [Installation](getting-started/01-Installation.md)
-2. [Quick Start](getting-started/00-Quickstart.md)
+2. [Quick Start](getting-started/02-Quick-Start.md)
 3. [Beginner Tutorial](tutorials/01-beginner-migration.md)
 
 **Intermediate** (2-8 hours):

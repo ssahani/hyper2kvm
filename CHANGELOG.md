@@ -2038,7 +2038,7 @@ Comprehensive Windows-specific migration support with automated license reactiva
 
 **Documentation Organization**:
 - Updated `docs/features/vmcraft/README.md` with organized navigation
-- Updated `docs/README.md` with specialized guide links
+- Updated `docs/index.md` with specialized guide links
 - All guides include: Quick Start, API Reference, Advanced Use Cases, Best Practices, Troubleshooting
 
 **Test Coverage Validation**:

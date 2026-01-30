@@ -339,6 +339,6 @@ Check terminal emulator settings:
 ## References
 
 - [Textual Documentation](https://textual.textualize.io/)
-- [hyper2kvm Documentation](../../docs/00-Index.md)
-- [Migration Workflow](../../docs/02-Migration-Workflow.md)
-- [Offline Fixes](../../docs/18-Offline-Fixes.md)
+- [hyper2kvm Documentation](../../docs/index.md)
+- [Migration Guides](../../docs/guides/migration/)
+- [Feature Documentation](../../docs/features/)
