@@ -12,7 +12,7 @@ import re
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 # Optional: pyvmomi imports (conditional)
 try:

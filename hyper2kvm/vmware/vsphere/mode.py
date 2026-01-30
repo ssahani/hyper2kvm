@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import requests
+
 if TYPE_CHECKING:
     from pyVmomi import vim, vmodl
 else:

@@ -14,7 +14,7 @@ import ssl
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import quote
 
 # Optional: Rich progress UI (TTY friendly). Falls back to plain logs if Rich not available.
