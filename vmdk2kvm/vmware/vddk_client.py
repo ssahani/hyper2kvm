@@ -59,10 +59,6 @@ from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 
-# -----------------------------------------------------------------------------
-# Errors
-# -----------------------------------------------------------------------------
-
 class VDDKError(RuntimeError):
     """Generic VDDK client error."""
 
@@ -70,10 +66,6 @@ class VDDKError(RuntimeError):
 class VDDKCancelled(VDDKError):
     """Raised when a caller cancels an in-progress download."""
 
-
-# -----------------------------------------------------------------------------
-# Constants / Types
-# -----------------------------------------------------------------------------
 
 _VIXDISKLIB_API_VERSION_MAJOR = 7
 _VIXDISKLIB_API_VERSION_MINOR = 0
@@ -88,9 +80,7 @@ _VixDiskLibHandle = ctypes.c_void_p
 _SECTOR_SIZE = 512
 
 
-# -----------------------------------------------------------------------------
 # ctypes structures
-# -----------------------------------------------------------------------------
 
 class _VixDiskLibConnectParams(ctypes.Structure):
     """
@@ -129,10 +119,6 @@ class _VixDiskLibInfo(ctypes.Structure):
         # More fields exist (geometry, adapterType, etc.) but we stop here.
     ]
 
-
-# -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
 
 def _as_cstr(s: Optional[str]) -> Optional[bytes]:
     if s is None:
@@ -264,9 +250,7 @@ def _redact(s: Optional[str]) -> str:
     return "***"
 
 
-# -----------------------------------------------------------------------------
 # Dynamic loading & symbol binding
-# -----------------------------------------------------------------------------
 
 def _candidate_lib_names() -> Tuple[str, ...]:
     return (
@@ -439,9 +423,7 @@ def _is_likely_transient_error(msg: str) -> bool:
     return True
 
 
-# -----------------------------------------------------------------------------
 # VDDK logging callbacks (critical for diagnosing ConnectEx)
-# -----------------------------------------------------------------------------
 
 _VDDK_LOG_CB = ctypes.CFUNCTYPE(None, ctypes.c_char_p)
 
@@ -516,9 +498,8 @@ def vddk_init_once(logger: logging.Logger, lib: ctypes.CDLL, *, vddk_libdir: Opt
         logger.debug("VDDK: InitEx OK (api=%d.%d)", _VIXDISKLIB_API_VERSION_MAJOR, _VIXDISKLIB_API_VERSION_MINOR)
 
 
-# -----------------------------------------------------------------------------
+
 # Public API
-# -----------------------------------------------------------------------------
 
 ProgressFn = Callable[[int, int, float], None]
 CancelFn = Callable[[], bool]
@@ -566,9 +547,8 @@ class VDDKESXClient:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.disconnect()
 
-    # ---------------------------
+    
     # Setup / Connect
-    # ---------------------------
 
     def _ensure_loaded(self) -> None:
         if self._lib is not None:
@@ -709,10 +689,9 @@ class VDDKESXClient:
         finally:
             self._conn = _VixDiskLibConnection()
 
-    # ---------------------------
+ 
     # Disk ops
-    # ---------------------------
-
+ 
     def _require_connected(self) -> None:
         if self._lib is None:
             raise VDDKError("VDDK library not loaded")

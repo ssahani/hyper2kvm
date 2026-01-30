@@ -52,9 +52,8 @@ class FilesystemFixer:
         if self.logger:
             self.logger.log(level, msg, *args, **kwargs)
 
-    # -------------------------------------------------------------------------
+
     # Appliance memory helpers (best-effort)
-    # -------------------------------------------------------------------------
 
     def _get_guestfs_memsize_mib_best_effort(self, ctx: Any | None = None) -> Optional[int]:
         """
@@ -104,10 +103,8 @@ class FilesystemFixer:
         m = min(m, 2048)
         return m
 
-    # -------------------------------------------------------------------------
     # Filesystem type detection
-    # -------------------------------------------------------------------------
-
+  
     def _vfs_type(self, g: guestfs.GuestFS, dev: str) -> str:
         """
         Enhanced filesystem type detection with fallbacks.

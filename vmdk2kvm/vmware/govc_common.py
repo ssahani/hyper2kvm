@@ -5,18 +5,6 @@ from __future__ import annotations
 """
 govc / govmomi common helpers for vmdk2kvm.
 
-This module centralizes:
-  - GOVC_* environment seeding from vmdk2kvm args/config
-  - govc command execution helpers (text + JSON)
-  - datastore path normalization and resilient parsing of `govc datastore.ls -json`
-
-Why:
-  The repo previously had three slightly different GovmomiCLI helpers spread across:
-    - vmware_client.py
-    - vsphere_command.py
-    - vsphere_mode.py
-  That created drift (and bugs when govc JSON output shape differs by version).
-
 Design goals:
   - Best-effort + additive: if govc isn't available, callers can fall back to pyvmomi
   - Be defensive about output shapes and path forms
@@ -72,9 +60,7 @@ def normalize_ds_path(datastore: str, ds_path: str) -> Tuple[str, str]:
     return datastore, s.lstrip("/")
 
 
-# --------------------------------------------------------------------------------------
 # Resilient parsing for `govc datastore.ls -json`
-# --------------------------------------------------------------------------------------
 
 def _flatten_any(obj: Any) -> List[Any]:
     """Flatten nested dict/list structures into a list of candidate file entries."""
@@ -144,10 +130,6 @@ def extract_paths_from_datastore_ls_json(data: Any) -> List[str]:
         uniq.append(p)
     return uniq
 
-
-# --------------------------------------------------------------------------------------
-# govc runner (debuggable + defensive)
-# --------------------------------------------------------------------------------------
 
 @dataclass
 class GovcConfig:
@@ -367,8 +349,6 @@ class GovcRunner:
             return data
         except Exception as e:
             raise VMwareError(f"govc returned non-JSON output: {e}: {out[:2000]}")
-
-    # -------- convenience helpers
 
     def datastore_ls_text(self, datastore: str, ds_dir: str) -> List[str]:
         ds, rel = normalize_ds_path(datastore, ds_dir)
