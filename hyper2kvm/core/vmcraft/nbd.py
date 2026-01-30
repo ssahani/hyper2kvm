@@ -70,6 +70,7 @@ class NBDDeviceManager:
         self._nbd_device: str | None = None
         self._nbd_process = None
         self._connected = False
+        self._converted_qcow2_path: Path | None = None  # Track temp qcow2 for cleanup
 
     def _check_nbd_module(self) -> None:
         """Ensure NBD kernel module is loaded."""
@@ -350,7 +351,9 @@ class NBDDeviceManager:
         # Check if VMDK needs conversion (streamOptimized, compressed)
         if self._needs_conversion(image_path):
             original_path = image_path
-            image_path = self._convert_to_qcow2(image_path)
+            converted_path = self._convert_to_qcow2(image_path)
+            self._converted_qcow2_path = converted_path  # Track for cleanup
+            image_path = converted_path
             format = "qcow2"  # Override format after conversion
             self.logger.info(f"Using converted qcow2 instead of original {original_path.name}")
 
@@ -553,9 +556,19 @@ class NBDDeviceManager:
         except Exception as e:
             self.logger.warning(f"Error disconnecting {nbd_device}: {e}")
         finally:
+            # Clean up temporary converted qcow2 if it exists
+            if self._converted_qcow2_path and self._converted_qcow2_path.exists():
+                try:
+                    self.logger.info(f"Removing temporary converted qcow2: {self._converted_qcow2_path}")
+                    self._converted_qcow2_path.unlink()
+                    self.logger.info(f"✓ Cleaned up {self._converted_qcow2_path.name}")
+                except Exception as cleanup_error:
+                    self.logger.warning(f"Failed to remove temp qcow2: {cleanup_error}")
+
             self._nbd_device = None
             self._connected = False
             self._nbd_process = None
+            self._converted_qcow2_path = None
 
     def __enter__(self):
         """Context manager entry."""

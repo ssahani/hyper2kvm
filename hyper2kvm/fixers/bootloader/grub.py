@@ -400,14 +400,57 @@ def _update_default_grub(self, g: guestfs.GuestFS, new_root_token: str) -> int:
 
     def repl(m: re.Match[str]) -> str:
         line = m.group(0)
-        # Replace root= inside quotes
+
+        # Replace existing root= parameter if found
         if re.search(r"\broot=\S+", line):
             return re.sub(r"\broot=\S+", new_root_token, line)
-        # Otherwise append root= before closing quote if present
-        q = '"' if '"' in line else "'"
-        if q in line:
-            return re.sub(rf"({re.escape(q)}\s*)$", f" {new_root_token}\\1", line)
-        return line.rstrip("\n") + " " + new_root_token + "\n"
+
+        # Find the value part after the = sign
+        match_eq = re.search(r"=\s*(.*)$", line)
+        if not match_eq:
+            return line  # No = sign found, skip
+
+        value_part = match_eq.group(1).rstrip()
+
+        # Detect quote style
+        if value_part.startswith('"') and value_part.endswith('"'):
+            # Double-quoted value - insert before closing quote
+            inner = value_part[1:-1]
+            if inner.strip():
+                new_value = f'"{inner} {new_root_token}"'
+            else:
+                new_value = f'"{new_root_token}"'
+            return line[:match_eq.start(1)] + new_value
+        elif value_part.startswith("'") and value_part.endswith("'"):
+            # Single-quoted value - insert before closing quote
+            inner = value_part[1:-1]
+            if inner.strip():
+                new_value = f"'{inner} {new_root_token}'"
+            else:
+                new_value = f"'{new_root_token}'"
+            return line[:match_eq.start(1)] + new_value
+        elif value_part.startswith('"'):
+            # Double quote opened but not closed - append before newline and add closing quote
+            inner = value_part[1:]
+            if inner.strip():
+                new_value = f'"{inner} {new_root_token}"'
+            else:
+                new_value = f'"{new_root_token}"'
+            return line[:match_eq.start(1)] + new_value
+        elif value_part.startswith("'"):
+            # Single quote opened but not closed - append before newline and add closing quote
+            inner = value_part[1:]
+            if inner.strip():
+                new_value = f"'{inner} {new_root_token}'"
+            else:
+                new_value = f"'{new_root_token}'"
+            return line[:match_eq.start(1)] + new_value
+        else:
+            # No quotes - wrap in quotes
+            if value_part.strip():
+                return line[:match_eq.start(1)] + f'"{value_part} {new_root_token}"'
+            else:
+                return line[:match_eq.start(1)] + f'"{new_root_token}"'
 
     new = re.sub(r"(?m)^\s*GRUB_CMDLINE_LINUX(?:_DEFAULT)?=.*$", repl, old)
     if new == old:
