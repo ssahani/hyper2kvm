@@ -41,7 +41,7 @@ def _add_project_control(p: argparse.ArgumentParser) -> None:
         "--cmd",
         dest="cmd",
         default=None,
-        help="Operation (normally from YAML `cmd:`). Examples: local, fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, daemon, generate-systemd",
+        help="Operation (normally from YAML `cmd:`). Examples: local, fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, azure, daemon, generate-systemd",
     )
     p.add_argument(
         "--vs-action",
@@ -607,3 +607,53 @@ def _add_vsphere_v2v_and_download_knobs(p: argparse.ArgumentParser) -> None:
 
     # OVF Tool deploy action arg (input local OVA/OVF)
     p.add_argument("--source-path", dest="source_path", default=None, help="ovftool_deploy: local source path to .ova or .ovf (required for vs_action=ovftool_deploy).")
+
+
+def _add_azure_knobs(p: argparse.ArgumentParser) -> None:
+    # ------------------------------------------------------------------
+    # Azure VM migration knobs
+    # ------------------------------------------------------------------
+    p.add_argument("--azure-subscription", dest="azure_subscription", default=None, help="Azure subscription ID (optional; uses current az account if unset)")
+    p.add_argument("--azure-tenant", dest="azure_tenant", default=None, help="Azure tenant ID (optional)")
+
+    # VM selection
+    p.add_argument("--azure-resource-group", dest="azure_resource_group", default=None, help="Azure resource group (required unless --azure-allow-all-rgs)")
+    p.add_argument("--azure-vm-names", dest="azure_vm_names", nargs="*", default=None, help="VM name patterns (glob supported, e.g., 'web-*', 'db-prod-01')")
+    p.add_argument("--azure-tags", dest="azure_tags", default=None, help="Filter VMs by tags (format: key1=val1,key2=val2)")
+    p.add_argument("--azure-power-state", dest="azure_power_state", default=None, help="Filter by power state (running, stopped, deallocated)")
+    p.add_argument("--azure-list-only", dest="azure_list_only", action="store_true", help="List VMs only, don't download")
+    p.add_argument("--azure-allow-all-rgs", dest="azure_allow_all_rgs", action="store_true", help="Allow searching all resource groups (dangerous)")
+
+    # Shutdown control
+    p.add_argument("--azure-shutdown-mode", dest="azure_shutdown_mode", default="none", choices=["none", "stop", "deallocate"], help="Shutdown mode: none (default), stop, or deallocate")
+    p.add_argument("--azure-shutdown-force", dest="azure_shutdown_force", action="store_true", help="Force shutdown even when using snapshots")
+    p.add_argument("--azure-shutdown-wait", dest="azure_shutdown_wait", action="store_true", default=True, help="Wait for shutdown to complete")
+    p.add_argument("--no-azure-shutdown-wait", dest="azure_shutdown_wait", action="store_false", help="Don't wait for shutdown (async)")
+
+    # Export control
+    p.add_argument("--azure-use-snapshots", dest="azure_use_snapshots", action="store_true", default=True, help="Use snapshots for zero-downtime migration (default)")
+    p.add_argument("--no-azure-use-snapshots", dest="azure_use_snapshots", action="store_false", help="Export directly from disk (requires shutdown)")
+    p.add_argument("--azure-stage-disk", dest="azure_stage_disk", action="store_true", help="Create temp disk from snapshot before export (slower but safer)")
+    p.add_argument("--azure-disks", dest="azure_disks", default="all", choices=["all", "os", "data"], help="Which disks to export: all (default), os, or data")
+    p.add_argument("--azure-consistency", dest="azure_consistency", default="crash_consistent", choices=["crash_consistent", "best_effort_quiesce"], help="Snapshot consistency: crash_consistent (default) or best_effort_quiesce")
+    p.add_argument("--azure-tag-resources", dest="azure_tag_resources", action="store_true", default=True, help="Tag created Azure resources (default)")
+    p.add_argument("--no-azure-tag-resources", dest="azure_tag_resources", action="store_false", help="Don't tag Azure resources")
+    p.add_argument("--azure-keep-snapshots", dest="azure_keep_snapshots", action="store_true", help="Keep snapshots after export (default: delete)")
+    p.add_argument("--azure-keep-temp-disks", dest="azure_keep_temp_disks", action="store_true", help="Keep temporary disks after export (default: delete)")
+    p.add_argument("--azure-run-tag", dest="azure_run_tag", default=None, help="Custom run tag (default: auto-generated timestamp)")
+    p.add_argument("--azure-sas-duration", dest="azure_sas_duration", type=int, default=3600, help="SAS token duration in seconds (default: 3600 = 1 hour)")
+
+    # Download control
+    p.add_argument("--azure-parallel", dest="azure_parallel", type=int, default=4, help="Parallel disk downloads (default: 4)")
+    p.add_argument("--azure-chunk-mb", dest="azure_chunk_mb", type=int, default=4, help="Download chunk size in MB (default: 4)")
+    p.add_argument("--azure-resume", dest="azure_resume", action="store_true", default=True, help="Resume interrupted downloads (default)")
+    p.add_argument("--no-azure-resume", dest="azure_resume", action="store_false", help="Don't resume downloads")
+    p.add_argument("--azure-verify-size", dest="azure_verify_size", action="store_true", default=True, help="Verify download size (default)")
+    p.add_argument("--no-azure-verify-size", dest="azure_verify_size", action="store_false", help="Don't verify download size")
+    p.add_argument("--azure-strict-verify", dest="azure_strict_verify", action="store_true", help="Fail on size mismatch (default: warn only)")
+    p.add_argument("--azure-temp-suffix", dest="azure_temp_suffix", default=".part", help="Temp file suffix (default: .part)")
+    p.add_argument("--azure-connect-timeout", dest="azure_connect_timeout", type=int, default=30, help="Connection timeout in seconds (default: 30)")
+    p.add_argument("--azure-read-timeout", dest="azure_read_timeout", type=int, default=300, help="Read timeout in seconds (default: 300)")
+    p.add_argument("--azure-retries", dest="azure_retries", type=int, default=3, help="Download retry attempts (default: 3)")
+    p.add_argument("--azure-backoff-base", dest="azure_backoff_base", type=float, default=1.0, help="Retry backoff base in seconds (default: 1.0)")
+    p.add_argument("--azure-backoff-cap", dest="azure_backoff_cap", type=float, default=60.0, help="Retry backoff cap in seconds (default: 60.0)")
