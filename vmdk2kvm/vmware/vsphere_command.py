@@ -3,9 +3,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import errno
 import fnmatch
+import socket
 import subprocess
 from dataclasses import asdict, is_dataclass
+from enum import IntEnum
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -13,6 +16,156 @@ from ..core.exceptions import VMwareError
 from ..core.utils import U
 from .govc_common import GovcRunner, normalize_ds_path
 from .vmware_client import V2VExportOptions, VMwareClient
+
+
+# --------------------------------------------------------------------------------------
+# Exit codes (stable buckets for CI/shell)
+# --------------------------------------------------------------------------------------
+
+
+class VsphereExitCode(IntEnum):
+    OK = 0
+    UNKNOWN = 1
+    USAGE = 2
+
+    AUTH = 10
+    NOT_FOUND = 11
+    NETWORK = 12
+    TOOL_MISSING = 13
+
+    EXTERNAL_TOOL = 20
+    VSPHERE_API = 30
+    LOCAL_IO = 40
+
+    INTERRUPTED = 130
+
+
+def _is_usage_error(e: BaseException) -> bool:
+    msg = str(e).lower()
+    return (
+        "unknown action" in msg
+        or "missing vs_action" in msg
+        or "missing required arg" in msg
+        or "argparse" in msg
+        or "usage:" in msg
+    )
+
+
+def _is_tool_missing_error(e: BaseException) -> bool:
+    msg = str(e).lower()
+    return (
+        ("govc" in msg and ("not found" in msg or "no such file" in msg))
+        or ("ovftool" in msg and ("not found" in msg or "no such file" in msg))
+        or ("executable file not found" in msg)
+    )
+
+
+def _is_auth_error(e: BaseException) -> bool:
+    msg = str(e).lower()
+    needles = [
+        "not authenticated",
+        "authentication",
+        "unauthorized",
+        "forbidden",
+        "invalid login",
+        "no permission",
+        "access denied",
+        "permission denied",
+        "authorization",
+    ]
+    return any(n in msg for n in needles)
+
+
+def _is_not_found_error(e: BaseException) -> bool:
+    msg = str(e).lower()
+    needles = [
+        "vm not found",
+        "snapshot not found",
+        "not found",
+        "does not exist",
+        "no such file",
+        "file not found",
+    ]
+    return any(n in msg for n in needles)
+
+
+def _is_network_error(e: BaseException) -> bool:
+    if isinstance(e, (socket.timeout, TimeoutError, ConnectionError)):
+        return True
+    if isinstance(e, OSError) and e.errno in (
+        errno.ECONNREFUSED,
+        errno.ETIMEDOUT,
+        errno.EHOSTUNREACH,
+        errno.ENETUNREACH,
+        errno.ECONNRESET,
+    ):
+        return True
+    msg = str(e).lower()
+    needles = [
+        "timed out",
+        "timeout",
+        "connection refused",
+        "connection reset",
+        "name or service not known",
+        "temporary failure in name resolution",
+        "tls",
+        "ssl",
+        "handshake",
+        "certificate verify failed",
+    ]
+    return any(n in msg for n in needles)
+
+
+def _is_local_io_error(e: BaseException) -> bool:
+    if isinstance(e, OSError) and e.errno in (
+        errno.EACCES,
+        errno.EPERM,
+        errno.ENOSPC,
+        errno.EROFS,
+        errno.EDQUOT,
+    ):
+        return True
+    msg = str(e).lower()
+    needles = ["no space left", "permission denied", "read-only file system"]
+    return any(n in msg for n in needles)
+
+
+def _is_external_tool_error(e: BaseException) -> bool:
+    msg = str(e).lower()
+    return "govc failed" in msg or "subprocess" in msg
+
+
+def _classify_exit_code(e: BaseException) -> VsphereExitCode:
+    if isinstance(e, KeyboardInterrupt):
+        return VsphereExitCode.INTERRUPTED
+
+    # Treat VMwareError as "expected operational failure" buckets.
+    if isinstance(e, VMwareError):
+        if _is_usage_error(e):
+            return VsphereExitCode.USAGE
+        if _is_tool_missing_error(e):
+            return VsphereExitCode.TOOL_MISSING
+        if _is_auth_error(e):
+            return VsphereExitCode.AUTH
+        if _is_not_found_error(e):
+            return VsphereExitCode.NOT_FOUND
+        if _is_network_error(e):
+            return VsphereExitCode.NETWORK
+        if _is_external_tool_error(e):
+            return VsphereExitCode.EXTERNAL_TOOL
+        return VsphereExitCode.VSPHERE_API
+
+    # Non-VMwareError exceptions
+    if _is_usage_error(e):
+        return VsphereExitCode.USAGE
+    if _is_local_io_error(e):
+        return VsphereExitCode.LOCAL_IO
+    if _is_network_error(e):
+        return VsphereExitCode.NETWORK
+    if _is_tool_missing_error(e):
+        return VsphereExitCode.TOOL_MISSING
+
+    return VsphereExitCode.UNKNOWN
 
 
 # --------------------------------------------------------------------------------------
@@ -122,7 +275,13 @@ class _Emitter:
     def json_enabled(self) -> bool:
         return bool(getattr(self.args, "json", False))
 
-    def emit(self, payload: Any, *, human: Optional[Iterable[str]] = None, human_msg: Optional[str] = None) -> None:
+    def emit(
+        self,
+        payload: Any,
+        *,
+        human: Optional[Iterable[str]] = None,
+        human_msg: Optional[str] = None,
+    ) -> None:
         payload = _as_payload(payload)
         if self.json_enabled():
             print(U.json_dump(payload))
@@ -198,11 +357,6 @@ class GovmomiCLI(GovcRunner):
     def download_datastore_file(self, datastore: str, ds_path: str, local_path: Path) -> None:
         """
         govc datastore.download -ds <datastore> <remote> <local>
-
-        Accepts ds_path in either:
-          - "[datastore] folder/file"
-          - "folder/file"
-          - "/folder/file"
         """
         local_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -210,7 +364,6 @@ class GovmomiCLI(GovcRunner):
         if not remote:
             raise VMwareError("govc datastore.download: empty ds_path after normalization")
 
-        # Use centralized runner
         self._run_text(["datastore.download", "-ds", str(ds), remote, str(local_path)])
 
     def _extract_names_from_ls_json(self, files: Any) -> List[str]:
@@ -219,24 +372,20 @@ class GovmomiCLI(GovcRunner):
         Shapes vary across govc versions and flags.
         """
         out: List[str] = []
-
         if files is None:
             return out
 
         if isinstance(files, list):
             items = files
+        elif isinstance(files, dict):
+            items = []
+            for k in ("Files", "files", "File", "file", "Elements", "elements"):
+                v = files.get(k)
+                if isinstance(v, list):
+                    items = v
+                    break
         else:
-            # sometimes dict with "Files" or similar
-            if isinstance(files, dict):
-                for k in ("Files", "files", "File", "file", "Elements", "elements"):
-                    v = files.get(k)
-                    if isinstance(v, list):
-                        items = v
-                        break
-                else:
-                    items = []
-            else:
-                items = []
+            items = []
 
         for it in items:
             if it is None:
@@ -251,11 +400,8 @@ class GovmomiCLI(GovcRunner):
                         out.append(Path(v).name)
                         break
                 continue
-
-            # last-ditch
             out.append(Path(str(it)).name)
 
-        # dedupe, keep stable-ish order
         seen = set()
         uniq: List[str] = []
         for n in out:
@@ -353,19 +499,8 @@ def _find_snapshot_tree_by_name(vm_obj: Any, name: str) -> Optional[Any]:
 
 
 def _snapshot_ref_from_tree(node: Any) -> Any:
-    """
-    Normalize: always hand callers a VirtualMachineSnapshot-like reference if possible.
-    """
     snap = getattr(node, "snapshot", None)
-    if snap is None:
-        # worst-case: callers can still try passing node, but we keep behavior predictable
-        return node
-    return snap
-
-
-# --------------------------------------------------------------------------------------
-# Command context (keeps actions tiny)
-# --------------------------------------------------------------------------------------
+    return snap if snap is not None else node
 
 
 class VsphereCommands:
@@ -375,7 +510,7 @@ class VsphereCommands:
         self.logger = client.logger
         self.emit = _Emitter(args, self.logger)
 
-    # ---- small shared helpers ----
+    # ---- shared helpers ----
 
     def _vm_or_raise(self, vm_name: str) -> Any:
         vm = self.client.get_vm_by_name(vm_name)
@@ -522,7 +657,6 @@ class VsphereCommands:
         if not govc:
             raise VMwareError("datastore_ls requires govc (install govc or disable this action)")
 
-        # Return raw govc JSON structure, but also provide sane human lines.
         files = govc.datastore_ls_json(datastore=datastore, ds_dir=ds_dir)
         names = govc._extract_names_from_ls_json(files)
 
@@ -729,7 +863,6 @@ class VsphereCommands:
             govc_bin=getattr(self.args, "govc_bin", None),
             no_govmomi=getattr(self.args, "no_govmomi", False),
         )
-        # Create a temporary command context so emit policy stays consistent
         tmp = VsphereCommands(self.client, shim)
         return tmp.download_vm_disk()
 
@@ -843,16 +976,32 @@ def _build_client(args: Any, conf: Optional[Dict[str, Any]], logger: Any) -> VMw
 def run_vsphere_command(args: Any, conf: Optional[Dict[str, Any]], logger: Any) -> int:
     """
     Entry point for: vmdk2kvm.py vsphere <action> ...
+    Returns structured exit codes suitable for shell/CI.
     """
-    action = _get_action_or_raise(args)
-    client = _build_client(args, conf, logger)
+    try:
+        action = _get_action_or_raise(args)
+        client = _build_client(args, conf, logger)
 
-    with client:
-        cmd = VsphereCommands(client, args)
-        meth_name = _ACTIONS[action]
-        meth = getattr(cmd, meth_name, None)
-        if not callable(meth):
-            raise VMwareError(f"vsphere: action not callable: {action} -> {meth_name}")
-        meth()
+        with client:
+            cmd = VsphereCommands(client, args)
+            meth_name = _ACTIONS[action]
+            meth = getattr(cmd, meth_name, None)
+            if not callable(meth):
+                raise VMwareError(f"vsphere: action not callable: {action} -> {meth_name}")
+            meth()
 
-    return 0
+        return int(VsphereExitCode.OK)
+
+    except KeyboardInterrupt:
+        logger.warning("Interrupted by user (Ctrl+C).")
+        return int(VsphereExitCode.INTERRUPTED)
+
+    except VMwareError as e:
+        code = _classify_exit_code(e)
+        logger.error("vsphere command failed (%s): %s", code.name, e)
+        return int(code)
+
+    except Exception as e:
+        code = _classify_exit_code(e)
+        logger.exception("vsphere command crashed (%s): %s", code.name, e)
+        return int(code)
