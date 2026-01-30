@@ -143,28 +143,77 @@ class CapabilityDetector:
         return False
 
     def _has_nbd_access(self) -> bool:
-        """Check if NBD devices are accessible."""
+        """
+        Check if NBD devices are accessible with comprehensive validation.
 
-        # Check if /dev/nbd0 exists
-        if not Path("/dev/nbd0").exists():
+        This implements battle-tested checks to avoid false positives in
+        containerized environments (k3d, kind, Docker Desktop).
+
+        Returns:
+            bool: True if NBD is genuinely accessible, False otherwise
+        """
+
+        # Check 1: qemu-nbd binary must exist
+        import shutil
+        if not shutil.which("qemu-nbd"):
+            self.logger.debug("NBD not available: qemu-nbd binary not found")
+            return False
+
+        # Check 2: /dev/nbd devices must exist
+        nbd_devices = list(Path("/dev").glob("nbd*"))
+        if not nbd_devices:
+            self.logger.debug("NBD not available: no /dev/nbd* devices present")
+            return False
+
+        # Check 3: Kernel NBD module must be loaded (host-level check)
+        if not Path("/sys/module/nbd").exists():
+            self.logger.debug("NBD not available: kernel module not loaded")
+            return False
+
+        # Check 4: Test actual device access (CAP_SYS_ADMIN check)
+        test_dev = Path("/dev/nbd0")
+        if not test_dev.exists():
             self.logger.debug("NBD not available: /dev/nbd0 doesn't exist")
             return False
 
-        # Check if we can read device metadata
         try:
-            # Try to read size from sysfs
-            size_file = Path("/sys/block/nbd0/size")
-            if size_file.exists():
-                size = size_file.read_text().strip()
-                self.logger.debug(f"NBD device accessible: /dev/nbd0 (size={size})")
-                return True
+            # Try to open device - this requires CAP_SYS_ADMIN
+            with open(test_dev, "rb") as f:
+                # Just opening is enough to verify permission
+                pass
+            self.logger.debug("NBD device accessible: successfully opened /dev/nbd0")
         except PermissionError:
-            self.logger.debug("NBD not accessible: permission denied on /sys/block/nbd0/size")
+            self.logger.debug("NBD not accessible: permission denied (CAP_SYS_ADMIN missing)")
             return False
         except Exception as e:
             self.logger.debug(f"NBD access check failed: {e}")
+            return False
 
-        return False
+        # Check 5: Container/nested runtime heuristics
+        # If in container, must have host kernel modules mounted
+        if Path("/.dockerenv").exists():
+            # Container detected - check for host kernel modules
+            if not Path("/lib/modules").exists():
+                self.logger.debug("NBD not reliable: container without host kernel modules")
+                return False
+            self.logger.debug("Container detected but has host kernel modules - NBD may work")
+
+        # Check 6: Verify we can read device metadata from sysfs
+        try:
+            size_file = Path("/sys/block/nbd0/size")
+            if size_file.exists():
+                size = size_file.read_text().strip()
+                self.logger.debug(f"NBD fully accessible: /dev/nbd0 (size={size})")
+            else:
+                self.logger.debug("NBD accessible but no sysfs metadata")
+        except PermissionError:
+            self.logger.debug("NBD accessible but sysfs permission denied")
+        except Exception as e:
+            self.logger.debug(f"NBD accessible but sysfs check failed: {e}")
+
+        # All checks passed
+        self.logger.info("NBD access verified: all capability checks passed")
+        return True
 
     def _check_lvm_available(self) -> bool:
         """Check if LVM tools are available and functional."""
@@ -659,6 +708,91 @@ class CapabilityDetector:
             CapabilityLevel.FULL_OFFLINE_FIXES: []
         }
         return recommendations.get(level, [])
+
+    def get_detection_diagnostics(self) -> Dict[str, any]:
+        """
+        Get detailed diagnostics about capability detection.
+
+        Returns a comprehensive report of all detection checks for transparency
+        and debugging. Useful for troubleshooting capability detection issues.
+
+        Returns:
+            dict: Detailed diagnostic information including:
+                - detected_level: The final detected capability level
+                - checks: Results of each detection check
+                - environment: Environment information
+                - skipped_steps: Operations that will be skipped
+                - recommended_actions: Recommended next steps
+        """
+        level = self.detect_capability_level()
+        report = self.get_capability_level_report(level)
+
+        # Run all detection checks
+        nbd_module = self._check_nbd_module()
+        nbd_access = self._has_nbd_access()
+        nbd_partitions = self._check_nbd_partition_devices() if nbd_access else False
+
+        # Determine skip reasons
+        skipped_steps = []
+        if level < CapabilityLevel.NBD_INSPECTION:
+            skipped_steps.append({
+                'step': 'nbd_inspection',
+                'reason': 'NBD kernel module not loaded' if not nbd_module else 'NBD device inaccessible'
+            })
+        if level < CapabilityLevel.FULL_OFFLINE_FIXES:
+            skipped_steps.append({
+                'step': 'offline_fixes',
+                'reason': 'NBD partition devices not created (container limitation)' if nbd_access else 'NBD unavailable'
+            })
+
+        # Recommended actions based on level
+        recommended_actions = []
+        if level == CapabilityLevel.USERSPACE_ONLY:
+            recommended_actions = [
+                'run-online-fix',
+                'boot-test',
+                'deploy-to-production-cluster'
+            ]
+        elif level == CapabilityLevel.NBD_INSPECTION:
+            recommended_actions = [
+                'run-online-fix',
+                'boot-test',
+                'deploy-to-vm-worker-for-offline-fixes'
+            ]
+        else:
+            recommended_actions = [
+                'boot-test',
+                'validate-guest-configuration'
+            ]
+
+        return {
+            'detected_level': level.name,
+            'level_value': level.value,
+            'checks': {
+                'nbd_module_loaded': nbd_module,
+                'nbd_device_accessible': nbd_access,
+                'nbd_partition_devices': nbd_partitions,
+                'qemu_nbd_available': shutil.which('qemu-nbd') is not None if 'shutil' in dir() else None,
+                'in_container': self._is_in_container(),
+                'has_sys_admin': os.geteuid() == 0,
+                'host_modules_mounted': Path('/lib/modules').exists()
+            },
+            'capabilities': {
+                'nbd': nbd_access,
+                'offline_mount': level >= CapabilityLevel.FULL_OFFLINE_FIXES,
+                'partition_inspection': level >= CapabilityLevel.NBD_INSPECTION
+            },
+            'operations': report['operations'],
+            'limitations': report['limitations'],
+            'skipped_steps': skipped_steps,
+            'recommended_actions': recommended_actions,
+            'environment': {
+                'execution_mode': self.detect_execution_mode().name if hasattr(self, 'detect_execution_mode') else 'unknown',
+                'container_detected': Path('/.dockerenv').exists(),
+                'has_kernel_modules': Path('/lib/modules').exists(),
+                'has_dev_passthrough': Path('/dev/nbd0').exists() if nbd_module else False
+            }
+        }
 
 
 # Global detector instance
