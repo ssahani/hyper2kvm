@@ -22,7 +22,7 @@
       "source_format": "vmdk",
       "bytes": 107374182400,
       "local_path": "/work/job123/artifacts/boot-disk.vmdk",
-      "checksum": "sha256:a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
+      "checksum": "sha256:a1b2c3d4e5f67890123456789012345678901234567890123456789012345678",
       "boot_order_hint": 0,
       "label": "OS Boot Disk",
       "disk_type": "boot"
