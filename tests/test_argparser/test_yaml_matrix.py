@@ -4,9 +4,9 @@ import pytest
 
 def _load_config_loader():
     try:
-        m = importlib.import_module("vmdk2kvm.config.config_loader")
+        m = importlib.import_module("hyper2kvm.config.config_loader")
     except Exception as e:
-        pytest.skip(f"Cannot import vmdk2kvm.config.config_loader: {e}")
+        pytest.skip(f"Cannot import hyper2kvm.config.config_loader: {e}")
 
     for attr in ("load_config", "load"):
         if hasattr(m, attr) and callable(getattr(m, attr)):

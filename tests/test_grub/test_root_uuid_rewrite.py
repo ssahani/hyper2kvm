@@ -15,7 +15,7 @@ class FX:
 
 def test_update_default_grub_rewrites_root(monkeypatch):
     try:
-        grub_fixer = importlib.import_module("vmdk2kvm.fixers.grub_fixer")
+        grub_fixer = importlib.import_module("hyper2kvm.fixers.grub_fixer")
     except Exception as e:
         pytest.skip(f"Cannot import grub_fixer: {e}")
 
@@ -32,7 +32,7 @@ def test_update_default_grub_rewrites_root(monkeypatch):
 
 def test_update_bls_rewrites_root(monkeypatch):
     try:
-        grub_fixer = importlib.import_module("vmdk2kvm.fixers.grub_fixer")
+        grub_fixer = importlib.import_module("hyper2kvm.fixers.grub_fixer")
     except Exception as e:
         pytest.skip(f"Cannot import grub_fixer: {e}")
 
