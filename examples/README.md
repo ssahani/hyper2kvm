@@ -1,10 +1,11 @@
 # hyper2kvm Examples
 
-This directory contains **40+ working examples** for common hyper2kvm migration scenarios, organized by use case.
+This directory contains **40+ working examples** for common hyper2kvm migration scenarios, organized by use case, plus **library API examples** for programmatic usage.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Library API Examples](#library-api-examples)
 - [Directory Structure](#directory-structure)
 - [Common Scenarios](#common-scenarios)
 - [Configuration Format](#configuration-format)
@@ -48,6 +49,143 @@ sudo python -m hyper2kvm \
   --config examples/yaml/10-local/local-linux-basic.yaml \
   --compress --to-output /custom/path.qcow2
 ```
+
+---
+
+## Library API Examples
+
+hyper2kvm can be used as a **Python library** for programmatic control over VM migrations. The following example scripts demonstrate library usage:
+
+### Local Conversion
+
+**`library_local_conversion.py`** - Convert local VMDK to qcow2
+
+```python
+from hyper2kvm import DiskProcessor
+
+processor = DiskProcessor()
+result = processor.process_disk(
+    source_path='/data/vm.vmdk',
+    output_path='/data/vm.qcow2',
+    flatten=True,
+    compress=True
+)
+```
+
+Usage:
+```bash
+python library_local_conversion.py /data/vm.vmdk /data/vm.qcow2
+```
+
+### vSphere Migration
+
+**`library_vsphere_migration.py`** - Migrate from vCenter/ESXi
+
+```python
+from hyper2kvm import VMwareClient, Orchestrator
+
+client = VMwareClient(
+    host='vcenter.example.com',
+    user='administrator@vsphere.local',
+    password=password,
+    datacenter='DC1'
+)
+
+orchestrator = Orchestrator(vmware_client=client)
+result = orchestrator.run(
+    vm_name='rhel9-prod',
+    output_dir='/var/lib/libvirt/images',
+    compress=True
+)
+```
+
+Usage:
+```bash
+export VCENTER_PASSWORD='your-password'
+python library_vsphere_migration.py vcenter.example.com vm-name
+```
+
+### Azure Migration
+
+**`library_azure_migration.py`** - Migrate from Azure
+
+```python
+from hyper2kvm import AzureSourceProvider, AzureConfig, Orchestrator
+
+config = AzureConfig(
+    subscription_id=subscription_id,
+    resource_group='my-rg',
+    vm_name='ubuntu-vm-01',
+    tenant_id=tenant_id,
+    client_id=client_id,
+    client_secret=client_secret
+)
+
+provider = AzureSourceProvider(config)
+orchestrator = Orchestrator(source_provider=provider)
+result = orchestrator.run(output_dir='/var/lib/libvirt/images')
+```
+
+Usage:
+```bash
+export AZURE_SUBSCRIPTION_ID='...'
+export AZURE_TENANT_ID='...'
+export AZURE_CLIENT_ID='...'
+export AZURE_CLIENT_SECRET='...'
+python library_azure_migration.py my-rg my-vm
+```
+
+### Guest OS Fixing
+
+**`library_guest_fixing.py`** - Apply offline fixes to converted VM
+
+```python
+from hyper2kvm import GuestDetector
+from hyper2kvm.fixers import OfflineFSFix
+
+detector = GuestDetector()
+guest = detector.detect_from_image(image_path)
+
+fixer = OfflineFSFix(image_path=image_path, guest_identity=guest)
+fixer.fix_fstab()
+fixer.fix_grub()
+fixer.fix_network()
+fixer.regenerate_initramfs()
+```
+
+Usage:
+```bash
+sudo python library_guest_fixing.py /var/lib/libvirt/images/vm.qcow2
+```
+
+### Boot Testing
+
+**`library_boot_testing.py`** - Test VM boots correctly
+
+```python
+from hyper2kvm.testers import QemuTest
+
+tester = QemuTest(
+    image_path=image_path,
+    memory=4096,
+    vcpus=2,
+    uefi=True,
+    timeout=180
+)
+
+result = tester.test_boot()
+if result.success:
+    print(f"✓ Boot successful in {result.boot_time}s")
+```
+
+Usage:
+```bash
+python library_boot_testing.py /var/lib/libvirt/images/vm.qcow2 auto
+```
+
+### Complete API Documentation
+
+For complete library API documentation, see **[docs/08-Library-API.md](../docs/08-Library-API.md)**
 
 ---
 
