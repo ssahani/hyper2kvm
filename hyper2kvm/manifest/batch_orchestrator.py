@@ -23,6 +23,7 @@ from ..core.logger import Log
 from ..core.utils import U
 from .batch_loader import BatchLoader, VMBatchItem
 from .batch_reporter import BatchReporter
+from .checkpoint_manager import CheckpointManager
 from .orchestrator import ManifestOrchestrator
 
 
@@ -62,12 +63,19 @@ class BatchOrchestrator:
     - Recovery checkpoint support per VM
     """
 
-    def __init__(self, batch_manifest_path: str | Path, logger: logging.Logger | None = None):
+    def __init__(
+        self,
+        batch_manifest_path: str | Path,
+        logger: logging.Logger | None = None,
+        enable_checkpoint: bool = True,
+    ):
         self.logger = logger or logging.getLogger(__name__)
         self.batch_path = Path(batch_manifest_path)
         self.loader = BatchLoader(self.logger)
         self.reporter = BatchReporter(self.logger)
         self.results: list[VMConversionResult] = []
+        self.enable_checkpoint = enable_checkpoint
+        self.checkpoint_manager: CheckpointManager | None = None
 
     def run(self) -> dict[str, Any]:
         """
@@ -102,6 +110,42 @@ class BatchOrchestrator:
                 self.logger.warning("No VMs to process in batch")
                 return self._generate_report(batch_start, time.time())
 
+            # Initialize checkpoint manager if enabled
+            if self.enable_checkpoint:
+                checkpoint_dir = self._get_checkpoint_directory()
+                self.checkpoint_manager = CheckpointManager(
+                    checkpoint_dir=checkpoint_dir,
+                    batch_id=batch_id,
+                    logger=self.logger,
+                )
+
+                # Check for existing checkpoint
+                if self.checkpoint_manager.has_checkpoint():
+                    checkpoint_data = self.checkpoint_manager.load_checkpoint()
+                    completed_ids = self.checkpoint_manager.get_completed_vm_ids()
+                    failed_ids = self.checkpoint_manager.get_failed_vm_ids()
+
+                    self.logger.info(
+                        f"📂 Resuming from checkpoint: {len(completed_ids)} completed, "
+                        f"{len(failed_ids)} failed"
+                    )
+
+                    # Filter out already-processed VMs
+                    original_count = len(vms)
+                    vms = [vm for vm in vms if vm.id not in completed_ids and vm.id not in failed_ids]
+
+                    if len(vms) < original_count:
+                        self.logger.info(
+                            f"⏩ Skipping {original_count - len(vms)} already-processed VMs"
+                        )
+
+                    # Restore previous results for reporting
+                    self._restore_previous_results(checkpoint_data)
+
+            if not vms:
+                self.logger.info("✅ All VMs already processed (checkpoint resume)")
+                return self._generate_report(batch_start, time.time())
+
             # Process VMs
             if parallel_limit > 1 and len(vms) > 1:
                 self._process_vms_parallel(vms, parallel_limit, continue_on_error, shared_config)
@@ -127,6 +171,10 @@ class BatchOrchestrator:
                 self.logger.info(f"   Failed: {failed_count}/{len(vms)}")
             self.logger.info("=" * 80)
 
+            # Cleanup checkpoint on successful completion
+            if self.enable_checkpoint and self.checkpoint_manager and failed_count == 0:
+                self.checkpoint_manager.cleanup()
+
             return report
 
         except Exception as e:
@@ -151,6 +199,10 @@ class BatchOrchestrator:
 
             result = self._process_single_vm(vm, idx, len(vms), shared_config)
             self.results.append(result)
+
+            # Save checkpoint after each VM
+            if self.enable_checkpoint and self.checkpoint_manager:
+                self._save_checkpoint_state()
 
             if not result.success and not continue_on_error:
                 self.logger.error(
@@ -221,15 +273,21 @@ class BatchOrchestrator:
                                 f"💥 Failed VM {idx + 1}/{len(vms)}: {vm.id} - {result.error}"
                             )
 
-                            # Check if we should stop on error
-                            if not continue_on_error:
-                                self.logger.error(
-                                    "💥 Stopping batch due to error (continue_on_error=False)"
-                                )
-                                # Cancel remaining futures
-                                for f in futures:
-                                    f.cancel()
-                                break
+                        # Save checkpoint after each VM completion (in order)
+                        if self.enable_checkpoint and self.checkpoint_manager:
+                            # Temporarily update results for checkpoint save
+                            self.results = [results_dict[i] for i in sorted(results_dict.keys())]
+                            self._save_checkpoint_state()
+
+                        # Check if we should stop on error
+                        if not result.success and not continue_on_error:
+                            self.logger.error(
+                                "💥 Stopping batch due to error (continue_on_error=False)"
+                            )
+                            # Cancel remaining futures
+                            for f in futures:
+                                f.cancel()
+                            break
 
                     except Exception as e:
                         self.logger.error(
@@ -244,6 +302,11 @@ class BatchOrchestrator:
                             duration=0.0,
                             error=str(e),
                         )
+
+                        # Save checkpoint after exception
+                        if self.enable_checkpoint and self.checkpoint_manager:
+                            self.results = [results_dict[i] for i in sorted(results_dict.keys())]
+                            self._save_checkpoint_state()
 
                         if not continue_on_error:
                             self.logger.error(
@@ -409,3 +472,82 @@ class BatchOrchestrator:
         # Write human-readable summary
         summary_path = output_dir / "batch_summary.txt"
         self.reporter.write_summary(summary_path)
+
+    def _get_checkpoint_directory(self) -> Path:
+        """Get checkpoint directory path."""
+        # Use output directory if available, otherwise batch manifest directory
+        output_dir = self.loader.get_output_directory()
+        if output_dir:
+            checkpoint_dir = output_dir / ".checkpoints"
+        else:
+            checkpoint_dir = self.batch_path.parent / ".checkpoints"
+
+        return checkpoint_dir
+
+    def _restore_previous_results(self, checkpoint_data: dict[str, Any]) -> None:
+        """Restore previous VM results from checkpoint."""
+        # Create VMConversionResult objects for completed VMs
+        for vm_id in checkpoint_data.get("completed_vms", []):
+            # Create a placeholder result for completed VMs
+            # We don't have the full VMBatchItem, so create a minimal one
+            from .batch_loader import VMBatchItem
+
+            vm_item = VMBatchItem(
+                id=vm_id,
+                manifest_path=Path("unknown"),  # Not critical for reporting
+                priority=0,
+                enabled=True,
+                overrides={},
+            )
+
+            result = VMConversionResult(
+                vm_item=vm_item,
+                success=True,
+                duration=0.0,  # Duration not preserved
+                report={},
+            )
+            self.results.append(result)
+
+        # Create VMConversionResult objects for failed VMs
+        for failed_vm in checkpoint_data.get("failed_vms", []):
+            from .batch_loader import VMBatchItem
+
+            vm_id = failed_vm.get("vm_id", "unknown")
+            error = failed_vm.get("error", "Unknown error")
+
+            vm_item = VMBatchItem(
+                id=vm_id,
+                manifest_path=Path("unknown"),
+                priority=0,
+                enabled=True,
+                overrides={},
+            )
+
+            result = VMConversionResult(
+                vm_item=vm_item,
+                success=False,
+                duration=0.0,
+                error=error,
+            )
+            self.results.append(result)
+
+    def _save_checkpoint_state(self) -> None:
+        """Save current checkpoint state."""
+        if not self.checkpoint_manager:
+            return
+
+        # Separate completed and failed VMs
+        completed_vms = [r.vm_id for r in self.results if r.success]
+        failed_vms = [
+            {"vm_id": r.vm_id, "error": r.error} for r in self.results if not r.success
+        ]
+
+        # Get total VMs from loader
+        total_vms = len(self.loader.get_vms())
+
+        # Save checkpoint
+        self.checkpoint_manager.save_checkpoint(
+            completed_vms=completed_vms,
+            failed_vms=failed_vms,
+            total_vms=total_vms,
+        )
