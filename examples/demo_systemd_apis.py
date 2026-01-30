@@ -55,7 +55,7 @@ def demo_systemctl_apis(g):
         is_failed = g.systemctl_is_failed(svc)
 
         status = "✅" if is_active else "❌"
-        print(f"{status} {svc:30s} Active: {is_active:5s} Enabled: {is_enabled:10s} Failed: {is_failed}")
+        print(f"{status} {svc:30s} Active: {str(is_active):5s} Enabled: {is_enabled:10s} Failed: {str(is_failed)}")
 
     # 3. List failed services
     print("\n3. Failed services:")
