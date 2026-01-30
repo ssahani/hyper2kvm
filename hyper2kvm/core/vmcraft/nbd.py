@@ -186,6 +186,18 @@ class NBDDeviceManager:
         Returns:
             Path to converted qcow2 file
         """
+        # Get original VMDK virtual size for verification
+        try:
+            result = subprocess.run(
+                ["qemu-img", "info", "--output=json", str(vmdk_path)],
+                capture_output=True, text=True, check=True, timeout=30
+            )
+            vmdk_info = json.loads(result.stdout)
+            original_virtual_size = vmdk_info.get("virtual-size", 0)
+        except Exception as e:
+            self.logger.warning(f"Could not get VMDK size: {e}")
+            original_virtual_size = 0
+
         # Create temp qcow2 file
         temp_dir = Path(tempfile.gettempdir()) / "vmcraft-conversions"
         temp_dir.mkdir(exist_ok=True, mode=0o700)
@@ -195,6 +207,8 @@ class NBDDeviceManager:
         self.logger.info(f"Converting {vmdk_path.name} to qcow2...")
         self.logger.info(f"  Source: {vmdk_path}")
         self.logger.info(f"  Destination: {temp_qcow2}")
+        if original_virtual_size:
+            self.logger.info(f"  Original virtual size: {original_virtual_size / (1024**3):.2f} GiB")
 
         try:
             # Convert with progress
@@ -210,6 +224,29 @@ class NBDDeviceManager:
                 check=True,
                 timeout=3600  # 1 hour max for large disks
             )
+
+            # Verify converted size matches original
+            if original_virtual_size:
+                try:
+                    result = subprocess.run(
+                        ["qemu-img", "info", "--output=json", str(temp_qcow2)],
+                        capture_output=True, text=True, check=True, timeout=30
+                    )
+                    qcow2_info = json.loads(result.stdout)
+                    qcow2_virtual_size = qcow2_info.get("virtual-size", 0)
+
+                    if qcow2_virtual_size != original_virtual_size:
+                        self.logger.warning(
+                            f"Virtual size mismatch after conversion: "
+                            f"original={original_virtual_size / (1024**3):.2f} GiB, "
+                            f"converted={qcow2_virtual_size / (1024**3):.2f} GiB"
+                        )
+                    else:
+                        self.logger.info(
+                            f"✓ Virtual size verified: {qcow2_virtual_size / (1024**3):.2f} GiB"
+                        )
+                except Exception as e:
+                    self.logger.debug(f"Could not verify qcow2 size: {e}")
 
             self.logger.info(f"✓ Conversion completed: {temp_qcow2}")
             return temp_qcow2
@@ -310,6 +347,9 @@ class NBDDeviceManager:
         # Use cache=none for data integrity (prevents corruption from kernel cache issues)
         # This is especially important for write operations
         cmd.extend(["--cache", "none"])
+
+        # Use native AIO for better performance and stability
+        cmd.extend(["--aio", "native"])
 
         # Enable discard for thin-provisioned images (VMware, qcow2)
         cmd.extend(["--discard", "unmap"])
