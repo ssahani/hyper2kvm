@@ -1,0 +1,221 @@
+# ============================================
+# Complete Workflow: vSphere → libvirt (Windows 10)
+# ============================================
+# Description: Export Windows 10 VM from vSphere and prepare for libvirt/KVM with VirtIO drivers
+# Use Case: Windows 10 Professional/Enterprise migration
+# Prerequisites:
+#   - govc installed
+#   - vCenter credentials
+#   - VirtIO driver ISO (virtio-win.iso)
+#   - Windows 10 VM
+# ============================================
+
+cmd: vsphere
+
+# vSphere Connection
+vcenter: vcenter.example.com
+username: administrator@vsphere.local
+password_file: ~/.vcenter_password
+datacenter: Production-DC
+cluster: Windows-Cluster
+
+# VM Selection
+vm_name: windows-10-pro-workstation
+# Alternative: vm_uuid: 502d5b64-0a7e-b2a5-45f9-065cbf375a77
+
+# vSphere Export
+vs_action: export
+export_method: govc
+export_format: ova
+
+# Snapshot Configuration
+create_snapshot: true
+snapshot_name: kvm-migration-$(date +%Y%m%d-%H%M%S)
+snapshot_description: Snapshot for KVM migration
+snapshot_memory: false
+snapshot_quiesce: true  # VSS snapshot
+delete_snapshot_after: true
+
+# Disk Processing
+flatten: true
+compress: true
+disk_format: qcow2
+
+# Windows Detection
+windows: true
+os_type: windows
+os_variant: win10
+
+# VirtIO Driver Injection
+inject_virtio: true
+virtio_win_iso: /data/virtio-win.iso
+virtio_drivers:
+  - storage  # Critical: BOOT_START
+  - network
+  - balloon
+  - rng
+  - vioserial
+
+# Registry Modification
+modify_registry: true
+registry_edits:
+  - Add VirtIO storage to BOOT_START
+  - Add VirtIO drivers to CriticalDeviceDatabase
+  - Configure safe boot for driver detection
+
+# Two-Phase Boot Strategy
+boot_strategy: two-phase
+phase1_bus: sata  # Bootstrap with SATA
+phase2_bus: virtio  # Final boot with VirtIO
+
+# BCD (Boot Configuration Database) Handling
+backup_bcd: true
+repair_bcd: true
+
+# VMware Tools Removal
+remove_vmware_tools: true
+uninstall_vmware_tools_cleanly: true
+
+# Output Configuration
+to_output: /data/kvm/windows-10-pro.qcow2
+output_format: qcow2
+output_dir: /data/kvm/
+
+# libvirt Domain XML Generation
+generate_libvirt_xml: true
+libvirt_xml_path: /data/kvm/windows-10-pro.xml
+libvirt_domain_name: windows-10-pro
+
+# libvirt Hardware Configuration
+memory_mb: 8192  # 8GB for Windows 10
+vcpus: 4
+cpu_mode: host-passthrough
+cpu_topology:
+  sockets: 1
+  cores: 2
+  threads: 2
+machine_type: q35
+
+# Firmware Configuration (Windows 10 typically UEFI)
+firmware_type: uefi
+uefi_loader: /usr/share/OVMF/OVMF_CODE.fd
+uefi_nvram_template: /usr/share/OVMF/OVMF_VARS.fd
+secure_boot: false  # Disable for initial boot
+
+# Storage Configuration
+# Phase 1: SATA for initial boot
+disk_bus_phase1: sata
+disk_cache_phase1: writeback
+
+# Phase 2: VirtIO for production (after driver loads)
+disk_bus: virtio
+disk_cache: writeback
+disk_io: threads
+disk_discard: unmap
+
+# Network Configuration
+network_type: bridge
+network_bridge: br0
+network_model: virtio
+
+# Graphics Configuration (Windows workstation)
+enable_spice: true
+spice_listen: 127.0.0.1
+graphics_type: spice
+enable_qxl: true
+
+# Audio and Input
+enable_audio: true
+audio_model: ich9
+enable_usb_tablet: true
+enable_usb_keyboard: true
+
+# Additional Windows Features
+qemu_guest_agent: true
+qemu_guest_agent_path: C:\Program Files\Qemu-ga\qemu-ga.exe
+
+# VirtIO Serial (for guest agent)
+enable_virtio_serial: true
+
+# Balloon Driver (memory management)
+enable_balloon: true
+
+# RNG Driver (entropy source)
+enable_rng: true
+rng_model: virtio
+
+# Validation
+libvirt_test: true
+boot_timeout: 600  # Windows takes longer to boot
+validate_windows_boot: true
+check_virtio_drivers_loaded: true
+
+# Reporting
+report: /var/log/migrations/windows-10-$(date +%Y%m%d-%H%M%S).md
+log_level: INFO
+verbose: true
+
+# Recovery Configuration
+enable_recovery: true
+recovery_checkpoint_dir: /tmp/hyper2kvm-checkpoints
+
+# Post-Migration Script
+post_migration_script: |
+  #!/bin/bash
+  set -e
+
+  echo "========================================="
+  echo "Windows 10 Migration Post-Processing"
+  echo "========================================="
+
+  # Import domain (Phase 1: SATA boot)
+  virsh define /data/kvm/windows-10-pro.xml
+
+  # Start VM with SATA disk
+  echo "Starting Windows 10 VM (Phase 1: SATA boot for driver installation)..."
+  virsh start windows-10-pro
+
+  # Wait for Windows to boot and install VirtIO drivers
+  echo "Waiting for Windows to boot and detect VirtIO drivers..."
+  echo "This may take 5-10 minutes..."
+  sleep 300
+
+  # Check VM status
+  virsh list | grep windows-10-pro
+
+  echo ""
+  echo "Phase 1 Complete: Windows booted with SATA"
+  echo ""
+  echo "Next Steps:"
+  echo "1. Verify Windows booted successfully: virsh console windows-10-pro"
+  echo "2. Check Device Manager for VirtIO drivers"
+  echo "3. Once drivers are installed, shut down VM"
+  echo "4. Modify XML to switch disk from SATA to VirtIO"
+  echo "5. Restart VM (Phase 2: VirtIO production boot)"
+  echo ""
+  echo "Phase 2 XML modification (after shutdown):"
+  echo "  virsh shutdown windows-10-pro"
+  echo "  # Edit XML: Change disk bus from 'sata' to 'virtio'"
+  echo "  virsh edit windows-10-pro"
+  echo "  virsh start windows-10-pro"
+  echo ""
+  echo "Alternative: Access via virt-manager for GUI management"
+  echo "  virt-manager"
+
+# Two-Phase Boot Instructions
+post_migration_notes: |
+  Windows 10 Two-Phase Boot Strategy:
+
+  PHASE 1 (SATA Bootstrap):
+  - VM boots with SATA disk controller
+  - Windows detects VirtIO drivers injected offline
+  - Drivers install automatically (PnP)
+  - VirtIO storage becomes available in Device Manager
+
+  PHASE 2 (VirtIO Production):
+  - Shutdown VM after driver installation confirmed
+  - Modify libvirt XML: bus="sata" → bus="virtio"
+  - Restart VM
+  - Windows now boots natively on VirtIO
+
+  This ensures zero-risk migration with guaranteed driver availability.
