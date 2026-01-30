@@ -14,8 +14,9 @@ from typing import Any, Optional
 import guestfs  # type: ignore
 
 # Import shared logging utilities (use directly, no wrappers)
-from ....core.logging_utils import safe_logger as _safe_logger_base, log_with_emoji as _log
+from ....core.logging_utils import safe_logger as _safe_logger_base, emoji_for_level as _emoji, log_with_emoji as _log, log_step as _step
 # Import shared guest utilities (use directly, no wrappers)
+from ....core.guest_utils import guest_mkdir_p as _guest_mkdir_p, guest_write_text as _guest_write_text, deep_merge_dict as _deep_merge_dict
 
 
 # Logging helpers
