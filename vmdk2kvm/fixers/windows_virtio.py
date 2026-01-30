@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import guestfs  # type: ignore
 
+from ..config.config_loader import YAML_AVAILABLE, yaml
 from ..core.utils import U
 from .windows_registry import (
     append_devicepath_software_hive,
@@ -338,7 +339,6 @@ def _guest_mkdir_p(g: guestfs.GuestFS, path: str, *, dry_run: bool) -> None:
         if not g.is_dir(path):
             g.mkdir_p(path)
     except Exception:
-        # Some backends throw if path does not exist; mkdir_p is idempotent anyway.
         g.mkdir_p(path)
 
 
@@ -386,7 +386,7 @@ def _validate_virtio_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
     - Ensures drivers are lists of dicts with required keys
     - Normalizes pci_ids to lowercase strings
-    - Normalizes start to int (0..4)
+    - Normalizes start to int (0..4) or enum-name
     - Keeps class_guid/inf_hint as strings (inf_hint may be None)
 
     Lists are NOT merged; if user overrides drivers.storage, they replace that list.
@@ -434,22 +434,81 @@ def _validate_virtio_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return cfg
 
 
+def _read_structured_file(path: Path) -> Dict[str, Any]:
+    """
+    Read a JSON/YAML file into a dict.
+
+    Supported:
+      - *.json
+      - *.yml / *.yaml  (requires YAML_AVAILABLE)
+    """
+    sfx = path.suffix.lower()
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    if sfx == ".json":
+        parsed = json.loads(raw)
+    elif sfx in (".yml", ".yaml"):
+        if not YAML_AVAILABLE:
+            raise RuntimeError("YAML support not available (PyYAML not installed). Use JSON instead.")
+        parsed = yaml.safe_load(raw)  # type: ignore[attr-defined]
+    else:
+        # Try JSON first, then YAML if available (nice UX for no-suffix files)
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            if not YAML_AVAILABLE:
+                raise
+            parsed = yaml.safe_load(raw)  # type: ignore[attr-defined]
+    if not isinstance(parsed, dict):
+        raise ValueError("top-level config must be a mapping/object (dict)")
+    return parsed
+
+
+def _extract_virtio_cfg_from_global_config(global_cfg: Any) -> Optional[Dict[str, Any]]:
+    """
+    Accept VirtIO config from the *merged app config* if present.
+
+    We support several keys so you can evolve without breaking users:
+      - windows_virtio:
+      - virtio_windows:
+      - virtio:
+      - fixers: { windows_virtio: { ... } }
+    """
+    if not isinstance(global_cfg, dict) or not global_cfg:
+        return None
+
+    for k in ("windows_virtio", "virtio_windows", "virtio"):
+        v = global_cfg.get(k)
+        if isinstance(v, dict) and v:
+            return v
+
+    fx = global_cfg.get("fixers")
+    if isinstance(fx, dict):
+        v = fx.get("windows_virtio")
+        if isinstance(v, dict) and v:
+            return v
+
+    return None
+
+
 def _load_virtio_config(self) -> Dict[str, Any]:
     """
-    Load VirtIO config from JSON if provided, else fallback to baked defaults.
+    Load VirtIO config (drivers + OS bucket logic) from **any** of:
 
-    Supported override knobs on `self`:
-      - virtio_config_path: str|Path (JSON file)
-      - virtio_config: dict (already parsed)
+    1) self.virtio_config (dict)                     [highest priority]
+    2) self.virtio_config_inline_json (str JSON)     (or self.virtio_config_json for compat)
+    3) self.virtio_config_path (Path|str)            JSON/YAML file
+    4) self.config (merged YAML app config dict)     keys: windows_virtio/virtio/fixers.windows_virtio
+    5) baked DEFAULT_VIRTIO_CONFIG
 
     Merge semantics:
-      - deep-merge dicts (drivers/release_to_bucket/bucket_candidates can be partially overridden)
-      - lists are replaced (so overriding drivers.storage replaces that list only)
+      - dicts deep-merge
+      - lists replaced (so overriding drivers.storage replaces storage list only)
     """
     logger = _safe_logger(self)
 
     cfg: Dict[str, Any] = dict(DEFAULT_VIRTIO_CONFIG)
 
+    # 1) explicit dict on object
     cfg_obj = getattr(self, "virtio_config", None)
     if isinstance(cfg_obj, dict) and cfg_obj:
         cfg = _deep_merge_dict(cfg, cfg_obj)
@@ -457,20 +516,45 @@ def _load_virtio_config(self) -> Dict[str, Any]:
         _log(logger, logging.INFO, "Loaded VirtIO config from self.virtio_config (dict)")
         return cfg
 
+    # 2) inline JSON string on object (CLI/YAML can map into this)
+    inline = getattr(self, "virtio_config_inline_json", None)
+    if not inline:
+        inline = getattr(self, "virtio_config_json", None)
+    if isinstance(inline, str) and inline.strip():
+        try:
+            parsed = json.loads(inline)
+            if isinstance(parsed, dict):
+                cfg = _deep_merge_dict(cfg, parsed)
+                cfg = _validate_virtio_config(cfg)
+                _log(logger, logging.INFO, "Loaded VirtIO config from inline JSON (self.virtio_config_inline_json)")
+                return cfg
+        except Exception as e:
+            _log(logger, logging.WARNING, "Inline VirtIO config JSON parse failed: %s", e)
+
+    # 3) path to file (JSON/YAML)
     p = getattr(self, "virtio_config_path", None)
     if p:
         try:
-            jp = Path(str(p))
-            if jp.exists() and jp.is_file():
-                parsed = json.loads(jp.read_text(encoding="utf-8"))
-                if isinstance(parsed, dict):
-                    cfg = _deep_merge_dict(cfg, parsed)
-                    cfg = _validate_virtio_config(cfg)
-                    _log(logger, logging.INFO, "Loaded VirtIO config: %s", jp)
-                    return cfg
+            fp = Path(str(p))
+            if fp.exists() and fp.is_file():
+                parsed = _read_structured_file(fp)
+                cfg = _deep_merge_dict(cfg, parsed)
+                cfg = _validate_virtio_config(cfg)
+                _log(logger, logging.INFO, "Loaded VirtIO config from file: %s", fp)
+                return cfg
         except Exception as e:
             _log(logger, logging.WARNING, "VirtIO config load failed (%s): %s", p, e)
 
+    # 4) merged global app config (YAML)
+    global_cfg = getattr(self, "config", None)
+    vcfg = _extract_virtio_cfg_from_global_config(global_cfg)
+    if isinstance(vcfg, dict) and vcfg:
+        cfg = _deep_merge_dict(cfg, vcfg)
+        cfg = _validate_virtio_config(cfg)
+        _log(logger, logging.INFO, "Loaded VirtIO config from self.config (merged YAML)")
+        return cfg
+
+    # 5) baked defaults
     cfg = _validate_virtio_config(cfg)
     return cfg
 
@@ -807,17 +891,13 @@ def _read_windows_build_from_software_hive(self, g: guestfs.GuestFS, software_hi
 
     h: Optional[int] = None
     try:
-        # hivex_open: handle-based in many bindings; global-hive in some.
         try:
             h = _hivex_call_known(g, "hivex_open", (software_hive_path, 0), allow_drop_handle=False, allow_noargs=False)
         except TypeError:
-            # some bindings may be hivex_open(path)
             h = _hivex_call_known(g, "hivex_open", (software_hive_path,), allow_drop_handle=False, allow_noargs=False)
 
-        # hivex_root: may be hivex_root(h) or hivex_root()
         root = _hivex_call_known(g, "hivex_root", (h,), allow_drop_handle=True, allow_noargs=True)
 
-        # children: often hivex_node_get_child(h, node, name) or hivex_node_get_child(node, name)
         node = _hivex_call_known(g, "hivex_node_get_child", (h, root, "Microsoft"), allow_drop_handle=True, allow_noargs=False)
         if not node:
             return None
@@ -852,7 +932,6 @@ def _read_windows_build_from_software_hive(self, g: guestfs.GuestFS, software_hi
         _log(logger, logging.DEBUG, "hivex build read failed: %s", e)
         return None
     finally:
-        # hivex_close: may be hivex_close(h) or hivex_close()
         try:
             if h is not None:
                 _hivex_call_known(g, "hivex_close", (h,), allow_drop_handle=True, allow_noargs=True)
@@ -894,7 +973,6 @@ def _windows_version_info(self, g: guestfs.GuestFS, paths: Optional["WindowsSyst
     else:
         info["bits"] = 64
 
-    # Best-effort: read build number from SOFTWARE hive (post-8.1, major/minor isn't reliable)
     try:
         if paths is None:
             paths = _resolve_windows_system_paths(self, g)
@@ -924,7 +1002,6 @@ def _detect_windows_release(self, win_info: Dict[str, Any], cfg: Dict[str, Any])
     major = _to_int(win_info.get("major"), default=0)
     minor = _to_int(win_info.get("minor"), default=0)
 
-    # Servers by name (prefer explicit string)
     if "server 2022" in product:
         return WindowsRelease.SERVER_2022
     if "server 2019" in product:
@@ -936,7 +1013,6 @@ def _detect_windows_release(self, win_info: Dict[str, Any], cfg: Dict[str, Any])
     if "server 2008" in product:
         return WindowsRelease.SERVER_2008
 
-    # Clients by name
     if "windows 12" in product:
         return WindowsRelease.WINDOWS_12
     if "windows 11" in product:
@@ -954,9 +1030,7 @@ def _detect_windows_release(self, win_info: Dict[str, Any], cfg: Dict[str, Any])
     if "xp" in product:
         return WindowsRelease.WINDOWS_XP
 
-    # Build-based split (post 8.1, version lies)
     if build:
-        # Heuristic: 11+ is >= 22000, 10 is typically >= 10240 and < 22000
         if build >= 26000:
             return WindowsRelease.WINDOWS_12
         if build >= 22000:
@@ -964,7 +1038,6 @@ def _detect_windows_release(self, win_info: Dict[str, Any], cfg: Dict[str, Any])
         if build >= 10240:
             return WindowsRelease.WINDOWS_10
 
-    # Major/minor only for older families
     if major == 6 and minor == 3:
         return WindowsRelease.WINDOWS_8_1
     if major == 6 and minor == 2:
@@ -976,7 +1049,6 @@ def _detect_windows_release(self, win_info: Dict[str, Any], cfg: Dict[str, Any])
     if major == 5:
         return WindowsRelease.WINDOWS_XP
 
-    # Config default
     d = str(cfg.get("default_release", "windows_11")).strip().lower()
     try:
         return WindowsRelease(d)
@@ -1119,7 +1191,7 @@ def _pick_best_match(paths: List[Path]) -> Path:
     return sorted(paths, key=_key)[0]
 
 
-def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan, cfg: Dict[str, Any]) -> List[DriverFile]:
+def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan, cfg: Dict[str, Any]) -> List["DriverFile"]:
     logger = _safe_logger(self)
     drivers: List[DriverFile] = []
     buckets = _bucket_candidates(plan.release, cfg)
@@ -1699,7 +1771,7 @@ def _virtio_finalize(self, result: Dict[str, Any], drivers: List[DriverFile], *,
 
     result["notes"] += [
         "Release detection: prefers ProductName + build number (CurrentBuildNumber/CurrentBuild) over major/minor.",
-        "Config-driven: driver definitions + OS(bucket) mapping live in JSON (override via virtio_config_path / virtio_config).",
+        "Config-driven: driver definitions + OS(bucket) mapping can come from YAML/JSON config (self.config) or an override file.",
         "Config merge: dicts deep-merge; lists are replaced (override wins).",
         "Default release fallback: Windows 11.",
         "Driver discovery: canonical pattern first; fallback globs warn on multiple matches and pick a best candidate.",
@@ -1750,22 +1822,16 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
     _log_mountpoints_best_effort(logger, g)
 
-    # 1) Ensure correct system volume
     paths = _virtio_ensure_system_volume(self, g)
     if not paths.windows_dir or not g.is_dir(paths.windows_dir):
         return {"injected": False, "reason": "no_windows_root", "windows_dir": paths.windows_dir}
 
-    # 2) Ensure temp dir exists for logging/service payloads
     dry_run = bool(getattr(self, "dry_run", False))
     _virtio_ensure_temp_dir(self, g, paths, dry_run=dry_run)
 
-    # 3) Collect version/build info (now that paths are resolved)
     win_info = _windows_version_info(self, g, paths=paths)
-
-    # 4) Build plan using config (default Windows 11)
     plan = _choose_driver_plan(self, win_info, cfg)
 
-    # 5) Discover drivers using config (vendors can extend JSON)
     with _step(logger, "🔎 Discover VirtIO drivers"):
         drivers = _discover_virtio_drivers(self, virtio_src, plan, cfg)
 
@@ -1786,39 +1852,21 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             },
         }
 
-    # Critical sanity: storage drivers missing is almost always fatal for boot.
-    storage_services = sorted({d.service_name for d in drivers if d.type == DriverType.STORAGE})
-    if not storage_services:
-        _log(logger, logging.ERROR, "No storage drivers discovered. Boot is likely to fail.")
-
-    # 6) Initialize result
     result = _virtio_init_result(self, virtio_src, win_info, plan, paths)
 
-    # 7) Copy SYS into System32\drivers
     try:
         _virtio_copy_sys_binaries(self, g, result, paths, drivers)
     except Exception as e:
         return {**result, "reason": f"sys_copy_failed: {e}"}
 
-    # 8) Stage packages (INF/CAT/DLL) for pnputil firstboot
     staging_root, devicepath_append = _virtio_stage_packages(self, g, result, drivers)
 
-    # 9) Optional emergency setup.cmd
     _virtio_stage_manual_setup_cmd(self, g, result)
-
-    # 10) Registry edits (SYSTEM)
     _virtio_edit_registry_system(self, g, result, paths, drivers)
-
-    # 11) DevicePath update (SOFTWARE)
     _virtio_update_devicepath(self, g, result, paths, devicepath_append)
-
-    # 12) Firstboot service to install INF payloads
     _virtio_provision_firstboot(self, g, result, paths, staging_root)
-
-    # 13) BCD backup/hints
     _virtio_bcd_backup(self, g, result)
 
-    # 14) Finalize + export report (optional)
     return _virtio_finalize(self, result, drivers, plan=plan, cfg=cfg)
 
 
