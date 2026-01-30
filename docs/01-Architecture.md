@@ -1250,7 +1250,7 @@ client = VMwareClient(
 await client.async_export_vm(
     vm_name='production-web',
     output_dir='/data/exports',
-    export_mode='v2v'
+    export_mode='export'
 )
 ```
 

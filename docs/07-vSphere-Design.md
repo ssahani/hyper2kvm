@@ -263,7 +263,7 @@ Currently, `hyper2kvm` features dual implementations for download-only:
 - `VsphereMode` action `download_only_vm`: Sync with thread pool, CLI-oriented.
 This duplication is temporary for behavior stabilization. Long-term plan:
 - CLI (`VsphereMode`) becomes a thin layer.
-- Delegates to `VMwareClient.export_vm(V2VExportOptions(export_mode="download_only", ...))`.
+- Delegates to `VMwareClient.export_vm(ExportOptions(export_mode="download_only", ...))`.
 - Engine owns correctness, retries, and async HTTP; CLI handles flag mapping.
 
 ## CBT Sync in `hyper2kvm` (Control-Plane + Data-Plane Hybrid)
