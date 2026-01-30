@@ -32,6 +32,7 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 ### 🛠️ User Guides
 - **[CLI Reference](guides/cli/reference.md)** - Complete command-line reference
 - **[Batch Migration Guide](guides/migration/batch-features.md)** - Migrating multiple VMs
+- **[Conversion Directory Configuration](guides/configuration/conversion-directory.md)** - Configure VMDK conversion temporary directory
 - **[Security Best Practices](guides/security-best-practices.md)** - Secure migration workflows
 - **[Troubleshooting Guide](guides/troubleshooting.md)** - Diagnose and fix issues
 - **[TUI Dashboard](guides/tui/dashboard.md)** - Terminal user interface guide

@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Configurable VMDK Conversion Directory (January 2026)
+
+**Problem Solved**:
+- VMDK→QCOW2 conversions used hardcoded `/var/tmp/vmcraft-conversions/`
+- Large conversions (10s of GB) caused out-of-disk-space errors
+- Not suitable for multi-user or daemon setups
+- No control over temporary file location
+
+**Solution**:
+- Added `--conversion-dir` CLI argument
+- Added `conversion_dir` config file option
+- Default changed to `~/.cache/hyper2kvm/conversions` (per-user isolation)
+- Full parameter flow: CLI → Orchestrator → OfflineFixer → VMCraft → NBDDeviceManager
+
+**Configuration Examples**:
+```bash
+# CLI usage
+h2kvmctl --conversion-dir ~/large-disk/temp --config migration.yaml
+
+# YAML configuration
+conversion_dir: ~/large-disk/vmcraft-temp
+```
+
+**Dedicated User Setup**:
+```bash
+# For daemon/service deployments
+sudo useradd -r -m -d /var/lib/hyper2kvm -s /bin/bash hyper2kvm
+sudo mkdir -p /var/lib/hyper2kvm/conversions
+sudo chown hyper2kvm:hyper2kvm /var/lib/hyper2kvm/conversions
+sudo usermod -a -G kvm,qemu,disk,libvirt hyper2kvm
+
+# Configure conversion directory
+echo "conversion_dir: /var/lib/hyper2kvm/conversions" >> config.yaml
+```
+
+**Benefits**:
+- User-specific isolation (no permission conflicts)
+- Better disk space management
+- Daemon-friendly for automated migrations
+- Compatible with rootless containers
+
+**Migration Impact**: None - defaults to user cache directory, fully backward compatible
+
 #### h2kvmctl - Primary CLI Command (January 2026)
 
 **New Primary Command Following kubectl Pattern**:
