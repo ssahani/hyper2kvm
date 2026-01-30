@@ -880,7 +880,9 @@ class VMCraft:
 
         try:
             cmd = ["blkid", "-p", "-o", "export", device]
-            result = run_sudo(self.logger, cmd, check=True, capture=True)
+            # Use DEBUG log level for failures - blkid -p doesn't work with LVM/LUKS devices
+            result = run_sudo(self.logger, cmd, check=True, capture=True,
+                            failure_log_level=logging.DEBUG)
 
             # Parse blkid output (KEY=VALUE format)
             metadata = {}
