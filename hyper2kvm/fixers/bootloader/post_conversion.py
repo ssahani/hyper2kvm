@@ -188,18 +188,13 @@ class PostConversionBootFixer:
             self.logger.info(f"  Detected kernel: {latest_kver}")
 
             # Check for dracut (RHEL/CentOS/Fedora)
-            has_dracut = False
-            try:
-                result = g.sh("which dracut 2>/dev/null || echo ''")
-                has_dracut = bool(result.strip())
-            except Exception:
-                pass
+            has_dracut = g.is_file("/usr/bin/dracut") or g.is_file("/bin/dracut") or g.is_file("/sbin/dracut")
 
             if has_dracut:
                 self.logger.info(f"  Rebuilding with: dracut -f --no-hostonly --kver {latest_kver}")
                 try:
-                    # Use sh instead of command to handle complex shell syntax
-                    output = g.sh(f"dracut -f --no-hostonly --kver {latest_kver} 2>&1")
+                    # Use command_with_mounts for dracut (needs /proc, /dev, /sys)
+                    output = g.command_with_mounts(["dracut", "-f", "--no-hostonly", "--kver", latest_kver])
                     self.stats["initramfs_rebuilt"] = True
                     self.logger.info("  ✓ initramfs rebuilt successfully")
                     if output.strip():
@@ -210,17 +205,12 @@ class PostConversionBootFixer:
                     self.stats["errors"].append(error)
             else:
                 # Check for update-initramfs (Debian/Ubuntu)
-                has_update_initramfs = False
-                try:
-                    result = g.sh("which update-initramfs 2>/dev/null || echo ''")
-                    has_update_initramfs = bool(result.strip())
-                except Exception:
-                    pass
+                has_update_initramfs = g.is_file("/usr/sbin/update-initramfs") or g.is_file("/sbin/update-initramfs")
 
                 if has_update_initramfs:
                     self.logger.info(f"  Rebuilding with: update-initramfs -u -k {latest_kver}")
                     try:
-                        output = g.sh(f"update-initramfs -u -k {latest_kver} 2>&1")
+                        output = g.command_with_mounts(["update-initramfs", "-u", "-k", latest_kver])
                         self.stats["initramfs_rebuilt"] = True
                         self.logger.info("  ✓ initramfs rebuilt successfully")
                     except Exception as e:
@@ -277,7 +267,13 @@ class PostConversionBootFixer:
 
             self.logger.info(f"  Regenerating: {grub_cmd}")
             try:
-                output = g.sh(f"{grub_cmd} 2>&1")
+                # Parse grub command
+                if grub_cmd.startswith("grub2-mkconfig"):
+                    cmd_parts = ["grub2-mkconfig", "-o", grub_cfg]
+                else:
+                    cmd_parts = ["grub-mkconfig", "-o", grub_cfg]
+
+                output = g.command_with_mounts(cmd_parts)
                 self.stats["grub_regenerated"] = True
                 self.logger.info("  ✓ GRUB config regenerated successfully")
                 if "error" in output.lower():
