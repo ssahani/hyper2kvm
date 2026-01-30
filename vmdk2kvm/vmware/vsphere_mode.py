@@ -110,11 +110,7 @@ def _is_transient_http(status: int) -> bool:
     # Classic transient statuses for retries
     return status in (408, 429, 500, 502, 503, 504)
 
-
-# --------------------------------------------------------------------------------------
 # Govmomi wrapper
-# --------------------------------------------------------------------------------------
-
 
 class GovmomiCLI(GovcRunner):
     """
@@ -262,10 +258,7 @@ class GovmomiCLI(GovcRunner):
         return []
 
 
-# --------------------------------------------------------------------------------------
 # vSphere CLI mode
-# --------------------------------------------------------------------------------------
-
 
 class VsphereMode:
     """CLI entry for vSphere actions: scan / download / cbt-sync."""
@@ -283,7 +276,6 @@ class VsphereMode:
             return True
         return self.logger.isEnabledFor(logging.DEBUG)
 
-    # ✅ ADDITIVE: centralized dc_name resolution (no behavior change)
     def _dc_name(self) -> str:
         """
         Resolve datacenter name safely.
@@ -464,10 +456,8 @@ class VsphereMode:
             chunk_size=chunk_size,
         )
 
-    # ----------------------------------------------------------------------------------
     # Download-only VM folder helpers
-    # ----------------------------------------------------------------------------------
-
+    
     def _parse_vm_datastore_dir(self, vmx_path: str) -> Tuple[str, str]:
         """
         vm.summary.config.vmPathName looks like:
@@ -850,7 +840,6 @@ class VsphereMode:
 
         raise VMwareError(f"HTTPS /folder download failed after {attempt} attempt(s): {_short_exc(last_err or Exception('unknown'))}")
 
-    # ----------------------------------------------------------------------------------
 
     def run(self) -> int:
         vc_host = self.args.vcenter
@@ -902,9 +891,7 @@ class VsphereMode:
             if self._debug_enabled():
                 self.logger.debug(f"vsphere: action={action!r}")
 
-            # ------------------------------------------------------------------
             # list_vm_names: prefer govmomi/govc when present (more robust inventory)
-            # ------------------------------------------------------------------
             if action == "list_vm_names":
                 if self._prefer_govmomi():
                     try:

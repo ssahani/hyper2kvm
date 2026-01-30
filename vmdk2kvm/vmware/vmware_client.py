@@ -18,9 +18,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import quote
 
-# -----------------------------
-# ✅ Rich progress (spinner-style)
-# -----------------------------
 try:
     from rich.console import Console
     from rich.progress import (
@@ -39,9 +36,7 @@ except Exception:  # pragma: no cover
     TimeElapsedColumn = None  # type: ignore
     RICH_AVAILABLE = False
 
-# -----------------------------
-# Optional: non-blocking IO helpers
-# -----------------------------
+
 try:
     import select
 
@@ -50,12 +45,6 @@ except Exception:  # pragma: no cover
     select = None  # type: ignore
     SELECT_AVAILABLE = False
 
-# ---------------------------------------------------------------------------
-# Errors / creds resolver (robust import fallbacks)
-# ---------------------------------------------------------------------------
-
-# govc/govmomi helper primitives live in a shared module so both the CLI
-# (vsphere_mode.py) and the library client can use the exact same behavior.
 try:
     from .govc_common import GovcRunner, normalize_ds_path, extract_paths_from_datastore_ls_json
 except Exception:  # pragma: no cover
@@ -118,8 +107,6 @@ try:  # pragma: no cover
 except Exception:  # pragma: no cover
     urllib3 = None  # type: ignore
 
-
-# ✅ raw VDDK downloader (data-plane)
 try:
     from .vddk_client import VDDKConnectionSpec, VDDKESXClient  # type: ignore
 
@@ -166,10 +153,6 @@ def _normalize_ds_path(datastore: str, ds_path: str) -> Tuple[str, str]:
     return datastore, s.lstrip("/")
 
 
-# ---------------------------------------------------------------------------
-# ✅ govc (govmomi CLI) helper
-# ---------------------------------------------------------------------------
-
 class GovmomiCLI(GovcRunner):
     """
     Best-effort integration with govmomi CLI (`govc`).
@@ -203,9 +186,6 @@ class GovmomiCLI(GovcRunner):
             pass
         return subprocess.run(full, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env(), text=True)
 
-    # -------------------------
-    # inventory
-    # -------------------------
 
     def list_vm_names(self) -> List[str]:
         data = self.run_json(["find", "-type", "m", "-json", "."]) or {}
@@ -214,10 +194,6 @@ class GovmomiCLI(GovcRunner):
             elems = []
         names = [str(p).split("/")[-1] for p in elems if p]
         return sorted({n for n in names if n})
-
-    # -------------------------
-    # datastore listing
-    # -------------------------
 
     def datastore_ls(self, datastore: str, ds_dir: str) -> List[str]:
         """Text-mode listing (one name per line)."""
@@ -317,10 +293,6 @@ class GovmomiCLI(GovcRunner):
         }
 
 
-# ---------------------------------------------------------------------------
-# Export options
-# ---------------------------------------------------------------------------
-
 @dataclass
 class V2VExportOptions:
     """
@@ -394,10 +366,6 @@ class V2VExportOptions:
     vddk_download_log_every_bytes: int = 256 * 1024 * 1024
 
 
-# ---------------------------------------------------------------------------
-# VMware Client
-# ---------------------------------------------------------------------------
-
 class VMwareClient:
     """
     Minimal vSphere/vCenter client (SYNC, no threads, no asyncio):
@@ -409,19 +377,6 @@ class VMwareClient:
           - list VM names (fast)
           - datastore downloads (robust; avoids /folder cookie + dcPath bugs)
           - optional datastore.ls / dir downloads (helpers)
-
-    Key fixes:
-      ✅ compute path is host-system path (host/<cluster>/<esx>) not cluster-only
-      ✅ vddk-libdir validated/auto-resolved to directory containing libvixDiskLib.so
-      ✅ inventory printing is OPT-IN (otherwise no expensive scans)
-      ✅ avoids repeated CreateContainerView where possible via simple caches
-      ✅ download-only mode (no guest inspection; datastore folder download)
-      ✅ vddk_download mode (single disk direct VDDK pull) — prioritized for "download" when usable
-      ✅ govc prefer-if-present (additive, safe fallback)
-
-    NEW:
-      ✅ virt-v2v run shows a Rich spinner progressbar (indeterminate) while streaming logs.
-         No fake % (virt-v2v doesn’t expose progress); we show liveness + elapsed time.
     """
 
     def __init__(

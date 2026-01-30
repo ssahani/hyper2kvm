@@ -24,10 +24,7 @@ def _p(s: Optional[str]) -> Optional[Path]:
     return Path(s).expanduser()
 
 
-# --------------------------------------------------------------------------------------
 # Datastore path normalization (accepts "[ds] path" or "path")
-# --------------------------------------------------------------------------------------
-
 def _normalize_ds_path(datastore: str, ds_path: str) -> Tuple[str, str]:
     # Backwards-compatible wrapper (the real logic lives in govc_common.py)
     return normalize_ds_path(datastore, ds_path)
@@ -93,11 +90,6 @@ def _require(args: Any, name: str) -> Any:
     if v is None:
         raise VMwareError(f"Missing required arg: {name}")
     return v
-
-
-# --------------------------------------------------------------------------------------
-# govmomi/govc (preferred when available) — additive, fallback to pyvmomi
-# --------------------------------------------------------------------------------------
 
 class GovmomiCLI(GovcRunner):
     """
@@ -650,11 +642,6 @@ def _vddk_download_disk(client: VMwareClient, args: Any) -> Any:
     out = {"ok": True, "vm": vm_name, "disk": disk_sel, "local_path": str(res)}
     _emit(args, client.logger, out)
     return out
-
-
-# --------------------------------------------------------------------------------------
-# Snapshot lookup (name -> SnapshotTree node)
-# --------------------------------------------------------------------------------------
 
 def _find_snapshot_by_name(vm_obj: Any, name: str) -> Optional[Any]:
     target = (name or "").strip()
