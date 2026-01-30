@@ -36,10 +36,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Callable
 
 
-# -----------------------------------------------------------------------------
-# Errors
-# -----------------------------------------------------------------------------
-
 class NFCLeaseError(RuntimeError):
     """Generic NFC (govc) export/download error."""
 
@@ -48,18 +44,10 @@ class NFCLeaseCancelled(NFCLeaseError):
     """Raised when a caller cancels an in-progress export."""
 
 
-# -----------------------------------------------------------------------------
-# Types (kept compatible-ish with your existing signatures)
-# -----------------------------------------------------------------------------
-
 ProgressFn = Callable[[int, int, float], None]
 CancelFn = Callable[[], bool]
 LeaseHeartbeatFn = Callable[[int, int], None]  # accepted but not used (govc handles keepalive)
 
-
-# -----------------------------------------------------------------------------
-# Session / Config
-# -----------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class GovcSessionSpec:
@@ -119,9 +107,7 @@ class GovcExportSpec:
     govc_bin: str = "govc"
 
 
-# -----------------------------------------------------------------------------
 # Helpers
-# -----------------------------------------------------------------------------
 
 def _env_apply(session: GovcSessionSpec, base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     env = dict(base or os.environ)
@@ -193,10 +179,7 @@ def _parse_govc_progress(line: str) -> Optional[Tuple[int, int, float]]:
         return (0, 0, pct)
     return None
 
-
-# -----------------------------------------------------------------------------
 # Public API
-# -----------------------------------------------------------------------------
 
 class GovcNfcExporter:
     """
@@ -372,7 +355,6 @@ class GovcNfcExporter:
                 )
                 time.sleep(backoff)
 
-    # -------------------------------------------------------------------------
 
     def _default_name_from_vm(self, vm: str) -> str:
         # sanitize like libvirt: replace slashes so path components are safe
@@ -439,10 +421,6 @@ class GovcNfcExporter:
             except Exception:
                 pass
 
-
-# -----------------------------------------------------------------------------
-# Convenience wrapper (mirrors your download_many pattern)
-# -----------------------------------------------------------------------------
 
 def export_with_govc(
     logger: logging.Logger,
