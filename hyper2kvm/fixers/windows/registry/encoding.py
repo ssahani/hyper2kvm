@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/fixers/windows/registry/encoding.py
 """
 Low-level registry encoding and hivex operations.
 

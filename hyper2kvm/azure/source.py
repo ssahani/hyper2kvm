@@ -195,7 +195,8 @@ class AzureSourceProvider:
         if cfg.select.list_only:
             logger.info("List-only mode: discovering VMs without export")
 
-        raw_vms = cli.list_vms(cfg.select.resource_group)
+        # Use --show-details to get power state in one batched call (optimization)
+        raw_vms = cli.list_vms(cfg.select.resource_group, show_details=True)
         selected: List[AzureVMRef] = []
 
         for v in raw_vms:
@@ -211,10 +212,17 @@ class AzureSourceProvider:
             if not _tags_match(v.get("tags") or {}, cfg.select.tags):
                 continue
 
-            ps = cli.get_vm_power_state(rg, name)
+            # Extract power state from list output (batched) instead of per-VM API call
+            ps = cli.extract_power_state_from_vm_dict(v)
+            if ps is None:
+                # Fallback to individual call if not in list output
+                logger.debug(f"Power state not in list output for {name}, fetching individually")
+                ps = cli.get_vm_power_state(rg, name)
+
             if cfg.select.power_state and ps != cfg.select.power_state.lower():
                 continue
 
+            # Still need vm show for full disk details
             show = cli.get_vm_show(rg, name)
             selected.append(_resolve_vm_disks(show, power_state=ps))
 

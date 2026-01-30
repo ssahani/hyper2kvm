@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/vmware/transports/vddk_loader.py
 """
 VDDK disk download orchestration for VMware
 """

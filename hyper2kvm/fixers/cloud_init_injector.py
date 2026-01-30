@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+# hyper2kvm/fixers/cloud_init_injector.py
 from __future__ import annotations
 
 from typing import Dict, Any, Optional
