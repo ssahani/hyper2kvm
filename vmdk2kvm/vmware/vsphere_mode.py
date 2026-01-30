@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 import requests
-from pyVmomi import vim, vmodl
+from pyVmomi import vim, vmodl  # noqa: F401
 
 # Optional: Rich progress UI (TTY friendly). Falls back to plain logs if Rich not available.
 try:  # pragma: no cover
@@ -39,6 +39,20 @@ except Exception:  # pragma: no cover
 from ..core.exceptions import Fatal, VMwareError
 from .vmware_client import REQUESTS_AVAILABLE, VMwareClient
 from .govc_common import GovcRunner, extract_paths_from_datastore_ls_json, normalize_ds_path
+
+# Import the OVF Tool client module
+from .ovftool_client import (
+    find_ovftool,
+    ovftool_version,
+    export_to_ova,
+    deploy_ovf_or_ova,
+    OvfExportOptions,
+    OvfDeployOptions,
+    OvfToolError,
+    OvfToolNotFound,
+    OvfToolAuthError,
+    OvfToolSslError,
+)
 
 
 _DEFAULT_HTTP_TIMEOUT = (10, 300)  # (connect, read) seconds
@@ -106,6 +120,8 @@ def _norm_action(v: Any) -> str:
         "export_vmin": "export_vm",
         "exportvm": "export_vm",
         "export": "export_vm",
+        "ovftool_export": "ovftool_export",
+        "ovftool_deploy": "ovftool_deploy",
     }
     return aliases.get(s, s)
 
@@ -118,6 +134,7 @@ def _norm_export_mode(v: Any) -> str:
         "ovfdir": "ovf_export",
         "ova": "ova_export",
         "export_ova": "ova_export",
+        "ovftool": "ovftool_export",
     }
     return aliases.get(s, s)
 
@@ -137,6 +154,18 @@ class VsphereMode:
         self.args = args
         self.govc = GovcRunner(logger=logger, args=args)
 
+        # Initialize OVF Tool paths if needed
+        self.ovftool_paths = None
+        if getattr(args, "ovftool_path", None):
+            try:
+                self.ovftool_paths = find_ovftool(args.ovftool_path)
+                version = ovftool_version(self.ovftool_paths)
+                self.logger.info(
+                    f"OVF Tool found: {self.ovftool_paths.ovftool_bin} (version: {version or 'unknown'})"
+                )
+            except Exception as e:
+                self.logger.warning(f"OVF Tool not found at specified path: {e}")
+
     def _debug_enabled(self) -> bool:
         if _boolish(os.environ.get("VMDK2KVM_DEBUG") or os.environ.get("VMDK2KVM_VSPHERE_DEBUG")):
             return True
@@ -155,6 +184,18 @@ class VsphereMode:
                 "vsphere: govc is required for this action (control-plane prefers govc). "
                 "Install govc and ensure GOVC_* env / args are configured.",
             )
+
+    def _require_ovftool(self) -> None:
+        """Ensure OVF Tool is available."""
+        if not self.ovftool_paths:
+            try:
+                self.ovftool_paths = find_ovftool()
+                version = ovftool_version(self.ovftool_paths)
+                self.logger.info(
+                    f"OVF Tool auto-detected: {self.ovftool_paths.ovftool_bin} (version: {version or 'unknown'})"
+                )
+            except Exception as e:
+                raise Fatal(2, f"OVF Tool is required but not found: {e}")
 
     def _transport_preference(self) -> str:
         """
@@ -296,7 +337,6 @@ class VsphereMode:
         clean_outdir = bool(getattr(self.args, "govc_export_clean_outdir", False))
 
         t0 = time.monotonic()
-        # This calls vmdk2kvm/vsphere/govc_export.py under the hood.
         self.govc.export_ovf(
             vm=str(vm_name),
             out_dir=str(out_dir),
@@ -306,16 +346,9 @@ class VsphereMode:
             shutdown=shutdown,
             shutdown_timeout_s=shutdown_timeout_s,
             shutdown_poll_s=shutdown_poll_s,
-            # Newer govc_export.py supports these fields; older versions will just ignore via spec defaults.
-            # GovcRunner.export_ovf passes them through in GovcExportSpec.
-            # (If your GovcRunner doesn't yet, update govc_common.py accordingly.)
         )
         self.logger.info("govc: ovf_export done (dir=%s) in %s", out_dir, _fmt_duration(time.monotonic() - t0))
 
-        # NOTE: show_progress/prefer_pty/clean_outdir are handled inside govc_export.py via GovcExportSpec.
-        # If your GovcRunner.export_ovf isn't passing them through yet, update govc_common.py.
-
-        # Keep lints happy for unused locals when govc_common is older
         _ = (show_progress, prefer_pty, clean_outdir)
 
     def _govc_export_ova(self, vm_name: str, out_dir: Path) -> Path:
@@ -352,13 +385,11 @@ class VsphereMode:
         )
         self.logger.info("govc: ova_export done (file=%s) in %s", ova_path, _fmt_duration(time.monotonic() - t0))
 
-        # Keep lints happy for unused locals when govc_common is older
         _ = (show_progress, prefer_pty, clean_outdir)
 
         if ova_path.exists():
             return ova_path
 
-        # Fallback: newest .ova
         ovas = sorted(out_dir.glob("*.ova"), key=lambda p: p.stat().st_mtime, reverse=True)
         return ovas[0] if ovas else ova_path
 
@@ -408,6 +439,179 @@ class VsphereMode:
                 f"govc: datastore_ls ds={ds!r} folder={folder!r} -> 0 items ({_fmt_duration(time.monotonic() - t0)})"
             )
         return []
+
+    # -------------------------------------------------------------------------
+    # OVF Tool helpers
+    # -------------------------------------------------------------------------
+
+    def _vim_inventory_path(self, vm: vim.VirtualMachine) -> str:
+        """
+        Build inventory path for ovftool:
+
+          <dc>/vm/<folder1>/<folder2>/<vmname>
+
+        ovftool expects the '/<dc>/vm/...' form (without a leading slash is fine).
+        """
+        parts: List[str] = []
+        obj: Any = vm
+        dc_name: Optional[str] = None
+
+        while obj is not None:
+            try:
+                if isinstance(obj, vim.Datacenter):
+                    dc_name = obj.name
+                    break
+                if isinstance(obj, vim.Folder):
+                    # Skip the root "vm" folder name
+                    if obj.name and obj.name != "vm":
+                        parts.append(obj.name)
+                obj = getattr(obj, "parent", None)
+            except Exception:
+                break
+
+        parts.reverse()
+        dc = dc_name or self._dc_name()
+        folder_path = "/".join(parts) if parts else ""
+        if folder_path:
+            return f"{dc}/vm/{folder_path}/{vm.name}"
+        return f"{dc}/vm/{vm.name}"
+
+    def _build_ovftool_source_url(self, vm_name: str, client: VMwareClient) -> str:
+        """
+        Build a vi:// source URL for OVF Tool from VM name.
+
+        IMPORTANT:
+          - password MUST be present (and persisted into args)
+          - credentials MUST be URL-escaped (passwords often contain '@', ':', '/')
+          - VM inventory path must include folders, not just vm.name
+        """
+        vc_host = str(self.args.vcenter)
+        vc_user = str(self.args.vc_user)
+        vc_pass = getattr(self.args, "vc_password", None)
+
+        if not vc_pass:
+            raise Fatal(2, "ovftool_export: vc_password is missing (set vc_password_env or vc_password)")
+
+        vm = client.get_vm_by_name(vm_name)
+        if not vm:
+            raise Fatal(2, f"VM not found: {vm_name}")
+
+        inv = self._vim_inventory_path(vm)
+
+        # Escape creds for vi:// URL
+        u = quote(vc_user, safe="")
+        p = quote(str(vc_pass), safe="")
+
+        return f"vi://{u}:{p}@{vc_host}/{inv}"
+
+    def _ovftool_export_vm(self, client: VMwareClient, vm_name: str, out_dir: Path) -> None:
+        """
+        Export VM using OVF Tool.
+
+        Uses the already-connected VMwareClient from run() (no double-connect).
+        """
+        self._require_ovftool()
+
+        # Build source URL (inventory-aware + escaped creds)
+        source_url = self._build_ovftool_source_url(vm_name, client)
+
+        # Create output OVA path
+        ova_path = out_dir / f"{vm_name}.ova"
+
+        options = OvfExportOptions(
+            no_ssl_verify=bool(getattr(self.args, "ovftool_no_ssl_verify", True)),
+            thumbprint=getattr(self.args, "ovftool_thumbprint", None),
+            accept_all_eulas=bool(getattr(self.args, "ovftool_accept_all_eulas", True)),
+            quiet=bool(getattr(self.args, "ovftool_quiet", False)),
+            verbose=bool(getattr(self.args, "ovftool_verbose", False)),
+            overwrite=bool(getattr(self.args, "ovftool_overwrite", False)),
+            disk_mode=getattr(self.args, "ovftool_disk_mode", None),
+            retries=int(getattr(self.args, "ovftool_retries", 0) or 0),
+            retry_backoff_s=float(getattr(self.args, "ovftool_retry_backoff_s", 2.0) or 2.0),
+            extra_args=tuple(getattr(self.args, "ovftool_extra_args", []) or []),
+        )
+
+        self.logger.info("Exporting VM %s to %s using OVF Tool...", vm_name, ova_path)
+        t0 = time.monotonic()
+
+        export_to_ova(
+            paths=self.ovftool_paths,
+            source=source_url,
+            ova_path=ova_path,
+            options=options,
+            log_prefix="ovftool",
+        )
+
+        self.logger.info("OVF Tool export completed in %s", _fmt_duration(time.monotonic() - t0))
+
+    def _ovftool_deploy_ova(self, source_ova: Path, target_vm_name: Optional[str] = None) -> None:
+        """
+        Deploy OVA/OVF using OVF Tool.
+        """
+        self._require_ovftool()
+
+        if not source_ova.exists():
+            raise Fatal(2, f"Source OVA/OVF not found: {source_ova}")
+
+        vc_host = str(self.args.vcenter)
+        vc_user = str(self.args.vc_user)
+        vc_pass = getattr(self.args, "vc_password", None)
+        if not vc_pass:
+            raise Fatal(2, "ovftool_deploy: vc_password is missing (set vc_password_env or vc_password)")
+
+        dc_name = self._dc_name()
+
+        target_folder = getattr(self.args, "ovftool_target_folder", None)
+        target_resource_pool = getattr(self.args, "ovftool_target_resource_pool", None)
+
+        target_path = f"{dc_name}"
+        if target_folder:
+            target_path = f"{target_path}/vm/{target_folder}"
+        elif target_resource_pool:
+            target_path = f"{target_path}/host/{target_resource_pool}"
+
+        # Escape creds for vi:// URL
+        u = quote(vc_user, safe="")
+        p = quote(str(vc_pass), safe="")
+        target_url = f"vi://{u}:{p}@{vc_host}/{target_path}"
+
+        network_map: List[Tuple[str, str]] = []
+        net_mapping_str = getattr(self.args, "ovftool_network_map", None)
+        if net_mapping_str:
+            for mapping in str(net_mapping_str).split(","):
+                if ":" in mapping:
+                    src, dst = mapping.split(":", 1)
+                    network_map.append((src.strip(), dst.strip()))
+
+        options = OvfDeployOptions(
+            no_ssl_verify=bool(getattr(self.args, "ovftool_no_ssl_verify", True)),
+            thumbprint=getattr(self.args, "ovftool_thumbprint", None),
+            accept_all_eulas=bool(getattr(self.args, "ovftool_accept_all_eulas", True)),
+            overwrite=bool(getattr(self.args, "ovftool_overwrite", False)),
+            power_on=bool(getattr(self.args, "ovftool_power_on", False)),
+            name=target_vm_name or getattr(self.args, "ovftool_vm_name", None),
+            datastore=getattr(self.args, "ovftool_datastore", None),
+            network_map=tuple(network_map),
+            disk_mode=getattr(self.args, "ovftool_disk_mode", None),
+            quiet=bool(getattr(self.args, "ovftool_quiet", False)),
+            verbose=bool(getattr(self.args, "ovftool_verbose", False)),
+            retries=int(getattr(self.args, "ovftool_retries", 0) or 0),
+            retry_backoff_s=float(getattr(self.args, "ovftool_retry_backoff_s", 2.0) or 2.0),
+            extra_args=tuple(getattr(self.args, "ovftool_extra_args", []) or []),
+        )
+
+        self.logger.info("Deploying %s to vSphere using OVF Tool...", source_ova)
+        t0 = time.monotonic()
+
+        deploy_ovf_or_ova(
+            paths=self.ovftool_paths,
+            source_ovf_or_ova=source_ova,
+            target_vi=target_url,
+            options=options,
+            log_prefix="ovftool",
+        )
+
+        self.logger.info("OVF Tool deployment completed in %s", _fmt_duration(time.monotonic() - t0))
 
     # -------------------------------------------------------------------------
     # HTTPS /folder downloader (data-plane)
@@ -601,8 +805,14 @@ class VsphereMode:
             fn = getattr(client, "download_datastore_file_vddk", None)
             if callable(fn):
                 try:
-                    # best-effort signature flexibility
-                    fn(datastore=ds_name, ds_path=ds_path, local_path=local_path, dc_name=dc_name, chunk_size=chunk_size, on_bytes=on_bytes)
+                    fn(
+                        datastore=ds_name,
+                        ds_path=ds_path,
+                        local_path=local_path,
+                        dc_name=dc_name,
+                        chunk_size=chunk_size,
+                        on_bytes=on_bytes,
+                    )
                     return
                 except TypeError:
                     fn(ds_name, ds_path, local_path)
@@ -610,9 +820,10 @@ class VsphereMode:
                 except Exception as e:
                     self.logger.warning("VDDK download failed; falling back to HTTPS folder: %s", _short_exc(e))
             else:
-                self.logger.warning("VDDK requested but VMwareClient has no download_datastore_file_vddk(); falling back to HTTPS.")
+                self.logger.warning(
+                    "VDDK requested but VMwareClient has no download_datastore_file_vddk(); falling back to HTTPS."
+                )
 
-        # Stable default
         self._download_one_folder_file(
             client=client,
             vc_host=vc_host,
@@ -642,7 +853,9 @@ class VsphereMode:
         if not vc_pass:
             vc_pass = None
 
-        # action normalization (fix typos like export_vmin)
+        # ✅ CRITICAL: persist resolved password back into args for ovftool helpers
+        self.args.vc_password = vc_pass
+
         action = _norm_action(getattr(self.args, "vs_action", None))
 
         if not vc_host or not vc_user or not vc_pass:
@@ -658,11 +871,9 @@ class VsphereMode:
             )
             self.logger.debug(f"vsphere: normalized action={action!r}")
 
-        # --- CONTROL-PLANE actions: govc preferred (and required)
-        if action in ("list_vm_names", "export_vm"):
+        if action in ("list_vm_names", "export_vm") and action not in ("ovftool_export", "ovftool_deploy"):
             self._require_govc()
 
-        # pyvmomi client is still used for /folder cookie downloads and tasks like CBT.
         client = VMwareClient(
             self.logger,
             vc_host,
@@ -705,12 +916,14 @@ class VsphereMode:
                 out_dir = Path(getattr(self.args, "output_dir", None) or ".").expanduser().resolve()
                 out_dir.mkdir(parents=True, exist_ok=True)
 
-                # user can force mode, but policy fallback is still ovf -> ova -> https
                 export_mode = _norm_export_mode(getattr(self.args, "export_mode", None) or "ovf_export")
+                self.logger.info(
+                    "export_vm: vm=%r out_dir=%s export_mode=%s (policy: ovf -> ova -> https)",
+                    vm_name,
+                    out_dir,
+                    export_mode,
+                )
 
-                self.logger.info("export_vm: vm=%r out_dir=%s export_mode=%s (policy: ovf -> ova -> https)", vm_name, out_dir, export_mode)
-
-                # 1) OVF
                 try:
                     if export_mode in ("ovf_export", "auto"):
                         self._govc_export_ovf(vm_name, out_dir)
@@ -718,21 +931,19 @@ class VsphereMode:
                 except Exception as e:
                     self.logger.warning("export_vm: OVF export failed; trying OVA: %s", _short_exc(e))
 
-                # 2) OVA
                 try:
                     if export_mode in ("ova_export", "ovf_export", "auto"):
                         _ = self._govc_export_ova(vm_name, out_dir)
                         return 0
                 except Exception as e:
-                    self.logger.warning("export_vm: OVA export failed; falling back to HTTPS folder download: %s", _short_exc(e))
+                    self.logger.warning(
+                        "export_vm: OVA export failed; falling back to HTTPS folder download: %s", _short_exc(e)
+                    )
 
-                # 3) HTTPS folder fallback = download_only_vm semantics
-                # We resolve VM folder using pyvmomi summary, then download all files in that folder via /folder.
                 vm = client.get_vm_by_name(vm_name)
                 if not vm:
                     raise Fatal(2, f"vsphere export_vm: VM not found: {vm_name}")
 
-                vmx_path = None
                 try:
                     vmx_path = vm.summary.config.vmPathName if vm.summary and vm.summary.config else None
                 except Exception:
@@ -744,10 +955,11 @@ class VsphereMode:
                 ds_name, folder = self._parse_vm_datastore_dir(str(vmx_path))
 
                 include_glob = list(getattr(self.args, "vs_include_glob", None) or ["*"])
-                exclude_glob = list(getattr(self.args, "vs_exclude_glob", None) or ["*.lck", "*.log", "*.vswp", "*.vmem", "*.vmsn"])
+                exclude_glob = list(
+                    getattr(self.args, "vs_exclude_glob", None) or ["*.lck", "*.log", "*.vswp", "*.vmem", "*.vmsn"]
+                )
                 max_files = int(getattr(self.args, "vs_max_files", 5000) or 5000)
 
-                # listing: prefer govc (control-plane)
                 rels = self._govc_datastore_ls(ds_name, folder)
                 files: List[str] = []
                 base = folder.rstrip("/")
@@ -830,6 +1042,48 @@ class VsphereMode:
                 return 0
 
             # -----------------------------------------------------------------
+            # ovftool_export - Export VM using OVF Tool
+            # -----------------------------------------------------------------
+            if action == "ovftool_export":
+                vm_name = getattr(self.args, "vm_name", None) or getattr(self.args, "name", None)
+                if not vm_name:
+                    raise Fatal(2, "vsphere ovftool_export: --vm_name is required")
+
+                out_dir = Path(getattr(self.args, "output_dir", None) or ".").expanduser().resolve()
+                out_dir.mkdir(parents=True, exist_ok=True)
+
+                try:
+                    # ✅ reuse already-connected client (no second login)
+                    self._ovftool_export_vm(client, vm_name, out_dir)
+                    return 0
+                except (OvfToolNotFound, OvfToolAuthError, OvfToolSslError, OvfToolError) as e:
+                    raise Fatal(2, f"OVF Tool export failed: {e}")
+                except Exception as e:
+                    # don't lose traceback
+                    self.logger.exception("ovftool_export: unexpected error")
+                    raise Fatal(2, f"OVF Tool export failed with unexpected error: {e}")
+
+            # -----------------------------------------------------------------
+            # ovftool_deploy - Deploy OVA/OVF using OVF Tool
+            # -----------------------------------------------------------------
+            if action == "ovftool_deploy":
+                source_path = getattr(self.args, "source_path", None)
+                if not source_path:
+                    raise Fatal(2, "vsphere ovftool_deploy: --source-path is required")
+
+                source_path = Path(source_path).expanduser().resolve()
+                target_vm_name = getattr(self.args, "vm_name", None) or getattr(self.args, "name", None)
+
+                try:
+                    self._ovftool_deploy_ova(source_path, target_vm_name)
+                    return 0
+                except (OvfToolNotFound, OvfToolAuthError, OvfToolSslError, OvfToolError) as e:
+                    raise Fatal(2, f"OVF Tool deployment failed: {e}")
+                except Exception as e:
+                    self.logger.exception("ovftool_deploy: unexpected error")
+                    raise Fatal(2, f"OVF Tool deployment failed with unexpected error: {e}")
+
+            # -----------------------------------------------------------------
             # download_datastore_file (stable policy: https default; vddk opt-in)
             # -----------------------------------------------------------------
             if action == "download_datastore_file":
@@ -884,7 +1138,6 @@ class VsphereMode:
                 max_files = int(getattr(self.args, "vs_max_files", 5000) or 5000)
                 fail_on_missing = bool(getattr(self.args, "vs_fail_on_missing", False))
 
-                vmx_path = None
                 try:
                     vmx_path = vm.summary.config.vmPathName if vm.summary and vm.summary.config else None
                 except Exception:
@@ -910,10 +1163,9 @@ class VsphereMode:
                         f"include={include_glob} exclude={exclude_glob} max_files={max_files} fail_on_missing={fail_on_missing}"
                     )
 
-                # listing via govc (preferred)
                 if self.govc.available():
                     rels = self._govc_datastore_ls(ds_name, folder)
-                    files: List[str] = []
+                    files2: List[str] = []
                     base = folder.rstrip("/")
                     for name in rels:
                         rel = f"{base}/{name}" if base and name else (base or name)
@@ -924,12 +1176,12 @@ class VsphereMode:
                             continue
                         if exclude_glob and any(fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(bn, pat) for pat in exclude_glob):
                             continue
-                        files.append(rel)
-                        if max_files and len(files) > max_files:
-                            raise Fatal(2, f"Refusing to download > max_files={max_files} (found so far: {len(files)})")
+                        files2.append(rel)
+                        if max_files and len(files2) > max_files:
+                            raise Fatal(2, f"Refusing to download > max_files={max_files} (found so far: {len(files2)})")
+                    files = files2
                     listing_mode = "govc"
                 else:
-                    # user asked "always prefer govc", but for download-only we can still proceed if govc missing.
                     self.logger.warning("govc not available; falling back to pyvmomi datastore listing for download-only.")
                     ds_obj = self._find_datastore_obj(client, ds_name)
                     files = self._list_vm_folder_files_pyvmomi(
@@ -1080,9 +1332,6 @@ class VsphereMode:
                             print(f"  ... and {len(errors)-20} more")
                 return 0
 
-            # -----------------------------------------------------------------
-            # Keep other actions as-is (pyvmomi based) unless you want govc versions.
-            # -----------------------------------------------------------------
             raise Fatal(2, f"vsphere: unknown action: {action}")
 
         finally:
@@ -1187,7 +1436,5 @@ class VsphereMode:
                 raise VMwareError(f"Refusing to download > max_files={max_files} (found so far: {len(files)})")
 
         if self._debug_enabled():
-            self.logger.debug(
-                f"vsphere: pyvmomi listed {len(files)} files in {_fmt_duration(time.monotonic()-t0)}"
-            )
+            self.logger.debug(f"vsphere: pyvmomi listed {len(files)} files in {_fmt_duration(time.monotonic()-t0)}")
         return files
