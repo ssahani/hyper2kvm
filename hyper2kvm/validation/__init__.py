@@ -3,7 +3,7 @@
 """
 Migration validation framework.
 
-Provides comprehensive post-migration validation to ensure successful VM migrations.
+Provides comprehensive pre- and post-migration validation to ensure successful VM migrations.
 """
 
 from .health_checker import (
@@ -33,6 +33,13 @@ from .orchestrator import (
     ValidationOrchestrator,
     ValidationReport,
 )
+from .vmdk_inspector import (
+    VMDKInspector,
+    VMDKInspectionResult,
+    RiskLevel,
+    BootMode,
+    Risk,
+)
 
 __all__ = [
     "HealthCheckType",
@@ -50,4 +57,9 @@ __all__ = [
     "PerformanceBenchmark",
     "ValidationOrchestrator",
     "ValidationReport",
+    "VMDKInspector",
+    "VMDKInspectionResult",
+    "RiskLevel",
+    "BootMode",
+    "Risk",
 ]
