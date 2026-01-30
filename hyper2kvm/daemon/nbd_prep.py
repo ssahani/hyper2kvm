@@ -372,59 +372,139 @@ class NBDPrepDaemon:
         )
 
     def activate_lvm(self):
-        """Activate LVM volume groups."""
-        subprocess.run(
-            ["vgchange", "-ay"],
-            capture_output=True
+        """Activate LVM volume groups if present."""
+        # Scan for LVM physical volumes
+        logger.info("Scanning for LVM volumes")
+        result = subprocess.run(
+            ["pvscan", "--cache"],
+            capture_output=True,
+            text=True
         )
+
+        if result.returncode != 0:
+            logger.debug(f"pvscan failed: {result.stderr}")
+            return
+
+        # Scan for volume groups
+        result = subprocess.run(
+            ["vgscan", "--mknodes"],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            logger.debug(f"vgscan failed: {result.stderr}")
+            return
+
+        # List volume groups to see what we found
+        result = subprocess.run(
+            ["vgs", "--noheadings", "-o", "vg_name"],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            vgs = [vg.strip() for vg in result.stdout.strip().split('\n')]
+            logger.info(f"Found LVM volume groups: {vgs}")
+
+            # Activate all volume groups
+            result = subprocess.run(
+                ["vgchange", "-ay"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                logger.info("✓ LVM volume groups activated")
+            else:
+                logger.warning(f"Failed to activate LVM: {result.stderr}")
+        else:
+            logger.debug("No LVM volume groups found")
 
     def deactivate_lvm(self):
         """Deactivate LVM volume groups."""
-        subprocess.run(
+        logger.info("Deactivating LVM volume groups")
+        result = subprocess.run(
             ["vgchange", "-an"],
-            capture_output=True
+            capture_output=True,
+            text=True
         )
 
+        if result.returncode == 0:
+            logger.debug("✓ LVM volume groups deactivated")
+        else:
+            logger.warning(f"Failed to deactivate LVM: {result.stderr}")
+
     def mount_root_partition(self, nbd_device: str, job_name: str) -> str:
-        """Find and mount root partition."""
-        # Find largest partition (heuristic for root)
-        # Use -l for list mode (no tree characters), -p for full paths
+        """Find and mount root partition by trying all candidates."""
+        # Get all block devices (partitions + LVM logical volumes)
         result = subprocess.run(
-            [
-                "sh", "-c",
-                f"lsblk -n -l -p -o NAME,SIZE {nbd_device} | grep {Path(nbd_device).name}p | "
-                f"sort -k2 -hr | head -1 | awk '{{print $1}}'"
-            ],
+            ["lsblk", "-n", "-l", "-p", "-o", "NAME,SIZE,TYPE"],
             capture_output=True,
             text=True,
             check=True
         )
 
-        root_part = result.stdout.strip()
-        if not root_part:
-            raise Exception("No partitions found")
+        # Parse block device list
+        candidates = []
+        for line in result.stdout.strip().split('\n'):
+            parts = line.split()
+            if len(parts) >= 3:
+                name = parts[0]
+                size = parts[1]
+                dev_type = parts[2]
 
-        logger.info(f"Selected root partition: {root_part}")
+                # Include partitions from our NBD device
+                if dev_type == 'part' and name.startswith(nbd_device):
+                    # Skip extended partition table entries (1K size)
+                    if '1K' not in size and '512' not in size:
+                        candidates.append((name, 'partition'))
+
+                # Include LVM logical volumes (could be on any device)
+                elif dev_type == 'lvm':
+                    candidates.append((name, 'lvm'))
+
+        if not candidates:
+            raise Exception("No partitions or LVM volumes found")
+
+        logger.info(f"Found {len(candidates)} candidates to check:")
+
+        for name, dev_type in candidates:
+            logger.info(f"  - {name} ({dev_type})")
 
         # Create mount point
         mount_path = Path(MOUNT_BASE_PATH) / job_name
         mount_path.mkdir(parents=True, exist_ok=True)
 
-        # Mount partition
-        logger.info(f"Mounting {root_part} to {mount_path}")
-        subprocess.run(
-            ["mount", root_part, str(mount_path)],
-            check=True,
-            capture_output=True
-        )
+        # Try each candidate until we find one with /etc
+        for name, dev_type in candidates:
+            logger.info(f"Trying to mount {name} ({dev_type})")
 
-        # Verify /etc exists
-        etc_path = mount_path / "etc"
-        if not etc_path.is_dir():
-            subprocess.run(["umount", str(mount_path)])
-            raise Exception("Mounted partition does not contain /etc")
+            # Try mounting this device (readonly first to check)
+            result = subprocess.run(
+                ["mount", "-o", "ro", name, str(mount_path)],
+                capture_output=True,
+                text=True
+            )
 
-        return str(mount_path)
+            if result.returncode != 0:
+                logger.debug(f"Failed to mount {name}: {result.stderr}")
+                continue
+
+            # Check if this looks like a root filesystem
+            etc_path = mount_path / "etc"
+            if etc_path.is_dir():
+                logger.info(f"✓ Found root filesystem on {name} ({dev_type})")
+                # Remount read-write
+                subprocess.run(["umount", str(mount_path)], check=True)
+                subprocess.run(["mount", name, str(mount_path)], check=True)
+                return str(mount_path)
+            else:
+                # Not root, unmount and try next
+                logger.debug(f"{name} does not contain /etc")
+                subprocess.run(["umount", str(mount_path)])
+
+        raise Exception(f"No device contains /etc (tried {len(candidates)} candidates)")
 
     def mount_boot_partition(self, nbd_device: str, root_mount_path: str):
         """Mount /boot if it's a separate partition."""
