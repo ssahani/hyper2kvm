@@ -1,0 +1,191 @@
+{
+  "dashboard": {
+    "title": "hyper2kvm VM Migrations",
+    "tags": ["hyper2kvm", "vm-migration"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "Active Migrations",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "hyper2kvm_migrations_active",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 5, "color": "yellow"},
+                {"value": 10, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Total Migrations",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(hyper2kvm_migrations_total)",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4}
+      },
+      {
+        "title": "Success Rate",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "sum(rate(hyper2kvm_migrations_total{status=\"success\"}[5m])) / sum(rate(hyper2kvm_migrations_total[5m])) * 100",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+        "options": {
+          "showThresholdMarkers": true,
+          "showThresholdLabels": false
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 80, "color": "yellow"},
+                {"value": 95, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Manifests Processed",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(hyper2kvm_manifests_processed_total)",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4}
+      },
+      {
+        "title": "Migration Rate (per minute)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(hyper2kvm_migrations_total[5m]) * 60",
+            "refId": "A",
+            "legendFormat": "{{hypervisor}} - {{status}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+        "yaxes": [
+          {"label": "Migrations/min", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "title": "Migration Duration (P95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(hyper2kvm_migration_duration_seconds_bucket[5m]))",
+            "refId": "A",
+            "legendFormat": "{{hypervisor}}"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+        "yaxes": [
+          {"label": "Seconds", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "title": "Disk Conversion Throughput",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(hyper2kvm_disk_conversion_bytes_total[5m]) / 1024 / 1024",
+            "refId": "A",
+            "legendFormat": "{{source_format}} → {{target_format}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+        "yaxes": [
+          {"label": "MB/s", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "title": "VMware API Call Duration",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(hyper2kvm_vmware_api_duration_seconds_bucket[5m]))",
+            "refId": "A",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+        "yaxes": [
+          {"label": "Seconds", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(hyper2kvm_errors_total[5m])",
+            "refId": "A",
+            "legendFormat": "{{error_type}} - {{component}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 20, "w": 24, "h": 8},
+        "yaxes": [
+          {"label": "Errors/s", "show": true},
+          {"show": true}
+        ],
+        "alert": {
+          "name": "High Error Rate",
+          "conditions": [
+            {
+              "evaluator": {"params": [0.1], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "1m",
+          "handler": 1,
+          "message": "Error rate is high",
+          "name": "High Error Rate Alert",
+          "noDataState": "no_data",
+          "notifications": []
+        }
+      }
+    ]
+  }
+}

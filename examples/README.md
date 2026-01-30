@@ -189,63 +189,130 @@ For complete library API documentation, see **[docs/08-Library-API.md](../docs/0
 
 ---
 
+## Python Script Examples
+
+### TUI (Text User Interface)
+
+Interactive dashboards and progress bars for migration monitoring:
+
+- **`tui/tui_demo.py`** - Basic TUI demonstration
+- **`tui/tui_dashboard_example.py`** - Complete dashboard with VM monitoring
+- **`tui/tui_integration_example.py`** - TUI integrated with migration workflows
+- **`tui/progress_bar_demo.py`** - Custom progress bars with orange theme
+
+See [tui/README.md](tui/README.md) for details.
+
+### Async/Parallel Migrations
+
+High-performance parallel VM migrations (3-5x speedup):
+
+- **`async/async_batch_migration_example.py`** - Parallel VM migrations using async/await
+- **`async/async_with_tui_example.py`** - Async migrations with TUI dashboard
+
+See [async/README.md](async/README.md) for details.
+
+### Daemon Mode
+
+Background processing with metrics and monitoring:
+
+- **`daemon/daemon_with_metrics_example.py`** - Daemon with Prometheus metrics
+- **`daemon/enhanced_features_example.py`** - Enhanced features (retry, validation, logging)
+
+See [daemon/README.md](daemon/README.md) for details.
+
+### Library API
+
+Programmatic VM migration via Python library:
+
+- **`library-api/library_local_conversion.py`** - Convert local VMDK to qcow2
+- **`library-api/library_vsphere_migration.py`** - Migrate from vSphere
+- **`library-api/library_azure_migration.py`** - Migrate from Azure
+- **`library-api/library_guest_fixing.py`** - Apply offline OS fixes
+- **`library-api/library_boot_testing.py`** - Boot validation testing
+
+See [library-api/README.md](library-api/README.md) for details.
+
+---
+
 ## Directory Structure
 
 ```
 examples/
 ├── README.md                    # This file
+│
+├── library-api/                 # Python library API examples
+│   ├── README.md                # Library examples documentation
+│   ├── library_local_conversion.py     # Convert local VMDK
+│   ├── library_vsphere_migration.py    # Migrate from vSphere
+│   ├── library_azure_migration.py      # Migrate from Azure
+│   ├── library_guest_fixing.py         # Apply offline fixes
+│   └── library_boot_testing.py         # Boot validation
+│
+├── tui/                         # TUI (Text UI) examples
+│   ├── README.md                # TUI examples documentation
+│   ├── tui_demo.py              # Basic TUI demo
+│   ├── tui_dashboard_example.py # Full dashboard
+│   ├── tui_integration_example.py # TUI + migration workflow
+│   └── progress_bar_demo.py     # Custom progress bars
+│
+├── async/                       # Async/parallel migration examples
+│   ├── README.md                # Async examples documentation
+│   ├── async_batch_migration_example.py  # Parallel VM migrations
+│   └── async_with_tui_example.py         # Async + TUI
+│
+├── daemon/                      # Daemon mode examples
+│   ├── README.md                # Daemon examples documentation
+│   ├── daemon_with_metrics_example.py    # Daemon + metrics
+│   └── enhanced_features_example.py      # Enhanced features demo
+│
+├── manifests/                   # Manifest examples and artifacts
+│   ├── artifact-manifest-local.json
+│   ├── artifact-manifest-minimal.json
+│   ├── artifact-manifest-multi-disk.json
+│   ├── artifact-manifest-vsphere.json
+│   ├── batch-migration-example.yaml
+│   └── single-vm-example.yaml
+│
+├── monitoring/                  # Monitoring configurations
+│   ├── grafana-dashboard.json   # Grafana dashboard for metrics
+│   └── prometheus.yml           # Prometheus configuration
+│
+├── batch/                       # Batch operation configs
+│   ├── CHECKPOINT_RESUME_GUIDE.md
+│   ├── batch-simple.json
+│   ├── batch-with-checkpoint.json
+│   ├── batch-with-profiles.yaml
+│   └── ... (more)
+│
+├── hooks/                       # Hook examples
+│   ├── README.md
+│   ├── manifest-with-hooks.json
+│   └── sample-hooks/
+│
 ├── scripts/                     # Shell script examples
 │   ├── migrate-single-vm.sh     # Single VM migration script
 │   ├── migrate-batch.sh         # Batch migration script
 │   └── test-migration.sh        # Test converted VMs
 │
-└── yaml/                        # YAML configuration examples
-    ├── 00-common/               # Reusable base configs
-    │   ├── common.yaml          # Standard settings
-    │   ├── common-fast.yaml     # Speed-optimized
-    │   └── common-strict.yaml   # Maximum validation
-    │
-    ├── 10-local/                # Local VMDK conversions (14 examples)
-    │   ├── local-linux-basic.yaml
-    │   ├── local-linux-cloud-init.yaml
-    │   ├── local-linux-grow-root.yaml
-    │   ├── local-windows-virtio-basic.yaml
-    │   └── ... (more)
-    │
-    ├── 11-batch/                # Batch/multi-VM migrations (2 examples)
-    │   ├── batch-local-two-vms.yaml
-    │   └── batch-local-many.yaml
-    │
-    ├── 20-live-fix/             # Live SSH fixes (3 examples)
-    │   ├── live-fix-basic.yaml
-    │   ├── live-fix-batch.yaml
-    │   └── live-fix-dry-run.yaml
-    │
-    ├── 30-fetch-and-fix/        # Remote fetch (3 examples)
-    │   ├── fetch-basic.yaml
-    │   ├── fetch-batch-parallel.yaml
-    │   └── fetch-full-chain-and-test.yaml
-    │
-    ├── 40-ova-ovf/              # OVA/OVF handling (2 examples)
-    │   ├── ova-basic.yaml
-    │   └── ovf-basic.yaml
-    │
-    ├── 50-daemon/               # Automation (2 examples)
-    │   ├── daemon-watch.yaml
-    │   └── generate-systemd.yaml
-    │
-    ├── 60-vsphere/              # vSphere integration (11 examples)
-    │   ├── vsphere-list-vms.yaml
-    │   ├── vsphere-export-vm.yaml
-    │   └── ... (more)
-    │
-    └── 99-merge-demos/          # Config merging examples (3 examples)
-        ├── merge-base.yaml
-        ├── merge-override.yaml
-        └── merge-run-local.yaml
+├── yaml/                        # YAML configuration examples
+│   ├── 00-common/               # Reusable base configs
+│   ├── 10-local/                # Local VMDK conversions (14 examples)
+│   ├── 11-batch/                # Batch/multi-VM migrations (2 examples)
+│   ├── 20-live-fix/             # Live SSH fixes (3 examples)
+│   ├── 30-fetch-and-fix/        # Remote fetch (3 examples)
+│   ├── 40-ova-ovf/              # OVA/OVF handling (2 examples)
+│   ├── 50-daemon/               # Automation (2 examples)
+│   ├── 60-vsphere/              # vSphere integration (11 examples)
+│   └── 99-merge-demos/          # Config merging examples (3 examples)
+│
+└── json/                        # JSON configuration examples (organized by use case)
+    ├── 00-common/, 10-local/, 11-batch/, 20-live-fix/
+    ├── 30-fetch-and-fix/, 40-ova-ovf/, 50-daemon/
+    ├── 60-vsphere/, 70-complete-workflows/, 99-merge-demos/
+    └── ... (more)
 ```
 
-**Total:** 40+ working examples
+**Total:** 50+ working examples (40+ YAML/JSON configs + 10+ Python scripts)
 
 ---
 

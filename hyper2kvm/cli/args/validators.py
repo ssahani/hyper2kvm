@@ -297,8 +297,51 @@ def validate_args(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     cmd = _merged_cmd(args, conf)
     if not _require(cmd):
         raise SystemExit(
-            "Missing required YAML key: `cmd:` (or `command:`). "
-            "Examples: local, fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, daemon, generate-systemd."
+            "\n"
+            "hyper2kvm: Ultimate VMware → KVM/QEMU Converter + Fixer\n"
+            "\n"
+            "ERROR: Missing required YAML key: `cmd:` (or `command:`)\n"
+            "\n"
+            "USAGE:\n"
+            "    sudo python -m hyper2kvm --config <yaml-file>\n"
+            "    sudo ./run.sh --config <yaml-file>\n"
+            "\n"
+            "YAML FILE MUST INCLUDE:\n"
+            "    command: <cmd>\n"
+            "\n"
+            "SUPPORTED COMMANDS:\n"
+            "    local           - Convert local VMDK file\n"
+            "    fetch-and-fix   - Fetch from ESXi via SSH and convert\n"
+            "    ova             - Extract and convert OVA archive\n"
+            "    ovf             - Extract and convert OVF package\n"
+            "    vhd             - Convert VHD/Azure disk\n"
+            "    ami             - Extract and convert AMI/cloud tarball\n"
+            "    live-fix        - Apply fixes to running VM via SSH\n"
+            "    vsphere         - vSphere/vCenter operations\n"
+            "    daemon          - Watch directory for incoming VMs\n"
+            "    generate-systemd - Generate systemd service unit\n"
+            "\n"
+            "QUICK START EXAMPLE (save as config.yaml):\n"
+            "    command: local\n"
+            "    vmdk: /path/to/vm.vmdk\n"
+            "    output_dir: ./out\n"
+            "    flatten: true\n"
+            "    to_output: vm-fixed.qcow2\n"
+            "    out_format: qcow2\n"
+            "    compress: true\n"
+            "    fstab_mode: stabilize-all\n"
+            "    regen_initramfs: true\n"
+            "\n"
+            "Then run:\n"
+            "    sudo python -m hyper2kvm --config config.yaml\n"
+            "\n"
+            "For detailed help and examples:\n"
+            "    python -m hyper2kvm --help (requires --config)\n"
+            "    less hyper2kvm/cli/help_texts.py\n"
+            "\n"
+            "Documentation:\n"
+            "    docs/README.md\n"
+            "    docs/98-Enhanced-Features.md\n"
         )
 
     # Optional knobs validation (no side effects)
@@ -323,5 +366,14 @@ def validate_args(args: argparse.Namespace, conf: dict[str, Any]) -> None:
 
     fn = validators.get(cmd_l)
     if fn is None:
-        raise SystemExit(f"Unknown cmd={cmd!r}. Set YAML `cmd:` to a supported operation.")
+        valid_commands = ", ".join(sorted(validators.keys()))
+        raise SystemExit(
+            f"\nERROR: Unknown command: '{cmd}'\n"
+            f"\n"
+            f"SUPPORTED COMMANDS:\n"
+            f"    {valid_commands}\n"
+            f"\n"
+            f"Please update your YAML config file:\n"
+            f"    command: <one-of-the-above>\n"
+        )
     fn(args, conf)

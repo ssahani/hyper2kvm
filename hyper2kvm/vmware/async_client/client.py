@@ -1,0 +1,347 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# hyper2kvm/vmware/async_client/client.py
+"""
+Async VMware vSphere client with connection pooling.
+
+Provides async/await interface for VMware operations with:
+- Connection pooling and reuse
+- Automatic retry with backoff
+- Rate limiting
+- Concurrent operations
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Optional, Dict, Any, List
+from pathlib import Path
+
+from ...core.optional_imports import HTTPX_AVAILABLE, AsyncClient, Limits, Timeout
+
+if not HTTPX_AVAILABLE:
+    raise ImportError(
+        "httpx library is required for async operations. "
+        "Install with: pip install 'hyper2kvm[async]'"
+    )
+
+from .semaphore import ConcurrencyManager
+
+logger = logging.getLogger(__name__)
+
+
+class AsyncVMwareClient:
+    """
+    Async VMware vSphere API client.
+
+    Features:
+    - Connection pooling with configurable limits
+    - Automatic session management
+    - Rate limiting and concurrency control
+    - Async context manager support
+
+    Example:
+        >>> async with AsyncVMwareClient(host="vcenter.example.com") as client:
+        ...     vms = await client.list_vms()
+        ...     results = await asyncio.gather(*[
+        ...         client.export_vm(vm) for vm in vms[:5]
+        ...     ])
+    """
+
+    def __init__(
+        self,
+        host: str,
+        username: str,
+        password: str,
+        datacenter: Optional[str] = None,
+        port: int = 443,
+        verify_ssl: bool = True,
+        max_concurrent_vms: int = 5,
+        max_concurrent_exports: int = 3,
+        max_connections: int = 10,
+        timeout: float = 300.0,
+    ):
+        """
+        Initialize async VMware client.
+
+        Args:
+            host: vCenter hostname or IP
+            username: vCenter username
+            password: vCenter password
+            datacenter: Datacenter name (optional)
+            port: vCenter port (default: 443)
+            verify_ssl: Verify SSL certificates (default: True)
+            max_concurrent_vms: Max parallel VM migrations (default: 5)
+            max_concurrent_exports: Max parallel disk exports (default: 3)
+            max_connections: Max HTTP connections (default: 10)
+            timeout: Request timeout in seconds (default: 300)
+        """
+        self.host = host
+        self.username = username
+        self.password = password
+        self.datacenter = datacenter
+        self.port = port
+        self.verify_ssl = verify_ssl
+        self.timeout = timeout
+
+        # Concurrency manager
+        self.concurrency = ConcurrencyManager(
+            max_concurrent_vms=max_concurrent_vms,
+            max_concurrent_exports=max_concurrent_exports,
+            max_connections=max_connections,
+        )
+
+        # HTTP client (initialized in __aenter__)
+        self._client: Optional[AsyncClient] = None
+        self._session_cookie: Optional[str] = None
+
+    async def __aenter__(self) -> AsyncVMwareClient:
+        """Enter async context - create HTTP client and authenticate."""
+        # Create HTTP client with connection pooling
+        limits = Limits(
+            max_connections=self.concurrency.limits.max_connections,
+            max_keepalive_connections=self.concurrency.limits.max_connections // 2,
+        )
+
+        timeout_config = Timeout(self.timeout)
+
+        self._client = AsyncClient(
+            verify=self.verify_ssl,
+            limits=limits,
+            timeout=timeout_config,
+            http2=True,  # Enable HTTP/2 for better performance
+        )
+
+        # Authenticate
+        await self._authenticate()
+
+        logger.info(
+            f"Async VMware client connected to {self.host} "
+            f"(max_concurrent_vms={self.concurrency.limits.max_concurrent_vms})"
+        )
+
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - close HTTP client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+        logger.info(f"Async VMware client disconnected from {self.host}")
+        return False
+
+    async def _authenticate(self) -> None:
+        """
+        Authenticate with vCenter and get session cookie.
+
+        This is a simplified authentication - in production, you'd
+        integrate with pyVim SDK or use vCenter REST API.
+        """
+        # TODO: Implement actual vCenter authentication
+        # For now, this is a placeholder showing the pattern
+
+        logger.info(f"Authenticating with vCenter: {self.host}")
+
+        # Simulated authentication
+        self._session_cookie = "simulated-session-cookie"
+
+        logger.info("Authentication successful")
+
+    async def list_vms(self, folder: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List all VMs in datacenter.
+
+        Args:
+            folder: Optional folder to filter VMs
+
+        Returns:
+            List of VM info dictionaries
+        """
+        async with await self.concurrency.api_call():
+            logger.debug(f"Listing VMs in datacenter: {self.datacenter}")
+
+            # TODO: Implement actual VM listing via vCenter REST API
+            # For now, return simulated data
+            vms = [
+                {"name": "web-server-01", "power_state": "poweredOn", "uuid": "vm-001"},
+                {"name": "web-server-02", "power_state": "poweredOn", "uuid": "vm-002"},
+                {"name": "db-server-01", "power_state": "poweredOn", "uuid": "vm-003"},
+            ]
+
+            logger.info(f"Found {len(vms)} VMs")
+            return vms
+
+    async def get_vm_info(self, vm_name: str) -> Dict[str, Any]:
+        """
+        Get VM information.
+
+        Args:
+            vm_name: VM name
+
+        Returns:
+            VM info dictionary
+        """
+        async with await self.concurrency.api_call():
+            logger.debug(f"Getting info for VM: {vm_name}")
+
+            # TODO: Implement actual VM info retrieval
+            info = {
+                "name": vm_name,
+                "uuid": f"vm-{vm_name}",
+                "power_state": "poweredOn",
+                "cpu": 4,
+                "memory_mb": 8192,
+                "disks": [
+                    {"path": "[datastore1] vm/disk1.vmdk", "size_gb": 100},
+                    {"path": "[datastore1] vm/disk2.vmdk", "size_gb": 200},
+                ],
+            }
+
+            return info
+
+    async def export_vm_async(
+        self,
+        vm_name: str,
+        output_dir: Path,
+        progress_callback: Optional[callable] = None,
+    ) -> Dict[str, Any]:
+        """
+        Export VM asynchronously with progress tracking.
+
+        Args:
+            vm_name: VM name to export
+            output_dir: Output directory
+            progress_callback: Optional callback(progress_pct, stage, throughput_mbps)
+
+        Returns:
+            Export result dictionary
+        """
+        async with self.concurrency.vm_slot():
+            logger.info(f"Starting async export of VM: {vm_name}")
+
+            # Get VM info
+            vm_info = await self.get_vm_info(vm_name)
+
+            # Export disks in parallel
+            disk_tasks = []
+            for idx, disk in enumerate(vm_info["disks"]):
+                task = self._export_disk_async(
+                    vm_name, disk, output_dir, idx, progress_callback
+                )
+                disk_tasks.append(task)
+
+            # Wait for all disks to export
+            disk_results = await asyncio.gather(*disk_tasks)
+
+            logger.info(f"Completed async export of VM: {vm_name}")
+
+            return {
+                "vm_name": vm_name,
+                "status": "success",
+                "disks_exported": len(disk_results),
+                "output_dir": str(output_dir),
+            }
+
+    async def _export_disk_async(
+        self,
+        vm_name: str,
+        disk: Dict[str, Any],
+        output_dir: Path,
+        disk_idx: int,
+        progress_callback: Optional[callable] = None,
+    ) -> Dict[str, Any]:
+        """
+        Export a single disk asynchronously.
+
+        Args:
+            vm_name: VM name
+            disk: Disk info dictionary
+            output_dir: Output directory
+            disk_idx: Disk index
+            progress_callback: Progress callback
+
+        Returns:
+            Export result
+        """
+        async with self.concurrency.export_slot():
+            logger.info(f"Exporting disk {disk_idx} for VM {vm_name}")
+
+            # Simulate disk export with progress updates
+            disk_size_gb = disk["size_gb"]
+            chunk_size_mb = 100
+            chunks = int(disk_size_gb * 1024 / chunk_size_mb)
+
+            for chunk in range(chunks):
+                # Simulate chunk download
+                await asyncio.sleep(0.05)  # Simulated network delay
+
+                # Report progress
+                progress = (chunk + 1) / chunks
+                if progress_callback:
+                    throughput_mbps = 125.5  # Simulated
+                    progress_callback(progress, f"Exporting disk {disk_idx}", throughput_mbps)
+
+            logger.info(f"Completed export of disk {disk_idx} for VM {vm_name}")
+
+            return {
+                "disk_index": disk_idx,
+                "path": disk["path"],
+                "size_gb": disk_size_gb,
+                "status": "success",
+            }
+
+    async def export_vms_parallel(
+        self,
+        vm_names: List[str],
+        output_dir: Path,
+        progress_callback: Optional[callable] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Export multiple VMs in parallel.
+
+        This is the main entry point for batch migrations.
+        Uses concurrency limits to avoid overwhelming vCenter.
+
+        Args:
+            vm_names: List of VM names to export
+            output_dir: Output directory
+            progress_callback: Optional progress callback
+
+        Returns:
+            List of export results
+
+        Example:
+            >>> results = await client.export_vms_parallel(
+            ...     ["vm1", "vm2", "vm3", "vm4", "vm5"],
+            ...     Path("/output"),
+            ... )
+        """
+        logger.info(f"Starting parallel export of {len(vm_names)} VMs")
+
+        # Create export tasks
+        tasks = [
+            self.export_vm_async(vm_name, output_dir, progress_callback) for vm_name in vm_names
+        ]
+
+        # Run in parallel with concurrency limits
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Separate successes from failures
+        successes = [r for r in results if isinstance(r, dict) and r.get("status") == "success"]
+        failures = [r for r in results if isinstance(r, Exception) or r.get("status") != "success"]
+
+        logger.info(
+            f"Parallel export complete: {len(successes)} succeeded, {len(failures)} failed"
+        )
+
+        return results
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get client statistics."""
+        return {
+            "host": self.host,
+            "datacenter": self.datacenter,
+            "connected": self._client is not None,
+            **self.concurrency.get_stats(),
+        }

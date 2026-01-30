@@ -168,6 +168,13 @@ report: /tmp/hyper2kvm-report.md
 5. **[📝 YAML Examples](05-YAML-Examples.md)** - Configuration file reference
 6. **[👨‍🍳 Cookbook](06-Cookbook.md)** - Common migration recipes
 7. **[🎨 vSphere Design](07-vSphere-Design.md)** - vSphere integration architecture
+8. **[🐍 Library API](08-Library-API.md)** - Python library API documentation
+
+### Daemon Mode
+10. **[⚙️ Daemon Mode](10-Daemon-Mode.md)** - Background processing basics
+11. **[📊 Daemon Enhancements](11-Daemon-Enhancements.md)** - Enhanced daemon features
+12. **[📖 Enhanced Daemon User Guide](12-Enhanced-Daemon-User-Guide.md)** - Complete daemon guide
+13. **[🏗️ Integrated Daemon Architecture](13-Integrated-Daemon-Architecture.md)** - Daemon architecture
 
 ### Windows Documentation
 10. **[🪟 Windows Guide](10-Windows-Guide.md)** - Complete Windows migration guide
@@ -185,9 +192,35 @@ report: /tmp/hyper2kvm-report.md
 14. **[⚙️ Configuration Injection](14-Configuration-Injection-Guide.md)** - Pre-boot network, user, service, and script injection
 30. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere to KVM using direct export
 
-### Troubleshooting & Development
+### Troubleshooting & Support
 90. **[⚠️ Failure Modes](90-Failure-Modes.md)** - Troubleshooting guide
 95. **[🧪 Testing Guide](95-Testing-Guide.md)** - Testing infrastructure and best practices
+97. **[🌐 Network Resilience](97-Network-Resilience.md)** - Network reliability and recovery
+99. **[📦 Optional Dependencies](99-Optional-Dependencies.md)** - Optional packages and features
+
+### Organized Documentation
+
+**[📚 Reference Documentation](reference/)** - API references and technical specs
+- [API Reference](reference/API-Reference.md) - Library API reference
+- [Integration Contract](reference/Integration-Contract.md) - Integration requirements
+- [Manifest Workflow](reference/Manifest-Workflow.md) - Artifact manifests
+
+**[📖 User Guides](guides/)** - Specialized guides and workflows
+- [Migration Playbooks](guides/MIGRATION-PLAYBOOKS.md) - Complete migration workflows
+- [Batch Migration Guide](guides/Batch-Migration-Features-Guide.md) - Batch operations
+- [Enhanced Features](guides/98-Enhanced-Features.md) - Advanced features
+- [Security Best Practices](guides/SECURITY-BEST-PRACTICES.md) - Security guidelines
+- [Troubleshooting](guides/TROUBLESHOOTING.md) - Common issues
+
+**[🛠️ Development](development/)** - For contributors
+- [Contributing](development/CONTRIBUTING.md) - Contribution guidelines
+- [Building](development/BUILDING.md) - Build from source
+- [Publishing](development/PUBLISHING.md) - Release process
+
+**[📊 Project Information](project/)** - Status and roadmap
+- [Project Status](project/PROJECT_STATUS.md) - Current development status
+- [Ecosystem](project/ECOSYSTEM.md) - Related projects
+- [Priority Features](project/Priority-1-Features.md) - Feature roadmap
 
 ---
 
