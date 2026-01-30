@@ -70,21 +70,39 @@ class ManifestReporter:
         # Add final artifacts from stages
         stages = self.report["pipeline"]["stages"]
 
-        # Add converted image as artifact
+        # Add converted disks as artifacts (Artifact Manifest v1: multi-disk support)
         if "convert" in stages and stages["convert"].get("success"):
             convert_result = stages["convert"].get("result", {})
-            output_path = convert_result.get("output_path")
-            if output_path:
+            converted_disks = convert_result.get("converted_disks", [])
+
+            for disk_info in converted_disks:
                 self.add_artifact(
-                    "converted_image",
-                    output_path,
-                    format=convert_result.get("output_format"),
-                    size_bytes=convert_result.get("output_size_bytes"),
-                    size_human=convert_result.get("output_size_human"),
+                    "converted_disk",
+                    disk_info["output_path"],
+                    disk_id=disk_info["disk_id"],
+                    format=disk_info["output_format"],
+                    size_bytes=disk_info["output_size_bytes"],
+                    size_human=disk_info["output_size_human"],
+                    boot_order_hint=disk_info["boot_order_hint"],
                     compressed=convert_result.get("compressed", False),
                 )
 
+        # Add input manifest metadata
+        if "load_manifest" in stages:
+            load_result = stages["load_manifest"].get("result", {})
+            self.report["input_manifest"] = {
+                "path": load_result.get("manifest_path"),
+                "manifest_version": load_result.get("manifest_version"),
+                "source_provider": load_result.get("source_provider"),
+                "source_vm_id": load_result.get("source_vm_id"),
+                "source_vm_name": load_result.get("source_vm_name"),
+            }
+
+        # Add hyper2kvm version info
+        self.report["hyper2kvm_version"] = self._get_hyper2kvm_version()
+
         # Add summary
+        load_result = stages.get("load_manifest", {}).get("result", {})
         self.report["summary"] = {
             "total_stages": len(stages),
             "successful_stages": sum(1 for s in stages.values() if s.get("success")),
@@ -92,9 +110,19 @@ class ManifestReporter:
             "total_warnings": len(self.report["warnings"]),
             "total_errors": len(self.report["errors"]),
             "total_artifacts": len(self.report["artifacts"]),
+            "input_disks": load_result.get("disks_count", 0),
+            "output_disks": len(self.report["artifacts"]),
         }
 
         return self.report
+
+    def _get_hyper2kvm_version(self) -> str:
+        """Get hyper2kvm version."""
+        try:
+            from .. import __version__
+            return __version__
+        except ImportError:
+            return "unknown"
 
     def write_json(self, path: Path | str) -> None:
         """Write report to JSON file."""

@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-"""Manifest loader and validator for manifest-driven workflows."""
+"""Artifact Manifest v1 loader and validator for hypersdk integration."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -14,23 +16,39 @@ class ManifestValidationError(Exception):
     pass
 
 
-class ManifestLoader:
-    """Loads and validates manifest files for the convert workflow."""
+class DiskArtifact:
+    """Represents a single disk artifact from the manifest."""
 
-    REQUIRED_FIELDS = ["version", "source", "output", "pipeline"]
+    def __init__(self, data: dict[str, Any]):
+        self.id = data["id"]
+        self.source_format = data["source_format"]
+        self.bytes = data["bytes"]
+        self.local_path = Path(data["local_path"])
+        self.checksum = data.get("checksum")
+        self.boot_order_hint = data.get("boot_order_hint", 999)
+        self.label = data.get("label", self.id)
+        self.disk_type = data.get("disk_type", "unknown")
+
+    def __repr__(self) -> str:
+        return f"DiskArtifact(id={self.id!r}, path={self.local_path}, type={self.disk_type})"
+
+
+class ManifestLoader:
+    """Loads and validates Artifact Manifest v1 for hypersdk integration."""
+
     SUPPORTED_VERSIONS = ["1.0"]
-    SUPPORTED_SOURCE_TYPES = ["vmdk", "ova", "ovf", "vhd", "qcow2", "raw"]
+    SUPPORTED_SOURCE_FORMATS = ["vmdk", "qcow2", "raw", "vhd", "vhdx", "vdi"]
     SUPPORTED_OUTPUT_FORMATS = ["qcow2", "raw", "vdi"]
-    PIPELINE_STAGES = ["inspect", "fix", "convert", "validate"]
 
     def __init__(self, logger: logging.Logger | None = None):
         self.logger = logger or logging.getLogger(__name__)
         self.manifest: dict[str, Any] = {}
         self.path: Path | None = None
+        self.disks: list[DiskArtifact] = []
 
     def load(self, manifest_path: str | Path) -> dict[str, Any]:
         """
-        Load and validate manifest from file.
+        Load and validate Artifact Manifest v1.
 
         Args:
             manifest_path: Path to manifest JSON file
@@ -48,7 +66,7 @@ class ManifestLoader:
         if not self.path.exists():
             raise FileNotFoundError(f"Manifest not found: {self.path}")
 
-        self.logger.info(f"Loading manifest: {self.path}")
+        self.logger.info(f"Loading Artifact Manifest: {self.path}")
 
         try:
             with open(self.path, "r", encoding="utf-8") as f:
@@ -57,7 +75,7 @@ class ManifestLoader:
             raise ManifestValidationError(f"Invalid JSON in manifest: {e}") from e
 
         self._validate()
-        self.logger.info(f"✅ Manifest loaded and validated: {self.get_name()}")
+        self.logger.info(f"✅ Artifact Manifest v{self.get_version()} loaded successfully")
 
         return self.manifest
 
@@ -66,154 +84,312 @@ class ManifestLoader:
         if not isinstance(self.manifest, dict):
             raise ManifestValidationError("Manifest must be a JSON object")
 
-        # Check required top-level fields
-        missing = [f for f in self.REQUIRED_FIELDS if f not in self.manifest]
-        if missing:
-            raise ManifestValidationError(f"Missing required fields: {missing}")
-
         # Validate version
-        version = self.manifest.get("version")
+        version = self.manifest.get("manifest_version")
+        if not version:
+            raise ManifestValidationError(
+                "Missing required field: manifest_version. "
+                f"This is an Artifact Manifest v1. Expected versions: {self.SUPPORTED_VERSIONS}"
+            )
+
         if version not in self.SUPPORTED_VERSIONS:
             raise ManifestValidationError(
-                f"Unsupported version: {version}. Supported: {self.SUPPORTED_VERSIONS}"
+                f"Unsupported manifest version: {version}. "
+                f"This hyper2kvm version supports: {self.SUPPORTED_VERSIONS}"
             )
 
-        # Validate source
-        self._validate_source()
-
-        # Validate output
-        self._validate_output()
-
-        # Validate pipeline
-        self._validate_pipeline()
-
-    def _validate_source(self) -> None:
-        """Validate source section."""
-        source = self.manifest.get("source", {})
-
-        if not isinstance(source, dict):
-            raise ManifestValidationError("source must be an object")
-
-        if "type" not in source:
-            raise ManifestValidationError("source.type is required")
-
-        if source["type"] not in self.SUPPORTED_SOURCE_TYPES:
+        # Validate disks (REQUIRED)
+        if "disks" not in self.manifest:
             raise ManifestValidationError(
-                f"Unsupported source type: {source['type']}. "
-                f"Supported: {self.SUPPORTED_SOURCE_TYPES}"
+                "Missing required field: disks[]. "
+                "Artifact Manifest v1 requires at least one disk."
             )
 
-        if "path" not in source:
-            raise ManifestValidationError("source.path is required")
+        if not isinstance(self.manifest["disks"], list):
+            raise ManifestValidationError("Field 'disks' must be an array")
 
-        # Validate path exists
-        source_path = Path(source["path"]).expanduser().resolve()
-        if not source_path.exists():
-            raise ManifestValidationError(f"Source path not found: {source_path}")
+        if len(self.manifest["disks"]) == 0:
+            raise ManifestValidationError("Field 'disks' must contain at least one disk")
 
-    def _validate_output(self) -> None:
-        """Validate output section."""
-        output = self.manifest.get("output", {})
+        # Validate each disk
+        self._validate_disks()
 
-        if not isinstance(output, dict):
-            raise ManifestValidationError("output must be an object")
+        # Optional sections (validate if present)
+        if "vm" in self.manifest:
+            self._validate_vm()
 
-        if "directory" not in output:
-            raise ManifestValidationError("output.directory is required")
+    def _validate_disks(self) -> None:
+        """Validate disks array."""
+        disk_ids = set()
 
-        if "format" in output and output["format"] not in self.SUPPORTED_OUTPUT_FORMATS:
-            raise ManifestValidationError(
-                f"Unsupported output format: {output['format']}. "
-                f"Supported: {self.SUPPORTED_OUTPUT_FORMATS}"
-            )
+        for idx, disk_data in enumerate(self.manifest["disks"]):
+            if not isinstance(disk_data, dict):
+                raise ManifestValidationError(f"disks[{idx}] must be an object")
 
-    def _validate_pipeline(self) -> None:
-        """Validate pipeline section."""
-        pipeline = self.manifest.get("pipeline", {})
+            # Required fields
+            for field in ["id", "source_format", "bytes", "local_path"]:
+                if field not in disk_data:
+                    raise ManifestValidationError(f"disks[{idx}].{field} is required")
 
-        if not isinstance(pipeline, dict):
-            raise ManifestValidationError("pipeline must be an object")
+            # Validate id uniqueness
+            disk_id = disk_data["id"]
+            if disk_id in disk_ids:
+                raise ManifestValidationError(f"Duplicate disk ID: {disk_id}")
+            disk_ids.add(disk_id)
 
-        # Check that at least one stage is defined
-        defined_stages = [s for s in self.PIPELINE_STAGES if s in pipeline]
-        if not defined_stages:
-            raise ManifestValidationError(
-                f"pipeline must define at least one stage from: {self.PIPELINE_STAGES}"
-            )
+            # Validate id format
+            if not re.match(r"^[a-zA-Z0-9_-]+$", disk_id):
+                raise ManifestValidationError(
+                    f"disks[{idx}].id must match pattern: ^[a-zA-Z0-9_-]+$ (got: {disk_id!r})"
+                )
 
-        # Validate each stage
-        for stage in defined_stages:
-            stage_config = pipeline[stage]
-            if not isinstance(stage_config, dict):
-                raise ManifestValidationError(f"pipeline.{stage} must be an object")
+            # Validate source_format
+            source_format = disk_data["source_format"]
+            if source_format not in self.SUPPORTED_SOURCE_FORMATS:
+                raise ManifestValidationError(
+                    f"disks[{idx}].source_format unsupported: {source_format}. "
+                    f"Supported: {self.SUPPORTED_SOURCE_FORMATS}"
+                )
 
-            if "enabled" not in stage_config:
-                raise ManifestValidationError(f"pipeline.{stage}.enabled is required")
+            # Validate bytes
+            if not isinstance(disk_data["bytes"], int) or disk_data["bytes"] < 0:
+                raise ManifestValidationError(
+                    f"disks[{idx}].bytes must be a non-negative integer"
+                )
+
+            # Validate local_path exists
+            local_path = Path(disk_data["local_path"]).expanduser().resolve()
+            if not local_path.exists():
+                raise ManifestValidationError(
+                    f"disks[{idx}].local_path not found: {local_path}"
+                )
+
+            # Validate checksum format (if present)
+            if "checksum" in disk_data:
+                checksum = disk_data["checksum"]
+                if not re.match(r"^sha256:[a-f0-9]{64}$", checksum):
+                    raise ManifestValidationError(
+                        f"disks[{idx}].checksum must match format: sha256:<hexdigest> (got: {checksum!r})"
+                    )
+
+            # Validate boot_order_hint (if present)
+            if "boot_order_hint" in disk_data:
+                if not isinstance(disk_data["boot_order_hint"], int) or disk_data["boot_order_hint"] < 0:
+                    raise ManifestValidationError(
+                        f"disks[{idx}].boot_order_hint must be a non-negative integer"
+                    )
+
+            # Validate disk_type (if present)
+            if "disk_type" in disk_data:
+                if disk_data["disk_type"] not in ["boot", "data", "unknown"]:
+                    raise ManifestValidationError(
+                        f"disks[{idx}].disk_type must be one of: boot, data, unknown"
+                    )
+
+            # Create DiskArtifact
+            disk = DiskArtifact(disk_data)
+            self.disks.append(disk)
+
+        self.logger.info(f"Validated {len(self.disks)} disk artifact(s)")
+
+    def _validate_vm(self) -> None:
+        """Validate VM section (optional)."""
+        vm = self.manifest["vm"]
+
+        if not isinstance(vm, dict):
+            raise ManifestValidationError("Field 'vm' must be an object")
+
+        # Validate firmware (if present)
+        if "firmware" in vm:
+            firmware = vm["firmware"]
+            if firmware not in ["bios", "uefi", "unknown"]:
+                raise ManifestValidationError(
+                    f"vm.firmware must be one of: bios, uefi, unknown (got: {firmware!r})"
+                )
+
+        # Validate secureboot (if present)
+        if "secureboot" in vm:
+            if not isinstance(vm["secureboot"], bool):
+                raise ManifestValidationError("vm.secureboot must be a boolean")
+
+        # Validate cpu (if present)
+        if "cpu" in vm:
+            if not isinstance(vm["cpu"], int) or vm["cpu"] < 1:
+                raise ManifestValidationError("vm.cpu must be an integer >= 1")
+
+        # Validate mem_gb (if present)
+        if "mem_gb" in vm:
+            if not isinstance(vm["mem_gb"], int) or vm["mem_gb"] < 1:
+                raise ManifestValidationError("vm.mem_gb must be an integer >= 1")
+
+    def verify_checksums(self) -> dict[str, bool]:
+        """
+        Verify checksums for all disks that have them.
+
+        Returns:
+            Dictionary mapping disk_id to verification result (True=pass, False=fail)
+        """
+        results = {}
+
+        for disk in self.disks:
+            if not disk.checksum:
+                self.logger.info(f"Disk {disk.id}: No checksum provided, skipping verification")
+                continue
+
+            self.logger.info(f"Verifying checksum for disk {disk.id}...")
+
+            # Extract expected hash
+            expected_hash = disk.checksum.replace("sha256:", "")
+
+            # Compute actual hash
+            sha256 = hashlib.sha256()
+            with open(disk.local_path, "rb") as f:
+                while chunk := f.read(8192 * 1024):  # 8MB chunks
+                    sha256.update(chunk)
+            actual_hash = sha256.hexdigest()
+
+            # Compare
+            match = actual_hash == expected_hash
+            results[disk.id] = match
+
+            if match:
+                self.logger.info(f"✅ Disk {disk.id}: Checksum verified")
+            else:
+                self.logger.error(
+                    f"❌ Disk {disk.id}: Checksum mismatch!\n"
+                    f"   Expected: {expected_hash}\n"
+                    f"   Actual:   {actual_hash}"
+                )
+                raise ManifestValidationError(
+                    f"Checksum verification failed for disk {disk.id}"
+                )
+
+        return results
 
     # Convenience getters
 
-    def get_name(self) -> str:
-        """Get manifest name from metadata."""
-        metadata = self.manifest.get("metadata", {})
-        return metadata.get("name", "unnamed-manifest")
+    def get_version(self) -> str:
+        """Get manifest version."""
+        return self.manifest.get("manifest_version", "unknown")
 
-    def get_description(self) -> str:
-        """Get manifest description from metadata."""
-        metadata = self.manifest.get("metadata", {})
-        return metadata.get("description", "")
+    def get_disks(self) -> list[DiskArtifact]:
+        """Get validated disk artifacts."""
+        return self.disks
 
-    def get_source_path(self) -> Path:
-        """Get resolved source path."""
-        source = self.manifest["source"]
-        return Path(source["path"]).expanduser().resolve()
+    def get_boot_disk(self) -> DiskArtifact:
+        """
+        Get the primary boot disk.
 
-    def get_source_type(self) -> str:
-        """Get source type."""
-        return self.manifest["source"]["type"]
+        Uses boot_order_hint if available, otherwise returns first disk.
+        """
+        if not self.disks:
+            raise ManifestValidationError("No disks available")
+
+        # Sort by boot_order_hint (lower is higher priority)
+        sorted_disks = sorted(self.disks, key=lambda d: d.boot_order_hint)
+        boot_disk = sorted_disks[0]
+
+        self.logger.info(f"Boot disk identified: {boot_disk.id} (boot_order_hint={boot_disk.boot_order_hint})")
+        return boot_disk
+
+    def get_firmware(self) -> str:
+        """Get firmware hint (bios/uefi/unknown)."""
+        vm = self.manifest.get("vm", {})
+        return vm.get("firmware", "bios")
+
+    def get_os_hint(self) -> str:
+        """Get OS hint (linux/windows/unknown)."""
+        vm = self.manifest.get("vm", {})
+        return vm.get("os_hint", "unknown")
+
+    def get_secureboot(self) -> bool:
+        """Get secure boot setting."""
+        vm = self.manifest.get("vm", {})
+        return vm.get("secureboot", False)
+
+    def get_source_metadata(self) -> dict[str, Any]:
+        """Get source metadata (provider, vm_id, etc.)."""
+        return self.manifest.get("source", {})
+
+    def get_vm_metadata(self) -> dict[str, Any]:
+        """Get VM metadata (cpu, mem, firmware, etc.)."""
+        return self.manifest.get("vm", {})
+
+    def get_nics(self) -> list[dict[str, Any]]:
+        """Get network interfaces."""
+        return self.manifest.get("nics", [])
+
+    def get_input_notes(self) -> list[str]:
+        """Get notes from export process."""
+        return self.manifest.get("notes", [])
+
+    def get_input_warnings(self) -> list[dict[str, Any]]:
+        """Get warnings from export process."""
+        return self.manifest.get("warnings", [])
+
+    def get_metadata(self) -> dict[str, Any]:
+        """Get additional metadata."""
+        return self.manifest.get("metadata", {})
 
     def get_output_directory(self) -> Path:
-        """Get resolved output directory."""
-        output = self.manifest["output"]
-        return Path(output["directory"]).expanduser().resolve()
+        """
+        Get output directory from manifest or derive from manifest location.
+
+        For Artifact Manifest v1, output directory is derived from manifest path:
+        /work/{job_id}/manifest.json → /work/{job_id}/output/
+        """
+        # If manifest has explicit output directory, use it
+        if "output" in self.manifest and "directory" in self.manifest["output"]:
+            return Path(self.manifest["output"]["directory"]).expanduser().resolve()
+
+        # Otherwise, derive from manifest path
+        if self.path:
+            manifest_dir = self.path.parent
+            return manifest_dir / "output"
+
+        # Fallback
+        return Path("./output")
 
     def get_output_format(self) -> str:
-        """Get output format (default: qcow2)."""
-        output = self.manifest["output"]
-        return output.get("format", "qcow2")
+        """Get output format (qcow2/raw/vdi)."""
+        if "output" in self.manifest:
+            return self.manifest["output"].get("format", "qcow2")
+        return "qcow2"
 
-    def get_output_filename(self) -> str | None:
-        """Get output filename if specified."""
-        output = self.manifest["output"]
-        return output.get("filename")
+    def is_dry_run(self) -> bool:
+        """Check if dry-run mode is enabled."""
+        if "options" in self.manifest:
+            return self.manifest["options"].get("dry_run", False)
+        return False
+
+    def get_verbosity(self) -> int:
+        """Get verbosity level (default: 1)."""
+        if "options" in self.manifest:
+            return self.manifest["options"].get("verbose", 1)
+        return 1
+
+    def get_pipeline_config(self) -> dict[str, Any]:
+        """Get pipeline configuration (for backward compat with orchestrator)."""
+        return self.manifest.get("pipeline", {})
 
     def is_stage_enabled(self, stage: str) -> bool:
-        """Check if a pipeline stage is enabled."""
-        pipeline = self.manifest.get("pipeline", {})
+        """Check if a pipeline stage is enabled (for backward compat)."""
+        pipeline = self.get_pipeline_config()
         stage_config = pipeline.get(stage, {})
         return stage_config.get("enabled", False)
 
     def get_stage_config(self, stage: str) -> dict[str, Any]:
         """Get configuration for a pipeline stage."""
-        pipeline = self.manifest.get("pipeline", {})
+        pipeline = self.get_pipeline_config()
         return pipeline.get(stage, {})
 
     def get_configuration(self) -> dict[str, Any]:
-        """Get the configuration section (users, services, hostname, etc.)."""
+        """Get guest configuration injection settings."""
         return self.manifest.get("configuration", {})
 
     def get_options(self) -> dict[str, Any]:
-        """Get the options section (dry_run, verbose, etc.)."""
+        """Get global options."""
         return self.manifest.get("options", {})
-
-    def is_dry_run(self) -> bool:
-        """Check if dry-run mode is enabled."""
-        options = self.get_options()
-        return options.get("dry_run", False)
-
-    def get_verbosity(self) -> int:
-        """Get verbosity level (default: 1)."""
-        options = self.get_options()
-        return options.get("verbose", 1)
 
     def to_dict(self) -> dict[str, Any]:
         """Return the loaded manifest as a dictionary."""
