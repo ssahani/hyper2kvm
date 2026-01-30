@@ -32,5 +32,5 @@ vs_fail_on_missing: false
 
 # Logging / output
 verbose: 2
-json: true
+json: false
 
