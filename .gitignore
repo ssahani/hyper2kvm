@@ -112,3 +112,4 @@ tests/fixtures/images/
 *.qcow2
 *.vmdk
 *.img
+LINKEDIN_POST.md
