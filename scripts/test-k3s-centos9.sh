@@ -104,7 +104,13 @@ test_prerequisites() {
 
     # Test 6: Check for hyper2kvm CLI
     log_test "hyper2kvm CLI is available"
-    if command -v hyper2kvm &> /dev/null; then
+    # Prefer local development build
+    if [ -x "./h2kvmctl" ]; then
+        H2KVM_CMD="./h2kvmctl"
+        H2KVM_VERSION=$(./h2kvmctl --version 2>&1 | grep -i version || echo "local build")
+        log_success "h2kvmctl found (local): $H2KVM_VERSION"
+    elif command -v hyper2kvm &> /dev/null; then
+        H2KVM_CMD="hyper2kvm"
         H2KVM_VERSION=$(hyper2kvm --version 2>&1 | grep -i version || echo "installed")
         log_success "hyper2kvm found: $H2KVM_VERSION"
     else
@@ -190,7 +196,8 @@ test_migration() {
 
     # Run migration locally
     log_info "Running migration (this may take a few minutes)..."
-    if hyper2kvm --config "$CONFIG_FILE"; then
+    log_info "Using CLI: $H2KVM_CMD"
+    if $H2KVM_CMD --config "$CONFIG_FILE"; then
         log_success "Migration completed successfully!"
 
         # Show output
