@@ -16,6 +16,7 @@ from .utils import U
 # Canonical Windows detection from your repo (fixers/windows_virtio.py)
 try:
     from ..fixers.windows_virtio import is_windows as _wv_is_windows  # type: ignore
+
     _WIN_VIRTIO_DETECT_OK = True
 except Exception:  # pragma: no cover
     _wv_is_windows = None  # type: ignore
@@ -24,6 +25,7 @@ except Exception:  # pragma: no cover
 
 class GuestType(Enum):
     """Guest operating system types."""
+
     LINUX = "linux"
     WINDOWS = "windows"
     BSD = "bsd"
@@ -42,6 +44,7 @@ class GuestType(Enum):
 @dataclass
 class GuestIdentity:
     """Container for guest identity information."""
+
     type: GuestType = GuestType.UNKNOWN
 
     # Linux-ish (also useful for general OS)
@@ -55,10 +58,15 @@ class GuestIdentity:
     cpe_name: Optional[str] = None
     support_end: Optional[str] = None
 
-    # Windows-ish
+    # Windows-ish (NOTE: major/minor are not very meaningful for modern Windows, kept for compatibility)
     windows_major: Optional[str] = None
     windows_minor: Optional[str] = None
     windows_distro: Optional[str] = None
+
+    # Better Windows identifiers (populate later via registry if desired)
+    windows_build: Optional[str] = None
+    windows_display_version: Optional[str] = None
+    windows_edition: Optional[str] = None
 
     # Detection meta
     confidence: float = 0.0
@@ -74,6 +82,7 @@ class _WvShim:
       - self.logger (optional)
       - self.inspect_root (required for strongest detection path)
     """
+
     logger: object
     inspect_root: Optional[str] = None
 
@@ -85,7 +94,7 @@ class GuestDetector:
     IMPORTANT:
       - We use guestfs.GuestFS(python_return_dict=True) in detect()
       - That means some APIs (notably inspect_get_mountpoints) return dicts.
-        We normalize that shape to avoid the dreaded "string index out of range".
+        We normalize that shape to avoid shape bugs.
     """
 
     OS_INDICATORS: Dict[GuestType, List[str]] = {
@@ -165,6 +174,7 @@ class GuestDetector:
     def parse_issue_file(content: str) -> Optional[str]:
         if not content:
             return None
+        # Remove common \X escape sequences used in /etc/issue
         content = re.sub(r"\\[a-zA-Z]", "", content)
         content = content.replace("\\n", " ").replace("\\r", " ")
         content = content.strip()
@@ -209,7 +219,7 @@ class GuestDetector:
     @classmethod
     def mount_inspected_root(cls, g: guestfs.GuestFS, root: str) -> None:
         """
-        Mount all mountpoints for an inspected root, in increasing mountpoint length.
+        Mount all mountpoints for an inspected root, in safe order.
         Never throws (best-effort).
         """
         try:
@@ -218,7 +228,13 @@ class GuestDetector:
             return
 
         mps = cls._normalize_mountpoints(raw)
-        for dev, mp in sorted(mps, key=lambda x: len(x[1])):
+
+        # Ensure "/" mounts first, then increasing mountpoint length
+        def _mp_sort_key(item: Tuple[str, str]) -> Tuple[int, int]:
+            _dev, mp = item
+            return (0 if mp == "/" else 1, len(mp))
+
+        for dev, mp in sorted(mps, key=_mp_sort_key):
             try:
                 g.mount(dev, mp)
             except Exception:
@@ -233,6 +249,8 @@ class GuestDetector:
         scores: Dict[GuestType, float] = {gt: 0.0 for gt in GuestType}
 
         for os_type, indicators in cls.OS_INDICATORS.items():
+            if os_type == GuestType.UNKNOWN:
+                continue
             for indicator in indicators:
                 try:
                     if g.is_dir(indicator):
@@ -266,17 +284,23 @@ class GuestDetector:
                 return GuestType.LINUX
             if "bsd" in os_type_str:
                 return GuestType.BSD
+            if "darwin" in os_type_str or "mac" in os_type_str:
+                return GuestType.MACOS
         except Exception:
             pass
         return None
 
     @classmethod
     def detect_by_canonical(cls, g: guestfs.GuestFS, root: str, logger) -> Optional[GuestType]:
+        """
+        Canonical helper answers ONLY: "is this Windows?"
+        If it says "no", we return None (do NOT assume Linux).
+        """
         if not _WIN_VIRTIO_DETECT_OK or _wv_is_windows is None:
             return None
         shim = _WvShim(logger=logger, inspect_root=root)
         try:
-            return GuestType.WINDOWS if bool(_wv_is_windows(shim, g)) else GuestType.LINUX  # type: ignore[misc]
+            return GuestType.WINDOWS if bool(_wv_is_windows(shim, g)) else None  # type: ignore[misc]
         except Exception:
             return None
 
@@ -298,7 +322,7 @@ class GuestDetector:
                 if not vml:
                     return None
                 last = vml[-1]
-                return last[len("vmlinuz-"):] if last.startswith("vmlinuz-") else last
+                return last[len("vmlinuz-") :] if last.startswith("vmlinuz-") else last
         except Exception:
             pass
         return None
@@ -335,9 +359,8 @@ class GuestDetector:
         ident.hostname = cls.read_first_line(g, "/etc/hostname")
 
         # machine-id
-        ident.machine_id = (
-            cls.read_first_line(g, "/etc/machine-id")
-            or cls.read_first_line(g, "/var/lib/dbus/machine-id")
+        ident.machine_id = cls.read_first_line(g, "/etc/machine-id") or cls.read_first_line(
+            g, "/var/lib/dbus/machine-id"
         )
 
         # kernel
@@ -437,10 +460,14 @@ class GuestDetector:
         g: Optional[guestfs.GuestFS] = None
         try:
             g = guestfs.GuestFS(python_return_dict=True)
-            g.add_drive_opts(str(img_path), readonly=int(bool(readonly)))
+            g.add_drive_opts(str(img_path), readonly=bool(readonly))
             g.launch()
 
-            roots = g.inspect_os()
+            try:
+                roots = g.inspect_os()
+            except Exception:
+                roots = []
+
             if not roots:
                 try:
                     logger.debug("GuestDetector: no inspectable OS roots found in image=%s", img_path)
@@ -450,27 +477,34 @@ class GuestDetector:
 
             root = cls.best_root(g) or roots[0]
 
-            # Strategy 1: canonical windows_virtio detection
+            # Strategy A: canonical Windows-only detection
             identity: Optional[GuestIdentity] = None
-            t1 = cls.detect_by_canonical(g, root, logger)
-            if t1:
-                identity = GuestIdentity(type=t1, confidence=0.90, detection_method="canonical_windows_virtio")
+            t_can = cls.detect_by_canonical(g, root, logger)
+            if t_can == GuestType.WINDOWS:
+                identity = GuestIdentity(type=GuestType.WINDOWS, confidence=0.90, detection_method="canonical_windows_virtio")
 
-            # Strategy 2: guestfs inspection
-            if not identity or identity.confidence < 0.80:
-                t2 = cls.detect_by_inspection(g, root)
-                if t2:
-                    conf = 0.80 if (identity and identity.type == t2) else 0.70
-                    if (identity is None) or (conf > identity.confidence):
-                        identity = GuestIdentity(type=t2, confidence=conf, detection_method="guestfs_inspection")
+            # Strategy B: guestfs inspection
+            if identity is None:
+                t_ins = cls.detect_by_inspection(g, root)
+                if t_ins:
+                    identity = GuestIdentity(type=t_ins, confidence=0.78, detection_method="guestfs_inspection")
 
-            # Strategy 3: indicator scoring
+            # Strategy C: indicator scoring (fallback only)
             scores = cls.detect_by_indicators(g)
-            best_type = max(scores.items(), key=lambda x: x[1])[0]
-            indicator_conf = min(scores[best_type] / 5.0, 0.60)
+            candidates = [GuestType.LINUX, GuestType.WINDOWS, GuestType.BSD, GuestType.MACOS]
+            best_type = max(candidates, key=lambda t: scores.get(t, 0.0))
+            best_score = float(scores.get(best_type, 0.0))
 
-            if (identity is None) or (indicator_conf > identity.confidence):
-                identity = GuestIdentity(type=best_type, confidence=indicator_conf, detection_method="indicator_files")
+            if identity is None:
+                if best_score <= 0.0:
+                    identity = GuestIdentity(type=GuestType.UNKNOWN, confidence=0.10, detection_method="indicator_files")
+                else:
+                    indicator_conf = min(best_score / 5.0, 0.60)
+                    identity = GuestIdentity(type=best_type, confidence=indicator_conf, detection_method="indicator_files")
+            else:
+                # Nudge confidence a bit if indicators agree (never override)
+                if best_score > 0.0 and best_type == identity.type:
+                    identity.confidence = min(identity.confidence + 0.05, 1.0)
 
             # Collect detailed identity
             if identity.type == GuestType.LINUX:
@@ -491,6 +525,12 @@ class GuestDetector:
             # nudge confidence if we found good identity anchors
             if identity.hostname or identity.os_name or identity.os_pretty_name:
                 identity.confidence = min(identity.confidence + 0.10, 1.0)
+
+            # Best-effort cleanup
+            try:
+                g.umount_all()
+            except Exception:
+                pass
 
             return identity
 
@@ -535,7 +575,7 @@ def emit_guest_identity_log(logger, identity: GuestIdentity) -> None:
             identity.confidence * 100,
             identity.hostname or "?",
             identity.machine_id or "?",
-            identity.os_name or "?",
+            identity.os_name or "Linux",
             identity.os_pretty_name or "?",
             identity.os_version or "?",
             identity.cpe_name or "?",
