@@ -1,0 +1,147 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: migrationpolicies.hyper2kvm.io
+spec:
+  group: hyper2kvm.io
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              description: MigrationPolicy specification for controlling live migration behavior
+              properties:
+                bandwidthPerMigration:
+                  type: string
+                  description: Network bandwidth limit per migration (e.g., "100Mi", "1Gi")
+                  pattern: '^[0-9]+[KMGT]i$'
+                  default: "0"
+                allowAutoConverge:
+                  type: boolean
+                  description: Enable auto-convergence for slow migrations that don't complete
+                  default: true
+                allowPostCopy:
+                  type: boolean
+                  description: Enable post-copy as fallback when pre-copy stalls
+                  default: false
+                completionTimeoutPerGiB:
+                  type: integer
+                  description: Timeout in seconds per GiB of VM memory (default 800s)
+                  default: 800
+                  minimum: 60
+                maxParallelMigrationsPerCluster:
+                  type: integer
+                  description: Maximum simultaneous migrations cluster-wide
+                  default: 5
+                  minimum: 1
+                  maximum: 100
+                maxParallelMigrationsPerNode:
+                  type: integer
+                  description: Maximum simultaneous migrations per node
+                  default: 2
+                  minimum: 1
+                  maximum: 10
+                progressTimeout:
+                  type: integer
+                  description: Timeout in seconds for migration to make progress
+                  default: 150
+                  minimum: 30
+                vmSelector:
+                  type: object
+                  description: Label selector for VMs this policy applies to
+                  properties:
+                    matchLabels:
+                      type: object
+                      description: Key-value pairs of labels
+                      additionalProperties:
+                        type: string
+                    matchExpressions:
+                      type: array
+                      description: Set-based label selector requirements
+                      items:
+                        type: object
+                        required:
+                          - key
+                          - operator
+                        properties:
+                          key:
+                            type: string
+                          operator:
+                            type: string
+                            enum: ["In", "NotIn", "Exists", "DoesNotExist"]
+                          values:
+                            type: array
+                            items:
+                              type: string
+            status:
+              type: object
+              properties:
+                observedGeneration:
+                  type: integer
+                  description: Most recent generation observed by controller
+                conditions:
+                  type: array
+                  description: Current status conditions
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                        description: Condition type (e.g., Valid, Applied)
+                      status:
+                        type: string
+                        enum: ["True", "False", "Unknown"]
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                appliedToVMs:
+                  type: integer
+                  description: Number of VMs currently matching this policy
+                activeMigrations:
+                  type: integer
+                  description: Number of active migrations using this policy
+                lastApplied:
+                  type: string
+                  format: date-time
+                  description: Last time policy was applied to a migration
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Bandwidth
+          type: string
+          jsonPath: .spec.bandwidthPerMigration
+        - name: Auto-Converge
+          type: boolean
+          jsonPath: .spec.allowAutoConverge
+        - name: Post-Copy
+          type: boolean
+          jsonPath: .spec.allowPostCopy
+        - name: Max-Per-Cluster
+          type: integer
+          jsonPath: .spec.maxParallelMigrationsPerCluster
+        - name: Applied-VMs
+          type: integer
+          jsonPath: .status.appliedToVMs
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Cluster
+  names:
+    plural: migrationpolicies
+    singular: migrationpolicy
+    kind: MigrationPolicy
+    shortNames:
+      - mp
+      - mpol
