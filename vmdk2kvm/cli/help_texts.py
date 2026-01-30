@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+# vmdk2kvm/cli/help_texts.py
 from __future__ import annotations
+
+# NOTE:
+# This module is pure help/documentation text used by argparse epilog rendering.
+# Keep it "copy/paste runnable" and avoid importing heavy dependencies here.
 
 YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 #
@@ -47,6 +53,74 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # Windows extras:
 # virtio_drivers_dir: /path/to/virtio-win
 #
+# Windows driver mapping + PNP IDs (YAML-driven; recommended)
+# ------------------------------------------------------------------
+# Motivation:
+#   - Different vendors may use different PNP IDs for VirtIO devices.
+#   - New Windows versions appear; mapping should be data, not code.
+#
+# Recommended keys (your orchestrator can map these into WindowsVirtioPlan):
+# windows_virtio:
+#   # Defaults: if omitted, code may use safe defaults (Win11 favored).
+#   default_os_bucket: win11
+#
+#   # OS bucket selection can be based on build numbers (not major/minor).
+#   # Example structure (working theory; keep flexible):
+#   os_buckets:
+#     win11:
+#       min_build: 22000
+#     win10:
+#       min_build: 10240
+#       max_build: 21999
+#     win2019:
+#       min_build: 17763
+#       max_build: 17763
+#
+#   # List of driver "roles" that vmdk2kvm knows how to apply.
+#   # Each role points to where the INF(s) live under virtio-win tree and
+#   # which PNP IDs should be written into CriticalDeviceDatabase.
+#   roles:
+#     storage_virtio_scsi:
+#       inf_globs: ["vioscsi\\**\\*.inf"]
+#       pnp_ids:
+#         - "PCI\\VEN_1AF4&DEV_1004"   # Red Hat vioscsi (example)
+#     storage_virtio_blk:
+#       inf_globs: ["viostor\\**\\*.inf"]
+#       pnp_ids:
+#         - "PCI\\VEN_1AF4&DEV_1001"   # Red Hat viostor (example)
+#     net_virtio:
+#       inf_globs: ["NetKVM\\**\\*.inf"]
+#       pnp_ids:
+#         - "PCI\\VEN_1AF4&DEV_1000"   # Red Hat NetKVM (example)
+#
+#   # Optional: vendor overrides (OEMs sometimes ship custom IDs)
+#   vendors:
+#     acme:
+#       roles:
+#         net_virtio:
+#           pnp_ids:
+#             - "PCI\\VEN_1AF4&DEV_0001&SUBSYS_12345678"
+#
+# Windows network configuration (YAML-driven; recommended)
+# ------------------------------------------------------------------
+# You already support:
+#   - win_net_override: path to JSON file on host
+#   - win_net_json: inline JSON string
+#
+# Add a YAML-native variant for sanity and systemd embedding:
+# win_net:                      # YAML object (preferred)
+#   schema: 1
+#   mode: dhcp                  # dhcp | static
+#   dhcp:
+#     dns_servers: ["10.0.0.53"]
+#   static:
+#     address: "192.168.1.50/24"
+#     gateway: "192.168.1.1"
+#     dns_servers: ["1.1.1.1", "8.8.8.8"]
+#
+# Your orchestrator can materialize this YAML object to JSON under workdir and
+# set args.win_net_override automatically (similar to win_net_json behavior).
+#
 # virt-v2v integration:
 # use_v2v: false # use virt-v2v primarily
 # post_v2v: true # run v2v after internal fixes
@@ -66,8 +140,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # Libvirt: emit domain XML / deploy into libvirt (define/start)
 # --------------------------------------------------------------------------------------
 # This section is additive. If the orchestrator doesn't recognize these keys yet,
-# it will ignore them. When wired, they map cleanly to linux_domain.emit_linux_domain()
-# and virsh operations.
+# it will ignore them.
 #
 # Emit domain XML after pipeline:
 # emit_domain_xml: true        # write <vm_name>.xml (relative to output_dir unless absolute)
@@ -76,18 +149,18 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 #
 # Deploy actions:
 # virsh_define: true           # virsh define <xml>
-# virsh_start: false           # virsh start <vm_name> (optional "deploy")
+# virsh_start: false           # virsh start <vm_name> (optional)
 # virsh_autostart: false       # virsh autostart <vm_name> (optional)
 #
 # Storage safety (recommended when defining):
-# copy_to_libvirt_images: true          # copy final disk to libvirt-readable dir
+# copy_to_libvirt_images: true
 # libvirt_images_dir: /var/lib/libvirt/images
 # overwrite_disk_copy: false
 #
 # Template selection hint:
 # guest_os: linux              # linux | windows
 #
-# Domain knobs used by emitter (mostly mirror "Tests" knobs above):
+# Domain knobs used by emitter:
 # machine: q35                 # q35|pc
 # disk_bus: virtio
 # disk_dev: vda
@@ -115,7 +188,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 #
 # Windows-only emission knobs (ignored unless guest_os=windows):
 # win_stage: bootstrap          # bootstrap | final
-# win_driver_iso: null          # path to virtio-win.iso (or dir if emitter expects dir)
+# win_driver_iso: null          # path to virtio-win.iso
 # virtio_win_iso: null          # alias
 # driver_iso: null              # alias
 # win_localtime_clock: true
@@ -148,6 +221,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # checksum: true
 # report: local-report.md
 # verbose: 1
+#
 # --- Local: "minimal safe" dry-run preview (no changes performed) ---
 # command: local
 # vmdk: /path/to/vm.vmdk
@@ -157,14 +231,13 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # regen_initramfs: false
 # flatten: false
 # verbose: 2
+#
 # --- Local: Windows virtio injection + BCD scan + convert ---
 # command: local
 # vmdk: /path/to/windows-vm.vmdk
 # virtio_drivers_dir: /path/to/virtio-win
-# # optional flags your orchestrator can map:
-# # enable_virtio_gpu: true
-# # enable_virtio_input: true
-# # enable_virtio_fs: true
+# windows_virtio:                    # YAML-driven driver/PnP mapping (see top)
+#   default_os_bucket: win11
 # flatten: true
 # to_output: windows-kvm.qcow2
 # out_format: qcow2
@@ -172,6 +245,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # checksum: true
 # report: windows-report.md
 # verbose: 2
+#
 # --- Local: disk growth + cloud-init injection (Linux) ---
 # command: local
 # vmdk: /path/to/linux-vm.vmdk
@@ -183,6 +257,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # to_output: linux-grown.qcow2
 # out_format: qcow2
 # compress: true
+#
 # --- Local: produce RAW image for dd or imaging pipelines ---
 # command: local
 # vmdk: /path/to/vm.vmdk
@@ -191,14 +266,15 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # to_output: vm.raw
 # out_format: raw
 # compress: false
+#
 # --- Local: batch multiple VMs (shared defaults + per-VM overrides) ---
 # vms:
 # - vmdk: /path/to/vm1.vmdk
-# to_output: vm1.qcow2
-# resize: +10G
+#   to_output: vm1.qcow2
+#   resize: +10G
 # - vmdk: /path/to/vm2.vmdk
-# to_output: vm2.qcow2
-# remove_vmware_tools: false
+#   to_output: vm2.qcow2
+#   remove_vmware_tools: false
 # flatten: true
 # out_format: qcow2
 # compress: true
@@ -211,7 +287,6 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # --------------------------------------------------------------------------------------
 # 1b) VHD (Azure/Hyper-V style disks: plain .vhd OR .vhd.tar.gz)
 # --------------------------------------------------------------------------------------
-# fedora Azure example (plain VHD):
 # command: vhd
 # vhd: ./fedora-azure-43.0.x86_64.vhd
 # output_dir: ./out
@@ -235,7 +310,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # report: fedora-azure-report.md
 # verbose: 1
 #
-# azure example (tarball containing VHD):
+# tarball containing VHD:
 # command: vhd
 # vhd: ./fedora-azure-43.x86_64.vhd.tar.gz
 # output_dir: ./out
@@ -253,11 +328,6 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # --------------------------------------------------------------------------------------
 # 1c) AMI / Generic Cloud Image Tarball (tar/tar.gz/tgz/tar.xz)
 # --------------------------------------------------------------------------------------
-# These tarballs are typically just archives that contain a disk payload
-# (raw/img/qcow2/vmdk/vhd/...) plus metadata. vmdk2kvm will extract disk payload(s),
-# optionally convert payload(s) to qcow2, then continue the normal fix/convert pipeline.
-#
-# Basic example: extract + convert payload disk to qcow2, then proceed with normal pipeline
 # command: ami
 # ami: ./some-linux-cloud-image.tar.gz
 # output_dir: ./out
@@ -274,7 +344,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # report: cloud-image-report.md
 # verbose: 1
 #
-# If the archive contains nested tarballs (tar-in-tar), enable one-level nested extraction:
+# tar-in-tar:
 # command: ami
 # ami: ./vendor-bundle.tar.gz
 # extract_nested_tar: true
@@ -284,7 +354,6 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # --------------------------------------------------------------------------------------
 # 2) LIVE-FIX (apply fixes to a running VM via SSH)
 # --------------------------------------------------------------------------------------
-# Basic live-fix: rewrite fstab + regen initramfs/grub + optionally remove VMware tools
 # command: live-fix
 # host: 192.168.1.100
 # user: root
@@ -311,26 +380,9 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # dry_run: true
 # log_file: live-fix.log
 #
-# --- Live-fix: multi-VM sequential list ---
-# vms:
-# - host: vm1.example.com
-# user: root
-# sudo: true
-# regen_initramfs: true
-# - host: vm2.example.com
-# user: admin
-# identity: ~/.ssh/key
-# remove_vmware_tools: false
-# print_fstab: true
-# fstab_mode: stabilize-all
-#
-# Run:
-# sudo ./vmdk2kvm.py --config live-batch.yaml live-fix
-#
 # --------------------------------------------------------------------------------------
 # 3) FETCH-AND-FIX (fetch from ESXi over SSH/SCP and fix offline)
 # --------------------------------------------------------------------------------------
-# Basic fetch-and-fix: fetch descriptor then fix+convert
 # command: fetch-and-fix
 # host: esxi.example.com
 # user: root
@@ -343,7 +395,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # compress: true
 # verbose: 1
 #
-# --- Fetch: full snapshot chain (recursive parent descriptors) ---
+# full snapshot chain:
 # command: fetch-and-fix
 # host: esxi-host
 # identity: ~/.ssh/esxi_key
@@ -358,29 +410,14 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # timeout: 90
 # report: esxi-report.md
 #
-# --- Fetch: multi-VM batch (parallel fetch + fix) ---
-# vms:
-# - host: esxi1.example.com
-# remote: /vmfs/volumes/ds1/vm1/vm1.vmdk
-# fetch_all: true
-# - host: esxi2.example.com
-# remote: /vmfs/volumes/ds2/vm2/vm2.vmdk
-# identity: ~/.ssh/key2
-# flatten: true
-# out_format: qcow2
-# parallel_processing: true
-# enable_recovery: true
-#
 # --------------------------------------------------------------------------------------
 # 4) OVA / OVF (offline extract/parse)
 # --------------------------------------------------------------------------------------
-# OVA:
 # command: ova
 # ova: /path/to/appliance.ova
 # flatten: true
 # to_output: appliance.qcow2
 #
-# OVF (disks in same dir):
 # command: ovf
 # ovf: /path/to/appliance.ovf
 # flatten: true
@@ -389,21 +426,30 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # --------------------------------------------------------------------------------------
 # 5) DAEMON (watch directory)
 # --------------------------------------------------------------------------------------
-# CLI:
-# sudo ./vmdk2kvm.py --daemon --watch-dir /incoming local
-#
-# YAML:
 # command: daemon
 # daemon: true
 # watch_dir: /incoming
 # output_dir: /out
 #
 # --------------------------------------------------------------------------------------
-# 6) vSphere/vCenter (pyvmomi) - discovery, downloads, CBT sync
+# 6) vSphere/vCenter – discovery, downloads, export
 # --------------------------------------------------------------------------------------
-# NOTE: This uses the "vsphere" subcommand with nested actions.
+# vSphere has multiple pathways:
 #
-# List VMs:
+#   (A) pyvmomi control-plane + /folder HTTP downloads
+#       - good for listing, metadata, and raw datastore pulls
+#
+#   (B) govc export (control+data plane via govc)
+#       - “just export it” OVF/OVA; govc manages HttpNfcLease internally
+#
+#   (C) OVF Tool export/deploy (control+data plane via ovftool)
+#       - proprietary, optional
+#
+#   (D) virt-v2v vSphere hook (experimental)
+#
+# --------------------------------------------------------------------------------------
+# 6a) pyvmomi mode (list/download/CBT)
+# --------------------------------------------------------------------------------------
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
@@ -412,7 +458,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # vs_action: list_vm_names
 # json: true
 #
-# Get VM details:
+# get VM details:
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
@@ -422,17 +468,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # name: myVM
 # json: true
 #
-# List VM disks:
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: vm_disks
-# vm_name: myVM
-# json: true
-#
-# Download a datastore file (e.g. descriptor, extent, vmx, nvram):
+# download datastore file:
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
@@ -445,18 +481,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # local_path: ./downloads/myVM.vmdk
 # chunk_size: 1048576
 #
-# Download a specific VM disk (choosing disk by index/label):
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: download_vm_disk
-# vm_name: myVM
-# disk: 0
-# local_path: ./downloads/myVM-disk0.vmdk
-#
-# Download-only VM folder pull (NO virt-v2v, NO guest inspection):
+# download-only VM folder pull (NO inspection):
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
@@ -469,171 +494,61 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # exclude_glob: ["*.lck", "*.log", "*.vswp", "*.vmem", "*.vmsn"]
 # concurrency: 4
 #
-# VDDK raw download (single disk) (requires vddk_client + VDDK libs):
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: vddk_download_disk
-# vm_name: myVM
-# disk: 0
-# local_path: ./downloads/myVM-disk0.vmdk
-# vddk_libdir: /opt/vmware-vix-disklib-distrib
-# # vddk_thumbprint: "AA:BB:CC:..."
-# no_verify: true
-#
-# ✅ NEW: NFC download mode (pyvmomi NFC lease streaming)
-# (useful when /folder is blocked and you don't want VDDK)
-#
-# Download a VM disk via NFC lease:
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: nfc_download_disk
-# vm_name: myVM
-# disk: 0
-# local_path: ./downloads/myVM-disk0-flat.vmdk
-# # optional tuning (if your implementation supports it):
-# # chunk_size: 4194304     # 4MiB
-# # vs_http_timeout: "10,600"
-# # vs_http_retries: 3
-#
-# Download ALL VM disks via NFC lease:
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: nfc_download_vm
-# vm_name: myVM
-# output_dir: ./downloads/myVM-nfc
-# # optional:
-# # include_glob: ["*.vmdk"]
-# # concurrency: 1
-#
-# Create a quiesced snapshot for safer reads:
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: create_snapshot
-# vm_name: myVM
-# name: vmdk2kvm-pre-migration
-# quiesce: true
-# memory: false
-#
-# vs_control_plane: govc
-# govc_url: "https://10.73.213.134/sdk"
-# govc_password_env: VC_PASSWORD   # (or govc_password:)
-# govc_insecure: true
-# govc_datacenter: data
-#
-# Enable CBT (Changed Block Tracking):
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: enable_cbt
-# vm_name: myVM
-#
-# Query CBT changed disk areas:
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: query_changed_disk_areas
-# vm_name: myVM
-# snapshot_name: vmdk2kvm-cbt
-# disk: 0
-# start_offset: 0
-# change_id: "*"
-# json: true
-#
-# CBT delta sync (working theory / scaffold): download base once, then patch deltas:
-# command: vsphere
-# vcenter: vcenter.example.com
-# vc_user: administrator@vsphere.local
-# vc_password_env: VC_PASSWORD
-# vc_insecure: true
-# vs_action: cbt_sync
-# vm_name: myVM
-# disk: 0
-# local_path: ./downloads/myVM-disk0.vmdk
-# enable_cbt: true
-# snapshot_name: vmdk2kvm-cbt
-# change_id: "*"
-# json: true
-#
 # --------------------------------------------------------------------------------------
-# 6c) vSphere govc export (OVA / OVF) (control+data plane via govc)
+# 6b) govc export (recommended “just export it” path)
 # --------------------------------------------------------------------------------------
-# This is the "just export it" path:
-# - govc handles HttpNfcLease creation + keepalive + URL signing + downloads
-# - your wrapper can enforce policy: shutdown/power-off, remove CD/DVD, cleanup outdir
+# govc is open source (govmomi). It manages HttpNfcLease + keepalive internally,
+# and produces OVF or OVA packages.
 #
-# Recommended when:
-# - You want a clean OVF/OVA package directly from vCenter/ESXi
-# - /folder downloads are blocked and you don't want VDDK
-#
-# Common govc settings (either use env GOVC_* or YAML keys your orchestrator maps):
+# Common govc settings (either env GOVC_* or YAML keys):
 # vs_control_plane: govc
 # govc_url: "https://vcenter.example.com/sdk"
 # govc_password_env: VC_PASSWORD
 # govc_insecure: true
 # govc_datacenter: ha-datacenter
 #
-# --- govc export as OVA (single file) ---
+# --- govc export OVA ---
 # command: vsphere
 # vs_control_plane: govc
 # govc_url: "https://vcenter.example.com/sdk"
 # govc_password_env: VC_PASSWORD
 # govc_insecure: true
 # govc_datacenter: ha-datacenter
-# vs_action: govc_export
+# vs_action: export_vm
+# export_mode: ova_export
 # vm_name: myVM
-# govc_export_mode: ova            # ova | ovf
 # output_dir: ./downloads/govc
-# # optional (policy knobs your govc_export wrapper can map):
-# govc_remove_cdrom: true
-# govc_shutdown: true              # attempt guest shutdown first
-# govc_power_off: true             # ensure powered off before export
-# govc_timeout: 600                # seconds for shutdown/export steps (optional)
-# govc_overwrite: true             # wipe output_dir/vm subdir before export (optional)
+# govc_export_remove_cdroms: true
+# govc_export_shutdown: true
+# govc_export_power_off: true
+# govc_export_shutdown_timeout_s: 600
 # checksum: true
 # verbose: 1
 #
-# Result (example):
-# ./downloads/govc/myVM.ova
+# Result:
+#   ./downloads/govc/myVM.ova
 #
-# --- govc export as OVF (directory output) ---
+# --- govc export OVF (directory) ---
 # command: vsphere
 # vs_control_plane: govc
 # govc_url: "https://vcenter.example.com/sdk"
 # govc_password_env: VC_PASSWORD
 # govc_insecure: true
 # govc_datacenter: ha-datacenter
-# vs_action: govc_export
+# vs_action: export_vm
+# export_mode: ovf_export
 # vm_name: myVM
-# govc_export_mode: ovf            # ova | ovf
 # output_dir: ./downloads/govc
-# govc_remove_cdrom: true
-# govc_shutdown: true
-# govc_power_off: true
+# govc_export_remove_cdroms: true
+# govc_export_shutdown: true
+# govc_export_power_off: true
 # checksum: true
 # verbose: 1
 #
-# Result (example):
-# ./downloads/govc/myVM/   (contains .ovf + .vmdk + .mf as produced by govc)
+# Result:
+#   ./downloads/govc/myVM/ (contains .ovf + .vmdk + .mf)
 #
-# --- Optional: chain export -> offline parse/convert ---
-# Step 1: export OVF via govc (above) into ./downloads/govc/myVM/
-# Step 2: run offline OVF pipeline on that OVF:
+# Chain export -> offline parse/convert:
 # command: ovf
 # ovf: ./downloads/govc/myVM/myVM.ovf
 # flatten: true
@@ -641,49 +556,86 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # out_format: qcow2
 # compress: true
 # verbose: 1
-# --------------------------------------------------------------------------------------
-# 6b) vSphere -> virt-v2v export (EXPERIMENTAL scaffold)
-# --------------------------------------------------------------------------------------
-# This path is intended for "export a VM (or snapshot) directly from vCenter/ESXi"
-# using virt-v2v with VDDK transport. By default we keep concurrency = 1 because
-# datastore thrash and session limits are real.
 #
+# --------------------------------------------------------------------------------------
+# 6c) OVF Tool (ovftool) export/deploy (optional)
+# --------------------------------------------------------------------------------------
+# ovftool is proprietary VMware/Broadcom tooling.
+# Install:
+#   https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest
+#
+# Typical install:
+#   chmod +x VMware-ovftool-*.bundle
+#   sudo ./VMware-ovftool-*.bundle
+# Verify:
+#   ovftool --version
+#
+# Common ovftool settings:
+# ovftool_path: /usr/bin/ovftool
+# ovftool_no_ssl_verify: true
+# ovftool_accept_all_eulas: true
+# ovftool_disk_mode: thin
+# ovftool_overwrite: true
+# ovftool_retries: 2
+# ovftool_retry_backoff_s: 2.0
+#
+# --- ovftool export (OVA or OVF) ---
+# command: vsphere
+# vs_action: ovftool_export
+# vcenter: vcenter.example.com
+# vc_user: administrator@vsphere.local
+# vc_password_env: VC_PASSWORD
+# vc_insecure: true
+# vm_name: myVM
+# output_dir: ./downloads/ovftool
+# # optional knobs:
+# ovftool_path: /usr/bin/ovftool
+# ovftool_no_ssl_verify: true
+# ovftool_accept_all_eulas: true
+# ovftool_overwrite: true
+# # wrapper policy knobs (if supported by your vsphere_client/workflow):
+# govc_export_remove_cdroms: true   # reuse same policy knobs if you unify them
+# govc_export_shutdown: true
+# govc_export_power_off: true
+# verbose: 1
+#
+# Result:
+#   OVA: ./downloads/ovftool/myVM.ova
+#   OVF: ./downloads/ovftool/myVM/...
+#
+# --- ovftool deploy (upload OVA/OVF to vCenter) ---
+# command: vsphere
+# vs_action: ovftool_deploy
+# vcenter: vcenter.example.com
+# vc_user: administrator@vsphere.local
+# vc_password_env: VC_PASSWORD
+# vc_insecure: true
+# source_path: ./appliance.ova
+# # optional targeting:
+# ovftool_target_folder: "Prod/Linux"
+# ovftool_target_resource_pool: "/Datacenter/host/Cluster/Resources/Pool"
+# ovftool_network_map: "VM Network:KVM-Bridge"
+# ovftool_power_on: true
+# ovftool_vm_name: "appliance-restored"
+# ovftool_datastore: "datastore1"
+#
+# --------------------------------------------------------------------------------------
+# 6d) virt-v2v vSphere hook (EXPERIMENTAL scaffold)
+# --------------------------------------------------------------------------------------
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
 # vc_password_env: VC_PASSWORD
 # vc_insecure: true
-#
-# # Enable vSphere->v2v export hook:
 # vs_v2v: true
-#
-# # Which VM(s) to export:
-# # vs_vm: myVM
-# # vs_vms: ["vm1", "vm2"]
 # vm_name: myVM
-#
-# # Export settings:
 # out_format: qcow2
 # compress: true
 # vs_datacenter: ha-datacenter
 # vs_transport: vddk
 # vs_vddk_libdir: /opt/vmware-vix-disklib-distrib
-# # vs_vddk_thumbprint: "AA:BB:CC:..." # recommended if TLS verify is enabled
-#
-# # Snapshot source:
-# # vs_snapshot_moref: "snapshot-123"
-# # vs_create_snapshot: true
-#
-# “download-only” handoff (do not run any inspection/fix/test after export)
 # vs_download_only: true
-#
-# # Safety default: keep this 1 unless you REALLY know your datastore can take it
 # vs_v2v_concurrency: 1
-#
-# # Optionally run virt-v2v *after* vmdk2kvm internal conversion/fixes too:
-# post_v2v: true
-#
-# --------------------------------------------------------------------------------------
 #
 # --------------------------------------------------------------------------------------
 # 7) CLI examples (copy/paste)
@@ -696,41 +648,33 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # sudo ./vmdk2kvm.py --output-dir ./out fetch-and-fix --host esxi.example.com --user root --remote /vmfs/volumes/datastore1/vm/vm.vmdk --fetch-all --flatten --to-output esxi-vm.qcow2 --compress --regen-initramfs --libvirt-test --vm-name esxi-test --memory 4096 --vcpus 4 --uefi --timeout 90
 #
 # vSphere list VMs:
-# sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure list_vm_names --json
+# sudo ./vmdk2kvm.py --cmd vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure --vs-action list_vm_names --json
 #
-# vSphere download a VM disk by index:
-# sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure --dc-name ha-datacenter download_vm_disk --vm-name myVM --disk 0 --local-path ./downloads/myVM-disk0.vmdk
+# govc export OVA:
+# sudo ./vmdk2kvm.py --cmd vsphere --vs-action export_vm --export-mode ova_export --vm_name myVM --govc-url https://vcenter.example.com/sdk --govc-password-env VC_PASSWORD --govc-insecure
 #
-# vSphere download-only VM folder:
-# sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure download_only_vm --vm-name myVM --output-dir ./downloads/myVM-folder --concurrency 4
-#
-# vSphere VDDK raw disk download:
-# sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure vddk_download_disk --vm-name myVM --disk 0 --local-path ./downloads/myVM-disk0.vmdk --vddk-libdir /opt/vmware-vix-disklib-distrib --no-verify
-#
-# vSphere NFC disk download:
-# sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure nfc_download_disk --vm-name myVM --disk 0 --local-path ./downloads/myVM-disk0-flat.vmdk
-#
-# vSphere -> virt-v2v export scaffold:
-# sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure --vs-v2v --vs-vm myVM --vs-transport vddk --vs-vddk-libdir /opt/vmware-vix-disklib-distrib list_vm_names
-#
-# vSphere -> virt-v2v download-only (stop after export):
-# sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure --vs-v2v --vs-vm myVM --vs-transport vddk --vs-vddk-libdir /opt/vmware-vix-disklib-distrib --vs-download-only list_vm_names
+# ovftool export:
+# sudo ./vmdk2kvm.py --cmd vsphere --vs-action ovftool_export --vm_name myVM --ovftool-path /usr/bin/ovftool --vc-password-env VC_PASSWORD --vc-insecure
 #
 # --------------------------------------------------------------------------------------
 """
 
-FEATURE_SUMMARY = """ • Inputs: local VMDK/VHD, remote ESXi fetch, OVA/OVF extract, AMI/cloud tarball extract, live SSH fix, vSphere pyvmomi\n
+FEATURE_SUMMARY = """ • Inputs: local VMDK/VHD, remote ESXi fetch, OVA/OVF extract, AMI/cloud tarball extract, live SSH fix, vSphere\n
  • Snapshot: flatten convert, recursive parent descriptor fetch, vSphere snapshots/CBT hooks\n
  • Fixes: fstab UUID/PARTUUID/LABEL, btrfs canonicalization, grub root=, crypttab, mdraid checks\n
- • Windows: virtio injection, registry service + CriticalDeviceDatabase, BCD store scan/backup\n
+ • Windows: virtio injection, registry services + CriticalDeviceDatabase, YAML-driven driver/PNP mapping, YAML/JSON network override staging\n
  • Cloud: cloud-init injection\n
  • Outputs: qcow2/raw/vdi, compression levels, validation, checksums\n
  • Tests: libvirt and qemu smoke tests, BIOS/UEFI modes\n
  • Safety: dry-run, backups, report generation, verbose logs, recovery checkpoints\n
  • Performance: parallel batch processing\n
- • vSphere export: experimental virt-v2v (VDDK) export hook\n
+ • vSphere export (recommended): govc OVF/OVA export (control+data plane)\n
+ • vSphere export (optional): OVF Tool (ovftool) export/deploy (control+data plane)\n
  • vSphere download-only: VM folder file pull via /folder (no inspection)\n
  • vSphere VDDK raw: single disk direct pull via VDDK client (no inspection)\n
- • vSphere NFC: pyvmomi NFC lease streaming (useful when /folder is blocked)\n"""
+ • vSphere NFC: pyvmomi NFC lease streaming (useful when /folder is blocked)\n
+ • vSphere -> virt-v2v: experimental direct export hook\n
+"""
 
-SYSTEMD_EXAMPLE = ""  # Empty if not needed; or add if there's more systemd text beyond the template
+# If you already embed SYSTEMD_UNIT_TEMPLATE elsewhere, keep this as extra human text.
+SYSTEMD_EXAMPLE = ""  # Optional extra systemd text beyond SYSTEMD_UNIT_TEMPLATE
