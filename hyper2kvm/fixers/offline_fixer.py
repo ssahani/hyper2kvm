@@ -101,7 +101,7 @@ class VmwareRemovalResult:
 # OfflineFSFix (thin orchestrator)
 class OfflineFSFix:
     """
-    Offline (libguestfs) fix engine (thin orchestrator):
+    Offline guest fix engine (thin orchestrator):
       - robust root detection + safe mount
       - rewrite fstab/crypttab -> stable IDs
       - optional filesystem fixer pass (delegated)
@@ -298,6 +298,19 @@ class OfflineFSFix:
         # NOTE: read-only when dry_run (prevents accidental writes).
         g.add_drive_opts(str(self.image), readonly=self.dry_run)
         g.launch()
+
+        # Log backend info if available (VMCraft backend specific)
+        if hasattr(g, 'get_backend_info'):
+            try:
+                backend_info = g.get_backend_info()
+                self.logger.debug(f"Backend: {backend_info.get('implementation', 'unknown')}")
+                if hasattr(g, 'get_performance_metrics'):
+                    metrics = g.get_performance_metrics()
+                    if metrics:
+                        self.logger.debug(f"Launch performance: {metrics}")
+            except Exception:
+                pass  # Ignore if not available
+
         self._stash_guestfs_info(g)
         return g
 
@@ -1111,7 +1124,7 @@ class OfflineFSFix:
 
     # main run
     def run(self) -> None:
-        U.banner(self.logger, "Offline guest fix (libguestfs)")
+        U.banner(self.logger, "Offline guest fix")
         self.logger.info(f"Opening offline image: {self.image}")
 
         if self.recovery_manager:

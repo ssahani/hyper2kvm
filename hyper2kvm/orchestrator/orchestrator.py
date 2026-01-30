@@ -285,7 +285,7 @@ class Orchestrator:
         self.logger.info("")
         self.logger.info("   ✨ Features:")
         self.logger.info("      • VMware vSphere integration powered by hypersdk")
-        self.logger.info("      • Offline guest fixes with libguestfs")
+        self.logger.info("      • Offline guest fixes with VMCraft disk manipulation")
         self.logger.info("      • Windows driver injection & registry editing")
         self.logger.info("      • Deterministic fstab/grub repair for first-boot success")
         self.logger.info("━" * 80)
