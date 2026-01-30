@@ -145,6 +145,7 @@ except Exception:
 # Textual (Terminal User Interface framework)
 try:
     from textual.app import App, ComposeResult
+    from textual.screen import Screen
     from textual.widgets import (
         Header,
         Footer,
@@ -175,6 +176,7 @@ try:
 except Exception:
     App = None  # type: ignore
     ComposeResult = None  # type: ignore
+    Screen = None  # type: ignore
     Header = None  # type: ignore
     Footer = None  # type: ignore
     Static = None  # type: ignore

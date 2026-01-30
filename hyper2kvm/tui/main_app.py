@@ -58,6 +58,7 @@ from .migrations_panel import MigrationsPanel
 from .batch_manager import BatchMigrationManager
 from .settings_panel import SettingsPanel
 from .migration_tracker import MigrationTracker
+from .help_dialog import HelpDialog
 
 logger = logging.getLogger(__name__)
 
@@ -333,24 +334,7 @@ class Hyper2KVMApp(App):
 
     def action_help(self) -> None:
         """Show help dialog."""
-        help_text = """
-        hyper2kvm TUI - Keyboard Shortcuts:
-
-        Navigation:
-        - Tab: Switch between panels
-        - Ctrl+Q: Quit application
-
-        Quick Actions:
-        - F1: Show this help
-        - F2: Open migration wizard
-        - F3: Browse VMs
-        - F5: Refresh current view
-        - Ctrl+S: Open settings
-
-        For more information, visit:
-        https://github.com/ssahani/hyper2kvm
-        """
-        self.notify(help_text, title="Help", timeout=10)
+        self.push_screen(HelpDialog(topic="general"))
 
     def action_refresh(self) -> None:
         """Refresh the current view."""
