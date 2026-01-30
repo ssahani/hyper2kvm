@@ -778,8 +778,11 @@ class OfflineFSFix:
             for dev, fstype in fsmap.items():
                 d = U.to_text(dev)
                 t = U.to_text(fstype)
-                # Skip swap and LUKS containers (we want unlocked devices)
-                if t in ("swap", "crypto_LUKS"):
+                # Skip non-mountable filesystem types
+                # swap: cannot mount as root
+                # crypto_LUKS: need to unlock first, then mount the unlocked device
+                # LVM2_member: these are PVs, not filesystems - activate VG, then mount LVs
+                if t in ("swap", "crypto_LUKS", "LVM2_member"):
                     self.logger.debug(f"Skipping {d} (type={t})")
                     continue
                 if d.startswith("/dev/"):
@@ -796,6 +799,10 @@ class OfflineFSFix:
                 for lv in lvs_list:
                     d = U.to_text(lv)
                     if d.startswith("/dev/"):
+                        # Skip swap LVs - they can't be root filesystems
+                        if "swap" in d.lower():
+                            self.logger.debug(f"Skipping swap LV: {d}")
+                            continue
                         candidates.append(d)
                         self.logger.info(f"Added LV candidate: {d}")
         except Exception as e:

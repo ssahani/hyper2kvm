@@ -961,12 +961,43 @@ class VMCraft:
         return []
 
     def vfs_type(self, device: str) -> str:
-        """Get filesystem type."""
+        """
+        Get filesystem type using multiple probing methods.
+
+        Uses blkid -p (low-level probe) first, then falls back to lsblk.
+        This is more reliable after LVM activation.
+        """
+        # Try blkid with -p flag for fresh low-level probing (bypasses cache)
         try:
-            result = run_sudo(self.logger, ["blkid", "-s", "TYPE", "-o", "value", device], check=True, capture=True)
-            return result.stdout.strip()
+            result = run_sudo(
+                self.logger,
+                ["blkid", "-p", "-s", "TYPE", "-o", "value", device],
+                check=True,
+                capture=True,
+                failure_log_level=logging.DEBUG
+            )
+            fstype = result.stdout.strip()
+            if fstype:
+                return fstype
         except Exception:
-            return ""
+            pass
+
+        # Fallback to lsblk (often works when blkid doesn't after LVM activation)
+        try:
+            result = run_sudo(
+                self.logger,
+                ["lsblk", "-no", "FSTYPE", device],
+                check=True,
+                capture=True,
+                failure_log_level=logging.DEBUG
+            )
+            fstype = result.stdout.strip()
+            if fstype:
+                return fstype
+        except Exception:
+            pass
+
+        return ""
 
     def vfs_uuid(self, device: str) -> str:
         """Get filesystem UUID."""

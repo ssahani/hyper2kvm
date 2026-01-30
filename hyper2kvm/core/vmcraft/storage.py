@@ -113,12 +113,28 @@ class LVMActivator:
                         cmd = ["vgchange"] + devices_arg + ["-ay", vg]
                         run_sudo(logger, cmd, check=True, capture=True)
                         logger.info(f"Activated VG: {vg} (from {nbd_device})")
+
+                        # Ensure device nodes are created and udev catches up
+                        # This prevents race conditions where blkid/lsblk can't see the LVs
+                        if _has_command("dmsetup"):
+                            run_sudo(logger, ["dmsetup", "mknodes"], check=False, capture=True)
+                        if _has_command("udevadm"):
+                            run_sudo(logger, ["udevadm", "settle"], check=False, capture=True)
+                            logger.debug("Waited for udev to settle after VG activation")
+
                     except Exception as e:
                         logger.warning(f"Failed to activate VG {vg}: {e}")
                 audit["vgs"] = vgs_to_activate
             else:
                 # Fallback: activate all (original behavior for non-NBD contexts)
                 run_sudo(logger, ["vgchange", "-ay"], check=True, capture=True)
+
+                # Settle after activation
+                if _has_command("dmsetup"):
+                    run_sudo(logger, ["dmsetup", "mknodes"], check=False, capture=True)
+                if _has_command("udevadm"):
+                    run_sudo(logger, ["udevadm", "settle"], check=False, capture=True)
+
                 logger.info("Activated all volume groups")
 
             audit["ok"] = True
