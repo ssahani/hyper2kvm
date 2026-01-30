@@ -23,6 +23,13 @@
   - [Converters](#converters)
   - [Fixers](#fixers)
   - [Testers](#testers)
+- [V2V-Style Migration APIs](#v2v-style-migration-apis)
+  - [Batch Orchestration](#batch-orchestration)
+  - [Migration Profiles](#migration-profiles)
+  - [Hook System](#hook-system)
+  - [Libvirt Integration](#libvirt-integration)
+  - [Validation Framework](#validation-framework)
+  - [Progress Tracking](#progress-tracking)
 - [Error Handling](#error-handling)
 - [Best Practices](#best-practices)
 - [Migration from CLI to Library](#migration-from-cli-to-library)
@@ -1033,6 +1040,572 @@ for vm_name in ['vm1', 'vm2', 'vm3']:
         print(f"✓ Migrated {vm_name}")
     except Exception as e:
         print(f"✗ Failed {vm_name}: {e}")
+```
+
+---
+
+## V2V-Style Migration APIs
+
+hyper2kvm provides enterprise-grade V2V (virtual-to-virtual) migration capabilities with comprehensive APIs for batch processing, automation, and integration.
+
+### Batch Orchestration
+
+Convert multiple VMs in parallel with centralized orchestration and progress tracking.
+
+#### BatchOrchestrator
+
+**Import**:
+```python
+from hyper2kvm.manifest.batch_orchestrator import BatchOrchestrator
+```
+
+**Basic usage**:
+```python
+from pathlib import Path
+
+# Create batch orchestrator
+orchestrator = BatchOrchestrator(
+    batch_manifest_path="/path/to/batch.json",
+    logger=my_logger,
+    enable_checkpoint=True,
+    enable_progress=True
+)
+
+# Run batch conversion
+result = orchestrator.run()
+
+# Check results
+print(f"Total VMs: {result['total_vms']}")
+print(f"Successful: {result['successful']}")
+print(f"Failed: {result['failed']}")
+```
+
+**With custom parallel limit**:
+```python
+# Batch manifest controls parallelism
+{
+  "batch_version": "1.0",
+  "batch_metadata": {
+    "batch_id": "my-migration",
+    "parallel_limit": 8,  # Run 8 VMs concurrently
+    "continue_on_error": true
+  },
+  "vms": [...]
+}
+```
+
+**Resume from checkpoint**:
+```python
+from hyper2kvm.manifest.checkpoint_manager import CheckpointManager
+
+# Load existing checkpoint
+checkpoint_file = Path("/output/.hyper2kvm-checkpoint-batch-id.json")
+checkpoint = CheckpointManager.load_checkpoint(checkpoint_file)
+
+if checkpoint:
+    print(f"Resuming from VM {checkpoint['resume_from']}")
+    print(f"Already completed: {len(checkpoint['completed_vms'])}")
+
+# Orchestrator automatically resumes if checkpoint exists
+orchestrator = BatchOrchestrator(
+    batch_manifest_path="/path/to/batch.json",
+    enable_checkpoint=True
+)
+result = orchestrator.run()  # Skips completed VMs
+```
+
+**Key methods**:
+- `run()` - Execute batch conversion
+- `get_batch_id()` - Get current batch ID
+- `_process_single_vm(vm)` - Process individual VM (override for custom logic)
+
+---
+
+### Migration Profiles
+
+Reusable configuration templates with inheritance support.
+
+#### ProfileLoader
+
+**Import**:
+```python
+from hyper2kvm.profiles.profile_loader import ProfileLoader
+```
+
+**Load built-in profile**:
+```python
+loader = ProfileLoader()
+
+# Load production profile
+profile = loader.load_profile("production")
+print(f"Pipeline config: {profile['pipeline']}")
+
+# List available profiles
+built_in_profiles = [
+    "production",  # Full conversion with validation
+    "testing",     # Fast conversion, skip validation
+    "minimal",     # Extract and fix only
+    "fast",        # Minimal fixes, no compression
+    "windows",     # Windows-specific
+    "archive",     # Maximum compression
+    "debug"        # Verbose logging
+]
+```
+
+**Load custom profile**:
+```python
+from pathlib import Path
+
+loader = ProfileLoader()
+
+# Load custom profile from directory
+custom_profile_dir = Path("/etc/hyper2kvm/profiles")
+profile = loader.load_profile(
+    "my-custom-profile",
+    custom_profile_path=custom_profile_dir / "my-custom-profile.yaml"
+)
+```
+
+**Profile with inheritance**:
+```yaml
+# custom-profile.yaml
+extends: production
+
+pipeline:
+  convert:
+    compress_level: 9  # Override just compression
+
+output:
+  format: qcow2
+```
+
+**Programmatic profile creation**:
+```python
+# Create profile dict
+custom_profile = {
+    "pipeline": {
+        "fix": {
+            "enabled": True,
+            "regen_initramfs": True
+        },
+        "convert": {
+            "enabled": True,
+            "compress": True
+        }
+    },
+    "output": {
+        "format": "qcow2"
+    }
+}
+
+# Merge with built-in profile
+from hyper2kvm.config.config import Config
+base_profile = loader.load_profile("production")
+merged = Config.merge_dicts(base_profile, custom_profile)
+```
+
+**Profile caching** (Phase 7.3):
+```python
+from hyper2kvm.profiles.profile_cache import get_global_cache
+
+# Get cache statistics
+cache = get_global_cache()
+stats = cache.get_stats()
+print(f"Cache hits: {stats['hits']}, misses: {stats['misses']}")
+
+# Clear cache
+cache.clear()
+```
+
+---
+
+### Hook System
+
+Execute custom scripts, Python functions, or HTTP webhooks at pipeline stages.
+
+#### HookRunner
+
+**Import**:
+```python
+from hyper2kvm.hooks.hook_runner import HookRunner
+```
+
+**Create from manifest**:
+```python
+# Manifest with hooks
+manifest = {
+    "hooks": {
+        "post_convert": [
+            {
+                "type": "script",
+                "path": "/scripts/notify.sh",
+                "env": {"VM_NAME": "{{ vm_name }}"},
+                "timeout": 300
+            }
+        ]
+    }
+}
+
+# Create hook runner
+runner = HookRunner.from_manifest(manifest, logger=my_logger)
+
+# Execute hooks at specific stage
+context = {
+    "vm_name": "my-vm",
+    "output_path": "/converted/my-vm.qcow2"
+}
+success = runner.execute_stage_hooks("post_convert", context)
+```
+
+**Script hook**:
+```python
+from hyper2kvm.hooks.hook_types import ScriptHook
+
+hook = ScriptHook(
+    path="/scripts/backup.sh",
+    env={"SOURCE": "{{ source_path }}", "DEST": "/backup"},
+    args=["--verbose"],
+    timeout=600,
+    continue_on_error=False,
+    logger=my_logger
+)
+
+# Execute hook
+context = {"source_path": "/vmdk/disk.vmdk"}
+result = hook.execute(context)
+print(f"Exit code: {result['exit_code']}")
+```
+
+**Python hook**:
+```python
+from hyper2kvm.hooks.hook_types import PythonHook
+
+hook = PythonHook(
+    module="my_validators",
+    function="check_disk_size",
+    args={"disk_path": "{{ output_path }}", "min_size_gb": 10},
+    timeout=300,
+    logger=my_logger
+)
+
+result = hook.execute({"output_path": "/converted/disk.qcow2"})
+```
+
+**HTTP hook with retry** (Phase 7.2):
+```python
+from hyper2kvm.hooks.hook_types import HttpHook
+
+hook = HttpHook(
+    url="https://api.example.com/notify",
+    method="POST",
+    headers={"Content-Type": "application/json"},
+    body={"vm": "{{ vm_name }}", "status": "completed"},
+    timeout=30,
+    max_retries=3,
+    retry_delay=5,
+    retry_strategy="exponential",  # exponential, linear, constant
+    max_delay=60,
+    logger=my_logger
+)
+
+result = hook.execute({"vm_name": "my-vm"})
+```
+
+**Available stages**:
+- `pre_extraction` - Before disk extraction
+- `post_extraction` - After extraction, before fixes
+- `pre_fix` - Before offline fixes
+- `post_fix` - After fixes, before conversion
+- `pre_convert` - Before format conversion
+- `post_convert` - After conversion, before validation
+- `post_validate` - After validation complete
+
+---
+
+### Libvirt Integration
+
+Automatic domain creation and storage pool management.
+
+#### LibvirtManager
+
+**Import**:
+```python
+from hyper2kvm.libvirt.libvirt_manager import LibvirtManager
+```
+
+**Define domain from XML**:
+```python
+from pathlib import Path
+
+manager = LibvirtManager(logger=my_logger)
+
+# Define domain
+xml_path = Path("/output/my-vm.xml")
+domain_name = manager.define_domain(
+    xml_path=xml_path,
+    overwrite=False  # Fail if domain already exists
+)
+print(f"Defined domain: {domain_name}")
+
+# Auto-start domain (boot immediately)
+manager.auto_start_domain(domain_name)
+
+# Set autostart on host boot
+manager.set_autostart(domain_name, enabled=True)
+```
+
+**Create snapshot**:
+```python
+snapshot_name = manager.create_snapshot(
+    domain_name="my-vm",
+    snapshot_name="pre-first-boot",
+    description="Snapshot before first boot"
+)
+```
+
+#### PoolManager
+
+**Import**:
+```python
+from hyper2kvm.libvirt.pool_manager import PoolManager
+```
+
+**Import disk to pool**:
+```python
+pool_mgr = PoolManager(logger=my_logger)
+
+# Import disk to storage pool
+volume_name = pool_mgr.import_disk_to_pool(
+    disk_path=Path("/converted/my-vm.qcow2"),
+    pool_name="vms",
+    volume_name="my-vm-disk",
+    overwrite=False
+)
+print(f"Imported volume: {volume_name}")
+```
+
+**Complete libvirt workflow**:
+```python
+from hyper2kvm.libvirt import LibvirtManager, PoolManager
+
+# Import disk
+pool_mgr = PoolManager()
+volume = pool_mgr.import_disk_to_pool(
+    disk_path=Path("/converted/vm.qcow2"),
+    pool_name="production-vms",
+    volume_name="vm-disk"
+)
+
+# Define domain
+libvirt_mgr = LibvirtManager()
+domain = libvirt_mgr.define_domain(
+    xml_path=Path("/converted/vm.xml")
+)
+
+# Create pre-boot snapshot
+libvirt_mgr.create_snapshot(domain, "pre-first-boot")
+
+# Start VM
+libvirt_mgr.auto_start_domain(domain)
+```
+
+---
+
+### Validation Framework
+
+Extensible validation with multiple severity levels.
+
+#### Validators
+
+**Import**:
+```python
+from hyper2kvm.validation import (
+    DiskValidator,
+    XMLValidator,
+    ValidationRunner,
+    ValidationSeverity
+)
+```
+
+**Disk validation**:
+```python
+validator = DiskValidator()
+
+context = {
+    "output_path": "/converted/disk.qcow2",
+    "format": "qcow2",
+    "minimum_size": 1 * 1024 * 1024 * 1024  # 1GB
+}
+
+report = validator.validate(context)
+
+# Check results
+if report.has_errors():
+    print("Validation failed!")
+    for error in report.get_issues_by_severity(ValidationSeverity.ERROR):
+        print(f"  ERROR: {error.message}")
+        for suggestion in error.suggestions:
+            print(f"    Suggestion: {suggestion}")
+```
+
+**XML validation**:
+```python
+validator = XMLValidator()
+
+report = validator.validate({"xml_path": "/output/domain.xml"})
+
+print(f"Passed: {report.passed_checks}/{report.total_checks}")
+```
+
+**Multiple validators**:
+```python
+runner = ValidationRunner()
+runner.add_validator(DiskValidator())
+runner.add_validator(XMLValidator())
+
+# Run all validators
+context = {
+    "output_path": "/converted/disk.qcow2",
+    "format": "qcow2",
+    "xml_path": "/output/domain.xml"
+}
+
+reports = runner.run_all(context)
+
+# Aggregate summary
+summary = runner.get_aggregate_summary(reports)
+print(f"Total validators: {summary['total_validators']}")
+print(f"Total checks: {summary['total_checks']}")
+print(f"All passed: {not summary['has_errors']}")
+```
+
+**Custom validator**:
+```python
+from hyper2kvm.validation import BaseValidator, ValidationSeverity
+
+class NetworkValidator(BaseValidator):
+    def validate(self, context):
+        import time
+        start_time = time.time()
+
+        network_count = context.get("network_count", 0)
+
+        if network_count > 0:
+            self._add_result(
+                check_name="has_networks",
+                passed=True,
+                severity=ValidationSeverity.INFO,
+                message=f"Domain has {network_count} network(s)"
+            )
+        else:
+            self._add_result(
+                check_name="has_networks",
+                passed=False,
+                severity=ValidationSeverity.WARNING,
+                message="Domain has no networks",
+                suggestions=["Add at least one network interface"]
+            )
+
+        self.report.duration = time.time() - start_time
+        return self.report
+
+# Use custom validator
+validator = NetworkValidator()
+report = validator.validate({"network_count": 2})
+```
+
+---
+
+### Progress Tracking
+
+Real-time progress persistence for monitoring long-running conversions.
+
+#### ProgressTracker
+
+**Import**:
+```python
+from hyper2kvm.manifest.batch_progress import (
+    ProgressTracker,
+    VMStatus,
+    BatchProgress
+)
+```
+
+**Track conversion progress**:
+```python
+from pathlib import Path
+
+# Create progress tracker
+tracker = ProgressTracker(
+    progress_file=Path("/output/progress.json"),
+    batch_id="my-batch",
+    total_vms=10,
+    logger=my_logger
+)
+
+# Track VM lifecycle
+tracker.start_vm("vm1")
+tracker.update_vm_stage("vm1", "extraction")
+tracker.update_vm_stage("vm1", "fix")
+tracker.update_vm_stage("vm1", "convert")
+tracker.complete_vm("vm1", success=True)
+
+# Get current progress
+progress = tracker.get_progress()
+print(f"Completion: {progress.get_completion_percentage()}%")
+print(f"Estimated time remaining: {progress.get_estimated_time_remaining()}s")
+
+# Complete batch
+tracker.complete_batch()
+tracker.cleanup()  # Remove progress file
+```
+
+**Monitor external progress**:
+```python
+# Load progress from file (for monitoring tools)
+progress = ProgressTracker.load_progress(
+    Path("/output/.hyper2kvm-batch-progress-batch-id.json")
+)
+
+if progress:
+    counts = progress.get_counts()
+    print(f"Completed: {counts['completed']}")
+    print(f"In progress: {counts['in_progress']}")
+    print(f"Failed: {counts['failed']}")
+    print(f"Pending: {counts['pending']}")
+
+    # Get per-VM details
+    for vm_id, vm_progress in progress.vms.items():
+        print(f"{vm_id}: {vm_progress.status.value}")
+        if vm_progress.status == VMStatus.COMPLETED:
+            print(f"  Duration: {vm_progress.duration}s")
+```
+
+**Progress JSON format**:
+```json
+{
+  "batch_id": "my-batch",
+  "total_vms": 10,
+  "counts": {
+    "pending": 3,
+    "in_progress": 2,
+    "completed": 4,
+    "failed": 1,
+    "skipped": 0
+  },
+  "completion_percentage": 50.0,
+  "estimated_time_remaining": 450.0,
+  "vms": {
+    "vm1": {
+      "vm_id": "vm1",
+      "status": "completed",
+      "started_at": 1737558000.0,
+      "completed_at": 1737558050.0,
+      "duration": 50.0,
+      "stages_completed": ["extraction", "fix", "convert"]
+    }
+  }
+}
 ```
 
 ---
