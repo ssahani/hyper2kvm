@@ -4,16 +4,16 @@ Tested and working libvirt domain XML templates for migrated VMs.
 
 ## Templates
 
-### Linux (CentOS/RHEL/Fedora)
+### Linux (RHEL/CentOS/Fedora/Rocky/AlmaLinux)
 
-1. **`centos-linux-bios.xml`** - BIOS/Legacy boot
-   - ✅ Tested with CentOS 8, CentOS 9
+1. **`linux-bios.xml`** - BIOS/Legacy boot
+   - ✅ Tested with CentOS 8/9, RHEL 8/9, Fedora
    - Q35 chipset, VirtIO disk/network
    - SPICE graphics, serial console
    - QEMU guest agent ready
 
-2. **`rhel-linux-uefi.xml`** - UEFI boot
-   - ✅ Tested with RHEL 9.4, CentOS 9
+2. **`linux-uefi.xml`** - UEFI boot
+   - ✅ Tested with CentOS 9, RHEL 9.4, Fedora
    - OVMF UEFI firmware
    - Secure Boot ready (disabled by default)
    - Q35 chipset, VirtIO disk/network
@@ -37,10 +37,10 @@ Tested and working libvirt domain XML templates for migrated VMs.
 # 3. Adjust memory/CPU if needed
 
 # Import to libvirt
-virsh define centos-linux-bios.xml
+virsh define linux-bios.xml
 
 # Start the VM
-virsh start centos-linux-vm
+virsh start linux-vm-bios
 ```
 
 ### Method 2: Use as Template for hyper2kvm
