@@ -232,10 +232,14 @@ class NBDDeviceManager:
 
         try:
             # Convert with progress
+            # CRITICAL: Use -S 0 to disable sparse detection for sparse VMDKs
+            # Without this, unallocated sparse regions won't be written to qcow2,
+            # causing I/O errors when LVM volumes span those regions
             subprocess.run(
                 [
                     "qemu-img", "convert",
                     "-p",  # Progress
+                    "-S", "0",  # Disable sparse detection - write all blocks
                     "-f", "vmdk",
                     "-O", "qcow2",
                     str(vmdk_path),
