@@ -142,6 +142,81 @@ Generate TLS certificates for Kubernetes admission webhooks.
 - Creates Kubernetes Secret
 - Patches webhook configurations
 
+## OpenShift & Kubernetes Deployment
+
+### build-operator-images.sh
+Build multi-arch container images for operator, worker, CLI, and daemon.
+
+```bash
+# Build all images
+./scripts/build-operator-images.sh 2.1.0
+
+# Build and push to custom registry
+./scripts/build-operator-images.sh 2.1.0 ghcr.io/myorg
+```
+
+**Features:**
+- Multi-arch builds (amd64, arm64)
+- Builds operator, worker, CLI, daemon images
+- Interactive push confirmation
+- Version tagging (semver + latest)
+
+### build-olm-bundle.sh
+Build OLM bundle for OpenShift OperatorHub deployment.
+
+```bash
+# Build bundle image
+./scripts/build-olm-bundle.sh 2.1.0
+
+# Build and push to custom registry
+./scripts/build-olm-bundle.sh 2.1.0 ghcr.io/myorg
+```
+
+**Features:**
+- Validates bundle structure
+- Updates CSV version
+- Runs operator-sdk validation (if installed)
+- Interactive push confirmation
+
+### deploy-to-openshift.sh
+Deploy operator to OpenShift cluster using Helm, OLM, or manual method.
+
+```bash
+# Deploy via Helm (recommended)
+./scripts/deploy-to-openshift.sh 2.1.0 helm
+
+# Deploy via OLM bundle
+./scripts/deploy-to-openshift.sh 2.1.0 olm
+
+# Deploy manually with manifests
+./scripts/deploy-to-openshift.sh 2.1.0 manual hyper2kvm-system
+```
+
+**Features:**
+- Three deployment methods
+- Automatic namespace creation
+- OpenShift-specific configuration
+- Post-deployment verification
+
+### test-openshift-deployment.sh
+Comprehensive test suite for OpenShift deployment validation.
+
+```bash
+# Run test suite
+./scripts/test-openshift-deployment.sh hyper2kvm-system
+```
+
+**Tests:**
+- CRD installation
+- Operator pod health
+- Webhook pod health (if enabled)
+- Routes and services
+- SecurityContextConstraints
+- RBAC permissions
+- MigrationJob CRD functionality
+- Operator logs validation
+- Resource usage
+
 ## Release Workflow
 
 Complete Helm chart release process:
@@ -162,9 +237,35 @@ git push origin main --tags
 # 4. GitHub Actions automatically publishes to GitHub Pages
 ```
 
+## OpenShift Release Workflow
+
+Complete OpenShift operator release:
+
+```bash
+# 1. Build operator images
+./scripts/build-operator-images.sh 2.1.0
+# Answer 'y' to push images
+
+# 2. Build OLM bundle
+./scripts/build-olm-bundle.sh 2.1.0
+# Answer 'y' to push bundle
+
+# 3. Test on OpenShift cluster
+./scripts/deploy-to-openshift.sh 2.1.0 helm
+./scripts/test-openshift-deployment.sh hyper2kvm-system
+
+# 4. Submit to OperatorHub (optional)
+# - Fork https://github.com/k8s-operatorhub/community-operators
+# - Add bundle to operators/hyper2kvm-operator/
+# - Create pull request
+```
+
 ## See Also
 
 - [../examples/](../examples/) - Usage examples and demos
 - [../docs/guides/](../docs/guides/) - User guides
 - [../docs/development/](../docs/development/) - Developer documentation
 - [../docs/helm-repository.md](../docs/helm-repository.md) - Helm repository guide
+- [../docs/deployment/openshift-deployment-guide.md](../docs/deployment/openshift-deployment-guide.md) - OpenShift deployment
+- [../olm/README.md](../olm/README.md) - OLM bundle guide
+- [../OPENSHIFT_QUICKSTART.md](../OPENSHIFT_QUICKSTART.md) - 5-minute OpenShift quickstart
