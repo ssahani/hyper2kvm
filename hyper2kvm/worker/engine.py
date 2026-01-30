@@ -546,9 +546,6 @@ class WorkerEngine:
         ))
 
         # TODO: Integrate with DiskInspector for NBD-based inspection
-        # from ..inspector import DiskInspector
-        # inspector = DiskInspector()
-        # inspection_result = inspector.inspect_via_nbd(str(result['outputs'].fixed_image))
 
         self._emit_event(ProgressEvent(
             job_id=job_spec.job_id,

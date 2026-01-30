@@ -40,6 +40,14 @@ from .vmdk_inspector import (
     BootMode,
     Risk,
 )
+from .validation_framework import (
+    ValidationSeverity,
+    ValidationResult,
+    BaseValidator,
+    DiskValidator,
+    XMLValidator,
+    ValidationRunner,
+)
 
 __all__ = [
     "HealthCheckType",
@@ -62,4 +70,10 @@ __all__ = [
     "RiskLevel",
     "BootMode",
     "Risk",
+    "ValidationSeverity",
+    "ValidationResult",
+    "BaseValidator",
+    "DiskValidator",
+    "XMLValidator",
+    "ValidationRunner",
 ]
