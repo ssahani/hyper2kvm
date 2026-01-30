@@ -2,7 +2,7 @@
 
 This page is a **copy-paste cookbook** for running `hyper2kvm.py` using YAML configs.
 
-It covers the big three you already run in production (**local**, **live-fix**, **fetch-and-fix**) and adds the “missing” ones that show up in real migrations (**ova**, **ovf**, **daemon**, **vsphere/pyvmomi**, and **virt-v2v hybrid**). It also captures the **design intent** behind the knobs: `hyper2kvm` splits vSphere into **control-plane** (inventory/orchestration) and **data-plane** (moving bytes), because mixing them is how tools become slow and haunted.
+It covers the big three you already run in production (**local**, **live-fix**, **fetch-and-fix**) and adds the "missing" ones that show up in real migrations (**ova**, **ovf**, **daemon**, **vsphere/pyvmomi**). It also captures the **design intent** behind the knobs: `hyper2kvm` splits vSphere into **control-plane** (inventory/orchestration) and **data-plane** (moving bytes), because mixing them is how tools become slow and haunted.
 
 > Tip: keep one `base.yaml` with defaults, and override per-customer / per-VM in a tiny overlay file.
 
@@ -30,7 +30,6 @@ Before following this guide, you should have:
 - [5. OVF mode](#5-ovf-mode-parse-ovf-and-convert)
 - [6. Daemon mode](#6-daemon-mode-watch-a-directory-and-auto-convert)
 - [7. vSphere / pyvmomi mode](#7-vsphere--pyvmomi-mode-discovery-download-cbt)
-- [8. virt-v2v hybrid flows](#8-virt-v2v-hybrid-flows-use_v2v--post_v2v)
 - [Base + overrides pattern](#base--overrides-pattern)
 - [Troubleshooting patterns](#troubleshooting-patterns)
 
@@ -83,13 +82,13 @@ out_format: qcow2
 * **Control-plane (pyvmomi / pyVim / pyVmomi)**: inventory, datacenter/host resolution, snapshots, CBT maps, datastore browsing (listing).
 * **Data-plane**:
 
-  * **virt-v2v**: converts into qcow2/raw, uses VDDK or SSH transport
   * **HTTP `/folder`**: byte-for-byte download of datastore files using vCenter session cookie
   * **VDDK client**: single-disk raw pull through VDDK (when available)
+  * **Internal converters**: OVA/VHD/AMI/VMDK extraction and conversion to qcow2/raw
 
 **Rule of thumb**: use the **least invasive** data-plane that solves your goal:
 
-* Need qcow2 + conversion? → virt-v2v or local conversion
+* Need qcow2 + conversion? → hyper2kvm internal converters
 * Need raw datastore bytes? → HTTP `/folder` download-only
 * Need one disk fast via ESXi? → VDDK pull
 * Need incremental sync? → CBT + HTTP Range reads
@@ -626,62 +625,6 @@ change_id: "*"
 
 dc_name: ha-datacenter
 json: true
-```yaml
-
----
-
-## 8. virt-v2v hybrid flows (`use_v2v` / `post_v2v`)
-
-This is the “best of both worlds” migration style:
-
-* use virt-v2v for conversion/extraction
-* then run `hyper2kvm` fixers for deterministic post-fixes (fstab stabilization, GRUB root=, initramfs regen, cloud-init injection, etc.)
-
-### Pattern A: virt-v2v first, then hyper2kvm post-fix
-
-```yaml
-command: local
-use_v2v: true
-post_v2v: true
-
-# your virt-v2v input/output config
-v2v_input: vpx
-v2v_transport: vddk
-v2v_output_dir: ./out
-out_format: qcow2
-
-# post-fix knobs
-fstab_mode: stabilize-all
-regen_initramfs: true
-remove_vmware_tools: true
-report: post-v2v.md
-```yaml
-
-### Pattern B: vSphere control-plane + virt-v2v data-plane (engine mode)
-
-If your repo wires `VMwareClient.export_mode`, the config concept becomes:
-
-* control-plane resolves DC/host
-* data-plane runs virt-v2v with correct compute path + VDDK libdir validation
-
-```yaml
-# Conceptual (depends on your CLI wiring)
-command: vsphere_export
-vcenter: vcenter.example.com
-vc_user: administrator@vsphere.local
-vc_password_env: VC_PASSWORD
-vc_insecure: true
-
-vm_name: myVM
-export_mode: v2v            # v2v | download_only | vddk_download
-transport: vddk
-vddk_libdir: /opt/vmware-vix-disklib-distrib/lib64
-output_dir: ./out
-output_format: qcow2
-
-post_fix: true
-fstab_mode: stabilize-all
-regen_initramfs: true
 ```yaml
 
 ---

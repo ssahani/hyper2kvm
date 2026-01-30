@@ -6,7 +6,6 @@ This directory contains production-ready configuration examples for various migr
 
 - [Local VMDK Conversions (01-05)](#local-vmdk-conversions)
 - [vSphere Download-Only (10-11)](#vsphere-download-only)
-- [vSphere virt-v2v Export (20-24)](#vsphere-virt-v2v-export)
 - [vSphere OVFTool Export (30-31)](#vsphere-ovftool-export)
 - [vSphere VDDK Operations (40-41)](#vsphere-vddk-operations)
 - [Photon OS Variations (50-53)](#photon-os-variations)
@@ -98,35 +97,6 @@ hyper2kvm --config test-confs/10-vsphere-download-only.yaml vsphere
 export VC_PASSWORD='your-vcenter-password'
 hyper2kvm --config test-confs/11-vsphere-govc-rhel-10-download.yaml vsphere
 ```
-
----
-
-## ☁️ vSphere virt-v2v Export
-
-Export VMs from vSphere using virt-v2v.
-
-### 20-vsphere-v2v-rhel-10-export.yaml
-**Full virt-v2v Export with VDDK**
-- ✅ VDDK transport (fast, efficient)
-- ✅ Complete OS conversion
-- ✅ QCOW2 output
-
-```bash
-export VC_PASSWORD='your-vcenter-password'
-hyper2kvm --config test-confs/20-vsphere-v2v-rhel-10-export.yaml vsphere
-```
-
-### 21-vsphere-v2v-rhel-10-download.yaml
-**virt-v2v Download-Only Mode**
-
-### 22-vsphere-v2v-rhel-10-ova.yaml
-**Export to OVA Format**
-
-### 23-vsphere-v2v-rhel-10-ovf.yaml
-**Export to OVF Format**
-
-### 24-vsphere-v2v-rhel-10-nfc.yaml
-**Export using NFC Transport**
 
 ---
 
@@ -254,15 +224,6 @@ export VC_PASSWORD='your-password'
 
 # Download VM files
 hyper2kvm --config test-confs/10-vsphere-download-only.yaml vsphere
-```
-
-### 3. vSphere to KVM Migration
-```bash
-# Set vCenter password
-export VC_PASSWORD='your-password'
-
-# Export and convert
-hyper2kvm --config test-confs/20-vsphere-v2v-rhel-10-export.yaml vsphere
 ```
 
 ---

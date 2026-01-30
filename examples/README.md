@@ -491,21 +491,7 @@ sudo python -m hyper2kvm --config examples/yaml/11-batch/batch-local-many.yaml
 
 ### Advanced Workflows
 
-#### 16. virt-v2v Integration
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-with-virt-v2v-post.yaml
-```
-
-**What it does:**
-- Runs hyper2kvm fixes first
-- Then runs virt-v2v
-- Combines strengths of both tools
-- Maximum compatibility
-
-**Use when:** Complex migrations needing both tools
-
-#### 17. Raw Disk for DD
+#### 16. Raw Disk for DD
 
 ```bash
 sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-raw-for-dd.yaml

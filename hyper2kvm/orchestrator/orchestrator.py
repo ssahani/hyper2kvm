@@ -19,7 +19,6 @@ from ..vmware.vsphere.mode import VsphereMode
 from .azure_exporter import AzureExporter
 from .disk_discovery import DiskDiscovery
 from .disk_processor import DiskProcessor
-from .virt_v2v_converter import VirtV2VConverter
 from .vsphere_exporter import VsphereExporter
 
 # Check availability
@@ -46,7 +45,7 @@ class Orchestrator:
         self.disks: list[Path] = []
 
         # Initialize component handlers
-        self.v2v_converter = VirtV2VConverter(logger)
+        # Note: virt-v2v support removed - using only internal converters
         self.vsphere_exporter = VsphereExporter(logger, args)
         self.azure_exporter = AzureExporter(logger, args)
         self.disk_discovery = DiskDiscovery(logger, args)
@@ -176,70 +175,6 @@ class Orchestrator:
 
         return None
 
-    def _run_pre_v2v(self, out_root: Path) -> list[Path]:
-        """Run virt-v2v before internal processing if requested."""
-        if not getattr(self.args, "use_v2v", False):
-            return []
-
-        use_parallel = bool(getattr(self.args, "v2v_parallel", False))
-        Log.step(self.logger, f"virt-v2v pre-step ({'parallel' if use_parallel else 'single'})")
-
-        if use_parallel and len(self.disks) > 1:
-            return self.v2v_converter.convert_parallel(
-                self.disks,
-                out_root,
-                getattr(self.args, "out_format", "qcow2"),
-                getattr(self.args, "compress", False),
-                getattr(self.args, "luks_passphrase", None),
-                getattr(self.args, "luks_passphrase_env", None),
-                getattr(self.args, "luks_keyfile", None),
-                concurrency=int(getattr(self.args, "v2v_concurrency", 2)),
-            )
-        else:
-            return self.v2v_converter.convert(
-                self.disks,
-                out_root,
-                getattr(self.args, "out_format", "qcow2"),
-                getattr(self.args, "compress", False),
-                getattr(self.args, "luks_passphrase", None),
-                getattr(self.args, "luks_passphrase_env", None),
-                getattr(self.args, "luks_keyfile", None),
-            )
-
-    def _run_post_v2v(self, fixed_images: list[Path], out_root: Path) -> list[Path]:
-        """Run virt-v2v after internal processing if requested."""
-        if not getattr(self.args, "post_v2v", False) or not fixed_images:
-            return fixed_images
-
-        v2v_dir = out_root / "post-v2v"
-        U.ensure_dir(v2v_dir)
-
-        use_parallel = bool(getattr(self.args, "v2v_parallel", False))
-        Log.step(self.logger, f"virt-v2v post-step ({'parallel' if use_parallel else 'single'})")
-
-        if use_parallel and len(fixed_images) > 1:
-            v2v_images = self.v2v_converter.convert_parallel(
-                fixed_images,
-                v2v_dir,
-                getattr(self.args, "out_format", "qcow2"),
-                getattr(self.args, "compress", False),
-                getattr(self.args, "luks_passphrase", None),
-                getattr(self.args, "luks_passphrase_env", None),
-                getattr(self.args, "luks_keyfile", None),
-                concurrency=int(getattr(self.args, "v2v_concurrency", 2)),
-            )
-        else:
-            v2v_images = self.v2v_converter.convert(
-                fixed_images,
-                v2v_dir,
-                getattr(self.args, "out_format", "qcow2"),
-                getattr(self.args, "compress", False),
-                getattr(self.args, "luks_passphrase", None),
-                getattr(self.args, "luks_passphrase_env", None),
-                getattr(self.args, "luks_keyfile", None),
-            )
-
-        return v2v_images if v2v_images else fixed_images
 
     def _process_disks(self, out_root: Path) -> list[Path]:
         """Process disks through internal pipeline."""
@@ -381,15 +316,10 @@ class Orchestrator:
                 {"count": len(self.disks), "disks": [str(d) for d in self.disks]},
             )
 
-        # virt-v2v pre-step (optional)
-        v2v_images = self._run_pre_v2v(out_root)
-        if v2v_images:
-            fixed_images = v2v_images
-        else:
-            fixed_images = self._process_disks(out_root)
-
-        # virt-v2v post-step (optional)
-        out_images = self._run_post_v2v(fixed_images, out_root)
+        # Process disks through internal pipeline
+        # Note: virt-v2v support removed - using only internal converters and fixers
+        fixed_images = self._process_disks(out_root)
+        out_images = fixed_images
 
         # Tests
         self._run_tests(out_images)

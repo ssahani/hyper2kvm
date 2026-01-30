@@ -236,7 +236,6 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
 ### Platform-Specific 🖥️
 
 - **[Windows Migrations](docs/10-Windows-Guide.md)** - Windows-specific guide and VirtIO driver injection 🪟
-- **[vSphere Integration](docs/30-vSphere-V2V.md)** - vSphere export strategies (govc, pyvmomi, hyperctl) ☁️
 - **[PhotonOS](docs/21-Photon-OS.md)** - VMware PhotonOS specific notes 🐧
 - **[RHEL 10](docs/20-RHEL-10.md)** - RHEL 10 migration guide 🎩
 
@@ -411,7 +410,6 @@ hyper2kvm/
 │   ├── orchestrator.py    # Main pipeline coordinator (358 lines)
 │   ├── disk_processor.py  # Disk processing (335 lines)
 │   ├── vsphere_exporter.py # vSphere export (264 lines)
-│   ├── virt_v2v_converter.py # Optional integration wrapper (268 lines)
 │   └── disk_discovery.py  # Disk discovery (247 lines)
 │
 └── vmware/                # VMware integration
@@ -510,7 +508,6 @@ hyper2kvm/
 - **orchestrator.py** - Main pipeline coordinator (358 lines)
 - **disk_processor.py** - Disk processing logic (335 lines)
 - **vsphere_exporter.py** - vSphere export coordination (264 lines)
-- **virt_v2v_converter.py** - Optional integration wrapper (268 lines)
 - **disk_discovery.py** - Disk discovery and metadata extraction (247 lines)
 
 #### `vmware/`

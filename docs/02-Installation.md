@@ -83,7 +83,6 @@ For detailed installation instructions and troubleshooting, see [completions/REA
 * `libguestfs` + tools - Required for offline inspection/editing
 * `libvirt` - Only if you use `--libvirt-test`
 * `openssh-client` / `scp` - For `fetch-and-fix` and `live-fix`
-* optional: `virt-v2v` - If you use `--use-v2v` / `--post-v2v`
 * optional: `pyvmomi` + `requests` - For `vsphere` downloads/actions
 * optional: `watchdog` - For daemon watch mode
 
@@ -99,8 +98,7 @@ sudo dnf install -y \
   qemu-img qemu-kvm \
   libguestfs libguestfs-tools libguestfs-xfs \
   openssh-clients rsync \
-  libvirt-client libvirt-daemon-kvm \
-  virt-v2v
+  libvirt-client libvirt-daemon-kvm
 
 # For libguestfs on Fedora/RHEL: "libguestfs-test-tool" is handy
 sudo dnf install -y libguestfs-test-tool
@@ -115,8 +113,7 @@ sudo apt-get install -y \
   qemu-utils \
   libguestfs-tools \
   openssh-client rsync \
-  libvirt-clients libvirt-daemon-system qemu-system-x86 \
-  virt-v2v
+  libvirt-clients libvirt-daemon-system qemu-system-x86
 ```bash
 
 #### openSUSE / SLES
@@ -127,8 +124,7 @@ sudo zypper install -y \
   qemu-tools \
   libguestfs libguestfs-tools \
   openssh rsync \
-  libvirt-client libvirt-daemon-qemu \
-  virt-v2v
+  libvirt-client libvirt-daemon-qemu
 ```bash
 
 #### Arch Linux / Manjaro
@@ -139,8 +135,7 @@ sudo pacman -Syu --noconfirm \
   qemu-img qemu-system-x86 \
   libguestfs \
   openssh rsync \
-  libvirt virt-manager \
-  virt-v2v
+  libvirt virt-manager
 
 # Enable and start libvirtd service
 sudo systemctl enable --now libvirtd
@@ -155,8 +150,7 @@ sudo apk add --no-cache \
   qemu-img qemu-system-x86_64 \
   libguestfs libguestfs-tools \
   openssh-client rsync \
-  libvirt libvirt-daemon libvirt-client \
-  virt-v2v
+  libvirt libvirt-daemon libvirt-client
 
 # Start services
 sudo rc-service libvirtd start
@@ -430,22 +424,6 @@ sudo pacman -S qemu-img
 which qemu-img
 qemu-img --version
 ```bash
-
-### virt-v2v not found
-
-**Problem:** virt-v2v is optional but not installed.
-
-**Solution:**
-Either install it:
-```bash
-# Fedora/RHEL
-sudo dnf install virt-v2v
-
-# Ubuntu/Debian
-sudo apt-get install virt-v2v
-```bash
-
-Or skip features that require it (don't use `--use-v2v` or `--post-v2v` flags).
 
 ### Python version too old
 

@@ -189,23 +189,10 @@ def _add_windows_virtio_definitions(p: argparse.ArgumentParser) -> None:
     )
 
 
+# virt-v2v support removed - hyper2kvm uses only internal converters and fixers
 def _add_v2v_flags(p: argparse.ArgumentParser) -> None:
-    # virt-v2v knobs
-    p.add_argument("--post-v2v", dest="post_v2v", action="store_true", help="Run virt-v2v after internal fixes.")
-    p.add_argument("--use-v2v", dest="use_v2v", action="store_true", help="Use virt-v2v for conversion if available.")
-    p.add_argument(
-        "--v2v-parallel",
-        dest="v2v_parallel",
-        action="store_true",
-        help="Run multiple virt-v2v jobs in parallel when multiple disks/images are provided (multi-process; experimental).",
-    )
-    p.add_argument(
-        "--v2v-concurrency",
-        dest="v2v_concurrency",
-        type=int,
-        default=2,
-        help="Max concurrent virt-v2v jobs when --v2v-parallel is set (default: 2).",
-    )
+    """Deprecated: virt-v2v support has been removed."""
+    pass
 
 
 def _add_windows_network_override(p: argparse.ArgumentParser) -> None:

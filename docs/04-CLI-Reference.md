@@ -43,7 +43,7 @@ Before using hyper2kvm commands, ensure you have:
   - [Paths & behavior](#paths-behavior)
 - [Flatten & Conversion Outputs](#flatten-conversion-outputs)
 - [Fixing Behavior](#fixing-behavior)
-- [Recovery, Performance, virt-v2v Knobs](#recovery-performance-virt-v2v-knobs)
+- [Recovery and Performance Knobs](#recovery-and-performance-knobs)
 - [LUKS Knobs](#luks-knobs)
 - [Smoke Tests](#smoke-tests)
 - [Daemon Mode](#daemon-mode)
@@ -313,25 +313,13 @@ These flags exist on the CLI and can also be supplied via config using their arg
 
 ---
 
-## Recovery, Performance, virt-v2v Knobs
+## Recovery and Performance Knobs
 
 * `--enable-recovery` *(store_true)*
   Enable checkpoint recovery.
 
 * `--parallel-processing` *(store_true)*
   Process multiple disks in parallel.
-
-* `--use-v2v` *(store_true)*
-  Use virt-v2v for conversion if available.
-
-* `--post-v2v` *(store_true)*
-  Run virt-v2v after internal fixes.
-
-* `--v2v-parallel` *(store_true)*
-  Run multiple virt-v2v jobs in parallel (experimental).
-
-* `--v2v-concurrency` *(int, default 2)*
-  Max concurrent virt-v2v jobs when `--v2v-parallel` is set.
 
 ---
 
