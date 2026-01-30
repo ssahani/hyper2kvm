@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0-or-later
+# SPDX-License-Identifier: LGPL-3.0-or-later
 from __future__ import annotations
 import sys
 from .cli.argument_parser import parse_args_with_config
