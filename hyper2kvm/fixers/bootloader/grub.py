@@ -848,7 +848,7 @@ def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
     try:
         boot_mount_audit = _mount_boot_partitions_best_effort(self, g)
         mounted_boot = boot_mount_audit.get("mounted", []) or []
-    except Exception as e:
+    except Exception as e:  
         boot_mount_audit = {"attempted": True, "mounted": [], "errors": [str(e)]}
     info["boot_mounts"] = boot_mount_audit
 
