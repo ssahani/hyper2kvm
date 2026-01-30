@@ -306,9 +306,10 @@ from ..utils.datastore import (
 )
 
 # Import v2v operations
-from ..utils.v2v import (
-    v2v_export_vm as _v2v_export_vm,
-)
+# NOTE: v2v functionality removed - hyper2kvm uses pure architecture now
+# from ..utils.v2v import (
+#     v2v_export_vm as _v2v_export_vm,
+# )
 
 
 @dataclass(frozen=True)
@@ -1307,8 +1308,9 @@ class VMwareClient:
         self._drain_remaining_output(proc, max_rounds=10)
         return int(proc.wait())
 
-    def v2v_export_vm(self, opt: V2VExportOptions) -> Path:
-        return _v2v_export_vm(self, opt)
+    # NOTE: v2v functionality removed - hyper2kvm uses pure architecture now
+    # def v2v_export_vm(self, opt: V2VExportOptions) -> Path:
+    #     return _v2v_export_vm(self, opt)
 
     # VDDK raw disk download (experimental orchestration only) - Delegate to vmware_vddk
 

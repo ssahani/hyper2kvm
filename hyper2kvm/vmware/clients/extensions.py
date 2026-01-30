@@ -42,7 +42,7 @@ def _safe_decode(b: bytes) -> str:
 
 
 def _strip_ansi(s: str) -> str:
-    # Conservative ANSI remover (keeps logs readable if virt-v2v emits color).
+    # Conservative ANSI remover (keeps logs readable).
     return _ANSI_RE.sub("", s or "")
 
 
@@ -125,80 +125,81 @@ def _is_transient_vpx_error(stderr_tail: str) -> bool:
     return any(n in s for n in needles)
 
 
-def _pretty_v2v_failure(rc: int, stderr_tail: str, argv: Sequence[str]) -> str:
-    tail = (stderr_tail or "").strip()
-    cmd = " ".join(shlex.quote(a) for a in argv)
+# NOTE: virt-v2v functionality removed - hyper2kvm uses pure architecture now
+# def _pretty_v2v_failure(rc: int, stderr_tail: str, argv: Sequence[str]) -> str:
+#     tail = (stderr_tail or "").strip()
+#     cmd = " ".join(shlex.quote(a) for a in argv)
+#
+#     if not tail:
+#         return f"virt-v2v export failed (rc={rc}) with no captured stderr. cmd={cmd}"
+#
+#     return (
+#         f"virt-v2v export failed (rc={rc}).\n"
+#         f"--- virt-v2v stderr (tail) ---\n{tail}\n"
+#         f"--- command ---\n{cmd}"
+#     )
+#
+#
+# async def async_v2v_export_vm_verbose(self: VMwareClient, opt: V2VExportOptions) -> Path:
+#     """
+#     Drop-in alternative that never hides the real reason.
+#     Use: await client.async_v2v_export_vm_verbose(opt)
+#     """
+#     if shutil.which("virt-v2v") is None:
+#         raise VMwareError("virt-v2v not found in PATH. Install virt-v2v/libguestfs tooling.")
 
-    if not tail:
-        return f"virt-v2v export failed (rc={rc}) with no captured stderr. cmd={cmd}"
-
-    return (
-        f"virt-v2v export failed (rc={rc}).\n"
-        f"--- virt-v2v stderr (tail) ---\n{tail}\n"
-        f"--- command ---\n{cmd}"
-    )
-
-
-async def async_v2v_export_vm_verbose(self: VMwareClient, opt: V2VExportOptions) -> Path:
-    """
-    Drop-in alternative that never hides the real reason.
-    Use: await client.async_v2v_export_vm_verbose(opt)
-    """
-    if shutil.which("virt-v2v") is None:
-        raise VMwareError("virt-v2v not found in PATH. Install virt-v2v/libguestfs tooling.")
-
-    if not self.si:
-        raise VMwareError("Not connected to vSphere; cannot export. Call connect() first.")
-
-    # If using VDDK with verification enabled, compute thumbprint automatically.
-    if opt.transport.strip().lower() == "vddk" and (not opt.vddk_thumbprint) and (not opt.no_verify):
-        self.logger.info("Computing TLS thumbprint (SHA1) for %s:%s ...", self.host, self.port)
-        tp = await asyncio.to_thread(self.compute_server_thumbprint_sha1, self.host, self.port, 10.0)
-        opt = V2VExportOptions(**{**opt.__dict__, "vddk_thumbprint": tp})
-
-    pwfile = self._write_password_file(opt.output_dir)
-    try:
-        argv = await asyncio.to_thread(self._build_virt_v2v_cmd, opt, password_file=pwfile)
-        env = os.environ.copy()
-
-        rc, _out_tail, err_tail = await _run_logged_subprocess_with_tails(
-            self.logger,
-            argv,
-            env=env,
-            stderr_tail_lines=160,
-            stdout_tail_lines=60,
-        )
-
-        if rc != 0:
-            # Helpful “what exists?” context on failure (best-effort).
-            try:
-                self.logger.error("Available datacenters: %s", self.list_datacenters(refresh=True))
-            except Exception:
-                pass
-            try:
-                self.logger.error("Available ESXi hosts: %s", self.list_host_names(refresh=True))
-            except Exception:
-                pass
-
-            msg = _pretty_v2v_failure(rc, err_tail, argv)
-            if _is_transient_vpx_error(err_tail):
-                msg += "\n(looks like a vpx/vddk connectivity/auth/path issue; stderr tail above is the clue)"
-            raise VMwareError(msg)
-
-        self.logger.info("virt-v2v export finished OK -> %s", opt.output_dir)
-        return opt.output_dir
-
-    finally:
-        try:
-            pwfile.unlink()
-        except FileNotFoundError:
-            pass
-        except Exception as e:
-            self.logger.warning("Failed to remove password file %s: %s", pwfile, e)
-
-
-# Monkey-patch add-only (keeps your existing API intact)
-VMwareClient.async_v2v_export_vm_verbose = async_v2v_export_vm_verbose  # type: ignore[attr-defined]
+#     if not self.si:
+#         raise VMwareError("Not connected to vSphere; cannot export. Call connect() first.")
+#
+#     # If using VDDK with verification enabled, compute thumbprint automatically.
+#     if opt.transport.strip().lower() == "vddk" and (not opt.vddk_thumbprint) and (not opt.no_verify):
+#         self.logger.info("Computing TLS thumbprint (SHA1) for %s:%s ...", self.host, self.port)
+#         tp = await asyncio.to_thread(self.compute_server_thumbprint_sha1, self.host, self.port, 10.0)
+#         opt = V2VExportOptions(**{**opt.__dict__, "vddk_thumbprint": tp})
+#
+#     pwfile = self._write_password_file(opt.output_dir)
+#     try:
+#         argv = await asyncio.to_thread(self._build_virt_v2v_cmd, opt, password_file=pwfile)
+#         env = os.environ.copy()
+#
+#         rc, _out_tail, err_tail = await _run_logged_subprocess_with_tails(
+#             self.logger,
+#             argv,
+#             env=env,
+#             stderr_tail_lines=160,
+#             stdout_tail_lines=60,
+#         )
+#
+#         if rc != 0:
+#             # Helpful "what exists?" context on failure (best-effort).
+#             try:
+#                 self.logger.error("Available datacenters: %s", self.list_datacenters(refresh=True))
+#             except Exception:
+#                 pass
+#             try:
+#                 self.logger.error("Available ESXi hosts: %s", self.list_host_names(refresh=True))
+#             except Exception:
+#                 pass
+#
+#             msg = _pretty_v2v_failure(rc, err_tail, argv)
+#             if _is_transient_vpx_error(err_tail):
+#                 msg += "\n(looks like a vpx/vddk connectivity/auth/path issue; stderr tail above is the clue)"
+#             raise VMwareError(msg)
+#
+#         self.logger.info("virt-v2v export finished OK -> %s", opt.output_dir)
+#         return opt.output_dir
+#
+#     finally:
+#         try:
+#             pwfile.unlink()
+#         except FileNotFoundError:
+#             pass
+#         except Exception as e:
+#             self.logger.warning("Failed to remove password file %s: %s", pwfile, e)
+#
+#
+# # Monkey-patch add-only (keeps your existing API intact)
+# VMwareClient.async_v2v_export_vm_verbose = async_v2v_export_vm_verbose  # type: ignore[attr-defined]
 
 
 async def _pump_stream_chunked(
@@ -215,7 +216,7 @@ async def _pump_stream_chunked(
 
     Fixes: asyncio.exceptions.LimitOverrunError:
       "Separator is not found, and chunk exceed the limit"
-    which happens when virt-v2v/libguestfs emits very long lines without '\\n'.
+    which can happen with long lines without '\\n'.
     """
     if stream is None:
         return
@@ -320,5 +321,5 @@ async def _vmwareclient__run_logged_subprocess_safe(
 
 VMwareClient._run_logged_subprocess = _vmwareclient__run_logged_subprocess_safe  # type: ignore[attr-defined]
 
-# Also override the module-level tails helper used by async_v2v_export_vm_verbose()
+# Module-level tails helper for subprocess execution
 _run_logged_subprocess_with_tails = _run_logged_subprocess_with_tails_chunked  # type: ignore[assignment]

@@ -13,6 +13,7 @@ import guestfs  # type: ignore
 from ..core.utils import U
 from ..converters.qemu.converter import Convert
 from ..fixers.offline_fixer import OfflineFSFix
+from ..hooks import HookRunner, create_hook_context
 from .loader import DiskArtifact, ManifestLoader
 from .reporter import ManifestReporter
 
@@ -35,6 +36,7 @@ class ManifestOrchestrator:
         self.loader = ManifestLoader(self.logger)
         self.reporter = ManifestReporter(self.logger)
         self.manifest: dict[str, Any] = {}
+        self.hook_runner: HookRunner | None = None
 
         # Pipeline state
         self.current_stage = "none"
@@ -55,8 +57,19 @@ class ManifestOrchestrator:
         pipeline_start = time.time()
 
         try:
+            # Pre-extraction hook (before manifest load)
+            self._execute_hook_stage("pre_extraction", {
+                "manifest_path": str(self.manifest_path),
+            })
+
             # Stage 1: LOAD_MANIFEST (always runs)
             self._run_stage("load_manifest", self._stage_load_manifest)
+
+            # Initialize hook runner from manifest (if hooks are present)
+            self.hook_runner = HookRunner.from_manifest(self.manifest, self.logger)
+
+            # Post-extraction hook (after manifest load)
+            self._execute_hook_stage("post_extraction", self._create_hook_context())
 
             # Stage 2: INSPECT
             if self.loader.is_stage_enabled("inspect"):
@@ -66,19 +79,34 @@ class ManifestOrchestrator:
 
             # Stage 3: FIX (boot disk only)
             if self.loader.is_stage_enabled("fix"):
+                # Pre-fix hook
+                self._execute_hook_stage("pre_fix", self._create_hook_context())
+
                 self._run_stage("fix", self._stage_fix)
+
+                # Post-fix hook
+                self._execute_hook_stage("post_fix", self._create_hook_context())
             else:
                 self.logger.info("⏭️  FIX stage disabled")
 
             # Stage 4: CONVERT (all disks)
             if self.loader.is_stage_enabled("convert"):
+                # Pre-convert hook
+                self._execute_hook_stage("pre_convert", self._create_hook_context())
+
                 self._run_stage("convert", self._stage_convert)
+
+                # Post-convert hook
+                self._execute_hook_stage("post_convert", self._create_hook_context())
             else:
                 self.logger.info("⏭️  CONVERT stage disabled")
 
             # Stage 5: VALIDATE (all converted disks)
             if self.loader.is_stage_enabled("validate"):
                 self._run_stage("validate", self._stage_validate)
+
+                # Post-validate hook
+                self._execute_hook_stage("post_validate", self._create_hook_context())
             else:
                 self.logger.info("⏭️  VALIDATE stage disabled")
 
@@ -437,3 +465,53 @@ class ManifestOrchestrator:
         # Write report
         self.reporter.write_json(report_path)
         self.logger.info(f"📊 Report written: {report_path}")
+
+    def _execute_hook_stage(self, stage: str, context: dict[str, Any]) -> None:
+        """
+        Execute hooks for a given pipeline stage.
+
+        Args:
+            stage: Stage name (e.g., "pre_fix", "post_convert")
+            context: Context variables for template substitution
+        """
+        if not self.hook_runner:
+            return
+
+        if not self.hook_runner.has_hooks_for_stage(stage):
+            return
+
+        try:
+            success = self.hook_runner.execute_stage_hooks(stage, context)
+            if not success:
+                self.reporter.add_warning(
+                    self.current_stage,
+                    f"One or more {stage} hooks failed (continue_on_error enabled)"
+                )
+        except Exception as e:
+            self.logger.error(f"💥 Hook stage '{stage}' failed: {e}")
+            self.reporter.add_error(self.current_stage, f"Hook {stage} failed: {e}")
+            raise
+
+    def _create_hook_context(self) -> dict[str, Any]:
+        """
+        Create context dictionary for hook variable substitution.
+
+        Returns:
+            Dictionary of context variables
+        """
+        source_meta = self.loader.get_source_metadata()
+        boot_disk = self.loader.get_boot_disk()
+
+        # Get source and output paths
+        source_path = str(boot_disk.local_path) if boot_disk else ""
+        output_path = ""
+        if self.output_dir and boot_disk:
+            output_format = self.loader.get_output_format()
+            output_path = str(self.output_dir / f"{boot_disk.id}.{output_format}")
+
+        return create_hook_context(
+            stage=self.current_stage,
+            vm_name=source_meta.get("vm_name"),
+            source_path=source_path,
+            output_path=output_path,
+        )

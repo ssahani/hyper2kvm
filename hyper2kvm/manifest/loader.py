@@ -10,6 +10,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ..config.config_loader import Config
+from ..profiles import ProfileLoader
+
 
 class ManifestValidationError(Exception):
     """Raised when manifest validation fails."""
@@ -45,6 +48,8 @@ class ManifestLoader:
         self.manifest: dict[str, Any] = {}
         self.path: Path | None = None
         self.disks: list[DiskArtifact] = []
+        self.profile_loader = ProfileLoader(logger)
+        self.loaded_profile: dict[str, Any] | None = None
 
     def load(self, manifest_path: str | Path) -> dict[str, Any]:
         """
@@ -75,6 +80,10 @@ class ManifestLoader:
             raise ManifestValidationError(f"Invalid JSON in manifest: {e}") from e
 
         self._validate()
+
+        # Load and apply profile if specified
+        self._apply_profile()
+
         self.logger.info(f"✅ Artifact Manifest v{self.get_version()} loaded successfully")
 
         return self.manifest
@@ -265,6 +274,61 @@ class ManifestLoader:
                 )
 
         return results
+
+    def _apply_profile(self) -> None:
+        """
+        Load and apply migration profile if specified in manifest.
+
+        Profiles are merged with manifest configuration:
+        - Profile settings act as defaults
+        - Manifest settings override profile settings
+        - profile_overrides apply on top of profile
+
+        Priority (lowest to highest):
+        1. Profile defaults
+        2. Profile overrides (from manifest.profile_overrides)
+        3. Direct manifest settings (always win)
+        """
+        profile_name = self.manifest.get("profile")
+        if not profile_name:
+            self.logger.debug("No profile specified in manifest")
+            return
+
+        try:
+            # Load profile
+            custom_path = self.manifest.get("profiles_directory")
+            custom_path_obj = Path(custom_path) if custom_path else None
+
+            self.logger.info(f"📋 Loading profile: {profile_name}")
+            profile_config = self.profile_loader.load_profile(
+                profile_name, custom_profile_path=custom_path_obj
+            )
+
+            # Apply profile_overrides if present
+            profile_overrides = self.manifest.get("profile_overrides", {})
+            if profile_overrides:
+                self.logger.debug(f"Applying profile overrides: {list(profile_overrides.keys())}")
+                profile_config = self.profile_loader.apply_overrides(
+                    profile_config, profile_overrides
+                )
+
+            # Store loaded profile for reference
+            self.loaded_profile = profile_config.copy()
+
+            # Merge profile into manifest (manifest settings override profile)
+            # Use Config.merge_dicts: base=profile, override=manifest
+            merged = Config.merge_dicts(profile_config, self.manifest)
+
+            # Update manifest with merged configuration
+            self.manifest = merged
+
+            self.logger.info(f"✅ Profile '{profile_name}' applied successfully")
+
+        except Exception as e:
+            self.logger.error(f"Failed to load profile '{profile_name}': {e}")
+            raise ManifestValidationError(
+                f"Profile loading failed: {e}"
+            ) from e
 
     # Convenience getters
 

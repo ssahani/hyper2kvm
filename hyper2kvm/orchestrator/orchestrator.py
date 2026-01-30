@@ -53,10 +53,35 @@ class Orchestrator:
 
         Log.trace(
             self.logger,
-            "🧠 Orchestrator init: cmd=%r output_dir=%r",
+            "🧠 Orchestrator init: cmd=%r output_dir=%r batch=%r",
             getattr(args, "cmd", None),
             getattr(args, "output_dir", None),
+            getattr(args, "batch_manifest", None),
         )
+
+    def _handle_batch_mode(self) -> None:
+        """Handle batch conversion mode."""
+        from ..manifest.batch_orchestrator import BatchOrchestrator
+
+        batch_manifest_path = getattr(self.args, "batch_manifest")
+        self.logger.info("🔄 Batch mode detected")
+        self.logger.info(f"📋 Batch manifest: {batch_manifest_path}")
+
+        try:
+            batch_orchestrator = BatchOrchestrator(batch_manifest_path, logger=self.logger)
+            report = batch_orchestrator.run()
+
+            # Overall success/failure
+            if report["batch"]["success"]:
+                self.logger.info("✅ All VMs converted successfully")
+            else:
+                failed = report["batch"]["failed_vms"]
+                total = report["batch"]["total_vms"]
+                self.logger.warning(f"⚠️  Batch completed with {failed}/{total} failures")
+
+        except Exception as e:
+            self.logger.error(f"💥 Batch mode failed: {e}")
+            U.die(self.logger, f"Batch conversion error: {e}", 1)
 
     def _setup_recovery(self, out_root: Path) -> None:
         """Setup recovery manager if enabled."""
@@ -247,6 +272,11 @@ class Orchestrator:
 
     def run(self) -> None:
         """Main orchestration pipeline."""
+
+        # Check for batch mode first
+        if getattr(self.args, "batch_manifest", None):
+            self._handle_batch_mode()
+            return
 
         # Welcome banner
         self.logger.info("━" * 80)

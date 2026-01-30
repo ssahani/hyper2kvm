@@ -13,6 +13,7 @@ from .builder import HelpFormatter, _build_epilog
 from .groups import (
     _add_ami_extraction_knobs,
     _add_azure_knobs,
+    _add_batch_knobs,
     _add_daemon_flags,
     _add_domain_emission,
     _add_fixing_behavior,
@@ -21,6 +22,7 @@ from .groups import (
     _add_global_operation_flags,
     _add_govc_knobs,
     _add_input_paths,
+    _add_libvirt_xml_knobs,
     _add_luks_knobs,
     _add_ovf_ova_knobs,
     _add_ovftool_knobs,
@@ -28,9 +30,8 @@ from .groups import (
     _add_ssh_fetch_knobs,
     _add_systemd_gen,
     _add_tests,
-    _add_v2v_flags,
     _add_vsphere_core_knobs,
-    _add_vsphere_v2v_and_download_knobs,
+    _add_vsphere_export_and_download_knobs,
     _add_windows_network_override,
     _add_windows_virtio_definitions,
 )
@@ -57,16 +58,17 @@ def build_parser() -> argparse.ArgumentParser:
     _add_flatten_convert(p)
     _add_fixing_behavior(p)
     _add_windows_virtio_definitions(p)
-    _add_v2v_flags(p)
     _add_windows_network_override(p)
     _add_luks_knobs(p)
 
     _add_tests(p)
     _add_domain_emission(p)
 
+    _add_batch_knobs(p)
     _add_daemon_flags(p)
     _add_ovf_ova_knobs(p)
     _add_ami_extraction_knobs(p)
+    _add_libvirt_xml_knobs(p)
 
     _add_input_paths(p)
     _add_ssh_fetch_knobs(p)
@@ -75,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_vsphere_core_knobs(p)
     _add_govc_knobs(p)
     _add_ovftool_knobs(p)
-    _add_vsphere_v2v_and_download_knobs(p)
+    _add_vsphere_export_and_download_knobs(p)
 
     _add_azure_knobs(p)
 

@@ -189,10 +189,7 @@ def _add_windows_virtio_definitions(p: argparse.ArgumentParser) -> None:
     )
 
 
-# virt-v2v support removed - hyper2kvm uses only internal converters and fixers
-def _add_v2v_flags(p: argparse.ArgumentParser) -> None:
-    """Deprecated: virt-v2v support has been removed."""
-    pass
+# Removed: virt-v2v support (hyper2kvm uses only internal converters and fixers)
 
 
 def _add_windows_network_override(p: argparse.ArgumentParser) -> None:
@@ -392,14 +389,35 @@ def _add_ami_extraction_knobs(p: argparse.ArgumentParser) -> None:
         default=None,
         help="Output directory for qcow2 created from AMI/cloud payload disks (default: <output-dir>/qcow2).",
     )
-    p.add_argument("--payload-convert-compress", dest="payload_convert_compress", action="store_true", help="When converting AMI/cloud payload disks to qcow2, enable compression.")
+
+
+def _add_libvirt_xml_knobs(p: argparse.ArgumentParser) -> None:
+    # Libvirt domain XML parsing knobs
     p.add_argument(
-        "--payload-convert-compress-level",
-        dest="payload_convert_compress_level",
-        type=int,
-        choices=range(1, 10),
+        "--libvirt-xml",
+        "--xml-path",
+        dest="libvirt_xml",
         default=None,
-        help="Compression level 1-9 for qcow2 conversion of AMI/cloud payload disks.",
+        help="Path to libvirt domain XML file for manifest generation (use with cmd: libvirt-xml in config).",
+    )
+    p.add_argument(
+        "--compute-checksums",
+        dest="compute_checksums",
+        action="store_true",
+        default=True,
+        help="Compute SHA256 checksums for disks when parsing libvirt XML (default: enabled).",
+    )
+    p.add_argument(
+        "--no-compute-checksums",
+        dest="compute_checksums",
+        action="store_false",
+        help="Skip checksum computation when parsing libvirt XML.",
+    )
+    p.add_argument(
+        "--manifest-filename",
+        dest="manifest_filename",
+        default="manifest.json",
+        help="Output manifest filename for libvirt-xml mode (default: manifest.json).",
     )
 
 
@@ -531,33 +549,32 @@ def _add_ovftool_knobs(p: argparse.ArgumentParser) -> None:
     p.add_argument("--ovftool-datastore", dest="ovftool_datastore", default=None, help="OVF Tool deploy: target datastore name.")
 
 
-def _add_vsphere_v2v_and_download_knobs(p: argparse.ArgumentParser) -> None:
-    # Existing virt-v2v vSphere export knobs, download-only knobs, VDDK knobs...
+def _add_vsphere_export_and_download_knobs(p: argparse.ArgumentParser) -> None:
+    # vSphere export knobs, download-only knobs, VDDK knobs...
     p.add_argument(
-        "--vs-v2v",
-        dest="vs_v2v",
+        "--vs-export",
+        dest="vs_export",
         action="store_true",
-        help="EXPERIMENTAL: export VM(s) directly from vSphere via virt-v2v (VDDK/SSH) and then run normal pipeline.",
+        help="EXPERIMENTAL: export VM(s) directly from vSphere (VDDK/SSH) and then run normal pipeline.",
     )
     p.add_argument("--vs-vm", dest="vs_vm", default=None, help="VM name to export (alternative to --vm-name).")
     p.add_argument("--vs-vms", dest="vs_vms", nargs="*", default=None, help="Multiple VM names to export.")
     p.add_argument("--vs-datacenter", dest="vs_datacenter", default="ha-datacenter", help="Datacenter name (default: ha-datacenter)")
 
     # IMPORTANT: no default here (avoids silently selecting VDDK)
-    p.add_argument("--vs-transport", dest="vs_transport", default=None, choices=["vddk", "ssh"], help="EXPERIMENTAL virt-v2v input transport (set explicitly).")
+    p.add_argument("--vs-transport", dest="vs_transport", default=None, choices=["vddk", "ssh"], help="EXPERIMENTAL export transport method (set explicitly).")
 
     p.add_argument("--vs-vddk-libdir", dest="vs_vddk_libdir", default=None, help="Path to VDDK libdir (if using vddk transport)")
     p.add_argument("--vs-vddk-thumbprint", dest="vs_vddk_thumbprint", default=None, help="vCenter TLS thumbprint for VDDK verification")
     p.add_argument("--vs-snapshot-moref", dest="vs_snapshot_moref", default=None, help="Snapshot MoRef (e.g. snapshot-123) to export from")
     p.add_argument("--vs-create-snapshot", dest="vs_create_snapshot", action="store_true", help="Create a quiesced snapshot before export and use it")
 
-    p.add_argument("--vs-download-only", dest="vs_download_only", action="store_true", help="vSphere virt-v2v hook: download/export ONLY (skip inspection/fixes/tests in later pipeline).")
+    p.add_argument("--vs-download-only", dest="vs_download_only", action="store_true", help="vSphere export: download/export ONLY (skip inspection/fixes/tests in later pipeline).")
     p.add_argument("--vs-no-download-only", dest="vs_download_only", action="store_false", help="Disable download-only mode (run normal pipeline after export).")
     p.set_defaults(vs_download_only=False)
 
-    p.add_argument("--vs-v2v-concurrency", dest="vs_v2v_concurrency", type=int, default=1, help="Max concurrent vSphere virt-v2v exports (default: 1).")
-    p.add_argument("--vs-v2v-extra-args", dest="vs_v2v_extra_args", action="append", default=[], help="Extra args passed through to virt-v2v (repeatable).")
-    p.add_argument("--vs-no-verify", dest="vs_no_verify", action="store_true", help="Disable TLS verification for virt-v2v vpx:// input (use with caution).")
+    p.add_argument("--vs-export-concurrency", dest="vs_export_concurrency", type=int, default=1, help="Max concurrent vSphere exports (default: 1).")
+    p.add_argument("--vs-no-verify", dest="vs_no_verify", action="store_true", help="Disable TLS verification for vSphere connection (use with caution).")
 
     p.add_argument("--include-glob", dest="vs_include_glob", action="append", default=[], help="download-only VM folder: include file glob (repeatable). Default is ['*'] if none supplied.")
     p.add_argument("--exclude-glob", dest="vs_exclude_glob", action="append", default=[], help="download-only VM folder: exclude file glob (repeatable).")
@@ -602,6 +619,37 @@ def _add_vsphere_v2v_and_download_knobs(p: argparse.ArgumentParser) -> None:
 
     # OVF Tool deploy action arg (input local OVA/OVF)
     p.add_argument("--source-path", dest="source_path", default=None, help="ovftool_deploy: local source path to .ova or .ovf (required for vs_action=ovftool_deploy).")
+
+
+def _add_batch_knobs(p: argparse.ArgumentParser) -> None:
+    # Batch conversion knobs
+    p.add_argument(
+        "--batch-manifest",
+        dest="batch_manifest",
+        default=None,
+        help="Path to batch manifest (JSON/YAML) for multi-VM conversion. "
+             "When specified, processes multiple VMs in batch with parallel execution support.",
+    )
+    p.add_argument(
+        "--batch-parallel",
+        dest="batch_parallel",
+        type=int,
+        default=None,
+        help="Override parallel limit for batch processing (default: from batch manifest or 4).",
+    )
+    p.add_argument(
+        "--batch-continue-on-error",
+        dest="batch_continue_on_error",
+        action="store_true",
+        default=None,
+        help="Override continue-on-error behavior for batch (default: from batch manifest or True).",
+    )
+    p.add_argument(
+        "--no-batch-continue-on-error",
+        dest="batch_continue_on_error",
+        action="store_false",
+        help="Stop batch on first VM failure (overrides batch manifest).",
+    )
 
 
 def _add_azure_knobs(p: argparse.ArgumentParser) -> None:

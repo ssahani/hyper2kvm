@@ -11,6 +11,7 @@ import argparse
 import logging
 from pathlib import Path
 
+from ..converters.extractors.libvirt_xml import LibvirtXML
 from ..converters.extractors.ovf import OVF
 from ..converters.extractors.raw import RAW
 from ..converters.extractors.vhd import VHD
@@ -236,6 +237,34 @@ class DiskDiscovery:
             ).run()
             self.logger.info("✅ Live fix done.")
             # Return empty - live-fix doesn't produce disks
+            return [], None
+
+        elif cmd == "libvirt-xml":
+            # Libvirt domain XML parsing - generates Artifact Manifest v1
+            Log.step(self.logger, "Parse Libvirt Domain XML → Generate Manifest")
+
+            xml_path = getattr(self.args, "libvirt_xml", None) or getattr(self.args, "xml_path", None)
+            if not xml_path:
+                raise Fatal(2, "libvirt-xml mode requires --libvirt-xml <path> or --xml-path <path>")
+
+            manifest = LibvirtXML.parse_domain_xml(
+                self.logger,
+                Path(xml_path).expanduser().resolve(),
+                output_dir=out_root,
+                compute_checksums=bool(getattr(self.args, "compute_checksums", True)),
+                manifest_filename=getattr(self.args, "manifest_filename", "manifest.json"),
+            )
+
+            self.logger.info("=" * 80)
+            self.logger.info("✅ Artifact Manifest v1 generated successfully")
+            self.logger.info("=" * 80)
+            self.logger.info(f"📄 Manifest: {out_root / getattr(self.args, 'manifest_filename', 'manifest.json')}")
+            self.logger.info("")
+            self.logger.info("Next steps:")
+            self.logger.info(f"  sudo hyper2kvm --config {out_root / getattr(self.args, 'manifest_filename', 'manifest.json')}")
+            self.logger.info("")
+
+            # Return empty - libvirt-xml just generates manifest, doesn't do conversion
             return [], None
 
         elif cmd == "daemon":
