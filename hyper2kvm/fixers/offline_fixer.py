@@ -986,8 +986,18 @@ class OfflineFSFix:
                     # Log mount failures as WARNING so we can see them
                     self.logger.warning(f"Mount failed for {dev} (type={vfs_type}): {mount_error}")
 
-                    # If mount fails, try filesystem-specific repair
-                    if vfs_type == "ext4":
+                    # Try filesystem-specific recovery strategies
+                    if vfs_type == "xfs":
+                        # XFS: Try read-only with norecovery (skips dirty log replay)
+                        self.logger.info(f"XFS mount failed, retrying with ro,norecovery for {dev}")
+                        try:
+                            g.mount_options("ro,norecovery", dev, "/")
+                            self.logger.info(f"✓ Mount succeeded with ro,norecovery: {dev}")
+                            # Continue with read-only mode for detection
+                        except Exception as xfs_error:
+                            self.logger.warning(f"XFS recovery mount also failed: {xfs_error}")
+                            raise mount_error
+                    elif vfs_type == "ext4":
                         self.logger.warning(f"Attempting fsck for ext4 partition {dev}")
                         try:
                             # Run fsck in non-interactive mode
