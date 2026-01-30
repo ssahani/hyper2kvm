@@ -1,0 +1,301 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from typing import Any, Dict, Optional, Tuple
+
+from .helpers import _merged_get, _merged_secret, _require
+
+
+def _validate_json_object_file(path: str, flag: str) -> None:
+    if not os.path.isfile(path):
+        raise SystemExit(f"{flag} file not found: {path}")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+        if not isinstance(parsed, dict):
+            raise ValueError("top-level JSON must be an object")
+    except Exception as e:
+        raise SystemExit(f"{flag} is not valid JSON object: {path}: {e}")
+
+
+def _validate_json_object_inline(js: str, flag: str) -> None:
+    try:
+        parsed = json.loads(js)
+        if not isinstance(parsed, dict):
+            raise ValueError("top-level JSON must be an object")
+    except Exception as e:
+        raise SystemExit(f"{flag} is not valid JSON object: {e}")
+
+
+def _validate_win_net_override_inputs(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    """
+    Validate Windows network override knobs without doing any filesystem writes.
+
+    Rules:
+      - win_net_override: file must exist and parse as JSON object (dict)
+      - win_net_json: must parse as JSON object (dict)
+      - both may be set, but win_net_override takes precedence downstream
+    """
+    p = _merged_get(args, conf, "win_net_override")
+    js = _merged_get(args, conf, "win_net_json")
+
+    if _require(p):
+        _validate_json_object_file(str(p), "--win-net-override")
+
+    if _require(js):
+        _validate_json_object_inline(str(js), "--win-net-json")
+
+
+def _validate_virtio_config_inputs(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    """
+    Validate VirtIO driver-definition config knobs.
+
+    Rules:
+      - virtio_config_path: file must exist; extension must be .json/.yaml/.yml
+      - virtio_config_json: must parse as JSON object (dict)
+    """
+    pth = _merged_get(args, conf, "virtio_config_path")
+    js = _merged_get(args, conf, "virtio_config_json")
+
+    if _require(pth):
+        path = str(pth)
+        if not os.path.isfile(path):
+            raise SystemExit(f"--virtio-config file not found: {path}")
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in (".json", ".yaml", ".yml"):
+            raise SystemExit(f"--virtio-config must be .json/.yaml/.yml, got: {path}")
+
+    if _require(js):
+        _validate_json_object_inline(str(js), "--virtio-config-json")
+
+
+def _pick_vsphere_vm_name(args: argparse.Namespace, conf: Dict[str, Any]) -> Optional[str]:
+    vm_name = conf.get("vm_name", None)
+    if not _require(vm_name):
+        vm_name = getattr(args, "vm_name_vsphere", None)
+    if not _require(vm_name):
+        vms = getattr(args, "vs_vms", None)
+        vm_name = getattr(args, "vs_vm", None) or (vms[0] if vms else None)
+    return str(vm_name) if _require(vm_name) else None
+
+
+def _validate_cmd_local(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "vmdk")):
+        raise SystemExit("cmd=local: missing required `vmdk:` (YAML) or CLI override --vmdk")
+
+
+def _validate_cmd_fetch_and_fix(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "host")):
+        raise SystemExit("cmd=fetch-and-fix: missing required `host:` (YAML) or CLI --host")
+    if not _require(_merged_get(args, conf, "remote")):
+        raise SystemExit("cmd=fetch-and-fix: missing required `remote:` (YAML) or CLI --remote")
+
+
+def _validate_cmd_ova(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "ova")):
+        raise SystemExit("cmd=ova: missing required `ova:` (YAML) or CLI --ova")
+
+
+def _validate_cmd_ovf(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "ovf")):
+        raise SystemExit("cmd=ovf: missing required `ovf:` (YAML) or CLI --ovf")
+
+
+def _validate_cmd_vhd(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "vhd")):
+        raise SystemExit("cmd=vhd: missing required `vhd:` (YAML) or CLI --vhd")
+
+
+def _validate_cmd_ami(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "ami")):
+        raise SystemExit("cmd=ami: missing required `ami:` (YAML) or CLI --ami")
+
+
+def _validate_cmd_live_fix(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "host")):
+        raise SystemExit("cmd=live-fix: missing required `host:` (YAML) or CLI --host")
+
+
+def _validate_vsphere_identity(args: argparse.Namespace, conf: Dict[str, Any]) -> Tuple[str, str, str]:
+    vcenter = _merged_get(args, conf, "vcenter")
+    vc_user = _merged_get(args, conf, "vc_user")
+    vc_password = _merged_secret(args, conf, "vc_password", "vc_password_env")
+
+    if not _require(vcenter):
+        raise SystemExit("cmd=vsphere: missing required `vcenter:` (YAML) or CLI --vcenter")
+    if not _require(vc_user):
+        raise SystemExit("cmd=vsphere: missing required `vc_user:` (YAML) or CLI --vc-user")
+    if not _require(vc_password):
+        raise SystemExit("cmd=vsphere: missing vCenter password. Set `vc_password:` or `vc_password_env:` (or CLI equivalents).")
+
+    return str(vcenter), str(vc_user), str(vc_password)
+
+
+def _validate_vsphere_control_plane(args: argparse.Namespace, conf: Dict[str, Any], vcenter: str, vc_user: str, vc_password: str) -> None:
+    vs_cp = _merged_get(args, conf, "vs_control_plane")
+    if not _require(vs_cp):
+        vs_cp = conf.get("vs_control_plane", None) or "govc"
+    vs_cp = str(vs_cp).strip().lower()
+
+    govc_url = _merged_get(args, conf, "govc_url")
+    govc_user = _merged_get(args, conf, "govc_user") or vc_user
+    govc_password = _merged_secret(args, conf, "govc_password", "govc_password_env") or vc_password
+
+    if not _require(govc_url) and _require(vcenter):
+        govc_url = f"https://{str(vcenter).strip()}/sdk"
+
+    if vs_cp in ("govc", "auto"):
+        if not _require(govc_url):
+            raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_url:` (or it must be derivable).")
+        if not _require(govc_user):
+            raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_user:` (or `vc_user:`).")
+        if not _require(govc_password):
+            raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_password:`/`govc_password_env:` (or `vc_password:`).")
+
+    elif vs_cp == "pyvmomi":
+        return
+    else:
+        raise SystemExit(f"cmd=vsphere: invalid vs_control_plane={vs_cp!r} (use auto|govc|pyvmomi)")
+
+
+def _validate_vsphere_download_transport(args: argparse.Namespace, conf: Dict[str, Any]) -> str:
+    dl = _merged_get(args, conf, "vs_download_transport")
+    if not _require(dl):
+        dl = conf.get("vs_download_transport", None)
+
+    legacy = conf.get("vs_transport", None)
+    if not _require(dl) and _require(legacy):
+        dl = str(legacy).strip().lower()
+
+    dl = (str(dl).strip().lower() if _require(dl) else "https")
+    if dl == "auto":
+        dl = "https"
+    if dl not in ("https", "http"):
+        raise SystemExit(f"cmd=vsphere: invalid vs_download_transport={dl!r} (use https|http|auto)")
+    return dl
+
+
+def _validate_vsphere_action_requirements(args: argparse.Namespace, conf: Dict[str, Any], act: str) -> None:
+    vm_name = _pick_vsphere_vm_name(args, conf)
+
+    name = conf.get("name", None)
+    if not _require(name):
+        name = getattr(args, "name_vsphere", None)
+
+    label_or_index = conf.get("label_or_index", None)
+    if not _require(label_or_index):
+        label_or_index = getattr(args, "label_or_index", None)
+
+    datastore = conf.get("datastore", None) if _require(conf.get("datastore", None)) else getattr(args, "datastore", None)
+    ds_path = conf.get("ds_path", None) if _require(conf.get("ds_path", None)) else getattr(args, "ds_path", None)
+    local_path = conf.get("local_path", None) if _require(conf.get("local_path", None)) else getattr(args, "local_path", None)
+
+    needs_vm = {
+        "vm_disks",
+        "select_disk",
+        "download_vm_disk",
+        "cbt_sync",
+        "create_snapshot",
+        "enable_cbt",
+        "query_changed_disk_areas",
+        "download_only_vm",
+        "vddk_download_disk",
+        "export_vm",
+        "ovftool_export",
+    }
+    if act in needs_vm and not _require(vm_name):
+        raise SystemExit(f"cmd=vsphere vs_action={act}: missing required `vm_name:` (YAML) or CLI --vm_name (or --vs-vm)")
+
+    if act == "get_vm_by_name" and not _require(name):
+        raise SystemExit("cmd=vsphere vs_action=get_vm_by_name: missing required `name:` (YAML) or CLI --name")
+
+    if act == "select_disk" and not _require(label_or_index):
+        raise SystemExit("cmd=vsphere vs_action=select_disk: missing required `label_or_index:` (YAML) or CLI --label_or_index")
+
+    if act == "download_datastore_file":
+        for k, vv in (("datastore", datastore), ("ds_path", ds_path), ("local_path", local_path)):
+            if not _require(vv):
+                raise SystemExit(f"cmd=vsphere vs_action=download_datastore_file: missing required `{k}:` (YAML) or CLI --{k}")
+
+    if act in ("download_vm_disk", "vddk_download_disk", "cbt_sync"):
+        if not _require(local_path):
+            raise SystemExit(f"cmd=vsphere vs_action={act}: missing required `local_path:` (YAML) or CLI --local_path")
+
+    if act == "download_only_vm":
+        outd = conf.get("vs_output_dir", None)
+        if not _require(outd):
+            outd = getattr(args, "vs_output_dir", None) or getattr(args, "output_dir", None)
+        if not _require(outd):
+            raise SystemExit("cmd=vsphere vs_action=download_only_vm: missing `vs_output_dir:` (or set --output-dir).")
+
+    if act == "query_changed_disk_areas":
+        device_key = conf.get("device_key", None) if _require(conf.get("device_key", None)) else getattr(args, "device_key", None)
+        disk = conf.get("disk", None) if _require(conf.get("disk", None)) else getattr(args, "disk", None)
+        if not (_require(device_key) or _require(disk)):
+            raise SystemExit("cmd=vsphere vs_action=query_changed_disk_areas: must set `device_key:` OR `disk:` in YAML (or CLI overrides).")
+
+    if act == "ovftool_deploy":
+        sp = conf.get("source_path", None)
+        if not _require(sp):
+            sp = getattr(args, "source_path", None)
+        if not _require(sp):
+            raise SystemExit("cmd=vsphere vs_action=ovftool_deploy: missing required `source_path:` (YAML) or CLI --source-path")
+
+
+def _validate_cmd_vsphere(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    from .helpers import _merged_vs_action
+
+    vcenter, vc_user, vc_password = _validate_vsphere_identity(args, conf)
+    _validate_vsphere_control_plane(args, conf, vcenter, vc_user, vc_password)
+
+    act = _merged_vs_action(args, conf)
+    if not _require(act):
+        raise SystemExit("cmd=vsphere: missing required `vs_action:` (YAML) or CLI --vs-action")
+    act = str(act).strip()
+
+    _validate_vsphere_download_transport(args, conf)
+    _validate_vsphere_action_requirements(args, conf, act)
+
+
+def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    """
+    New-project policy:
+      - No CLI subcommands.
+      - YAML drives the operation (cmd / vs_action), CLI can override.
+    """
+    from .helpers import _merged_cmd
+
+    cmd = _merged_cmd(args, conf)
+    if not _require(cmd):
+        raise SystemExit(
+            "Missing required YAML key: `cmd:` (or `command:`). "
+            "Examples: local, fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, daemon, generate-systemd."
+        )
+
+    # Optional knobs validation (no side effects)
+    _validate_win_net_override_inputs(args, conf)
+    _validate_virtio_config_inputs(args, conf)
+
+    cmd_l = str(cmd).strip().lower()
+
+    validators = {
+        "local": _validate_cmd_local,
+        "fetch-and-fix": _validate_cmd_fetch_and_fix,
+        "ova": _validate_cmd_ova,
+        "ovf": _validate_cmd_ovf,
+        "vhd": _validate_cmd_vhd,
+        "ami": _validate_cmd_ami,
+        "live-fix": _validate_cmd_live_fix,
+        "generate-systemd": lambda _a, _c: None,
+        "daemon": lambda _a, _c: None,
+        "vsphere": _validate_cmd_vsphere,
+    }
+
+    fn = validators.get(cmd_l)
+    if fn is None:
+        raise SystemExit(f"Unknown cmd={cmd!r}. Set YAML `cmd:` to a supported operation.")
+    fn(args, conf)
