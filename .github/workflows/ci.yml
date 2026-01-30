@@ -92,7 +92,7 @@ jobs:
         outputs: type=docker,dest=/tmp/worker.tar
 
     - name: Upload worker image artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: docker-worker
         path: /tmp/worker.tar
