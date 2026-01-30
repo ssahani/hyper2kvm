@@ -38,6 +38,8 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 
 ### 🔧 Feature Documentation
 - **[VMCraft Complete Guide](features/vmcraft/complete-guide.md)** - Native VM manipulation engine
+- **[XFS UUID Regeneration](features/xfs-uuid-regeneration.md)** - Fix cloned VMware VMs with duplicate UUIDs
+- **[fstab Stabilization](features/fstab-stabilization.md)** - Automatic fstab repair and device conversion
 - **[Enhanced Chroot](features/enhanced-chroot.md)** - Advanced filesystem access
 - **[Windows Support](os-support/windows/guide.md)** - VirtIO injection and registry modification
 - **[Cloud-Init Injection](features/cloud-init.md)** - Automated cloud configuration
@@ -84,6 +86,7 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 - ✅ **480+ VMCraft APIs** - Native Python VM manipulation engine
 - ✅ **Multiple Input Formats** - VMDK, OVA, OVF, VHD, AMI, Azure VHD
 - ✅ **Automated Fixes** - Bootloader (GRUB), fstab stabilization, initramfs regeneration
+- ✅ **XFS UUID Regeneration** - Fix cloned VMware VMs with duplicate UUIDs (automatic fstab rebuild)
 - ✅ **Multi-OS Support** - Windows (7-12, Server 2012-2025), Linux (RHEL, Ubuntu, SUSE, Photon), BSD
 - ✅ **Remote Operations** - SSH-based fetch from ESXi, live-fix without downtime
 - ✅ **Windows VirtIO** - Automatic driver injection and registry modification

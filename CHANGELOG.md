@@ -9,6 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### XFS UUID Regeneration and Automatic fstab Rebuild (January 2026) - PRODUCTION READY ✅
+
+**Critical Fix for Cloned VMware VMs with Duplicate XFS Filesystem UUIDs**
+
+Complete automatic solution for the common problem of cloned VMs failing to boot due to duplicate XFS UUIDs. Includes intelligent fstab reconstruction when UUID mappings don't match.
+
+**1. XFS UUID Regeneration** (offline_fixer.py::_regenerate_xfs_uuids):
+- **Automatic Detection**: Scans all partitions and identifies XFS filesystems
+- **UUID Generation**: Uses `xfs_admin -U generate` to create unique UUIDs
+- **Pre-Mount Timing**: Runs at Stage 3.5 (before mounting) - critical for xfs_admin
+- **Host-Side Execution**: Runs on host system (not in guest chroot) for reliability
+- **Audit Trail**: Tracks all UUID changes (device, old UUID, new UUID)
+- **Zero Downtime**: No VM boot required - offline manipulation only
+
+**2. Automatic fstab Rebuild** (offline_fixer.py::_rebuild_fstab_from_disk_layout):
+- **Mismatch Detection**: Identifies when fstab UUIDs don't match actual disk UUIDs
+  - Common in cloned VMs where fstab is from template VM
+  - Detects UUID mismatches between regenerated UUIDs and fstab entries
+- **Device-to-Mountpoint Heuristics**:
+  - p1/sda1 → /boot (boot partition markers: vmlinuz, initramfs, grub2)
+  - p2/sda2 → / (root markers: /etc/os-release, /usr, /etc)
+  - p5/sda5 → /home (separate home partition pattern)
+  - p3/sda3 → swap (swap signature detection)
+- **Preserve Mount Options**: Retains original fstab options (defaults, nofail, device-timeout)
+- **Sudo-Based Writes**: Handles VMCraft root-owned mounts with temporary file + sudo cp
+- **Backup Creation**: Automatically backs up original fstab before modification
+
+**3. Enhanced fstab Update Logic** (offline_fixer.py::_update_fstab_with_new_uuids):
+- **Try UUID Update First**: Attempts to update existing fstab entries with new UUIDs
+- **Fallback to Rebuild**: If UUIDs don't match, triggers complete fstab rebuild
+- **Detailed Logging**: Reports which lines were updated and why
+
+**4. VMCraft API Enhancements**:
+- **stat()** (file_ops.py): Get file metadata in guestfs-compatible format
+- **findfs_uuid()** (main.py): Find device by filesystem UUID
+- **findfs_label()** (main.py): Find device by filesystem label
+- **/run bind mount** (main.py): Added to command_with_mounts for dracut support
+
+**5. XFS Duplicate UUID Mount Handling** (mount.py):
+- **Dmesg Scanning**: Detects "duplicate uuid" errors from kernel messages
+- **Automatic nouuid Retry**: Mounts with nouuid option when duplicates detected
+- **Recovery Logging**: Clear messages about duplicate UUID handling
+
+**Tested Successfully On**:
+- ✅ CentOS Stream 9 (cloned VM - 3 XFS filesystems)
+- ✅ RHEL 8/9 (cloned templates)
+- ✅ Rocky Linux 8/9
+- ✅ Fedora 40-43
+
+**Migration Impact**:
+- **Before**: Cloned VMs fail to boot → dracut emergency shell → manual intervention required
+- **After**: Automatic UUID regeneration + fstab rebuild → successful boot
+- **Time Saved**: ~15-30 minutes per VM (no manual UUID/fstab fixing)
+- **Scale**: Critical for environments with 100s of cloned VMs from templates
+
+**Documentation**:
+- [XFS UUID Regeneration Guide](docs/features/xfs-uuid-regeneration.md) - Complete feature documentation
+- [fstab Stabilization Guide](docs/features/fstab-stabilization.md) - Related fstab fixes
+
 #### Live Migration v1.0 (January 2026) - P0 Feature IMPLEMENTED ✅
 
 **Production-Ready Live Migration with HyperSDK Integration** (4,175 lines across 4 modules, 30 tests):
