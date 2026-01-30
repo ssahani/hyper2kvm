@@ -208,6 +208,29 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
 - **Detailed Reporting:** Comprehensive migration reports and logs 📊
 - **vSphere Integration:** Native API support via govc, pyvmomi, and hyperctl (high-performance provider) ☁️
 
+### V2V-Style Migration Features 🚚
+
+**Enterprise-grade batch migration capabilities for large-scale VM conversions:**
+
+- **Batch Orchestration:** Multi-VM parallel conversions with configurable worker limits 🔄
+- **Migration Profiles:** 7 built-in profiles (production, testing, minimal, fast, windows, archive, debug) + custom profile support with inheritance 📋
+- **Pre/Post Hooks:** Execute custom scripts, Python functions, or HTTP webhooks at 7 pipeline stages ⚡
+  - Hook stages: pre_extraction, post_extraction, pre_fix, post_fix, pre_convert, post_convert, post_validate
+  - Retry logic with exponential backoff
+  - Template variable substitution (15+ variables)
+- **Libvirt XML Import:** Parse and convert existing libvirt VMs with automatic domain creation 🔄
+- **Network & Storage Mapping:** Transform source networks/storage to target infrastructure 🗺️
+  - Source network to target bridge mapping
+  - MAC address policies (preserve/regenerate/custom)
+  - Per-disk storage pool mappings
+- **Direct Libvirt Integration:** Automatic domain definition, disk import to storage pools, snapshot creation 🔗
+- **Checkpoint/Resume:** Crash-safe batch conversions with atomic checkpoint saves 💾
+- **Progress Tracking:** Real-time progress persistence to JSON for external monitoring 📊
+- **Validation Framework:** Extensible validation with 4 severity levels (INFO, WARNING, ERROR, CRITICAL) ✅
+- **Profile Caching:** Performance optimization with mtime-based invalidation 🚀
+
+**See:** [Batch Migration Guide](docs/Batch-Migration-Features-Guide.md) | [Quick Reference](docs/Batch-Migration-Quick-Reference.md)
+
 ### Safety Mechanisms 🔒
 
 - Automatic backups (unless explicitly disabled) 💾
