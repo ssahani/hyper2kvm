@@ -290,7 +290,7 @@ class OfflineFSFix:
         g.add_drive_opts(str(self.image), readonly=self.dry_run)
         g.launch()
 
-        # Log backend info if available (native backend specific)
+        # Log backend info if available (VMCraft backend specific)
         if hasattr(g, 'get_backend_info'):
             try:
                 backend_info = g.get_backend_info()

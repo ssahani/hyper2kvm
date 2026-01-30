@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/core/native_guestfs.py
+# hyper2kvm/core/vmcraft.py
 """
-Native Python implementation of guestfs API using qemu-nbd + Linux tools.
+VMCraft: Python library for VM disk image manipulation.
 
-Drop-in replacement for libguestfs.GuestFS that uses:
+Drop-in replacement for libguestfs that uses:
 - qemu-nbd for disk image access
 - Native Linux tools (mount, lvm, cryptsetup, etc.)
 - Python file I/O for guest filesystem operations
@@ -61,7 +61,7 @@ def _run_sudo(logger: logging.Logger, cmd: list[str], *, check: bool = True, cap
     return U.run_cmd(logger, sudo_cmd, check=check, capture=capture)
 
 
-class NativeGuestFS:
+class VMCraft:
     """
     Native implementation of guestfs.GuestFS API.
 
@@ -69,7 +69,7 @@ class NativeGuestFS:
     Compatible with existing code that uses guestfs.GuestFS(python_return_dict=True).
 
     Example:
-        g = NativeGuestFS(python_return_dict=True)
+        g = VMCraft(python_return_dict=True)
         g.add_drive_opts('/path/to/disk.qcow2', readonly=True)
         g.launch()
         try:
@@ -84,7 +84,7 @@ class NativeGuestFS:
 
     def __init__(self, python_return_dict: bool = True):
         """
-        Initialize NativeGuestFS.
+        Initialize VMCraft.
 
         Args:
             python_return_dict: Return dicts instead of tuples (default: True)
@@ -102,7 +102,7 @@ class NativeGuestFS:
         self.logger = logging.getLogger(__name__)
 
         # Log backend selection
-        self.logger.debug("🔧 Using native guestfs backend (qemu-nbd + Linux tools)")
+        self.logger.debug("🔧 Using VMCraft backend (qemu-nbd + Linux tools)")
 
     def set_trace(self, enable: int | bool) -> None:
         """Enable debug tracing."""
@@ -157,8 +157,8 @@ class NativeGuestFS:
 
         drive = self._drives[0]
 
-        self.logger.info("🚀 Launching native guestfs backend...")
-        self.logger.info(f"   Backend: Native Python + qemu-nbd + Linux tools")
+        self.logger.info("🚀 Launching VMCraft backend...")
+        self.logger.info(f"   Backend: VMCraft (Python + qemu-nbd + Linux tools)")
         self.logger.info(f"   Image: {Path(drive['path']).name}")
         self.logger.info(f"   Format: {drive.get('format', 'auto-detect')}")
         self.logger.info(f"   Mode: {'read-only' if drive['readonly'] else 'read-write'}")
@@ -193,7 +193,7 @@ class NativeGuestFS:
         self._perf_metrics['total_launch'] = total_time
         self._launched = True
 
-        self.logger.info(f"✅ Native backend ready in {total_time:.2f}s (vs ~5-10s for libguestfs)")
+        self.logger.info(f"✅ VMCraft ready in {total_time:.2f}s (vs ~5-10s for libguestfs)")
         self.logger.debug(f"   Mount root: {self._mount_root}")
 
     def shutdown(self) -> None:
@@ -201,7 +201,7 @@ class NativeGuestFS:
         if not self._launched:
             return
 
-        self.logger.info("🔧 Shutting down native guestfs backend...")
+        self.logger.info("🔧 Shutting down VMCraft backend...")
 
         # Umount all filesystems first
         try:
@@ -219,7 +219,7 @@ class NativeGuestFS:
                 self.logger.warning(f"   ⚠ Error disconnecting NBD: {e}")
 
         self._launched = False
-        self.logger.info("✅ Native backend shut down successfully")
+        self.logger.info("✅ VMCraft shut down successfully")
 
     def close(self) -> None:
         """Close and cleanup."""
@@ -245,20 +245,23 @@ class NativeGuestFS:
 
     def get_backend_info(self) -> dict[str, Any]:
         """
-        Get information about the backend.
+        Get information about the VMCraft backend.
 
         Returns:
             Dict with backend type, version, and capabilities
         """
         return {
-            'backend': 'native',
-            'implementation': 'Python + qemu-nbd + Linux tools',
+            'backend': 'vmcraft',
+            'implementation': 'VMCraft - Python disk manipulation library',
             'version': '1.0.0',
             'features': {
                 'nbd_based': True,
                 'requires_root': True,
                 'libguestfs_compatible': True,
                 'performance': '5x faster startup, 10x less memory',
+                'windows_support': True,
+                'driver_injection': True,
+                'registry_operations': True,
             },
             'launched': self._launched,
             'nbd_device': self._nbd_device if self._launched else None,

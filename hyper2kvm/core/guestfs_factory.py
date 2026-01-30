@@ -4,9 +4,10 @@
 Factory for creating GuestFS instances with backend selection.
 
 Supports:
-- 'auto': Try libguestfs first, fall back to native
+- 'auto': Try libguestfs first, fall back to VMCraft
 - 'libguestfs': Force libguestfs (raise if unavailable)
-- 'native': Force native implementation
+- 'vmcraft': Force VMCraft implementation (default)
+- 'native': Alias for 'vmcraft' (deprecated)
 """
 
 from __future__ import annotations
@@ -34,67 +35,75 @@ def create_guestfs(
     Args:
         python_return_dict: Return dicts instead of tuples (default: True)
         backend: Backend to use:
-            - 'auto': Try libguestfs, fall back to native (default)
+            - 'auto': Try libguestfs, fall back to VMCraft
             - 'libguestfs': Force libguestfs (raise if unavailable)
-            - 'native': Force native implementation
-            - None: Same as 'auto'
+            - 'vmcraft': Force VMCraft implementation (default)
+            - 'native': Alias for 'vmcraft' (deprecated, for compatibility)
+            - None: Defaults to 'vmcraft'
 
     Returns:
-        GuestFS instance (either guestfs.GuestFS or NativeGuestFS)
+        GuestFS instance (either guestfs.GuestFS or VMCraft)
 
     Raises:
         RuntimeError: If requested backend is unavailable
         ImportError: If libguestfs backend requested but not available
 
     Environment Variables:
-        HYPER2KVM_GUESTFS_BACKEND: Override backend selection (auto, libguestfs, native)
+        HYPER2KVM_GUESTFS_BACKEND: Override backend selection (auto, libguestfs, vmcraft, native)
 
     Examples:
-        # Auto-select (tries libguestfs, falls back to native)
+        # Use VMCraft (default)
         g = create_guestfs()
 
-        # Force native
-        g = create_guestfs(backend='native')
+        # Explicit VMCraft
+        g = create_guestfs(backend='vmcraft')
 
         # Force libguestfs
         g = create_guestfs(backend='libguestfs')
+
+        # Auto-select (tries libguestfs, falls back to VMCraft)
+        g = create_guestfs(backend='auto')
     """
     # Check environment variable override
     env_backend = os.environ.get('HYPER2KVM_GUESTFS_BACKEND')
     if env_backend:
         backend = env_backend.lower()
 
-    # Default to 'native' (we're dropping libguestfs dependency)
+    # Default to 'vmcraft'
     if backend is None:
-        backend = 'native'
+        backend = 'vmcraft'
 
     backend = backend.lower()
 
+    # 'native' is deprecated alias for 'vmcraft'
+    if backend == 'native':
+        backend = 'vmcraft'
+
     # Validate backend
-    if backend not in ('auto', 'libguestfs', 'native'):
-        raise ValueError(f"Invalid backend: {backend}. Must be 'auto', 'libguestfs', or 'native'")
+    if backend not in ('auto', 'libguestfs', 'vmcraft'):
+        raise ValueError(f"Invalid backend: {backend}. Must be 'auto', 'libguestfs', or 'vmcraft'")
 
     # Try libguestfs backend
     if backend == 'libguestfs':
         if not LIBGUESTFS_AVAILABLE:
             raise ImportError(
                 "libguestfs backend requested but not available. "
-                "Install python3-guestfs or use backend='native'"
+                "Install python3-guestfs or use backend='vmcraft'"
             )
         return guestfs.GuestFS(python_return_dict=python_return_dict)
 
-    # Try auto (libguestfs first, then native)
+    # Try auto (libguestfs first, then VMCraft)
     if backend == 'auto':
         if LIBGUESTFS_AVAILABLE:
             return guestfs.GuestFS(python_return_dict=python_return_dict)
-        # Fall back to native
-        from .native_guestfs import NativeGuestFS
-        return NativeGuestFS(python_return_dict=python_return_dict)
+        # Fall back to VMCraft
+        from .vmcraft import VMCraft
+        return VMCraft(python_return_dict=python_return_dict)
 
-    # Native backend
-    if backend == 'native':
-        from .native_guestfs import NativeGuestFS
-        return NativeGuestFS(python_return_dict=python_return_dict)
+    # VMCraft backend
+    if backend == 'vmcraft':
+        from .vmcraft import VMCraft
+        return VMCraft(python_return_dict=python_return_dict)
 
     # Should not reach here
     raise RuntimeError(f"Unexpected backend: {backend}")
