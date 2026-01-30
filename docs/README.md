@@ -22,6 +22,7 @@ Complete documentation for the hyper2kvm VM migration toolkit.
 - **[SUSE](23-SUSE.md)** - SUSE Linux conversions
 
 ### Advanced Topics
+- **[Fstab Stabilization](11-Fstab-Stabilization.md)** - Converting device paths to stable UUIDs
 - **[vSphere Integration](30-vSphere-Export.md)** - vSphere/ESXi export
 - **[vSphere Design](07-vSphere-Design.md)** - vSphere architecture
 - **[Cookbook](06-Cookbook.md)** - Recipes and examples
@@ -188,6 +189,9 @@ docs/
 ├── 05-YAML-Examples.md                # Configuration examples
 ├── 06-Cookbook.md                     # Recipes and howtos
 ├── 07-vSphere-Design.md               # vSphere architecture
+│
+├── Advanced-Topics/
+│   └── 11-Fstab-Stabilization.md      # Device path to UUID conversion
 │
 ├── Windows-Specific/
 │   ├── 10-Windows-Guide.md            # Windows migration guide

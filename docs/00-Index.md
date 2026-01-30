@@ -58,7 +58,7 @@ Linux migrations are generally more straightforward, but each distro has specifi
 
 ### Linux Migration Features
 - ✅ **Automatic initramfs regeneration** - Dracut or update-initramfs
-- ✅ **UUID-based fstab** - Stable device references
+- ✅ **UUID-based fstab** - Stable device references ([11-Fstab-Stabilization](11-Fstab-Stabilization.md))
 - ✅ **GRUB root= fixing** - Kernel parameters
 - ✅ **Network config migration** - NetworkManager, netplan, systemd-networkd
 
@@ -191,6 +191,7 @@ report: /tmp/hyper2kvm-report.md
 23. **[🦎 SUSE](23-SUSE.md)** - openSUSE/SUSE Linux migration
 
 ### Advanced Topics
+11. **[🔧 Fstab Stabilization](11-Fstab-Stabilization.md)** - Converting device paths to stable UUIDs
 14. **[⚙️ Configuration Injection](14-Configuration-Injection-Guide.md)** - Pre-boot network, user, service, and script injection
 30. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere to KVM using direct export
 
