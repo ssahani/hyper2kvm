@@ -1,10 +1,23 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vsphere/vsphere_client.py
+# hyper2kvm/vmware/vmware_client.py
 from __future__ import annotations
 
 """
-vSphere / vCenter client for hyper2kvm
+vSphere / vCenter client for hyper2kvm - Unified API with split implementation
+
+Architecture (stable by default):
+  This module provides a unified VMwareClient API that delegates to specialized
+  modules for different operations:
+
+  - vmware_datastore.py: Datastore operations, VM discovery, download-only mode
+  - vmware_v2v.py: virt-v2v orchestration
+  - vmware_ovftool.py: OVF Tool and govc export operations
+  - vmware_vddk.py: VDDK disk download (experimental)
+
+  The VMwareClient class maintains backward compatibility by delegating method
+  calls to the appropriate module functions. This split architecture improves
+  maintainability while preserving the existing API surface.
 
 Policy (stable by default):
   ✅ Default export path is govc OVF (automation-friendly, debuggable)
@@ -12,27 +25,23 @@ Policy (stable by default):
      - fallback chain: OVF -> OVA -> FORCED HTTPS /folder download-only
   ✅ VDDK raw disk download stays EXPERIMENTAL:
      - only runs when export_mode explicitly requests it ("vddk_download")
-     - all VDDK logic lives in vddk_client.py (this file only orchestrates)
+     - all VDDK logic lives in vmware_vddk.py (this file only orchestrates)
   ✅ virt-v2v is kept as a power-user path ("v2v")
   ✅ OVF Tool support added as alternative export/deployment method
 
-Notes:
-  - govc logic should live in govc_common.py (GovcRunner)
-  - VDDK logic should live in vddk_client.py (VDDKESXClient)
-  - OVF Tool logic should live in ovftool_client.py
-  - HTTP/HTTPS download logic lives in http_download_client.py
+Implementation:
+  - Core connection management and client initialization stay in VMwareClient
+  - All operation-specific logic delegated to specialized modules
+  - Helper methods (_govc, _http_download_client, _ovftool) stay in VMwareClient
+  - Unified export_vm method orchestrates the fallback chain
 """
 
-import fnmatch
 import logging
 import os
 import re
-import shlex
 import shutil
 import ssl
 import socket
-import subprocess
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -262,6 +271,53 @@ class V2VExportOptions:
 
 
 # ---------------------------------------------------------------------------
+# Import all functions from split modules
+# ---------------------------------------------------------------------------
+
+# Import datastore operations
+from .vmware_datastore import (
+    list_datacenters as _datastore_list_datacenters,
+    get_datacenter_by_name as _datastore_get_datacenter_by_name,
+    datacenter_exists as _datastore_datacenter_exists,
+    list_host_names as _datastore_list_host_names,
+    get_vm_by_name as _datastore_get_vm_by_name,
+    vm_to_datacenter as _datastore_vm_to_datacenter,
+    vm_datacenter_name as _datastore_vm_datacenter_name,
+    resolve_datacenter_for_vm as _datastore_resolve_datacenter_for_vm,
+    resolve_compute_for_vm as _datastore_resolve_compute_for_vm,
+    parse_backing_filename as _datastore_parse_backing_filename,
+    download_datastore_file as _datastore_download_datastore_file,
+    download_only_vm as _datastore_download_only_vm,
+    _download_only_vm_force_https as _datastore_download_only_vm_force_https,
+    _refresh_datacenter_cache as _datastore_refresh_datacenter_cache,
+    _refresh_host_cache as _datastore_refresh_host_cache,
+    resolve_host_system_for_vm as _datastore_resolve_host_system_for_vm,
+    wait_for_task as _datastore_wait_for_task,
+    _vm_runtime_host as _datastore_vm_runtime_host,
+)
+
+# Import v2v operations
+from .vmware_v2v import (
+    v2v_export_vm as _v2v_export_vm,
+)
+
+# Import ovftool operations
+from .vmware_ovftool import (
+    govc_export_ovf as _ovftool_govc_export_ovf,
+    govc_export_ova as _ovftool_govc_export_ova,
+    ovftool_export_vm as _ovftool_ovftool_export_vm,
+    ovftool_deploy_ova as _ovftool_ovftool_deploy_ova,
+)
+
+# Import vddk operations
+from .vmware_vddk import (
+    vddk_download_disk as _vddk_download_disk,
+    vm_disks as _vddk_vm_disks,
+    select_disk as _vddk_select_disk,
+)
+
+
+# ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
 
@@ -273,8 +329,11 @@ class VMwareClient:
       - HTTPS /folder downloads via HTTPDownloadClient
       - virt-v2v orchestrator (sync subprocess)
       - govc stable exporter (OVF/OVA) via govc_common.GovcRunner
-      - ✅ VDDK raw download is EXPERIMENTAL and lives in vddk_client.py
+      - ✅ VDDK raw download is EXPERIMENTAL and lives in vmware_vddk.py
       - ✅ OVF Tool support for export/deployment
+
+    This class serves as a thin delegation layer to specialized modules while
+    maintaining backward compatibility with the existing API.
     """
 
     def __init__(
@@ -482,11 +541,11 @@ class VMwareClient:
 
             # warm caches (best-effort)
             try:
-                self._refresh_datacenter_cache()
+                _datastore_refresh_datacenter_cache(self)
             except Exception as e:
                 self.logger.debug("Datacenter cache warmup failed (non-fatal): %s", e)
             try:
-                self._refresh_host_cache()
+                _datastore_refresh_host_cache(self)
             except Exception as e:
                 self.logger.debug("Host cache warmup failed (non-fatal): %s", e)
 
@@ -518,141 +577,45 @@ class VMwareClient:
             raise VMwareError(f"Failed to retrieve content: {e}")
 
     # ---------------------------
-    # Datacenters / Hosts
+    # Datacenters / Hosts - Delegate to vmware_datastore
     # ---------------------------
 
     def _refresh_datacenter_cache(self) -> None:
-        self._require_pyvmomi()
-        content = self._content()
-        view = content.viewManager.CreateContainerView(  # type: ignore[attr-defined]
-            content.rootFolder, [vim.Datacenter], True
-        )
-        try:
-            dcs = list(view.view)
-            names = sorted([str(getattr(dc, "name", "")) for dc in dcs if getattr(dc, "name", None)])
-            self._dc_cache = dcs
-            self._dc_name_cache = names
-        finally:
-            try:
-                view.Destroy()
-            except Exception:
-                pass
+        return _datastore_refresh_datacenter_cache(self)
 
     def list_datacenters(self, *, refresh: bool = False) -> List[str]:
-        if refresh or self._dc_name_cache is None:
-            self._refresh_datacenter_cache()
-        return list(self._dc_name_cache or [])
+        return _datastore_list_datacenters(self, refresh=refresh)
 
     def get_datacenter_by_name(self, name: str, *, refresh: bool = False) -> Any:
-        if refresh or self._dc_cache is None:
-            self._refresh_datacenter_cache()
-        target = (name or "").strip()
-        for dc in (self._dc_cache or []):
-            if str(getattr(dc, "name", "")).strip() == target:
-                return dc
-        return None
+        return _datastore_get_datacenter_by_name(self, name, refresh=refresh)
 
     def datacenter_exists(self, name: str, *, refresh: bool = False) -> bool:
-        n = (name or "").strip()
-        if not n:
-            return False
-        return self.get_datacenter_by_name(n, refresh=refresh) is not None
+        return _datastore_datacenter_exists(self, name, refresh=refresh)
 
     def _refresh_host_cache(self) -> None:
-        self._require_pyvmomi()
-        content = self._content()
-        view = content.viewManager.CreateContainerView(  # type: ignore[attr-defined]
-            content.rootFolder, [vim.HostSystem], True
-        )
-        try:
-            self._host_name_cache = sorted([str(getattr(h, "name", "")) for h in view.view if getattr(h, "name", None)])
-        finally:
-            try:
-                view.Destroy()
-            except Exception:
-                pass
+        return _datastore_refresh_host_cache(self)
 
     def list_host_names(self, *, refresh: bool = False) -> List[str]:
-        if refresh or self._host_name_cache is None:
-            self._refresh_host_cache()
-        return list(self._host_name_cache or [])
+        return _datastore_list_host_names(self, refresh=refresh)
 
     # ---------------------------
-    # VM lookup
+    # VM lookup - Delegate to vmware_datastore
     # ---------------------------
 
     def get_vm_by_name(self, name: str) -> Any:
-        self._require_pyvmomi()
-        n = (name or "").strip()
-        if not n:
-            return None
-        if n in self._vm_obj_by_name_cache:
-            return self._vm_obj_by_name_cache[n]
-
-        content = self._content()
-        view = content.viewManager.CreateContainerView(  # type: ignore[attr-defined]
-            content.rootFolder, [vim.VirtualMachine], True
-        )
-        try:
-            for vm_obj in view.view:
-                if getattr(vm_obj, "name", None) == n:
-                    self._vm_obj_by_name_cache[n] = vm_obj
-                    return vm_obj
-            return None
-        finally:
-            try:
-                view.Destroy()
-            except Exception:
-                pass
+        return _datastore_get_vm_by_name(self, name)
 
     def vm_to_datacenter(self, vm_obj: Any) -> Any:
-        self._require_pyvmomi()
-        obj = vm_obj
-        for _ in range(0, 64):
-            if obj is None:
-                break
-            if isinstance(obj, vim.Datacenter):  # type: ignore[attr-defined]
-                return obj
-            obj = getattr(obj, "parent", None)
-        return None
+        return _datastore_vm_to_datacenter(self, vm_obj)
 
     def vm_datacenter_name(self, vm_obj: Any) -> Optional[str]:
-        dc = self.vm_to_datacenter(vm_obj)
-        if dc is None:
-            return None
-        name = getattr(dc, "name", None)
-        return str(name) if name else None
+        return _datastore_vm_datacenter_name(self, vm_obj)
 
     def resolve_datacenter_for_vm(self, vm_name: str, preferred: Optional[str]) -> str:
-        pref = (preferred or "").strip()
-        if pref and pref.lower() not in ("auto", "detect", "guess") and self.datacenter_exists(pref, refresh=False):
-            return pref
-
-        vm_obj = self.get_vm_by_name(vm_name)
-        vm_dc = self.vm_datacenter_name(vm_obj) if vm_obj is not None else None
-        if vm_dc and self.datacenter_exists(vm_dc, refresh=False):
-            return vm_dc
-
-        self._refresh_datacenter_cache()
-        if pref and pref.lower() not in ("auto", "detect", "guess") and self.datacenter_exists(pref, refresh=False):
-            return pref
-
-        if vm_obj is not None:
-            vm_dc = self.vm_datacenter_name(vm_obj)
-            if vm_dc and self.datacenter_exists(vm_dc, refresh=False):
-                return vm_dc
-
-        dcs = self.list_datacenters(refresh=False)
-        if len(dcs) == 1:
-            return dcs[0]
-        raise VMwareError(
-            f"Could not resolve datacenter for VM={vm_name!r}. Preferred={pref!r}, VM_dc={vm_dc!r}. "
-            f"Available datacenters: {dcs}"
-        )
+        return _datastore_resolve_datacenter_for_vm(self, vm_name, preferred)
 
     def _vm_runtime_host(self, vm_obj: Any) -> Any:
-        rt = getattr(vm_obj, "runtime", None)
-        return getattr(rt, "host", None) if rt else None
+        return _datastore_vm_runtime_host(self, vm_obj)
 
     def _host_parent_compute_name(self, host_obj: Any) -> Optional[str]:
         try:
@@ -665,41 +628,13 @@ class VMwareClient:
             return None
 
     def resolve_host_system_for_vm(self, vm_name: str) -> str:
-        vm_obj = self.get_vm_by_name(vm_name)
-        if vm_obj is None:
-            raise VMwareError(f"VM not found: {vm_name!r}")
-
-        host_obj = self._vm_runtime_host(vm_obj)
-        if host_obj is None:
-            raise VMwareError(
-                f"VM {vm_name!r} has no runtime.host; cannot build vpx compute path. "
-                f"Specify opt.compute='host/<cluster>/<host>' or opt.compute='host/<host>'. "
-                f"Known hosts: {self.list_host_names(refresh=True)}"
-            )
-
-        host_name = str(getattr(host_obj, "name", "") or "").strip()
-        if not host_name:
-            raise VMwareError(
-                f"Could not resolve ESXi host name for VM={vm_name!r}. "
-                f"Known hosts: {self.list_host_names(refresh=True)}"
-            )
-
-        cr_name = self._host_parent_compute_name(host_obj)
-        if cr_name and cr_name.lower() != host_name.lower():
-            return f"host/{cr_name}/{host_name}"
-        return f"host/{host_name}"
+        return _datastore_resolve_host_system_for_vm(self, vm_name)
 
     def resolve_compute_for_vm(self, vm_name: str, preferred: Optional[str]) -> str:
-        pref = (preferred or "").strip()
-        if not pref or pref.lower() in ("auto", "detect", "guess"):
-            return self.resolve_host_system_for_vm(vm_name)
-        p = pref.strip().lstrip("/")
-        if "/" not in p:
-            return f"host/{p}"
-        return p
+        return _datastore_resolve_compute_for_vm(self, vm_name, preferred)
 
     # ---------------------------
-    # govc export (stable)
+    # govc export (stable) - Delegate to vmware_ovftool
     # ---------------------------
 
     def _ensure_output_dir(self, base: Path) -> Path:
@@ -708,42 +643,13 @@ class VMwareClient:
         return out
 
     def govc_export_ovf(self, opt: V2VExportOptions) -> Path:
-        g = self._govc()
-        if g is None:
-            raise VMwareError("govc not available (or disabled); cannot run OVF export")
-
-        out_base = self._ensure_output_dir(opt.output_dir)
-        out_dir = out_base / f"{_safe_vm_name(opt.vm_name)}.ovfdir"
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        g.export_ovf(
-            vm=opt.vm_name,
-            out_dir=str(out_dir),
-            snapshot=opt.govc_export_snapshot,
-            power_off=bool(opt.govc_export_power_off),
-            disk_mode=opt.govc_export_disk_mode,
-        )
-        return out_dir
+        return _ovftool_govc_export_ovf(self, opt)
 
     def govc_export_ova(self, opt: V2VExportOptions) -> Path:
-        g = self._govc()
-        if g is None:
-            raise VMwareError("govc not available (or disabled); cannot run OVA export")
-
-        out_base = self._ensure_output_dir(opt.output_dir)
-        out_file = out_base / f"{_safe_vm_name(opt.vm_name)}.ova"
-
-        g.export_ova(
-            vm=opt.vm_name,
-            out_file=str(out_file),
-            snapshot=opt.govc_export_snapshot,
-            power_off=bool(opt.govc_export_power_off),
-            disk_mode=opt.govc_export_disk_mode,
-        )
-        return out_file
+        return _ovftool_govc_export_ova(self, opt)
 
     # ---------------------------
-    # OVF Tool export/deploy
+    # OVF Tool export/deploy - Delegate to vmware_ovftool
     # ---------------------------
 
     def _vm_inventory_path_under_vmfolder(self, vm_obj: Any, dc_obj: Any) -> str:
@@ -840,67 +746,13 @@ class VMwareClient:
         )
 
     def ovftool_export_vm(self, opt: V2VExportOptions) -> Path:
-        """
-        Export VM using OVF Tool (to OVA).
-        """
-        if export_to_ova is None:
-            raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
-
-        out_dir = self._ensure_output_dir(opt.output_dir)
-        ova_path = out_dir / f"{_safe_vm_name(opt.vm_name)}.ova"
-        source_url = self._build_ovftool_source_url(opt.vm_name)
-        options = self._ovftool_export_options(opt)
-
-        self.logger.info("Exporting VM %s to %s using OVF Tool...", opt.vm_name, ova_path)
-        t0 = time.time()
-        try:
-            export_to_ova(
-                paths=self._ovftool(),
-                source=source_url,
-                ova_path=ova_path,
-                options=options,
-                log_prefix="ovftool",
-            )
-        except OvfToolError as e:
-            raise VMwareError(f"OVF Tool export failed: {e}")
-
-        self.logger.info("OVF Tool export completed in %.1fs", time.time() - t0)
-        return ova_path
+        return _ovftool_ovftool_export_vm(self, opt)
 
     def ovftool_deploy_ova(self, source_ova: Path, opt: V2VExportOptions) -> None:
-        """
-        Deploy OVA/OVF using OVF Tool.
-        """
-        if deploy_ovf_or_ova is None:
-            raise VMwareError("OVF Tool client not available. Ensure ovftool_client.py is importable.")
-        if not source_ova.exists():
-            raise VMwareError(f"Source OVA/OVF not found: {source_ova}")
-
-        dc_name = self.resolve_datacenter_for_vm(opt.vm_name, opt.datacenter)
-        dc_q = _quote_inventory_path(dc_name)
-
-        # Target can be a datacenter/folder/resource pool; keep conservative for now.
-        target_url = f"vi://{self.user}:{self.password}@{self.host}/{dc_q}"
-
-        options = self._ovftool_deploy_options(opt, name=opt.vm_name)
-
-        self.logger.info("Deploying %s to vSphere using OVF Tool...", source_ova)
-        t0 = time.time()
-        try:
-            deploy_ovf_or_ova(
-                paths=self._ovftool(),
-                source_ovf_or_ova=source_ova,
-                target_vi=target_url,
-                options=options,
-                log_prefix="ovftool",
-            )
-        except OvfToolError as e:
-            raise VMwareError(f"OVF Tool deployment failed: {e}")
-
-        self.logger.info("OVF Tool deployment completed in %.1fs", time.time() - t0)
+        return _ovftool_ovftool_deploy_ova(self, source_ova, opt)
 
     # ---------------------------
-    # Datastore parsing + HTTPS /folder download
+    # Datastore parsing + HTTPS /folder download - Delegate to vmware_datastore
     # ---------------------------
 
     @staticmethod
@@ -909,10 +761,7 @@ class VMwareClient:
         Parse VMware style backing fileName:
           "[datastore] path/to/file.ext" -> ("datastore", "path/to/file.ext")
         """
-        m = _BACKING_RE.match(file_name or "")
-        if not m:
-            raise VMwareError(f"Could not parse backing filename: {file_name}")
-        return m.group(1), m.group(2)
+        return _datastore_parse_backing_filename(file_name)
 
     @staticmethod
     def _split_ds_path(path: str) -> Tuple[str, str, str]:
@@ -955,46 +804,23 @@ class VMwareClient:
         chunk_size: int = 1024 * 1024,
         force_https: bool = False,
     ) -> None:
-        """
-        Download a single datastore file.
-
-        Preference:
-          - normally prefer govc datastore.download when present (unless force_https=True)
-          - fallback to HTTPS /folder (session cookie)
-        """
-        if not force_https:
-            g = self._govc()
-            if g is not None:
-                try:
-                    g.datastore_download(datastore=datastore, ds_path=ds_path, local_path=local_path)
-                    return
-                except Exception as e:
-                    self.logger.warning("govc datastore.download failed; falling back to /folder HTTP: %s", e)
-
-        if not self.si:
-            raise VMwareError("Not connected to vSphere; cannot download. Call connect() first.")
-
-        dc_use = self._resolve_datacenter_for_download(dc_name)
-
-        self._http_download_client().download_file(
+        return _datastore_download_datastore_file(
+            self,
             datastore=datastore,
             ds_path=ds_path,
             local_path=local_path,
-            dc_name=dc_use,
+            dc_name=dc_name,
             on_bytes=on_bytes,
             chunk_size=chunk_size,
+            force_https=force_https,
         )
 
     # ---------------------------
-    # Download-only (list via DatastoreBrowser, download via govc/https)
+    # Download-only (list via DatastoreBrowser, download via govc/https) - Delegate to vmware_datastore
     # ---------------------------
 
     def wait_for_task(self, task: Any) -> None:
-        self._require_pyvmomi()
-        while task.info.state not in (vim.TaskInfo.State.success, vim.TaskInfo.State.error):  # type: ignore[attr-defined]
-            time.sleep(1)
-        if task.info.state == vim.TaskInfo.State.error:  # type: ignore[attr-defined]
-            raise VMwareError(str(task.info.error))
+        return _datastore_wait_for_task(self, task)
 
     def _get_vm_datastore_browser(self, vm_obj: Any) -> Any:
         self._require_pyvmomi()
@@ -1062,6 +888,7 @@ class VMwareClient:
 
     @staticmethod
     def _glob_any(name: str, globs: Sequence[str]) -> bool:
+        import fnmatch
         return any(fnmatch.fnmatch(name, g) for g in globs) if globs else False
 
     def _filter_download_only_files(
@@ -1121,96 +948,16 @@ class VMwareClient:
             raise VMwareError(f"{log_prefix}: one or more downloads failed:\n" + "\n".join(failures))
 
     def download_only_vm(self, opt: V2VExportOptions) -> Path:
-        if not self.si:
-            raise VMwareError("Not connected to vSphere; cannot download. Call connect() first.")
-
-        vm_obj = self.get_vm_by_name(opt.vm_name)
-        if vm_obj is None:
-            raise VMwareError(f"VM not found: {opt.vm_name!r}")
-
-        resolved_dc = self.resolve_datacenter_for_vm(opt.vm_name, opt.datacenter)
-        ds_name, folder_rel, files = self._list_vm_directory_files(vm_obj)
-
-        selected = self._filter_download_only_files(
-            files,
-            include_globs=tuple(opt.download_only_include_globs or ()),
-            exclude_globs=tuple(opt.download_only_exclude_globs or ()),
-            max_files=int(opt.download_only_max_files or 0),
-        )
-
-        out_dir = self._ensure_output_dir(opt.output_dir)
-
-        self.logger.info(
-            "Download-only VM folder: dc=%s ds=%s folder=%s files=%d (selected=%d)",
-            resolved_dc,
-            ds_name,
-            folder_rel or ".",
-            len(files),
-            len(selected),
-        )
-
-        self._download_selected_files(
-            selected=selected,
-            out_dir=out_dir,
-            ds_name=ds_name,
-            folder_rel=folder_rel,
-            dc_name=resolved_dc,
-            force_https=False,
-            fail_on_missing=bool(opt.download_only_fail_on_missing),
-            log_prefix="Download-only",
-        )
-
-        self.logger.info("Download-only completed: %s", out_dir)
-        return out_dir
+        return _datastore_download_only_vm(self, opt)
 
     def _download_only_vm_force_https(self, opt: V2VExportOptions) -> Path:
         """
         Forced HTTPS /folder fallback. This bypasses govc even if installed.
         """
-        if not self.si:
-            raise VMwareError("Not connected to vSphere; cannot download. Call connect() first.")
-
-        vm_obj = self.get_vm_by_name(opt.vm_name)
-        if vm_obj is None:
-            raise VMwareError(f"VM not found: {opt.vm_name!r}")
-
-        resolved_dc = self.resolve_datacenter_for_vm(opt.vm_name, opt.datacenter)
-        ds_name, folder_rel, files = self._list_vm_directory_files(vm_obj)
-
-        selected = self._filter_download_only_files(
-            files,
-            include_globs=tuple(opt.download_only_include_globs or ()),
-            exclude_globs=tuple(opt.download_only_exclude_globs or ()),
-            max_files=int(opt.download_only_max_files or 0),
-        )
-
-        out_dir = self._ensure_output_dir(opt.output_dir)
-
-        self.logger.info(
-            "FORCED HTTPS fallback: dc=%s ds=%s folder=%s files=%d (selected=%d)",
-            resolved_dc,
-            ds_name,
-            folder_rel or ".",
-            len(files),
-            len(selected),
-        )
-
-        self._download_selected_files(
-            selected=selected,
-            out_dir=out_dir,
-            ds_name=ds_name,
-            folder_rel=folder_rel,
-            dc_name=resolved_dc,
-            force_https=True,
-            fail_on_missing=bool(opt.download_only_fail_on_missing),
-            log_prefix="FORCED HTTPS fallback",
-        )
-
-        self.logger.info("FORCED HTTPS fallback completed: %s", out_dir)
-        return out_dir
+        return _datastore_download_only_vm_force_https(self, opt)
 
     # ---------------------------
-    # virt-v2v (power user path)
+    # virt-v2v (power user path) - Delegate to vmware_v2v
     # ---------------------------
 
     def _vpx_uri(self, *, datacenter: str, compute: str, no_verify: bool) -> str:
@@ -1279,7 +1026,10 @@ class VMwareClient:
         argv += list(opt.extra_args)
         return argv
 
-    def _popen_text(self, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
+    def _popen_text(self, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> Any:
+        import subprocess
+        import shlex
+
         self.logger.info("Running: %s", " ".join(shlex.quote(a) for a in argv))
         proc = subprocess.Popen(
             list(argv),
@@ -1299,7 +1049,7 @@ class VMwareClient:
                 pass
         return proc
 
-    def _pump_lines_blocking(self, proc: subprocess.Popen) -> List[str]:
+    def _pump_lines_blocking(self, proc: Any) -> List[str]:
         assert proc.stdout is not None
         assert proc.stderr is not None
         lines: List[str] = []
@@ -1311,7 +1061,7 @@ class VMwareClient:
             lines.append(err_line.rstrip("\n"))
         return lines
 
-    def _pump_lines_select(self, proc: subprocess.Popen, *, timeout_s: float = 0.20) -> List[str]:
+    def _pump_lines_select(self, proc: Any, *, timeout_s: float = 0.20) -> List[str]:
         assert proc.stdout is not None
         assert proc.stderr is not None
         rlist = [proc.stdout, proc.stderr]
@@ -1344,7 +1094,7 @@ class VMwareClient:
             and TimeElapsedColumn is not None
         )
 
-    def _drain_remaining_output(self, proc: subprocess.Popen, *, max_rounds: int = 10) -> None:
+    def _drain_remaining_output(self, proc: Any, *, max_rounds: int = 10) -> None:
         for _ in range(0, max_rounds):
             lines = self._pump_lines_select(proc, timeout_s=0.05) if SELECT_AVAILABLE else self._pump_lines_blocking(proc)
             if not lines:
@@ -1408,29 +1158,10 @@ class VMwareClient:
         return int(proc.wait())
 
     def v2v_export_vm(self, opt: V2VExportOptions) -> Path:
-        if shutil.which("virt-v2v") is None:
-            raise VMwareError("virt-v2v not found in PATH. Install virt-v2v/libguestfs tooling.")
-        if not self.si:
-            raise VMwareError("Not connected to vSphere; cannot export. Call connect() first.")
-
-        pwfile = self._write_password_file(opt.output_dir)
-        try:
-            argv = self._build_virt_v2v_cmd(opt, password_file=pwfile)
-            rc = self._run_logged_subprocess(argv, env=os.environ.copy())
-            if rc != 0:
-                raise VMwareError(f"virt-v2v export failed (rc={rc})")
-            self.logger.info("virt-v2v export finished OK -> %s", opt.output_dir)
-            return opt.output_dir
-        finally:
-            try:
-                pwfile.unlink()
-            except FileNotFoundError:
-                pass
-            except Exception as e:
-                self.logger.warning("Failed to remove password file %s: %s", pwfile, e)
+        return _v2v_export_vm(self, opt)
 
     # ---------------------------
-    # VDDK raw disk download (experimental orchestration only)
+    # VDDK raw disk download (experimental orchestration only) - Delegate to vmware_vddk
     # ---------------------------
 
     def _require_vddk_client(self) -> None:
@@ -1441,33 +1172,10 @@ class VMwareClient:
             )
 
     def vm_disks(self, vm_obj: Any) -> List[Any]:
-        self._require_pyvmomi()
-        disks: List[Any] = []
-        devices = getattr(getattr(getattr(vm_obj, "config", None), "hardware", None), "device", []) or []
-        for dev in devices:
-            if isinstance(dev, vim.vm.device.VirtualDisk):  # type: ignore[attr-defined]
-                disks.append(dev)
-        return disks
+        return _vddk_vm_disks(self, vm_obj)
 
     def select_disk(self, vm_obj: Any, label_or_index: Optional[str]) -> Any:
-        self._require_pyvmomi()
-        disks = self.vm_disks(vm_obj)
-        if not disks:
-            raise VMwareError("No virtual disks found on VM")
-        if label_or_index is None:
-            return disks[0]
-        s = str(label_or_index).strip()
-        if s.isdigit():
-            idx = int(s)
-            if idx < 0 or idx >= len(disks):
-                raise VMwareError(f"Disk index out of range: {idx} (found {len(disks)})")
-            return disks[idx]
-        sl = s.lower()
-        for d in disks:
-            label = getattr(getattr(d, "deviceInfo", None), "label", "") or ""
-            if sl in str(label).lower():
-                return d
-        raise VMwareError(f"No disk matching label: {s}")
+        return _vddk_select_disk(self, vm_obj, label_or_index)
 
     def _vm_disk_backing_filename(self, disk_obj: Any) -> str:
         backing = getattr(disk_obj, "backing", None)
@@ -1490,82 +1198,7 @@ class VMwareClient:
         return out_dir / f"{_safe_vm_name(opt.vm_name)}-disk{disk_index}.vmdk"
 
     def vddk_download_disk(self, opt: V2VExportOptions) -> Path:
-        """
-        export_mode="vddk_download" (EXPERIMENTAL)
-          - control-plane: pyvmomi finds ESXi host + disk backing path
-          - data-plane: vddk_client.VDDKESXClient reads and writes local file
-        """
-        self._require_pyvmomi()
-        self._require_vddk_client()
-        if not self.si:
-            raise VMwareError("Not connected to vSphere; cannot download. Call connect() first.")
-
-        vm_obj = self.get_vm_by_name(opt.vm_name)
-        if vm_obj is None:
-            raise VMwareError(f"VM not found: {opt.vm_name!r}")
-
-        disk_obj = self.select_disk(vm_obj, opt.vddk_download_disk)
-        try:
-            disks = self.vm_disks(vm_obj)
-            disk_index = disks.index(disk_obj)
-        except Exception:
-            disk_index = 0
-
-        remote_vmdk = self._vm_disk_backing_filename(disk_obj)  # "[ds] folder/disk.vmdk"
-        esx_host = self._resolve_esx_host_for_vm(vm_obj)
-
-        local_path = (
-            Path(opt.vddk_download_output)
-            if opt.vddk_download_output
-            else self._default_vddk_download_path(opt, disk_index=disk_index)
-        )
-
-        spec = VDDKConnectionSpec(  # type: ignore[misc]
-            host=esx_host,
-            user=self.user,
-            password=self.password,
-            port=443,
-            vddk_libdir=Path(opt.vddk_libdir) if opt.vddk_libdir else None,
-            transport_modes=opt.vddk_transports or "nbdssl:nbd",
-            thumbprint=opt.vddk_thumbprint,
-            insecure=bool(opt.no_verify),
-        )
-
-        c = VDDKESXClient(self.logger, spec)  # type: ignore[misc]
-
-        def _progress(done: int, total: int, pct: float) -> None:
-            le = int(opt.vddk_download_log_every_bytes or 0)
-            if total and done and le > 0:
-                if done % le < int(opt.vddk_download_sectors_per_read or 2048) * 512:
-                    self.logger.info(
-                        "VDDK download progress: %.1f GiB / %.1f GiB (%.1f%%)",
-                        done / (1024**3),
-                        total / (1024**3),
-                        pct,
-                    )
-
-        self.logger.warning("VDDK raw download is EXPERIMENTAL (explicit mode requested).")
-        self.logger.info(
-            "VDDK download: vm=%s disk=%s esx=%s remote=%s -> %s",
-            opt.vm_name,
-            opt.vddk_download_disk or str(disk_index),
-            esx_host,
-            remote_vmdk,
-            local_path,
-        )
-
-        c.connect()
-        try:
-            out = c.download_vmdk(
-                remote_vmdk,
-                Path(local_path),
-                sectors_per_read=int(opt.vddk_download_sectors_per_read or 2048),
-                progress=_progress,
-                log_every_bytes=int(opt.vddk_download_log_every_bytes or 0),
-            )
-            return Path(out)
-        finally:
-            c.disconnect()
+        return _vddk_download_disk(self, opt)
 
     # ---------------------------
     # Unified entrypoint (policy) - refactored into smaller handlers
