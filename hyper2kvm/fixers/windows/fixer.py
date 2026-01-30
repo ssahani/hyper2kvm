@@ -27,6 +27,14 @@ from .virtio.core import (
 )
 
 from .network_fixer import retain_windows_network_config
+from .license.extractor import extract_license_info
+from .license.reactivator import stage_reactivation_script, get_reactivation_command
+from .activedirectory.extractor import extract_domain_info
+from .activedirectory.rejoin import (
+    stage_domain_rejoin_script,
+    get_rejoin_command,
+    DomainRejoinMethod,
+)
 
 
 def _safe_logger(self) -> logging.Logger:
@@ -64,6 +72,42 @@ class WindowsFixer:
     def retain_windows_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         return retain_windows_network_config(self, g)
 
+    def extract_license_info(self, g: guestfs.GuestFS, root: str):
+        """Extract Windows license information from offline registry."""
+        return extract_license_info(g, root)
+
+    def stage_license_reactivation(
+        self,
+        g: guestfs.GuestFS,
+        root: str,
+        license_info,
+        kms_server_override=None,
+        kms_port_override=None,
+    ):
+        """Stage license reactivation script for first boot."""
+        return stage_reactivation_script(
+            g, root, license_info, kms_server_override, kms_port_override
+        )
+
+    def extract_domain_info(self, g: guestfs.GuestFS, root: str):
+        """Extract Active Directory domain membership information."""
+        return extract_domain_info(g, root)
+
+    def stage_domain_rejoin(
+        self,
+        g: guestfs.GuestFS,
+        root: str,
+        domain_info,
+        method=DomainRejoinMethod.MANUAL,
+        domain_override=None,
+        ou_path=None,
+        unattended_join_file=None,
+    ):
+        """Stage domain rejoin script for first boot."""
+        return stage_domain_rejoin_script(
+            g, root, domain_info, method, domain_override, ou_path, unattended_join_file
+        )
+
 
 __all__ = [
     "WindowsFixer",
@@ -71,4 +115,9 @@ __all__ = [
     "windows_bcd_actual_fix",
     "inject_virtio_drivers",
     "retain_windows_network_config",
+    "extract_license_info",
+    "stage_reactivation_script",
+    "extract_domain_info",
+    "stage_domain_rejoin_script",
+    "DomainRejoinMethod",
 ]
