@@ -781,6 +781,83 @@ def _patch_modules_load_d(self, g: guestfs.GuestFS, drivers: list[str]) -> dict[
     return {"path": path, "changed": True, "added": missing, "note": "modules_load_d_fallback"}
 
 
+def _detect_lvm_in_guest(g: guestfs.GuestFS) -> dict[str, Any]:
+    """
+    Detect if LVM is present in the guest system.
+    Returns dict with:
+      - has_lvm: bool
+      - vgs: list of volume group names
+      - lvs: list of logical volume paths
+      - pvs: list of physical volume paths
+    """
+    result = {"has_lvm": False, "vgs": [], "lvs": [], "pvs": []}
+
+    try:
+        # Check for LVM physical volumes
+        pvs = g.pvs()
+        if pvs:
+            result["pvs"] = [U.to_text(pv) for pv in pvs]
+            result["has_lvm"] = True
+    except Exception:
+        pass
+
+    try:
+        # Check for volume groups
+        vgs = g.vgs()
+        if vgs:
+            result["vgs"] = [U.to_text(vg) for vg in vgs]
+            result["has_lvm"] = True
+    except Exception:
+        pass
+
+    try:
+        # Check for logical volumes
+        lvs = g.lvs()
+        if lvs:
+            result["lvs"] = [U.to_text(lv) for lv in lvs]
+            result["has_lvm"] = True
+    except Exception:
+        pass
+
+    return result
+
+
+def _ensure_var_tmp(g: guestfs.GuestFS) -> dict[str, Any]:
+    """
+    Ensure /var/tmp exists with proper permissions.
+    dracut requires /var/tmp to exist and be writable.
+    Returns dict with created: bool, existed: bool.
+    """
+    result = {"existed": False, "created": False, "error": None}
+
+    try:
+        # Check if /var/tmp exists using guestfs is_dir directly
+        try:
+            if g.is_dir("/var/tmp"):
+                result["existed"] = True
+                # Ensure proper permissions (1777 = sticky bit + rwx for all)
+                try:
+                    g.chmod(0o1777, "/var/tmp")
+                except Exception:
+                    pass  # Best effort
+                return result
+        except Exception:
+            # Directory doesn't exist or error checking
+            pass
+
+        # Create /var/tmp with sticky bit
+        g.mkdir_p("/var/tmp")
+        try:
+            g.chmod(0o1777, "/var/tmp")
+        except Exception:
+            pass  # Not all guestfs versions support chmod
+        result["created"] = True
+        return result
+    except Exception as e:
+        result["error"] = str(e)
+        return result
+
+
 def _maybe_add_dracut_drivers(cmd: list[str], drivers: list[str]) -> list[str]:
     if not cmd or cmd[0] != "dracut":
         return cmd
@@ -790,6 +867,21 @@ def _maybe_add_dracut_drivers(cmd: list[str], drivers: list[str]) -> list[str]:
     if "--add-drivers" in cmd:
         return cmd
     return cmd + ["--add-drivers", " ".join(drivers)]
+
+
+def _maybe_add_dracut_lvm(cmd: list[str], has_lvm: bool) -> list[str]:
+    """
+    Add LVM/device-mapper dracut hooks if LVM is detected.
+    Adds --add 'lvm dm' to ensure initramfs can activate LVM devices at boot.
+    """
+    if not cmd or cmd[0] != "dracut":
+        return cmd
+    if not has_lvm:
+        return cmd
+    # If caller already set --add, don't stomp
+    if "--add" in cmd:
+        return cmd
+    return cmd + ["--add", "lvm dm"]
 
 
 # fstab-based /boot, /boot/efi mounting (critical for correct regen)
@@ -1008,6 +1100,13 @@ def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
     except Exception:
         guest_kvers = []
 
+    # Detect LVM in the guest (critical for initramfs configuration)
+    lvm_info = _detect_lvm_in_guest(g)
+    has_lvm = lvm_info.get("has_lvm", False)
+    if has_lvm:
+        _log_info(self, f"LVM detected: VGs={lvm_info.get('vgs', [])}, LVs={lvm_info.get('lvs', [])}")
+    info["lvm_detected"] = lvm_info
+
     # Dynamically filter to only modules that actually exist on the guest system
     add_drivers = candidate_drivers
     if guest_kvers:
@@ -1070,6 +1169,17 @@ def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
             else:
                 inject_audit["actions"].append({"path": drop, "changed": False, "note": "dracut_dropin_already_present"})
 
+            # Add LVM support if LVM is detected
+            if has_lvm:
+                lvm_drop = "/etc/dracut.conf.d/hyper2kvm-lvm.conf"
+                lvm_line = 'add_dracutmodules+=" lvm dm "\n'
+                old_lvm = _read_text(g, lvm_drop)
+                if lvm_line.strip() not in old_lvm:
+                    _write_text(self, g, lvm_drop, "# Added by hyper2kvm (LVM support)\n" + lvm_line)
+                    inject_audit["actions"].append({"path": lvm_drop, "changed": True, "note": "dracut_lvm_dropin"})
+                else:
+                    inject_audit["actions"].append({"path": lvm_drop, "changed": False, "note": "dracut_lvm_dropin_already_present"})
+
         # Alpine mkinitfs: config differs per image; warn only
         if guest_has_cmd(g, "mkinitfs"):
             inject_audit["warnings"].append("mkinitfs_detected: no deterministic module-injection implemented (config varies)")
@@ -1098,16 +1208,28 @@ def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
         initramfs_attempts += [["booster", "build"]]
 
     if guest_has_cmd(g, "dracut"):
+        # Ensure /var/tmp exists (required by dracut)
+        var_tmp_result = _ensure_var_tmp(g)
+        info["var_tmp_prepared"] = var_tmp_result
+        if var_tmp_result.get("error"):
+            _log_info(self, f"Warning: failed to create /var/tmp: {var_tmp_result['error']}")
+
+        # Build dracut commands with driver and LVM support
         # Prefer regenerate-all; it handles multiple kernels cleanly on many distros
-        initramfs_attempts += [
-            _maybe_add_dracut_drivers(["dracut", "-f", "--regenerate-all"], add_drivers),
-        ]
+        cmd_regen_all = _maybe_add_dracut_drivers(["dracut", "-f", "--regenerate-all"], add_drivers)
+        cmd_regen_all = _maybe_add_dracut_lvm(cmd_regen_all, has_lvm)
+        initramfs_attempts += [cmd_regen_all]
+
         # Then a specific latest-kernel attempt if we can guess
         if guest_kvers:
-            initramfs_attempts.insert(0, _maybe_add_dracut_drivers(["dracut", "-f", "--kver", guest_kvers[-1]], add_drivers))
-        initramfs_attempts += [
-            _maybe_add_dracut_drivers(["dracut", "-f"], add_drivers),
-        ]
+            cmd_kver = _maybe_add_dracut_drivers(["dracut", "-f", "--kver", guest_kvers[-1]], add_drivers)
+            cmd_kver = _maybe_add_dracut_lvm(cmd_kver, has_lvm)
+            initramfs_attempts.insert(0, cmd_kver)
+
+        # Fallback to plain dracut -f
+        cmd_plain = _maybe_add_dracut_drivers(["dracut", "-f"], add_drivers)
+        cmd_plain = _maybe_add_dracut_lvm(cmd_plain, has_lvm)
+        initramfs_attempts += [cmd_plain]
 
     if guest_has_cmd(g, "mkinitrd"):
         initramfs_attempts += [["mkinitrd"]]
