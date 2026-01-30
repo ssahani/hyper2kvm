@@ -9,8 +9,10 @@ enabling native Linux tools to access and modify VM disk images.
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -127,6 +129,100 @@ class NBDDeviceManager:
             f"through /dev/nbd{self.nbd_max})"
         )
 
+    def _needs_conversion(self, image_path: Path) -> bool:
+        """
+        Check if VMDK needs conversion to qcow2 (streamOptimized, compressed, etc.).
+
+        streamOptimized VMDKs cause "can't read superblock" errors when accessed
+        via qemu-nbd due to random-access read issues with decompression.
+
+        Args:
+            image_path: Path to image file
+
+        Returns:
+            True if image should be converted before mounting
+        """
+        if image_path.suffix.lower() != ".vmdk":
+            return False
+
+        try:
+            result = subprocess.run(
+                ["qemu-img", "info", "--output=json", str(image_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30
+            )
+            info = json.loads(result.stdout)
+
+            # Check for problematic VMDK types
+            format_specific = info.get("format-specific", {})
+            vmdk_info = format_specific.get("data", {})
+
+            create_type = vmdk_info.get("create-type", "").lower()
+            compressed = vmdk_info.get("compressed", False)
+
+            # streamOptimized and compressed VMDKs need conversion
+            if "streamoptimized" in create_type or compressed:
+                self.logger.warning(
+                    f"Detected problematic VMDK format: create_type={create_type}, "
+                    f"compressed={compressed}. Will convert to qcow2 for reliability."
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"Could not check VMDK type: {e}, proceeding without conversion")
+            return False
+
+    def _convert_to_qcow2(self, vmdk_path: Path) -> Path:
+        """
+        Convert VMDK to qcow2 in temp directory.
+
+        Args:
+            vmdk_path: Path to VMDK file
+
+        Returns:
+            Path to converted qcow2 file
+        """
+        # Create temp qcow2 file
+        temp_dir = Path(tempfile.gettempdir()) / "vmcraft-conversions"
+        temp_dir.mkdir(exist_ok=True, mode=0o700)
+
+        temp_qcow2 = temp_dir / f"{vmdk_path.stem}.qcow2"
+
+        self.logger.info(f"Converting {vmdk_path.name} to qcow2...")
+        self.logger.info(f"  Source: {vmdk_path}")
+        self.logger.info(f"  Destination: {temp_qcow2}")
+
+        try:
+            # Convert with progress
+            subprocess.run(
+                [
+                    "qemu-img", "convert",
+                    "-p",  # Progress
+                    "-f", "vmdk",
+                    "-O", "qcow2",
+                    str(vmdk_path),
+                    str(temp_qcow2)
+                ],
+                check=True,
+                timeout=3600  # 1 hour max for large disks
+            )
+
+            self.logger.info(f"✓ Conversion completed: {temp_qcow2}")
+            return temp_qcow2
+
+        except subprocess.TimeoutExpired:
+            if temp_qcow2.exists():
+                temp_qcow2.unlink()
+            raise RuntimeError(f"VMDK conversion timed out after 1 hour")
+        except subprocess.CalledProcessError as e:
+            if temp_qcow2.exists():
+                temp_qcow2.unlink()
+            raise RuntimeError(f"VMDK conversion failed: {e}")
+
     @retry_with_backoff(
         max_attempts=3,
         base_backoff_s=2.0,
@@ -147,6 +243,8 @@ class NBDDeviceManager:
 
         Uses exponential backoff retry strategy (max 3 attempts, 2-10s backoff) to
         handle transient qemu-nbd command failures and OS-level errors.
+
+        Automatically converts streamOptimized VMDKs to qcow2 for reliability.
 
         Args:
             image_path: Path to disk image
@@ -169,6 +267,13 @@ class NBDDeviceManager:
             raise FileNotFoundError(f"Disk image not found: {image_path}")
 
         readonly = readonly if readonly is not None else self.readonly
+
+        # Check if VMDK needs conversion (streamOptimized, compressed)
+        if self._needs_conversion(image_path):
+            original_path = image_path
+            image_path = self._convert_to_qcow2(image_path)
+            format = "qcow2"  # Override format after conversion
+            self.logger.info(f"Using converted qcow2 instead of original {original_path.name}")
 
         # Auto-detect format from extension if not specified
         # This is critical for VMDKs, especially ESXi thin-provisioned ones
