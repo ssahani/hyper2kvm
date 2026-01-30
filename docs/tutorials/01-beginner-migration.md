@@ -131,7 +131,7 @@ cluster_size: 1048576
 
 ```yaml
 # migration.yaml
-command: local
+command: local  # You can also use "migrate" as an alias
 vmdk: /vms/source/windows-server.vhdx
 output_dir: /vms/migrated
 to_output: windows-server.qcow2
@@ -143,6 +143,8 @@ win_virtio: true
 compress: true
 verbose: 1
 ```
+
+> **Tip:** Use `command: migrate` instead of `local` - both work identically!
 
 ```bash
 hyper2kvm --config migration.yaml

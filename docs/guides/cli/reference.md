@@ -50,13 +50,15 @@ Before using hyper2kvm commands, ensure you have:
 - [OVA/OVF Helper Knobs](#ovaovf-helper-knobs)
 - [AMI / Cloud Tarball Helper Knobs](#ami-cloud-tarball-helper-knobs)
 - [Inputs (Selected by `cmd`)](#inputs-selected-by-cmd)
-  - [`cmd: local`](#cmd-local)
+  - [`cmd: local`](#cmd-local) (alias: `migrate`)
   - [`cmd: ova`](#cmd-ova)
   - [`cmd: ovf`](#cmd-ovf)
   - [`cmd: vhd`](#cmd-vhd)
   - [`cmd: ami`](#cmd-ami)
+  - [`cmd: raw`](#cmd-raw)
   - [`cmd: fetch-and-fix`](#cmd-fetch-and-fix)
   - [`cmd: live-fix`](#cmd-live-fix)
+  - [`cmd: libvirt-xml`](#cmd-libvirt-xml)
 - [`cmd: generate-systemd`](#cmd-generate-systemd)
 - [vSphere / vCenter (`cmd: vsphere`)](#vsphere-vcenter-cmd-vsphere)
   - [Connection flags (required)](#connection-flags-required)
@@ -140,16 +142,20 @@ Every run must specify a command via config (or via CLI `--cmd` override):
 
 Supported `cmd` values enforced by `validate_args()`:
 
-* `local`
-* `fetch-and-fix`
-* `ova`
-* `ovf`
-* `vhd`
-* `ami`
-* `live-fix`
-* `vsphere`
-* `daemon`
-* `generate-systemd`
+* `local` - Convert local VMDK file (alias: `migrate`)
+* `migrate` - Alias for `local` command (for user convenience)
+* `fetch-and-fix` - Fetch from ESXi via SSH and convert
+* `ova` - Extract and convert OVA archive
+* `ovf` - Extract and convert OVF package
+* `vhd` - Convert VHD/Azure disk
+* `ami` - Extract and convert AMI/cloud tarball
+* `raw` - Extract and convert raw disk image/tarball
+* `live-fix` - Apply fixes to running VM via SSH
+* `libvirt-xml` - Parse libvirt XML and generate manifest
+* `vsphere` - vSphere/vCenter operations
+* `azure` - Azure VM migration operations
+* `daemon` - Watch directory for incoming VMs
+* `generate-systemd` - Generate systemd service unit
 
 ### `vs_action` (only when `cmd: vsphere`)
 
@@ -382,13 +388,20 @@ These are available globally and expected depending on `cmd`:
 
 ### `cmd: local`
 
+**Alias:** `migrate` (both commands work identically)
+
 * `--vmdk` *(required via config or CLI)*
 
 Example:
 
 ```bash
+# Using "local" command
 sudo python hyper2kvm.py --config job.yaml --vmdk /path/to/vm.vmdk
-```bash
+
+# Using "migrate" alias (same result)
+command: migrate
+vmdk: /path/to/vm.vmdk
+```
 
 ### `cmd: ova`
 
@@ -405,6 +418,27 @@ sudo python hyper2kvm.py --config job.yaml --vmdk /path/to/vm.vmdk
 ### `cmd: ami`
 
 * `--ami` *(required)*
+
+Extract and convert AMI/cloud tarball containing disk payload.
+
+### `cmd: raw`
+
+* `--raw` *(required)* - Path to raw disk image (.raw, .img) or tarball
+
+Alternatively accepts:
+* `--img` - Alias for `--raw`
+* Config keys: `raw:`, `img:`, `raw_src:`, or `raw_path:`
+
+Example:
+
+```yaml
+command: raw
+raw: /images/ubuntu-2204-cloudimg.img
+output_dir: ./out
+to_output: ubuntu-2204.qcow2
+out_format: qcow2
+compress: true
+```
 
 ### `cmd: fetch-and-fix`
 
@@ -433,6 +467,32 @@ Additional knobs:
 * `--identity`
 * `--ssh-opt` *(repeatable)*
 * `--sudo` *(store_true)*
+
+### `cmd: libvirt-xml`
+
+Parse libvirt domain XML and generate Artifact Manifest v1.
+
+* `--libvirt-xml` or `--xml-path` *(required)* - Path to libvirt domain XML file
+
+Additional options:
+* `--compute-checksums` - Compute SHA256 checksums (default: enabled)
+* `--no-compute-checksums` - Skip checksum computation
+* `--manifest-filename` - Output manifest filename (default: manifest.json)
+
+Example:
+
+```yaml
+command: libvirt-xml
+libvirt_xml: /etc/libvirt/qemu/production-db.xml
+output_dir: ./out
+manifest_filename: production-db-manifest.json
+compute_checksums: true
+```
+
+The generated manifest can be used for batch migrations:
+```bash
+hyper2kvm --manifest ./out/production-db-manifest.json
+```
 
 ---
 

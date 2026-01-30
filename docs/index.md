@@ -191,12 +191,15 @@ hyper2kvm --config batch.yaml
 | Command | Description |
 |---------|-------------|
 | `hyper2kvm --config <yaml>` | Execute migration from YAML config (recommended) |
-| `hyper2kvm --cmd local` | Local VMDK/disk migration |
+| `hyper2kvm --cmd local` | Local VMDK/disk migration (alias: `migrate`) |
 | `hyper2kvm --cmd fetch-and-fix` | Remote ESXi fetch via SSH |
 | `hyper2kvm --cmd ova` | OVA file extraction |
 | `hyper2kvm --cmd ovf` | OVF file extraction |
 | `hyper2kvm --cmd vhd` | VHD file import |
+| `hyper2kvm --cmd ami` | AMI/cloud tarball extraction |
+| `hyper2kvm --cmd raw` | Raw disk image/tarball import |
 | `hyper2kvm --cmd live-fix` | SSH-based live fixing |
+| `hyper2kvm --cmd libvirt-xml` | Parse libvirt XML to manifest |
 | `hyper2kvm --help` | Show full command reference |
 
 ### Common Workflows

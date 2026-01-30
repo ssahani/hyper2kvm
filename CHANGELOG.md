@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### CLI Commands Enhancement (January 2026)
+
+**Command Alias Support**:
+- Added `migrate` as an alias for `local` command for user convenience
+- Both commands work identically for local VMDK/disk conversions
+- Updated all documentation and help text to show the alias
+
+**Fixed Missing Commands**:
+- `raw` - Extract and convert raw disk images (.raw, .img) or tarballs
+  - Supports multiple input formats: raw/img/raw_src/raw_path
+  - Works with cloud images (AWS AMI, Azure VHD in tar format)
+  - Created example: examples/yaml/40-ova-ovf/raw-basic.yaml
+- `libvirt-xml` - Parse libvirt domain XML and generate Artifact Manifest v1
+  - Enables migration from existing libvirt VMs
+  - Generates manifest for batch processing
+  - Created example: examples/yaml/60-libvirt/libvirt-xml-to-manifest.yaml
+- `generate-systemd` - Fixed "Unknown command" error (was previously broken)
+
+**All 14 Commands Tested and Working**:
+✅ local, migrate, fetch-and-fix, ova, ovf, vhd, ami, raw,
+   live-fix, libvirt-xml, vsphere, azure, daemon, generate-systemd
+
+**Documentation Updates**:
+- Updated CLI reference guide (docs/guides/cli/reference.md) with all commands
+- Updated main documentation index (docs/index.md) with command table
+- Added migrate alias tips in beginner tutorial (docs/tutorials/01-beginner-migration.md)
+- All command lists now show complete set of 14 commands
+
 #### XFS UUID Regeneration and Automatic fstab Rebuild (January 2026) - PRODUCTION READY ✅
 
 **Critical Fix for Cloned VMware VMs with Duplicate XFS Filesystem UUIDs**
