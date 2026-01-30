@@ -2,6 +2,7 @@
 # hyper2kvm/fixers/live_fixer.py
 from __future__ import annotations
 
+import base64
 import logging
 import re
 import shlex
@@ -37,6 +38,10 @@ class LiveFixer:
       - Deterministic edits: atomic writes + timestamped backups (unless disabled)
     """
 
+    # keep this conservative; some SSH setups choke on huge one-liners
+    _INLINE_B64_MAX_CHARS = 24_000  # ~18KB decoded-ish, depending on content
+    _B64_CHUNK_CHARS = 8_000
+
     def __init__(
         self,
         logger: logging.Logger,
@@ -60,6 +65,9 @@ class LiveFixer:
             remove_vmware_tools=remove_vmware_tools,
         )
 
+        # one-time warnings to avoid log spam
+        self._warned_missing: set[str] = set()
+
     # ---------------------------------------------------------------------
     # SSH helpers
     # ---------------------------------------------------------------------
@@ -74,40 +82,18 @@ class LiveFixer:
             == "YES"
         )
 
+    def _warn_once(self, key: str, msg: str, *args: Any) -> None:
+        if key in self._warned_missing:
+            return
+        self._warned_missing.add(key)
+        self.logger.warning(msg, *args)
+
     def _remote_exists(self, path: str) -> bool:
         out = self._ssh(f"test -e {shlex.quote(path)} && echo OK || echo NO").strip()
         return out == "OK"
 
     def _read_remote_file(self, path: str) -> str:
         return self._ssh(f"cat {shlex.quote(path)} 2>/dev/null || true")
-
-    def _write_remote_file_atomic(self, path: str, content: str, mode: str = "0644") -> None:
-        """
-        Atomic-ish update:
-          - mktemp
-          - write content
-          - chmod
-          - mv over target
-        """
-        if self.opts.dry_run:
-            self.logger.info("DRY-RUN: would write %s (%d bytes)", path, len(content))
-            return
-
-        tmp = self._ssh(
-            "mktemp /tmp/hyper2kvm.livefix.XXXXXX 2>/dev/null || mktemp /run/hyper2kvm.livefix.XXXXXX"
-        ).strip()
-        if not tmp:
-            raise RuntimeError("mktemp failed on remote host")
-
-        payload = (
-            f"cat > {shlex.quote(tmp)} <<'EOF'\n"
-            f"{content}\n"
-            "EOF\n"
-            f"chmod {shlex.quote(mode)} {shlex.quote(tmp)} || true\n"
-        )
-        self._ssh("sh -lc " + shlex.quote(payload))
-        self._ssh(f"mv -f {shlex.quote(tmp)} {shlex.quote(path)}")
-        self._ssh("sync || true")
 
     def _readlink_f(self, path: str) -> Optional[str]:
         out = self._ssh(f"readlink -f -- {shlex.quote(path)} 2>/dev/null || true").strip()
@@ -133,8 +119,111 @@ class LiveFixer:
             return None
         b = f"{path}.bak.hyper2kvm.{U.now_ts()}"
         self._ssh(f"cp -a {shlex.quote(path)} {shlex.quote(b)} 2>/dev/null || true")
-        self.logger.info("Backup: %s -> %s", path, b)
-        return b
+        if self._remote_exists(b):
+            self.logger.info("Backup: %s -> %s", path, b)
+            return b
+        self.logger.warning("Backup failed (best-effort): %s -> %s", path, b)
+        return None
+
+    def _remote_stat_u_g_a(self, path: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Return (uid, gid, mode) as strings, best-effort; None if unavailable.
+        Uses one stat call to reduce RTT.
+        """
+        if not self._has("stat"):
+            return None, None, None
+        out = self._ssh(f"stat -c '%u %g %a' -- {shlex.quote(path)} 2>/dev/null || true").strip()
+        if not out:
+            return None, None, None
+        parts = out.split()
+        if len(parts) != 3:
+            return None, None, None
+        uid, gid, mode = parts
+        if not (uid.isdigit() and gid.isdigit() and mode.isdigit()):
+            return None, None, None
+        return uid, gid, mode
+
+    def _write_remote_file_atomic(
+        self,
+        path: str,
+        content: str,
+        mode: str = "0644",
+        *,
+        preserve_owner_mode: bool = True,
+    ) -> None:
+        """
+        Atomic-ish update:
+          - mktemp
+          - write content (base64 preferred; chunked if large; fallback to heredoc with unique marker)
+          - chmod/chown (best-effort)
+          - mv over target
+          - sync
+
+        Safety:
+          - avoids fixed heredoc markers ("EOF") to prevent accidental truncation
+          - chunked base64 avoids huge command lines if content grows
+        """
+        if self.opts.dry_run:
+            self.logger.info("DRY-RUN: would write %s (%d bytes)", path, len(content))
+            return
+
+        tmp = self._ssh(
+            "mktemp /tmp/hyper2kvm.livefix.XXXXXX 2>/dev/null || mktemp /run/hyper2kvm.livefix.XXXXXX"
+        ).strip()
+        if not tmp:
+            raise RuntimeError("mktemp failed on remote host")
+
+        uid: Optional[str] = None
+        gid: Optional[str] = None
+        orig_mode: Optional[str] = None
+        if preserve_owner_mode and self._remote_exists(path):
+            uid, gid, orig_mode = self._remote_stat_u_g_a(path)
+
+        effective_mode = (orig_mode or "").strip() if preserve_owner_mode else ""
+        if not effective_mode:
+            effective_mode = mode
+
+        payload_lines: List[str] = []
+        payload_lines.append("set -e")
+        payload_lines.append("umask 022")
+        payload_lines.append(f": > {shlex.quote(tmp)}")  # truncate/create
+
+        # Transfer content
+        if self._has("base64"):
+            b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+
+            if len(b64) <= self._INLINE_B64_MAX_CHARS:
+                payload_lines.append(
+                    f"printf %s {shlex.quote(b64)} | base64 -d >> {shlex.quote(tmp)}"
+                )
+            else:
+                # Chunked decode to avoid giant one-liners.
+                # We still build one sh script, but each chunk line is small.
+                payload_lines.append("# chunked base64 decode")
+                for i in range(0, len(b64), self._B64_CHUNK_CHARS):
+                    chunk = b64[i : i + self._B64_CHUNK_CHARS]
+                    payload_lines.append(
+                        f"printf %s {shlex.quote(chunk)} | base64 -d >> {shlex.quote(tmp)}"
+                    )
+        else:
+            self._warn_once(
+                "missing_base64",
+                "Remote is missing 'base64'; falling back to heredoc writer (still safe, slightly less robust).",
+            )
+            marker = f"__H2KVM_EOF_{U.now_ts()}_{re.sub(r'[^A-Za-z0-9]+', '_', tmp)}__"
+            payload_lines.append(f"cat >> {shlex.quote(tmp)} <<'{marker}'")
+            payload_lines.append(content)
+            payload_lines.append(marker)
+
+        payload_lines.append(f"chmod {shlex.quote(effective_mode)} {shlex.quote(tmp)} 2>/dev/null || true")
+        if preserve_owner_mode and uid and gid:
+            payload_lines.append(f"chown {shlex.quote(uid)}:{shlex.quote(gid)} {shlex.quote(tmp)} 2>/dev/null || true")
+
+        payload_lines.append(f"mv -f {shlex.quote(tmp)} {shlex.quote(path)}")
+        payload_lines.append("sync 2>/dev/null || true")
+
+        payload = "\n".join(payload_lines) + "\n"
+        self._ssh("sh -lc " + shlex.quote(payload))
 
     # ---------------------------------------------------------------------
     # fstab rewrite
@@ -145,6 +234,13 @@ class LiveFixer:
         Convert /dev/disk/by-path/* to a stable spec, preferring:
           UUID=, PARTUUID=, LABEL=, PARTLABEL=
         """
+        if not self._has("readlink"):
+            self._warn_once(
+                "missing_readlink",
+                "Remote is missing 'readlink'; cannot resolve by-path symlinks, leaving entries unchanged.",
+            )
+            return spec
+
         resolved = self._readlink_f(spec)
         if not resolved:
             self.logger.debug("fstab: readlink -f failed for %s", spec)
@@ -152,6 +248,13 @@ class LiveFixer:
 
         if not self._is_remote_blockdev(resolved):
             self.logger.debug("fstab: resolved path is not a block dev: %s -> %s", spec, resolved)
+            return spec
+
+        if not self._has("blkid"):
+            self._warn_once(
+                "missing_blkid",
+                "Remote is missing 'blkid'; cannot map by-path to UUID/PARTUUID, leaving entries unchanged.",
+            )
             return spec
 
         for key, prefix in (
@@ -179,8 +282,15 @@ class LiveFixer:
         i = m.start()
         return s[:i].rstrip(), s[i:].lstrip()
 
-    def _rewrite_fstab(self, content: str) -> Tuple[str, int]:
+    def _rewrite_fstab(self, content: str) -> Tuple[str, int, int, List[Dict[str, str]]]:
+        """
+        Returns:
+          (new_content, changed_count, seen_bypath_count, changes)
+        where changes is a list of {"from": old, "to": new}.
+        """
         changed = 0
+        seen = 0
+        changes: List[Dict[str, str]] = []
         out_lines: List[str] = []
 
         for line in content.splitlines(keepends=False):
@@ -196,10 +306,12 @@ class LiveFixer:
 
             spec = parts[0]
             if spec.startswith("/dev/disk/by-path/"):
+                seen += 1
                 new_spec = self._convert_spec_to_stable(spec)
                 if new_spec != spec:
                     parts[0] = new_spec
                     changed += 1
+                    changes.append({"from": spec, "to": new_spec})
 
             rebuilt = "\t".join(parts)
             if comment:
@@ -209,7 +321,7 @@ class LiveFixer:
 
             out_lines.append(rebuilt.rstrip() + "\n")
 
-        return "".join(out_lines), changed
+        return "".join(out_lines), changed, seen, changes
 
     # ---------------------------------------------------------------------
     # VMware tools removal (multi-distro best-effort)
@@ -225,6 +337,16 @@ class LiveFixer:
             "vmware-tools-desktop",
             "vmtoolsd",
         ]
+
+        # Stop services early (best-effort)
+        self._run_best_effort(
+            [
+                "systemctl disable --now vmware-tools 2>/dev/null || true",
+                "systemctl disable --now vmtoolsd 2>/dev/null || true",
+                "rc-service vmware-tools stop 2>/dev/null || true",
+                "rc-service vmtoolsd stop 2>/dev/null || true",
+            ]
+        )
 
         if self._has("apt-get"):
             self._run_best_effort(
@@ -262,13 +384,9 @@ class LiveFixer:
         else:
             self.logger.warning("No known package manager found; skipping package removal.")
 
-        # Service cleanup (systemd/OpenRC best-effort)
+        # Cleanup leftovers (best-effort)
         self._run_best_effort(
             [
-                "systemctl disable --now vmware-tools 2>/dev/null || true",
-                "systemctl disable --now vmtoolsd 2>/dev/null || true",
-                "rc-service vmware-tools stop 2>/dev/null || true",
-                "rc-service vmtoolsd stop 2>/dev/null || true",
                 "rc-update del vmware-tools default 2>/dev/null || true",
                 "rc-update del vmtoolsd default 2>/dev/null || true",
                 "rm -f /etc/init.d/vmware-tools /etc/init.d/vmtoolsd 2>/dev/null || true",
@@ -279,6 +397,12 @@ class LiveFixer:
         uninstaller = "/usr/bin/vmware-uninstall-tools.pl"
         if self._remote_exists(uninstaller):
             self._run_best_effort([f"{shlex.quote(uninstaller)} 2>/dev/null || true"])
+
+        self._run_best_effort(
+            [
+                "rm -rf /etc/vmware-tools /usr/lib/vmware-tools /var/log/vmware-* 2>/dev/null || true",
+            ]
+        )
 
         self.logger.info("VMware tools removal attempted.")
 
@@ -295,8 +419,15 @@ class LiveFixer:
         if self.opts.print_fstab:
             print("\n--- /etc/fstab (live before) ---\n" + (fstab or ""))
 
-        new_fstab, changed = self._rewrite_fstab(fstab or "")
-        self.logger.info("fstab (live): changed_entries=%d", changed)
+        new_fstab, changed, seen_bypath, changes = self._rewrite_fstab(fstab or "")
+
+        if seen_bypath > 0 and changed == 0:
+            self.logger.info(
+                "fstab (live): found by-path entries=%d, converted=0 (tools missing or no UUID/PARTUUID/LABEL?)",
+                seen_bypath,
+            )
+        else:
+            self.logger.info("fstab (live): by-path_entries=%d converted=%d", seen_bypath, changed)
 
         if self.opts.print_fstab:
             print("\n--- /etc/fstab (live after) ---\n" + (new_fstab or ""))
@@ -307,7 +438,7 @@ class LiveFixer:
             else:
                 if not self.opts.no_backup:
                     self._backup("/etc/fstab")
-                self._write_remote_file_atomic("/etc/fstab", new_fstab, mode="0644")
+                self._write_remote_file_atomic("/etc/fstab", new_fstab, mode="0644", preserve_owner_mode=True)
                 self.logger.info("/etc/fstab updated (live).")
 
         # ---- optional VMware tools removal
@@ -334,7 +465,9 @@ class LiveFixer:
         self.logger.info("Live fix completed.")
         return {
             "dry_run": self.opts.dry_run,
+            "fstab_by_path_seen": seen_bypath,
             "fstab_changed": changed,
+            "fstab_changes": changes,  # list of {"from": "...", "to": "..."}
             "update_grub": self.opts.update_grub,
             "regen_initramfs": self.opts.regen_initramfs,
             "remove_vmware_tools": self.opts.remove_vmware_tools,
