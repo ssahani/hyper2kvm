@@ -119,11 +119,22 @@ def parse_args_with_config(
     """
     import sys
 
+    # Enable shell completion via argcomplete if available
+    try:
+        import argcomplete
+        _ARGCOMPLETE_AVAILABLE = True
+    except ImportError:
+        _ARGCOMPLETE_AVAILABLE = False
+
     if argv is None:
         argv = sys.argv[1:]
     argv = list(argv)
 
     parser = build_parser()
+
+    # Enable argcomplete for shell completion
+    if _ARGCOMPLETE_AVAILABLE:
+        argcomplete.autocomplete(parser)
 
     pre = _build_preparser()
     args0, _rest = pre.parse_known_args(argv)

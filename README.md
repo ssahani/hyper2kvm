@@ -90,6 +90,33 @@ pip install -e .
 
 See [docs/INSTALL.md](docs/02-Installation.md) for Ubuntu/Debian, Arch, Alpine, macOS, and Windows (WSL).
 
+#### Shell Completion (Optional)
+
+Enable intelligent tab completion for bash, zsh, or fish shells:
+
+```bash
+# Install argcomplete
+pip install argcomplete
+
+# Install completion for your shell (interactive)
+./completions/install-completions.sh
+
+# Or install for a specific shell
+./completions/install-completions.sh bash
+./completions/install-completions.sh zsh
+./completions/install-completions.sh fish
+```
+
+After installation, you can use tab completion:
+
+```bash
+hyper2kvm --<TAB>              # Shows all available options
+hyper2kvm --vm<TAB>            # Completes to --vmdk, --vm-name, etc.
+hyper2kvm --vmdk /path/<TAB>   # Path completion
+```
+
+See [completions/README.md](completions/README.md) for detailed installation instructions and troubleshooting.
+
 ### Basic Usage
 
 ```bash

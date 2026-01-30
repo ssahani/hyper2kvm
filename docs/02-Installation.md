@@ -3,6 +3,7 @@
 ### Table of Contents
 
 - [Quick Start](#quick-start-recommended-editable-install)
+- [Shell Completion (Optional)](#shell-completion-optional)
 - [System Dependencies by OS](#system-dependencies-by-os)
   - [Linux](#linux)
   - [macOS](#macos)
@@ -28,7 +29,51 @@ python -m pip install -e .
 python -m hyper2kvm --help
 # or, if you keep the launcher:
 python ./hyper2kvm.py --help
+```
+
+### Shell Completion (Optional)
+
+Enable intelligent tab completion for bash, zsh, or fish shells. This provides automatic completion for all command-line arguments and options.
+
+**Prerequisites:**
+
 ```bash
+# Install argcomplete (required for shell completion)
+pip install argcomplete
+
+# Or via system package manager
+sudo dnf install python3-argcomplete  # Fedora/RHEL/CentOS
+sudo apt install python3-argcomplete  # Debian/Ubuntu
+sudo pacman -S python-argcomplete     # Arch Linux
+brew install argcomplete              # macOS
+```
+
+**Installation:**
+
+```bash
+# Interactive installation (recommended)
+./completions/install-completions.sh
+
+# Or install for a specific shell
+./completions/install-completions.sh bash
+./completions/install-completions.sh zsh
+./completions/install-completions.sh fish
+
+# Install for all shells
+./completions/install-completions.sh all
+```
+
+**Usage:**
+
+After installation, you can use tab completion:
+
+```bash
+hyper2kvm --<TAB>              # Shows all available options
+hyper2kvm --vm<TAB>            # Completes to --vmdk, --vm-name, etc.
+hyper2kvm --vmdk /path/<TAB>   # Path completion
+```
+
+For detailed installation instructions and troubleshooting, see [completions/README.md](../completions/README.md).
 
 ### System dependencies by OS
 

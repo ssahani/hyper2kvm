@@ -47,6 +47,7 @@ dependencies = [
     # Core dependencies (required for basic functionality)
     "click>=8.0.0",
     "pyyaml>=5.4.0",
+    "argcomplete>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -91,6 +92,7 @@ dev = [
     "flake8>=4.0.0",
     "mypy>=0.950",
     "autoflake>=1.4",
+    "argcomplete>=2.0.0",
 ]
 
 [project.urls]
@@ -102,6 +104,9 @@ Changelog = "https://github.com/ssahani/hyper2kvm/releases"
 
 [project.scripts]
 hyper2kvm = "hyper2kvm.__main__:main"
+
+[tool.setuptools]
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -15,6 +15,13 @@ recursive-include examples *.json
 recursive-include examples *.sh
 recursive-include examples README.md
 
+# Include shell completions
+recursive-include completions *.bash
+recursive-include completions *.zsh
+recursive-include completions *.fish
+recursive-include completions *.sh
+recursive-include completions README.md
+
 # Include configuration templates
 recursive-include test-confs *.yaml
 
