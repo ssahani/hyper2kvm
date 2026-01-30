@@ -1455,8 +1455,9 @@ class OfflineFSFix:
                     else:
                         g.mount(dev, "/")
                 except Exception as mount_error:
-                    # Log mount failures as WARNING so we can see them
-                    self.logger.warning(f"Mount failed for {dev} (type={vfs_type}): {mount_error}")
+                    # Log mount failures at DEBUG - expected during partition probing
+                    # (EFI partitions, swap, etc. will fail to mount)
+                    self.logger.debug(f"Mount failed for {dev} (type={vfs_type}): {mount_error}")
 
                     # Try filesystem-specific recovery strategies
                     if vfs_type == "xfs":
@@ -1467,7 +1468,7 @@ class OfflineFSFix:
                             self.logger.info(f"✓ Mount succeeded with ro,norecovery: {dev}")
                             # Continue with read-only mode for detection
                         except Exception as xfs_error:
-                            self.logger.warning(f"XFS recovery mount also failed: {xfs_error}")
+                            self.logger.debug(f"XFS recovery mount also failed: {xfs_error}")
                             # Try with nouuid (common for cloned VMware VMs with duplicate UUIDs)
                             self.logger.info(f"XFS mount failed, retrying with nouuid for {dev}")
                             try:
@@ -1475,10 +1476,10 @@ class OfflineFSFix:
                                 self.logger.info(f"✓ Mount succeeded with nouuid: {dev}")
                                 # Continue with nouuid mode for detection
                             except Exception as nouuid_error:
-                                self.logger.warning(f"XFS nouuid mount also failed: {nouuid_error}")
+                                self.logger.debug(f"XFS nouuid mount also failed: {nouuid_error}")
                                 raise mount_error
                     elif vfs_type == "ext4":
-                        self.logger.warning(f"Attempting fsck for ext4 partition {dev}")
+                        self.logger.info(f"Attempting fsck for ext4 partition {dev}")
                         try:
                             # Run fsck in non-interactive mode
                             run_sudo(self.logger, ["fsck.ext4", "-p", "-f", dev], check=False, capture=True)
@@ -1489,7 +1490,7 @@ class OfflineFSFix:
                                 g.mount(dev, "/")
                             self.logger.info(f"✓ Mount succeeded after fsck: {dev}")
                         except Exception as repair_error:
-                            self.logger.warning(f"Filesystem repair failed: {repair_error}")
+                            self.logger.debug(f"Filesystem repair failed: {repair_error}")
                             raise mount_error
                     else:
                         raise
