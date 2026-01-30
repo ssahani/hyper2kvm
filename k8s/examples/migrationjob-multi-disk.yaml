@@ -74,5 +74,24 @@ spec:
     cpu: "8"
     memory: 16Gi
     autoStart: true
+    evictionStrategy: LiveMigrate
+
+    # CPU topology
+    cpuConfig:
+      cores: 4
+      sockets: 2
+      threads: 1
+
+    # Additional disks beyond root disk
+    disks:
+      - name: data-disk-1
+        pvcName: multi-disk-vm-data-1
+        bootOrder: 2
+        bus: virtio
+
+      - name: data-disk-2
+        pvcName: multi-disk-vm-data-2
+        bootOrder: 3
+        bus: virtio
 
   cleanupPolicy: OnSuccess
