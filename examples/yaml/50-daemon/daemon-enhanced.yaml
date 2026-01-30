@@ -8,6 +8,12 @@
 # 6. Notifications
 # 7. File deduplication
 # 8. Better error context
+#
+# Run with primary command (recommended):
+#   h2kvmctl --config examples/yaml/50-daemon/daemon-enhanced.yaml
+#
+# Or using legacy command:
+#   hyper2kvm --config examples/yaml/50-daemon/daemon-enhanced.yaml
 
 command: daemon
 daemon: true

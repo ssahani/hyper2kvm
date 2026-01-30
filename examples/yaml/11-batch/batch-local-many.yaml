@@ -1,5 +1,8 @@
-# Modernized example (config-driven): run with
-#   sudo python hyper2kvm.py --config 11-batch/batch-local-many.yaml
+# Run with primary command (recommended):
+#   h2kvmctl --config 11-batch/batch-local-many.yaml
+#
+# Or using legacy command:
+#   hyper2kvm --config 11-batch/batch-local-many.yaml
 
 command: local
 flatten: true

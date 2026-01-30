@@ -1,5 +1,8 @@
-# Modernized example (config-driven): run with
-#   sudo python hyper2kvm.py --config 20-live-fix/live-fix-basic.yaml
+# Run with primary command (recommended):
+#   h2kvmctl --config 20-live-fix/live-fix-basic.yaml
+#
+# Or using legacy command:
+#   hyper2kvm --config 20-live-fix/live-fix-basic.yaml
 
 command: live-fix
 host: 192.168.1.100

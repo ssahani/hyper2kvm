@@ -1,5 +1,8 @@
-# Modernized example (config-driven): run with
-#   sudo python hyper2kvm.py --config 10-local/local-windows-virtio-extra-devices.yaml
+# Run with primary command (recommended):
+#   h2kvmctl --config 10-local/local-windows-virtio-extra-devices.yaml
+#
+# Or using legacy command:
+#   hyper2kvm --config 10-local/local-windows-virtio-extra-devices.yaml
 
 command: local
 vmdk: /path/to/windows.vmdk

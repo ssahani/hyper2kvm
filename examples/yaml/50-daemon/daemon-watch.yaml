@@ -2,8 +2,11 @@
 # This watches a directory for incoming disk files and processes them automatically
 # Supported file types: .vmdk, .ova, .ovf, .vhd, .vhdx, .raw, .img, .ami
 #
-# Run with:
-#   sudo python3 -m hyper2kvm --config examples/yaml/50-daemon/daemon-watch.yaml
+# Run with primary command (recommended):
+#   h2kvmctl --config examples/yaml/50-daemon/daemon-watch.yaml
+#
+# Or using legacy command:
+#   hyper2kvm --config examples/yaml/50-daemon/daemon-watch.yaml
 #
 # Or with systemd:
 #   sudo cp examples/yaml/50-daemon/daemon-watch.yaml /etc/hyper2kvm/daemon.yaml
