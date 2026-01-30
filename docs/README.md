@@ -35,6 +35,10 @@ Operating system-specific documentation
 ### ⚡ [Features](features/)
 Feature-specific documentation
 - **[VMCraft](features/vmcraft/)** - VM manipulation library
+  - [Performance Guide](features/vmcraft-performance-guide.md) - 2-3x speedup optimizations
+  - [Partition Management](features/vmcraft-partition-management.md) - GPT/MBR manipulation
+  - [LVM Guide](features/vmcraft-lvm-guide.md) - Logical volume management
+  - [Augeas Guide](features/vmcraft-augeas-guide.md) - Configuration management
 - Daemon Mode
 - Systemd Integration
 - vSphere Export
