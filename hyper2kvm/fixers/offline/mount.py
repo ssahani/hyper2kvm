@@ -404,64 +404,93 @@ class OfflineMountEngine:
         return score
 
     def _candidate_root_devices(self, g: guestfs.GuestFS) -> list[str]:
+        """
+        Build candidate list for root filesystem detection.
+
+        Uses native guestfs calls instead of shell commands to avoid
+        dependencies on /bin/sh in minimal appliances.
+        """
         candidates: list[str] = []
 
+        # 1. Partitions
         try:
-            candidates.extend([U.to_text(p) for p in (g.list_partitions() or [])])
-        except Exception:
-            pass
+            partitions = [U.to_text(p) for p in (g.list_partitions() or [])]
+            candidates.extend(partitions)
+            self.logger.debug(f"Partitions: {partitions}")
+        except Exception as e:
+            self.logger.warning(f"Failed to list partitions: {e}")
 
+        # 2. Filesystems (includes /dev/mapper/* from list_filesystems)
         try:
             fsmap = g.list_filesystems() or {}
+            self.logger.debug(f"Filesystems map: {list(fsmap.keys())}")
             for dev, fstype in fsmap.items():
                 d = U.to_text(dev)
                 t = U.to_text(fstype)
+                # Skip swap and LUKS containers (we want unlocked devices)
                 if t in ("swap", "crypto_LUKS"):
+                    self.logger.debug(f"Skipping {d} (type={t})")
                     continue
                 if d.startswith("/dev/"):
                     candidates.append(d)
-        except Exception:
-            pass
+                    self.logger.debug(f"Added from filesystems: {d} (type={t})")
+        except Exception as e:
+            self.logger.warning(f"Failed to list filesystems: {e}")
 
+        # 3. LVM logical volumes (native guestfs call)
         try:
             if hasattr(g, "lvs"):
-                for lv in (g.lvs() or []):
+                lvs_list = g.lvs() or []
+                self.logger.info(f"🔍 LVM logical volumes: {lvs_list}")
+                for lv in lvs_list:
                     d = U.to_text(lv)
                     if d.startswith("/dev/"):
                         candidates.append(d)
-        except Exception:
-            pass
+                        self.logger.info(f"✅ Added LV candidate: {d}")
+        except Exception as e:
+            self.logger.warning(f"⚠️ LVM enumeration failed: {e}")
 
-        try:
-            if hasattr(g, "command"):
-                out = g.command(["sh", "-lc", "ls -1 /dev/md* 2>/dev/null || true"])
-                for ln in U.to_text(out).splitlines():
-                    d = ln.strip()
-                    if d.startswith("/dev/"):
-                        candidates.append(d)
-        except Exception:
-            pass
-
-        try:
-            if hasattr(g, "command"):
-                out = g.command(["sh", "-lc", "ls -1 /dev/mapper/* 2>/dev/null || true"])
-                for ln in U.to_text(out).splitlines():
-                    d = ln.strip()
-                    if d.startswith("/dev/mapper/") and "control" not in d:
-                        candidates.append(d)
-        except Exception:
-            pass
-
+        # 4. Deduplicate while preserving order
         seen: set[str] = set()
         out: list[str] = []
         for d in candidates:
             if d and d not in seen:
                 seen.add(d)
                 out.append(d)
-        return out
+
+        # Filter out known non-root devices
+        filtered = []
+        for d in out:
+            # Skip libguestfs appliance loop devices
+            if d.startswith("/dev/loop"):
+                self.logger.debug(f"Filtering out loop device: {d}")
+                continue
+            # Skip LUKS placeholder devices that don't exist
+            if "/luks-" in d and not d.startswith("/dev/mapper/luks-"):
+                self.logger.debug(f"Filtering out LUKS placeholder: {d}")
+                continue
+            filtered.append(d)
+
+        # Prioritize LVM logical volumes and mapper devices
+        # Try these first as they're most likely to be root filesystems
+        priority = []
+        standard = []
+        for d in filtered:
+            if d.startswith("/dev/mapper/") and "control" not in d.lower():
+                priority.append(d)
+            elif "/dev/" in d and ("-" in d.split("/")[-1] or d.startswith("/dev/vg")):
+                # LVM naming pattern: /dev/vgname-lvname or /dev/vgname/lvname
+                priority.append(d)
+            else:
+                standard.append(d)
+
+        result = priority + standard
+        self.logger.info(f"📋 Candidate priority order: {result}")
+        return result
 
     def mount_root_bruteforce(self, g: guestfs.GuestFS) -> RootMountResult:
         candidates = self._candidate_root_devices(g)
+        self.logger.info(f"🔍 Brute-force mount candidates: {candidates}")
         if not candidates:
             raise RuntimeError("Failed to list partitions/filesystems for brute-force mount")
 
@@ -501,10 +530,23 @@ class OfflineMountEngine:
 
         best_btrfs: tuple[int, str | None, str | None] = (-10**9, None, None)
         for dev in candidates:
+            # Check filesystem type before trying btrfs subvolumes
+            self.logger.info(f"🔍 Checking {dev} for btrfs subvolume mounting...")
+            try:
+                vfs_type = filesystem_fixer._vfs_type(g, dev)
+                filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
+            except Exception:
+                vfs_type = "unknown"
+
+            # Only try btrfs subvolume mounting on actual btrfs filesystems
+            if vfs_type != "btrfs":
+                self.logger.info(f"⏭️ Skipping {dev} (vfs_type={vfs_type}, not btrfs) - NO SUBVOL MOUNTS")
+                continue
+
+            self.logger.info(f"✅ {dev} is btrfs, trying subvolume mounts...")
             for sv in self._BTRFS_COMMON_SUBVOLS:
                 self.safe_umount_all(g)
                 try:
-                    filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                     opts = f"subvol={sv}"
                     if self.dry_run:
                         opts = f"ro, {opts}"

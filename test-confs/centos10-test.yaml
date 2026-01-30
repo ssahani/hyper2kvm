@@ -1,0 +1,49 @@
+# CentOS 10 Server - Universal Filesystem Test
+# Tests: XFS on LVM, GRUB2, enterprise layout
+
+cmd: local
+
+# Source VMDK
+vmdk: /home/ssahani/Downloads/VMs/extracted/centos/64bit/CentOS 10 Server (64bit).vmdk
+
+# Output Configuration
+output_dir: /home/ssahani/tt/hyper2kvm/out/centos10-test
+to_output: /home/ssahani/tt/hyper2kvm/out/centos10-test/centos10-server.qcow2
+out_format: qcow2
+compress: true
+workdir: /home/ssahani/tt/hyper2kvm/out/centos10-test/work
+
+# Core Linux Fixes
+fstab_fixes_enable: true
+fstab_mode: stabilize-all
+fstab_prefer_partuuid: false  # CentOS uses UUID for LVM
+fstab_optimize_options: true
+
+grub_fixes_enable: true
+initramfs_regen_enable: true
+initramfs_regen_force: true
+
+# VirtIO modules for initramfs
+initramfs_modules:
+  - virtio_blk
+  - virtio_scsi
+  - virtio_net
+  - virtio_pci
+  - dm_mod
+  - dm_crypt
+
+# Network fixes
+network_fixes_enable: true
+
+# Libvirt XML generation
+libvirt_xml_generate: true
+libvirt_vm_name: centos10-server
+libvirt_memory_mb: 4096
+libvirt_vcpus: 2
+libvirt_disk_bus: virtio
+
+# Reporting
+report: /home/ssahani/tt/hyper2kvm/out/centos10-test/migration-report.md
+log_file: /home/ssahani/tt/hyper2kvm/out/centos10-test/migration.log
+verbose: 2
+dry_run: false

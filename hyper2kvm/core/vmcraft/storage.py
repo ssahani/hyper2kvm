@@ -52,8 +52,15 @@ class LVMActivator:
         audit["attempted"] = True
 
         try:
-            # Scan for volume groups
-            run_sudo(logger, ["vgscan", "--mknodes"], check=True, capture=True)
+            # Deactivate any stale volume groups first
+            run_sudo(logger, ["vgchange", "-an"], check=False, capture=True)
+
+            # Refresh physical volume cache (critical for NBD device changes)
+            if _has_command("pvscan"):
+                run_sudo(logger, ["pvscan", "--cache"], check=True, capture=True)
+
+            # Scan for volume groups with cache refresh
+            run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
 
             # Activate all volume groups
             run_sudo(logger, ["vgchange", "-ay"], check=True, capture=True)

@@ -316,6 +316,15 @@ class VMCraft:
         self.logger.info(f"VMCraft ready in {total_time:.2f}s (vs ~5-10s for libguestfs)")
         self.logger.debug(f"   Mount root: {self._mount_root}")
 
+    def sync(self) -> None:
+        """Flush filesystem buffers to disk."""
+        if not self._launched:
+            return
+
+        # VMCraft uses direct NBD access, no additional sync needed
+        # All writes are synchronous through mount operations
+        self.logger.debug("VMCraft sync: no-op (direct NBD access)")
+
     def shutdown(self) -> None:
         """Shutdown the backend."""
         if not self._launched:
@@ -559,6 +568,9 @@ class VMCraft:
         """Unmount all mounted filesystems."""
         if self._mount_manager:
             self._mount_manager.umount_all()
+        # Clear file operations cache after unmounting to prevent stale metadata
+        if self._file_ops:
+            self._file_ops.clear_cache()
 
     def mountpoints(self) -> list[str]:
         """Get list of current mountpoints."""

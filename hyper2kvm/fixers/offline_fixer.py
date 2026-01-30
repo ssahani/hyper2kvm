@@ -289,7 +289,7 @@ class OfflineFSFix:
 
     # guestfs open/close helpers
     def open(self) -> guestfs.GuestFS:
-        g = create_guestfs(python_return_dict=True, backend='native')
+        g = create_guestfs(python_return_dict=True, backend='vmcraft')
         if self.logger.isEnabledFor(logging.DEBUG):
             try:
                 g.set_trace(1)
@@ -564,10 +564,12 @@ class OfflineFSFix:
 
     def _looks_like_root(self, g: guestfs.GuestFS) -> bool:
         hits = 0
+        found_hints = []
         for p in self._ROOT_HINT_FILES:
             try:
                 if g.is_file(p):
                     hits += 1
+                    found_hints.append(p)
             except Exception:
                 continue
         for p in self._ROOT_STRONG_HINTS:
@@ -575,11 +577,14 @@ class OfflineFSFix:
                 if p.endswith("/"):
                     if g.is_dir(p[:-1]):
                         hits += 1
+                        found_hints.append(p)
                 else:
                     if g.is_file(p) or g.is_dir(p):
                         hits += 1
+                        found_hints.append(p)
             except Exception:
                 continue
+        self.logger.info(f"🔍 Root detection: {hits} hints found: {found_hints}")
         return hits >= 2
 
     def _score_root(self, g: guestfs.GuestFS) -> int:
@@ -730,71 +735,142 @@ class OfflineFSFix:
 
     def _candidate_root_devices(self, g: guestfs.GuestFS) -> list[str]:
         """
-        Build a *better-than-list_partitions()* candidate list:
-          - after LUKS open + mdraid assemble + LVM activation, new mountables appear
-          - list_filesystems() often includes LV paths
+        Build candidate list for root filesystem detection.
+
+        Uses native guestfs calls instead of shell commands to avoid
+        dependencies on /bin/sh in minimal appliances.
+
+        After LUKS open + mdraid assemble + LVM activation, new mountables appear.
+        list_filesystems() often includes LV paths.
         """
         candidates: list[str] = []
 
-        # 1) partitions
+        # 1) Partitions
         try:
-            candidates.extend([U.to_text(p) for p in (g.list_partitions() or [])])
-        except Exception:
-            pass
+            partitions = [U.to_text(p) for p in (g.list_partitions() or [])]
+            candidates.extend(partitions)
+            self.logger.debug(f"Partitions: {partitions}")
+        except Exception as e:
+            self.logger.warning(f"Failed to list partitions: {e}")
 
-        # 2) mountable filesystems (skip swap + crypto_LUKS)
+        # 2) Mountable filesystems (includes /dev/mapper/* from list_filesystems)
         try:
             fsmap = g.list_filesystems() or {}
+            self.logger.debug(f"Filesystems map: {list(fsmap.keys())}")
             for dev, fstype in fsmap.items():
                 d = U.to_text(dev)
                 t = U.to_text(fstype)
+                # Skip swap and LUKS containers (we want unlocked devices)
                 if t in ("swap", "crypto_LUKS"):
+                    self.logger.debug(f"Skipping {d} (type={t})")
                     continue
                 if d.startswith("/dev/"):
                     candidates.append(d)
-        except Exception:
-            pass
+                    self.logger.debug(f"Added from filesystems: {d} (type={t})")
+        except Exception as e:
+            self.logger.warning(f"Failed to list filesystems: {e}")
 
-        # 3) LVs
+        # 3) LVM logical volumes (native guestfs call)
         try:
             if hasattr(g, "lvs"):
-                for lv in (g.lvs() or []):
+                lvs_list = g.lvs() or []
+                self.logger.info(f"LVM logical volumes: {lvs_list}")
+                for lv in lvs_list:
                     d = U.to_text(lv)
                     if d.startswith("/dev/"):
                         candidates.append(d)
-        except Exception:
-            pass
+                        self.logger.info(f"Added LV candidate: {d}")
+        except Exception as e:
+            self.logger.warning(f"LVM enumeration failed: {e}")
 
-        # 4) mdraid devices
-        try:
-            if hasattr(g, "command"):
-                out = g.command(["sh", "-lc", "ls -1 /dev/md* 2>/dev/null || true"])
-                for ln in U.to_text(out).splitlines():
-                    d = ln.strip()
-                    if d.startswith("/dev/"):
-                        candidates.append(d)
-        except Exception:
-            pass
-
-        # 5) device-mapper nodes (crypt/LVM edge cases)
-        try:
-            if hasattr(g, "command"):
-                out = g.command(["sh", "-lc", "ls -1 /dev/mapper/* 2>/dev/null || true"])
-                for ln in U.to_text(out).splitlines():
-                    d = ln.strip()
-                    if d.startswith("/dev/mapper/") and "control" not in d:
-                        candidates.append(d)
-        except Exception:
-            pass
-
-        # Unique + stable-ish order (preserve first-seen)
+        # 4) Deduplicate while preserving order
         seen: set[str] = set()
         out: list[str] = []
         for d in candidates:
             if d and d not in seen:
                 seen.add(d)
                 out.append(d)
-        return out
+
+        # Filter out known non-root devices
+        filtered = []
+        for d in out:
+            # Skip libguestfs appliance loop devices
+            if d.startswith("/dev/loop"):
+                self.logger.debug(f"Filtering out loop device: {d}")
+                continue
+            # Skip LUKS placeholder devices that don't exist
+            if "/luks-" in d and not d.startswith("/dev/mapper/luks-"):
+                self.logger.debug(f"Filtering out LUKS placeholder: {d}")
+                continue
+            filtered.append(d)
+
+        # Get current NBD device and its partitions to filter candidates
+        current_nbd = None
+        current_nbd_parts = []
+        try:
+            devices = g.list_devices() or []
+            if devices:
+                current_nbd = U.to_text(devices[0])
+                self.logger.debug(f"Current NBD device: {current_nbd}")
+                # Get partitions of current NBD
+                parts = g.list_partitions() or []
+                current_nbd_parts = [U.to_text(p) for p in parts if U.to_text(p).startswith(current_nbd)]
+                self.logger.debug(f"Current NBD partitions: {current_nbd_parts}")
+        except Exception as e:
+            self.logger.warning(f"Failed to get current NBD device: {e}")
+
+        # Get LVM devices that belong to the current disk
+        # by checking which volume groups use the current NBD partitions as PVs
+        current_disk_lv = set()
+        if current_nbd_parts:
+            try:
+                # Get LVM volumes, but only those from the current disk
+                lvs_list = g.lvs() or [] if hasattr(g, "lvs") else []
+                for lv in lvs_list:
+                    lv_text = U.to_text(lv)
+                    # For VMCraft, we can't easily tell which disk an LV came from
+                    # So we'll include mapper devices that were explicitly in our LV list
+                    if lv_text.startswith("/dev/mapper/"):
+                        current_disk_lv.add(lv_text)
+                self.logger.debug(f"LVM devices from current disk: {current_disk_lv}")
+            except Exception as e:
+                self.logger.warning(f"Failed to filter LVM devices: {e}")
+
+        # Filter candidates to only include devices from current NBD disk
+        # This prevents trying devices from other NBD connections or the host system
+        nbd_filtered = []
+        for d in filtered:
+            # Include mapper devices ONLY if they're in our LVM list
+            if d.startswith("/dev/mapper/"):
+                if d in current_disk_lv:
+                    nbd_filtered.append(d)
+                else:
+                    self.logger.debug(f"Filtering out mapper device not in LVM list: {d}")
+            # Include partitions from current NBD device
+            elif current_nbd and d.startswith(current_nbd):
+                nbd_filtered.append(d)
+            # Skip devices from other NBD devices or host system
+            elif current_nbd:
+                self.logger.debug(f"Filtering out device from different disk: {d}")
+            else:
+                # If we can't determine current NBD, include all (fallback)
+                nbd_filtered.append(d)
+
+        self.logger.info(f"Filtered to current disk: {len(nbd_filtered)} of {len(filtered)} candidates")
+
+        # Prioritize LVM logical volumes and mapper devices
+        # Try these first as they're most likely to be root filesystems
+        priority = []
+        standard = []
+        for d in nbd_filtered:
+            if d.startswith("/dev/mapper/") and "control" not in d.lower():
+                priority.append(d)
+            else:
+                standard.append(d)
+
+        result = priority + standard
+        self.logger.info(f"Candidate priority order: {result}")
+        return result
 
     def mount_root_bruteforce(self, g: guestfs.GuestFS) -> None:
         candidates = self._candidate_root_devices(g)
@@ -809,16 +885,39 @@ class OfflineFSFix:
             self._safe_umount_all(g)
             try:
                 filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
+                self.logger.info(f"🔄 Attempting to mount {dev} at /...")
+
                 if self.dry_run:
                     g.mount_ro(dev, "/")
                 else:
                     g.mount(dev, "/")
+
+                self.logger.info(f"✓ Mount succeeded for {dev}, checking if it looks like root...")
+
+                # Debug: Check what's accessible
+                try:
+                    # Check if files exist via direct path
+                    import os
+                    mount_root = getattr(g, "_mount_root", None)
+                    if mount_root:
+                        actual_files = os.listdir(mount_root) if os.path.exists(mount_root) else []
+                        fstab_exists = os.path.exists(os.path.join(mount_root, "etc", "fstab"))
+                        self.logger.info(f"🔍 mount_root={mount_root}, contents={actual_files[:10]}, fstab_exists={fstab_exists}")
+                    self.logger.info(f"🔍 Via GuestFS: is_dir('/') = {g.is_dir('/')}, is_file('/etc/fstab') = {g.is_file('/etc/fstab')}")
+                except Exception as e:
+                    self.logger.warning(f"❌ Error checking files: {e}")
+
                 if self._looks_like_root(g):
                     sc = self._score_root(g)
+                    self.logger.info(f"✓ {dev} looks like root (score={sc})")
                     if sc > best[0]:
                         best = (sc, dev)
+                else:
+                    self.logger.info(f"✗ {dev} doesn't look like root filesystem")
+
                 self._safe_umount_all(g)
             except Exception as e:
+                self.logger.warning(f"Mount failed for {dev}: {e}")
                 mount_failures.append({"device": dev, "error": str(e)})
                 continue
 
@@ -831,7 +930,7 @@ class OfflineFSFix:
                 else:
                     g.mount(dev, "/")
                 self.root_dev = dev
-                self.logger.info(f"Fallback root detected at {dev} (score={best[0]})")
+                self.logger.info(f"✅ Mounted root filesystem: {dev} (score={best[0]})")
                 if mount_failures:
                     try:
                         self.report.setdefault("analysis", {}).setdefault("mount", {})[
@@ -842,22 +941,86 @@ class OfflineFSFix:
                 return
             except Exception as e:
                 mount_failures.append({"device": dev, "error": f"best_root_mount_failed:{e}"})
+        else:
+            self.logger.warning(f"No candidate devices passed _looks_like_root check in first pass. Trying btrfs subvolumes...")
 
         # Then attempt btrfs common subvols (also scored)
+        # Only attempt btrfs subvolumes on actual btrfs filesystems
         best_btrfs: tuple[int, str | None, str | None] = (-10**9, None, None)
         for dev in candidates:
-            for sv in self._BTRFS_COMMON_SUBVOLS:
+            # Check filesystem type before trying btrfs subvolumes
+            try:
+                vfs_type = filesystem_fixer._vfs_type(g, dev)
+                self.logger.debug(f"Btrfs check: {dev} has vfs_type={vfs_type}")
+            except Exception:
+                vfs_type = "unknown"
+
+            # Skip non-btrfs filesystems for subvolume mounting
+            if vfs_type != "btrfs":
+                self.logger.debug(f"Skipping {dev} for btrfs subvolumes (type={vfs_type})")
+                continue
+
+            self.logger.info(f"Discovering btrfs subvolumes on {dev}")
+
+            # Discover actual subvolumes by mounting and listing
+            discovered_subvols = []
+            try:
+                # Mount without subvol to access subvolume list
+                self._safe_umount_all(g)
+                if hasattr(g, "mount_options"):
+                    g.mount_options("subvolid=5" if not self.dry_run else "ro,subvolid=5", dev, "/mnt")
+                else:
+                    # Fallback: try default mount
+                    if self.dry_run:
+                        g.mount_ro(dev, "/mnt")
+                    else:
+                        g.mount(dev, "/mnt")
+
+                # List subvolumes - try different approaches
+                try:
+                    # Try btrfs subvolume list if available
+                    result = g.command(["btrfs", "subvolume", "list", "/mnt"])
+                    output = U.to_text(result).strip()
+                    # Parse output like: "ID 256 gen 7 top level 5 path @"
+                    for line in output.splitlines():
+                        parts = line.split()
+                        if "path" in parts:
+                            idx = parts.index("path")
+                            if idx + 1 < len(parts):
+                                subvol = parts[idx + 1]
+                                discovered_subvols.append(subvol)
+                    self.logger.info(f"Discovered {len(discovered_subvols)} btrfs subvolumes: {discovered_subvols}")
+                except Exception as e:
+                    self.logger.debug(f"Could not list btrfs subvolumes: {e}")
+
+                self._safe_umount_all(g)
+            except Exception as e:
+                self.logger.debug(f"Could not discover btrfs subvolumes on {dev}: {e}")
+
+            # Combine discovered and common subvolumes
+            subvols_to_try = discovered_subvols if discovered_subvols else self._BTRFS_COMMON_SUBVOLS
+            if discovered_subvols:
+                # Also try common patterns in case discovery missed them
+                for common in self._BTRFS_COMMON_SUBVOLS:
+                    if common not in subvols_to_try:
+                        subvols_to_try.append(common)
+
+            self.logger.info(f"Trying {len(subvols_to_try)} btrfs subvolumes on {dev}")
+            for sv in subvols_to_try:
                 self._safe_umount_all(g)
                 try:
                     filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                     opts = f"subvol={sv}"
                     if self.dry_run:
-                        opts = f"ro, {opts}"
+                        opts = f"ro,{opts}"
                     g.mount_options(opts, dev, "/")
                     if self._looks_like_root(g):
                         sc = self._score_root(g)
+                        self.logger.info(f"✓ {dev} subvol={sv} looks like root (score={sc})")
                         if sc > best_btrfs[0]:
                             best_btrfs = (sc, dev, sv)
+                    else:
+                        self.logger.debug(f"✗ {dev} subvol={sv} doesn't look like root")
                     self._safe_umount_all(g)
                 except Exception as e:
                     mount_failures.append({"device": f"{dev} subvol={sv}", "error": str(e)})

@@ -251,8 +251,16 @@ class NBDDeviceManager:
                 line = line.strip()
 
                 if line and line != nbd_name:
-                    # This is a partition (e.g., nbd0p1)
-                    partitions.append(f"/dev/{line}")
+                    # Check if this is an LVM logical volume (contains hyphen but doesn't start with NBD device name)
+                    # LVM volumes appear in lsblk as "vgname-lvname" (e.g., "cs-root", "fedora-root")
+                    # They need /dev/mapper/ prefix, not /dev/
+                    if '-' in line and not line.startswith(nbd_name):
+                        # LVM logical volume: /dev/mapper/vgname-lvname
+                        partitions.append(f"/dev/mapper/{line}")
+                        self.logger.debug(f"Detected LVM volume in partition list: {line} -> /dev/mapper/{line}")
+                    else:
+                        # Regular partition (e.g., nbd0p1)
+                        partitions.append(f"/dev/{line}")
 
             return partitions
 
