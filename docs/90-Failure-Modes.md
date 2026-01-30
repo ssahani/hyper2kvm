@@ -278,7 +278,7 @@ sudo python -m hyper2kvm local \
   --virtio-win-iso ./virtio-win.iso
 ```
 
-**See also:** [Windows Migration Guide](WINDOWS.md)
+**See also:** [Windows Migration Guide](10-Windows-Guide.md)
 
 ---
 
@@ -583,7 +583,7 @@ When reporting issues, provide:
 
 ## Related Documentation
 
-- [Windows Troubleshooting](windows-10-troubleshoot.md)
-- [Windows Boot Cycle](windows-boot-cycle.md)
-- [Quick Start Guide](QUICKSTART.md)
-- [CLI Reference](CLI_REFERENCE.md)
+- [Windows Troubleshooting](12-Windows-Troubleshooting.md)
+- [Windows Boot Cycle](11-Windows-Boot-Cycle.md)
+- [Quick Start Guide](03-Quick-Start.md)
+- [CLI Reference](04-CLI-Reference.md)

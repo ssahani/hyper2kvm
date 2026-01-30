@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/core/xml_utils.py
 """Shared XML escaping and manipulation utilities
 
 Provides common helpers for XML escaping to avoid duplication across modules.

@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+# hyper2kvm/fixers/offline/vmware_tools_remover.py
 from __future__ import annotations
 
 import fnmatch

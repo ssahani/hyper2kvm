@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/vmware/utils/utils.py
 """
 Shared utility functions for VMware operations.
 

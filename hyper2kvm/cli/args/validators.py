@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/cli/args/validators.py
 from __future__ import annotations
 
 import argparse
@@ -261,6 +262,24 @@ def _validate_cmd_vsphere(args: argparse.Namespace, conf: Dict[str, Any]) -> Non
     _validate_vsphere_action_requirements(args, conf, act)
 
 
+def _validate_cmd_azure(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    """
+    Validate Azure command requirements.
+
+    Rules:
+      - Must have resource_group OR allow_all_rgs=true
+      - If list_only=true, less strict validation
+    """
+    rg = _merged_get(args, conf, "azure_resource_group")
+    allow_all = _merged_get(args, conf, "azure_allow_all_rgs")
+
+    if not _require(rg) and not allow_all:
+        raise SystemExit(
+            "cmd=azure: missing required `azure_resource_group:` (YAML) or CLI --azure-resource-group. "
+            "To search all resource groups, set `azure_allow_all_rgs: true` (dangerous)."
+        )
+
+
 def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
     """
     New-project policy:
@@ -293,6 +312,7 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
         "generate-systemd": lambda _a, _c: None,
         "daemon": lambda _a, _c: None,
         "vsphere": _validate_cmd_vsphere,
+        "azure": _validate_cmd_azure,
     }
 
     fn = validators.get(cmd_l)

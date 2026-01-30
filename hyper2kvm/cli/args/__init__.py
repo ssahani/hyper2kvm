@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/cli/args/__init__.py
 """
 Argument parser modules for hyper2kvm CLI.
 
@@ -14,6 +15,7 @@ from .builder import HelpFormatter, _build_epilog
 # Re-export all argument group builders
 from .groups import (
     _add_ami_extraction_knobs,
+    _add_azure_knobs,
     _add_daemon_flags,
     _add_domain_emission,
     _add_fixing_behavior,
@@ -56,6 +58,7 @@ from .parser import _build_preparser, _load_merged_config, build_parser, parse_a
 from .validators import (
     _pick_vsphere_vm_name,
     _validate_cmd_ami,
+    _validate_cmd_azure,
     _validate_cmd_fetch_and_fix,
     _validate_cmd_live_fix,
     _validate_cmd_local,
@@ -80,6 +83,7 @@ __all__ = [
     "_build_epilog",
     # Groups
     "_add_ami_extraction_knobs",
+    "_add_azure_knobs",
     "_add_daemon_flags",
     "_add_domain_emission",
     "_add_fixing_behavior",
@@ -118,6 +122,7 @@ __all__ = [
     # Validators
     "_pick_vsphere_vm_name",
     "_validate_cmd_ami",
+    "_validate_cmd_azure",
     "_validate_cmd_fetch_and_fix",
     "_validate_cmd_live_fix",
     "_validate_cmd_local",

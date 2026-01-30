@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+# -*- coding: utf-8 -*-
+# hyper2kvm/testers/libvirt_tester.py
 from __future__ import annotations
 
 import logging

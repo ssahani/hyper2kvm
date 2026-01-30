@@ -336,11 +336,11 @@ sudo python -m hyper2kvm local \
 
 ### Explore Documentation
 
-- **[Installation Guide](INSTALL.md)** - Detailed installation instructions
-- **[CLI Reference](CLI_REFERENCE.md)** - Complete command-line options
+- **[Installation Guide](02-Installation.md)** - Detailed installation instructions
+- **[CLI Reference](04-CLI-Reference.md)** - Complete command-line options
 - **[Examples](../examples/)** - 30+ working configuration examples
-- **[Architecture](ARCHITECTURE.md)** - How hyper2kvm works internally
-- **[Troubleshooting](FAILURE_MODES.md)** - Common problems and solutions
+- **[Architecture](01-Architecture.md)** - How hyper2kvm works internally
+- **[Troubleshooting](90-Failure-Modes.md)** - Common problems and solutions
 
 ### Try Advanced Features
 

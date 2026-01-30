@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
+# hyper2kvm/libvirt/libvirt_utils.py
 """Shared libvirt utility functions
 
 Provides common helpers for libvirt operations to avoid duplication across modules.

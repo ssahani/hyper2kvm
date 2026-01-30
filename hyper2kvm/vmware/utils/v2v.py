@@ -93,11 +93,18 @@ def _write_password_file(client: Any, base_dir: Path) -> Path:
         )
     base_dir = client._ensure_output_dir(base_dir)
     pwfile = base_dir / f".v2v-pass-{os.getpid()}.txt"
-    pwfile.write_text(pw + "\n", encoding="utf-8")
+    # Create file atomically with secure permissions to avoid race condition (CWE-377)
     try:
-        os.chmod(pwfile, 0o600)
-    except Exception:
-        pass
+        fd = os.open(str(pwfile), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        # Stale file from crashed run (extremely rare - requires PID reuse after reboot)
+        # Remove it and retry once
+        pwfile.unlink(missing_ok=True)
+        fd = os.open(str(pwfile), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        os.write(fd, (pw + "\n").encode('utf-8'))
+    finally:
+        os.close(fd)
     return pwfile
 
 
