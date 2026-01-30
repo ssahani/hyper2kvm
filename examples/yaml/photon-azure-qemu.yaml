@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config photon-azure-qemu.yaml
+#   sudo python hyper2kvm.py --config photon-azure-qemu.yaml
 
 command: local
 vmdk: ./photon-azure-5.0-dde71ec57.x86_64.vhd

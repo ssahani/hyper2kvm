@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config 30-fetch-and-fix/fetch-full-chain-and-test.yaml
+#   sudo python hyper2kvm.py --config 30-fetch-and-fix/fetch-full-chain-and-test.yaml
 
 command: fetch-and-fix
 host: esxi-host

@@ -1,16 +1,16 @@
-# 🪟 Windows Network & Driver Configuration in vmdk2kvm
+# 🪟 Windows Network & Driver Configuration in hyper2kvm
 
 > **Declarative. Explicit. Boring (in the best way).**
 > Windows conversions fail when networking and drivers are left to luck.
-> vmdk2kvm makes both **fully declarative** using **YAML + JSON**, with no hidden magic.
+> hyper2kvm makes both **fully declarative** using **YAML + JSON**, with no hidden magic.
 
-This document explains **how Windows networking and drivers are configured**, how **YAML references JSON**, and how everything fits into the larger vmdk2kvm pipeline.
+This document explains **how Windows networking and drivers are configured**, how **YAML references JSON**, and how everything fits into the larger hyper2kvm pipeline.
 
 ---
 
 ## 🧠 Design Philosophy
 
-vmdk2kvm follows a strict separation of concerns:
+hyper2kvm follows a strict separation of concerns:
 
 | Layer | Responsibility              | Format |
 | ----- | --------------------------- | ------ |
@@ -43,7 +43,7 @@ These mechanisms apply when:
 # 🌐 Windows Network Configuration (Retention & Overrides)
 
 Windows networking is **not modified directly offline**.
-Instead, vmdk2kvm **stages a first-boot configuration** that is applied once Windows boots under KVM.
+Instead, hyper2kvm **stages a first-boot configuration** that is applied once Windows boots under KVM.
 
 This avoids registry archaeology and matches how Windows actually wants to be configured.
 
@@ -82,7 +82,7 @@ win_net_override: ./net/windows-network.json
 2. File is staged into the guest (example):
 
    ```
-   C:\vmdk2kvm\net\network_override.json
+   C:\hyper2kvm\net\network_override.json
    ```
 3. A first-boot helper applies it using:
 

@@ -1,6 +1,6 @@
 # FAILURE_MODES.md — Real-world Migration Failures
 
-This document lists failure classes observed in production and how vmdk2kvm addresses them.
+This document lists failure classes observed in production and how hyper2kvm addresses them.
 
 ---
 

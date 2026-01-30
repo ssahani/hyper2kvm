@@ -14,7 +14,7 @@ If something matters, put it in YAML.
 ### CLI
 
 ```bash
-sudo ./vmdk2kvm.py \
+sudo ./hyper2kvm.py \
   --output-dir ./out \
   local \
   --vmdk /path/to/linux.vmdk \
@@ -52,7 +52,7 @@ verbose: 1
 ### CLI
 
 ```bash
-sudo ./vmdk2kvm.py \
+sudo ./hyper2kvm.py \
   --output-dir ./out \
   local \
   --vmdk /path/to/windows.vmdk \
@@ -88,7 +88,7 @@ This injects BOOT_START VirtIO drivers and registry entries **before first KVM b
 ### CLI
 
 ```bash
-sudo ./vmdk2kvm.py \
+sudo ./hyper2kvm.py \
   --dry-run \
   --print-fstab \
   local \
@@ -116,7 +116,7 @@ Use this to understand **exactly what would change**.
 ### CLI
 
 ```bash
-sudo ./vmdk2kvm.py \
+sudo ./hyper2kvm.py \
   --output-dir ./out \
   fetch-and-fix \
   --host esxi.example.com \
@@ -154,7 +154,7 @@ This fetches the **entire snapshot chain**, flattens it, and converts offline.
 ### CLI
 
 ```bash
-sudo ./vmdk2kvm.py \
+sudo ./hyper2kvm.py \
   live-fix \
   --host vm.example.com \
   --user root \
@@ -190,7 +190,7 @@ Live-fix is **post-migration hygiene**, not a replacement for offline repair.
 ### CLI
 
 ```bash
-sudo ./vmdk2kvm.py \
+sudo ./hyper2kvm.py \
   --output-dir ./out \
   ova \
   --ova appliance.ova \
@@ -219,7 +219,7 @@ verbose: 1
 ### CLI
 
 ```bash
-sudo ./vmdk2kvm.py \
+sudo ./hyper2kvm.py \
   --output-dir ./out \
   ovf \
   --ovf appliance.ovf \
@@ -248,7 +248,7 @@ verbose: 1
 ### CLI
 
 ```bash
-./vmdk2kvm.py vsphere \
+./hyper2kvm.py vsphere \
   --vcenter vcenter.example.com \
   --vc-user administrator@vsphere.local \
   --vc-password-env VC_PASSWORD \
@@ -278,7 +278,7 @@ json: true
 ### CLI
 
 ```bash
-./vmdk2kvm.py vsphere \
+./hyper2kvm.py vsphere \
   --vcenter vcenter.example.com \
   --vc-user administrator@vsphere.local \
   --vc-password-env VC_PASSWORD \
@@ -312,7 +312,7 @@ local_path: ./downloads/myVM-disk0.vmdk
 ### CLI
 
 ```bash
-./vmdk2kvm.py vsphere \
+./hyper2kvm.py vsphere \
   --vcenter vcenter.example.com \
   --vc-user administrator@vsphere.local \
   --vc-password-env VC_PASSWORD \
@@ -354,7 +354,7 @@ This uses:
 ### CLI
 
 ```bash
-./vmdk2kvm.py vsphere \
+./hyper2kvm.py vsphere \
   --vcenter vcenter.example.com \
   --vc-user administrator@vsphere.local \
   --vc-password-env VC_PASSWORD \
@@ -364,7 +364,7 @@ This uses:
   --disk 0 \
   --local-path ./downloads/myVM-disk0.vmdk \
   --enable-cbt \
-  --snapshot-name vmdk2kvm-cbt \
+  --snapshot-name hyper2kvm-cbt \
   --change-id "*"
 ```
 
@@ -384,6 +384,6 @@ disk: 0
 local_path: ./downloads/myVM-disk0.vmdk
 
 enable_cbt: true
-snapshot_name: vmdk2kvm-cbt
+snapshot_name: hyper2kvm-cbt
 change_id: "*"
 ```

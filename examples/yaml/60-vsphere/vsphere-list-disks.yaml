@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config 60-vsphere/vsphere-list-disks.yaml
+#   sudo python hyper2kvm.py --config 60-vsphere/vsphere-list-disks.yaml
 
 command: vsphere
 vcenter: vcenter.example.com

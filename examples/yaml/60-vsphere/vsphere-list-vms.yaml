@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config 60-vsphere/vsphere-list-vms.yaml
+#   sudo python hyper2kvm.py --config 60-vsphere/vsphere-list-vms.yaml
 
 command: vsphere
 vcenter: vcenter.example.com
