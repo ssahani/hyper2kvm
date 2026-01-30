@@ -1,0 +1,202 @@
+# ============================================
+# Complete Workflow: vSphere → libvirt (RHEL 9)
+# ============================================
+# Description: Export RHEL 9 VM from vSphere and prepare for libvirt/KVM
+# Use Case: Enterprise RHEL 9 migration with subscription preservation
+# Prerequisites:
+#   - govc installed
+#   - vCenter credentials
+#   - RHEL subscription or satellite server
+# ============================================
+
+cmd: vsphere
+
+# vSphere Connection
+vcenter: vcenter.example.com
+username: administrator@vsphere.local
+password_file: ~/.vcenter_password
+datacenter: Production-DC
+cluster: RHEL-Cluster
+
+# VM Selection
+vm_name: rhel9-database-server
+# Alternative selection methods:
+# vm_uuid: 502d5b64-0a7e-b2a5-45f9-065cbf375a77
+# vm_path: /Production-DC/vm/RHEL/rhel9-database-server
+
+# vSphere Export
+vs_action: export
+export_method: govc
+export_format: ova
+
+# Snapshot Configuration
+create_snapshot: true
+snapshot_name: pre-kvm-migration
+snapshot_description: Snapshot before KVM migration - $(date +%Y-%m-%d)
+snapshot_memory: false
+snapshot_quiesce: true  # Application-consistent snapshot
+delete_snapshot_after: true
+
+# Disk Processing
+flatten: true  # Essential for multi-extent VMDKs
+compress: true
+disk_format: qcow2
+
+# RHEL 9 Specific Fixes
+fix_fstab: true
+fix_grub: true
+fix_initramfs: true
+fix_network: true
+remove_vmware_tools: true
+
+# Network Configuration (NetworkManager on RHEL 9)
+network_config_type: networkmanager
+network_fix_level: full
+remove_mac_binding: true
+setup_dhcp: true
+preserve_static_ip: false
+remove_vmware_network_files: true
+
+# RHEL 9 uses ifcfg files or NetworkManager keyfiles
+network_config_format: keyfile  # or ifcfg for legacy
+
+# Bootloader Configuration
+bootloader_type: grub2
+firmware_type: uefi  # RHEL 9 default
+regenerate_grub: true
+update_grub_config: true
+grub_cmdline_add:
+  - net.ifnames=0  # Disable predictable network names (optional)
+  - biosdevname=0
+
+# Initramfs/Dracut Configuration
+update_initramfs: true
+dracut_force_rebuild: true
+install_virtio_modules: true
+dracut_add_drivers:
+  - virtio
+  - virtio_blk
+  - virtio_scsi
+  - virtio_net
+  - virtio_pci
+
+# SELinux Configuration
+selinux_relabel: true
+selinux_mode: enforcing  # enforcing, permissive, or disabled
+
+# Subscription Manager (preserve registration)
+preserve_rhsm_config: true
+rhsm_server: satellite.example.com  # or subscription.rhsm.redhat.com
+
+# System Configuration
+clean_ssh_keys: false  # Preserve for existing connections
+clean_machine_id: true
+preserve_hostname: true
+timezone: America/New_York
+
+# Output Configuration
+to_output: /data/kvm/rhel9-database-server.qcow2
+output_format: qcow2
+output_dir: /data/kvm/
+
+# libvirt Domain XML Generation
+generate_libvirt_xml: true
+libvirt_xml_path: /data/kvm/rhel9-database-server.xml
+libvirt_domain_name: rhel9-database-server
+
+# libvirt Hardware Configuration
+memory_mb: 16384  # 16GB for database server
+memory_backing: hugepages  # Performance optimization
+vcpus: 16
+cpu_mode: host-passthrough
+cpu_features:
+  - name: pdpe1gb
+    policy: require
+numa_nodes: 2  # NUMA topology for performance
+
+# UEFI/Secure Boot
+firmware_type: uefi
+uefi_loader: /usr/share/edk2/ovmf/OVMF_CODE.fd
+uefi_nvram_template: /usr/share/edk2/ovmf/OVMF_VARS.fd
+secure_boot: true  # RHEL 9 supports secure boot
+
+# Storage Configuration
+disk_bus: virtio
+disk_cache: none  # Best for database workloads
+disk_io: native
+disk_discard: unmap
+disk_detect_zeroes: unmap
+
+# Additional Disks (if any)
+additional_disks:
+  - path: /data/kvm/rhel9-database-data.qcow2
+    size: 500G
+    bus: virtio
+    cache: none
+
+# Network Configuration
+network_type: bridge
+network_bridge: br0
+network_model: virtio
+network_mtu: 9000  # Jumbo frames
+
+# Performance Tuning
+enable_iothreads: true
+iothread_count: 4
+
+# Console/Graphics
+enable_serial_console: true
+enable_vnc: true
+vnc_listen: 0.0.0.0  # Adjust for security
+vnc_password_required: true
+
+# QEMU Guest Agent
+qemu_guest_agent: true
+
+# Validation
+libvirt_test: true
+boot_timeout: 600  # Database startup may take longer
+validate_network: true
+validate_services:
+  - postgresql
+  - firewalld
+
+# Reporting
+report: /var/log/migrations/rhel9-db-$(date +%Y%m%d-%H%M%S).md
+log_level: INFO
+verbose: true
+
+# Recovery Configuration
+enable_recovery: true
+recovery_checkpoint_dir: /tmp/hyper2kvm-checkpoints
+
+# Post-Migration Script
+post_migration_script: |
+  #!/bin/bash
+  set -e
+
+  # Import domain
+  virsh define /data/kvm/rhel9-database-server.xml
+
+  # Set autostart
+  virsh autostart rhel9-database-server
+
+  # Start VM
+  virsh start rhel9-database-server
+
+  # Wait for VM to boot
+  echo "Waiting for VM to boot..."
+  sleep 60
+
+  # Check VM status
+  virsh list | grep rhel9-database-server
+
+  # Relabel SELinux contexts if needed
+  # virsh domid rhel9-database-server | xargs -I {} ssh root@{} "restorecon -R /"
+
+  echo "RHEL 9 database server migration complete"
+  echo "Next steps:"
+  echo "1. Verify database service: ssh root@<vm-ip> systemctl status postgresql"
+  echo "2. Test database connectivity"
+  echo "3. Update DNS records if needed"
+  echo "4. Update monitoring systems"

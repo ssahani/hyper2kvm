@@ -1,0 +1,180 @@
+# ============================================
+# Complete Workflow: vSphere → libvirt (CentOS Stream 9)
+# ============================================
+# Description: Export CentOS Stream 9 VM from vSphere and prepare for libvirt/KVM
+# Use Case: Enterprise CentOS Stream deployment migration
+# Prerequisites:
+#   - govc installed
+#   - vCenter credentials
+#   - CentOS Stream 9 VM
+# ============================================
+
+cmd: vsphere
+
+# vSphere Connection
+vcenter: vcenter.example.com
+username: administrator@vsphere.local
+password_file: ~/.vcenter_password
+datacenter: Production-DC
+cluster: CentOS-Cluster
+
+# VM Selection
+vm_name: centos-stream-9-server
+# Alternative: vm_uuid: 502d5b64-0a7e-b2a5-45f9-065cbf375a77
+
+# vSphere Export
+vs_action: export
+export_method: govc
+export_format: ova
+
+# Snapshot Configuration
+create_snapshot: true
+snapshot_name: kvm-migration-$(date +%Y%m%d-%H%M%S)
+snapshot_description: Pre-migration snapshot for KVM
+snapshot_memory: false
+snapshot_quiesce: true
+delete_snapshot_after: true
+
+# Disk Processing
+flatten: true
+compress: true
+disk_format: qcow2
+
+# CentOS Stream 9 Specific Fixes
+fix_fstab: true
+fix_grub: true
+fix_initramfs: true
+fix_network: true
+remove_vmware_tools: true
+
+# Network Configuration (CentOS Stream 9 uses NetworkManager)
+network_config_type: networkmanager
+network_fix_level: full
+remove_mac_binding: true
+setup_dhcp: true
+preserve_static_ip: false
+remove_vmware_network_files: true
+
+# Bootloader Configuration
+bootloader_type: grub2
+firmware_type: uefi  # CentOS Stream 9 default
+regenerate_grub: true
+update_grub_config: true
+grub_timeout: 5
+grubby_update: true
+
+# Dracut Configuration
+update_initramfs: true
+dracut_force_rebuild: true
+install_virtio_modules: true
+dracut_add_drivers:
+  - virtio
+  - virtio_blk
+  - virtio_scsi
+  - virtio_net
+  - virtio_pci
+dracut_add_modules:
+  - network-manager
+  - network-legacy
+
+# SELinux Configuration
+selinux_relabel: true
+selinux_mode: enforcing
+
+# System Configuration
+clean_ssh_keys: false
+clean_machine_id: true
+preserve_hostname: true
+timezone: UTC
+
+# Output Configuration
+to_output: /data/kvm/centos-stream-9-server.qcow2
+output_format: qcow2
+output_dir: /data/kvm/
+
+# libvirt Domain XML Generation
+generate_libvirt_xml: true
+libvirt_xml_path: /data/kvm/centos-stream-9-server.xml
+libvirt_domain_name: centos-stream-9-server
+
+# libvirt Hardware Configuration
+memory_mb: 8192
+vcpus: 8
+cpu_mode: host-passthrough
+cpu_topology:
+  sockets: 1
+  cores: 4
+  threads: 2
+machine_type: q35
+
+# UEFI Configuration
+firmware_type: uefi
+uefi_loader: /usr/share/edk2/ovmf/OVMF_CODE.fd
+uefi_nvram_template: /usr/share/edk2/ovmf/OVMF_VARS.fd
+secure_boot: true
+
+# Storage Configuration
+disk_bus: virtio
+disk_cache: none
+disk_io: native
+disk_discard: unmap
+
+# Network Configuration
+network_type: bridge
+network_bridge: br0
+network_model: virtio
+
+# Console/Graphics
+enable_serial_console: true
+enable_vnc: true
+vnc_listen: 127.0.0.1
+
+# QEMU Guest Agent
+qemu_guest_agent: true
+
+# Validation
+libvirt_test: true
+boot_timeout: 300
+validate_network: true
+validate_services:
+  - sshd
+  - firewalld
+
+# Reporting
+report: /var/log/migrations/centos-stream-9-$(date +%Y%m%d-%H%M%S).md
+log_level: INFO
+verbose: true
+
+# Recovery Configuration
+enable_recovery: true
+recovery_checkpoint_dir: /tmp/hyper2kvm-checkpoints
+
+# Post-Migration Script
+post_migration_script: |
+  #!/bin/bash
+  set -e
+
+  # Import domain
+  virsh define /data/kvm/centos-stream-9-server.xml
+
+  # Set autostart
+  virsh autostart centos-stream-9-server
+
+  # Start VM
+  virsh start centos-stream-9-server
+
+  # Wait for boot
+  echo "Waiting for CentOS Stream to boot..."
+  sleep 60
+
+  # Check VM status
+  virsh list | grep centos-stream-9-server
+
+  # SELinux relabel on first boot
+  echo "SELinux relabeling will occur automatically on first boot"
+
+  echo "CentOS Stream 9 migration complete"
+  echo "Next steps:"
+  echo "1. Connect: virsh console centos-stream-9-server"
+  echo "2. Verify services: systemctl status sshd firewalld"
+  echo "3. Check network: ip addr show"
