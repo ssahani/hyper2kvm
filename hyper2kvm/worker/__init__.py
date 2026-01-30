@@ -64,4 +64,6 @@ __all__ = [
     "JobQueue",
     "WorkerRegistry",
     "get_scheduler",
+    # REST API (requires fastapi installation)
+    "api",
 ]
