@@ -59,6 +59,11 @@ from .data_discovery import DataDiscovery
 from .config_tracker import ConfigTracker
 from .network_topology import NetworkTopology
 from .storage_analyzer import StorageAnalyzer
+from .threat_intelligence import ThreatIntelligence
+from .automated_remediation import AutomatedRemediation
+from .predictive_analytics import PredictiveAnalytics
+from .integration_hub import IntegrationHub
+from .realtime_monitoring import RealtimeMonitoring
 
 __all__ = [
     # Main API
@@ -104,4 +109,9 @@ __all__ = [
     "ConfigTracker",
     "NetworkTopology",
     "StorageAnalyzer",
+    "ThreatIntelligence",
+    "AutomatedRemediation",
+    "PredictiveAnalytics",
+    "IntegrationHub",
+    "RealtimeMonitoring",
 ]

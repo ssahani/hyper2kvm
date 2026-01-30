@@ -64,6 +64,11 @@ from .data_discovery import DataDiscovery
 from .config_tracker import ConfigTracker
 from .network_topology import NetworkTopology
 from .storage_analyzer import StorageAnalyzer
+from .threat_intelligence import ThreatIntelligence
+from .automated_remediation import AutomatedRemediation
+from .predictive_analytics import PredictiveAnalytics
+from .integration_hub import IntegrationHub
+from .realtime_monitoring import RealtimeMonitoring
 
 
 logger = logging.getLogger(__name__)
@@ -141,6 +146,11 @@ class VMCraft:
         self._config_tracker: ConfigTracker | None = None
         self._network_topology: NetworkTopology | None = None
         self._storage_analyzer: StorageAnalyzer | None = None
+        self._threat_intelligence: ThreatIntelligence | None = None
+        self._automated_remediation: AutomatedRemediation | None = None
+        self._predictive_analytics: PredictiveAnalytics | None = None
+        self._integration_hub: IntegrationHub | None = None
+        self._realtime_monitoring: RealtimeMonitoring | None = None
 
         # Log backend selection
         self.logger.debug("Using VMCraft backend (qemu-nbd + Linux tools)")
@@ -278,6 +288,11 @@ class VMCraft:
         self._config_tracker = ConfigTracker(self.logger, self._file_ops, self._mount_root)
         self._network_topology = NetworkTopology(self.logger, self._file_ops, self._mount_root)
         self._storage_analyzer = StorageAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._threat_intelligence = ThreatIntelligence(self.logger, self._file_ops, self._mount_root)
+        self._automated_remediation = AutomatedRemediation(self.logger, self._file_ops, self._mount_root)
+        self._predictive_analytics = PredictiveAnalytics(self.logger, self._file_ops, self._mount_root)
+        self._integration_hub = IntegrationHub(self.logger, self._file_ops, self._mount_root)
+        self._realtime_monitoring = RealtimeMonitoring(self.logger, self._file_ops, self._mount_root)
 
         total_time = time.time() - start_time
         self._perf_metrics['total_launch'] = total_time
@@ -2059,6 +2074,254 @@ class VMCraft:
         if not self._storage_analyzer:
             raise RuntimeError("Not launched")
         return self._storage_analyzer.get_optimization_recommendations(analysis)
+
+    # ============================================================================
+    # Threat Intelligence Methods (v8.0)
+    # ============================================================================
+
+    def analyze_threats(self, os_type: str = "linux") -> dict[str, Any]:
+        """Perform comprehensive threat intelligence analysis."""
+        if not self._threat_intelligence:
+            raise RuntimeError("Not launched")
+        return self._threat_intelligence.analyze_threats(os_type)
+
+    def get_threat_summary(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Get threat intelligence summary."""
+        if not self._threat_intelligence:
+            raise RuntimeError("Not launched")
+        return self._threat_intelligence.get_threat_summary(analysis)
+
+    def generate_threat_report(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Generate comprehensive threat report."""
+        if not self._threat_intelligence:
+            raise RuntimeError("Not launched")
+        return self._threat_intelligence.generate_threat_report(analysis)
+
+    def check_threat_feeds(self) -> dict[str, Any]:
+        """Check against threat intelligence feeds."""
+        if not self._threat_intelligence:
+            raise RuntimeError("Not launched")
+        return self._threat_intelligence.check_threat_feeds()
+
+    def analyze_file_reputation(self, file_path: str) -> dict[str, Any]:
+        """Analyze file reputation."""
+        if not self._threat_intelligence:
+            raise RuntimeError("Not launched")
+        return self._threat_intelligence.analyze_file_reputation(file_path)
+
+    def get_attack_surface(self) -> dict[str, Any]:
+        """Analyze attack surface."""
+        if not self._threat_intelligence:
+            raise RuntimeError("Not launched")
+        return self._threat_intelligence.get_attack_surface()
+
+    # ============================================================================
+    # Automated Remediation Methods (v8.0)
+    # ============================================================================
+
+    def create_remediation_plan(self, findings: dict[str, Any]) -> dict[str, Any]:
+        """Create remediation plan from security findings."""
+        if not self._automated_remediation:
+            raise RuntimeError("Not launched")
+        return self._automated_remediation.create_remediation_plan(findings)
+
+    def apply_hardening(self, hardening_type: str = "standard") -> dict[str, Any]:
+        """Apply security hardening to system."""
+        if not self._automated_remediation:
+            raise RuntimeError("Not launched")
+        return self._automated_remediation.apply_hardening(hardening_type)
+
+    def fix_permissions(self, findings: list[dict[str, Any]]) -> dict[str, Any]:
+        """Fix insecure file permissions."""
+        if not self._automated_remediation:
+            raise RuntimeError("Not launched")
+        return self._automated_remediation.fix_permissions(findings)
+
+    def remove_malware(self, malware_list: list[dict[str, Any]]) -> dict[str, Any]:
+        """Remove detected malware."""
+        if not self._automated_remediation:
+            raise RuntimeError("Not launched")
+        return self._automated_remediation.remove_malware(malware_list)
+
+    def patch_vulnerabilities(self, vulnerabilities: list[dict[str, Any]]) -> dict[str, Any]:
+        """Apply patches for vulnerabilities."""
+        if not self._automated_remediation:
+            raise RuntimeError("Not launched")
+        return self._automated_remediation.patch_vulnerabilities(vulnerabilities)
+
+    def enforce_compliance(self, standard: str = "cis") -> dict[str, Any]:
+        """Enforce compliance with security standard."""
+        if not self._automated_remediation:
+            raise RuntimeError("Not launched")
+        return self._automated_remediation.enforce_compliance(standard)
+
+    def create_rollback_point(self) -> dict[str, Any]:
+        """Create rollback point before making changes."""
+        if not self._automated_remediation:
+            raise RuntimeError("Not launched")
+        return self._automated_remediation.create_rollback_point()
+
+    def rollback_changes(self, rollback_id: str) -> dict[str, Any]:
+        """Rollback changes to previous state."""
+        if not self._automated_remediation:
+            raise RuntimeError("Not launched")
+        return self._automated_remediation.rollback_changes(rollback_id)
+
+    # ============================================================================
+    # Predictive Analytics Methods (v8.0)
+    # ============================================================================
+
+    def predict_capacity_needs(self, current_usage: dict[str, Any], forecast_days: int = 90) -> dict[str, Any]:
+        """Predict future capacity needs based on current usage."""
+        if not self._predictive_analytics:
+            raise RuntimeError("Not launched")
+        return self._predictive_analytics.predict_capacity_needs(current_usage, forecast_days)
+
+    def predict_failures(self, system_metrics: dict[str, Any]) -> dict[str, Any]:
+        """Predict potential system failures."""
+        if not self._predictive_analytics:
+            raise RuntimeError("Not launched")
+        return self._predictive_analytics.predict_failures(system_metrics)
+
+    def analyze_trends(self, historical_data: list[dict[str, Any]]) -> dict[str, Any]:
+        """Analyze historical trends."""
+        if not self._predictive_analytics:
+            raise RuntimeError("Not launched")
+        return self._predictive_analytics.analyze_trends(historical_data)
+
+    def forecast_costs(self, current_costs: dict[str, Any], forecast_months: int = 12) -> dict[str, Any]:
+        """Forecast infrastructure costs."""
+        if not self._predictive_analytics:
+            raise RuntimeError("Not launched")
+        return self._predictive_analytics.forecast_costs(current_costs, forecast_months)
+
+    def predict_resource_exhaustion(self, current_metrics: dict[str, Any]) -> dict[str, Any]:
+        """Predict when resources will be exhausted."""
+        if not self._predictive_analytics:
+            raise RuntimeError("Not launched")
+        return self._predictive_analytics.predict_resource_exhaustion(current_metrics)
+
+    def generate_forecast_report(self, metrics: dict[str, Any]) -> dict[str, Any]:
+        """Generate comprehensive forecast report."""
+        if not self._predictive_analytics:
+            raise RuntimeError("Not launched")
+        return self._predictive_analytics.generate_forecast_report(metrics)
+
+    # ============================================================================
+    # Integration Hub Methods (v8.0)
+    # ============================================================================
+
+    def export_analysis(self, analysis_data: dict[str, Any], format: str = "json") -> dict[str, Any]:
+        """Export analysis data in specified format."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.export_analysis(analysis_data, format)
+
+    def register_webhook(self, url: str, events: list[str], secret: str | None = None) -> dict[str, Any]:
+        """Register webhook for event notifications."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.register_webhook(url, events, secret)
+
+    def trigger_webhook(self, webhook_id: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Trigger webhook with event payload."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.trigger_webhook(webhook_id, event, payload)
+
+    def connect_api(self, service: str, credentials: dict[str, Any]) -> dict[str, Any]:
+        """Connect to external API service."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.connect_api(service, credentials)
+
+    def send_notification(self, service: str, message: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Send notification via integrated service."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.send_notification(service, message, metadata)
+
+    def create_ticket(self, service: str, title: str, description: str, priority: str = "medium") -> dict[str, Any]:
+        """Create ticket in ticketing system."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.create_ticket(service, title, description, priority)
+
+    def push_metrics(self, service: str, metrics: dict[str, Any]) -> dict[str, Any]:
+        """Push metrics to monitoring service."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.push_metrics(service, metrics)
+
+    def sync_with_cmdb(self, asset_data: dict[str, Any]) -> dict[str, Any]:
+        """Sync asset data with CMDB."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.sync_with_cmdb(asset_data)
+
+    def get_integration_status(self) -> dict[str, Any]:
+        """Get status of all integrations."""
+        if not self._integration_hub:
+            raise RuntimeError("Not launched")
+        return self._integration_hub.get_integration_status()
+
+    # ============================================================================
+    # Real-time Monitoring Methods (v8.0)
+    # ============================================================================
+
+    def get_system_health(self) -> dict[str, Any]:
+        """Get real-time system health status."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.get_system_health()
+
+    def create_alert_rule(self, metric: str, condition: str, threshold: float, severity: str = "warning") -> dict[str, Any]:
+        """Create custom alert rule."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.create_alert_rule(metric, condition, threshold, severity)
+
+    def get_performance_metrics(self, interval_seconds: int = 60) -> dict[str, Any]:
+        """Get performance metrics over interval."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.get_performance_metrics(interval_seconds)
+
+    def monitor_process(self, process_name: str) -> dict[str, Any]:
+        """Monitor specific process."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.monitor_process(process_name)
+
+    def get_resource_utilization(self) -> dict[str, Any]:
+        """Get detailed resource utilization breakdown."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.get_resource_utilization()
+
+    def check_service_health(self, service_name: str) -> dict[str, Any]:
+        """Check health of specific service."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.check_service_health(service_name)
+
+    def get_alert_history(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Get alert history."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.get_alert_history(limit)
+
+    def set_monitoring_interval(self, interval_seconds: int) -> dict[str, Any]:
+        """Set monitoring check interval."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.set_monitoring_interval(interval_seconds)
+
+    def get_monitoring_dashboard(self) -> dict[str, Any]:
+        """Get comprehensive monitoring dashboard data."""
+        if not self._realtime_monitoring:
+            raise RuntimeError("Not launched")
+        return self._realtime_monitoring.get_monitoring_dashboard()
 
     # Context manager support
 
