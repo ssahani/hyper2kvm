@@ -1,0 +1,41 @@
+{
+  "description": "Example batch migration configuration for VMCraft Migration Orchestrator",
+  "migrations": [
+    {
+      "source": "/vmware/production/web-server-01.vmdk",
+      "target": "/kvm/production/web-server-01.qcow2",
+      "strategy": "web_server",
+      "description": "Web server migration with network configuration"
+    },
+    {
+      "source": "/vmware/production/database-01.vmdk",
+      "target": "/kvm/production/database-01.qcow2",
+      "strategy": "database",
+      "description": "Database server migration with service management"
+    },
+    {
+      "source": "/vmware/production/app-server-01.vmdk",
+      "target": "/kvm/production/app-server-01.qcow2",
+      "strategy": "enterprise",
+      "description": "Application server with full enterprise migration"
+    },
+    {
+      "source": "/vmware/staging/test-vm.vmdk",
+      "target": "/kvm/staging/test-vm.qcow2",
+      "strategy": "basic",
+      "description": "Basic staging VM migration"
+    },
+    {
+      "source": "/vmware/dmz/firewall-01.vmdk",
+      "target": "/kvm/dmz/firewall-01.qcow2",
+      "strategy": "security_hardened",
+      "description": "DMZ firewall with security hardening"
+    }
+  ],
+  "global_settings": {
+    "create_backups": true,
+    "validate_post_migration": true,
+    "parallel_migrations": 2,
+    "on_failure": "continue"
+  }
+}
