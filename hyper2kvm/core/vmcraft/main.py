@@ -76,6 +76,7 @@ from .disaster_recovery import DisasterRecovery
 from .audit_trail import AuditTrail
 from .resource_orchestrator import ResourceOrchestrator
 from .systemd import SystemctlManager, JournalctlManager, SystemdAnalyzer, SystemConfigManager
+from .enhanced_inspection import EnhancedInspector
 
 
 logger = logging.getLogger(__name__)
@@ -169,6 +170,9 @@ class VMCraft:
         self._journalctl: JournalctlManager | None = None
         self._systemd_analyze: SystemdAnalyzer | None = None
         self._sysconfig: SystemConfigManager | None = None
+
+        # Enhanced inspection (initialized after launch)
+        self._enhanced_inspector: EnhancedInspector | None = None
 
         # Log backend selection
         self.logger.debug("Using VMCraft backend (qemu-nbd + Linux tools)")
@@ -322,6 +326,16 @@ class VMCraft:
         self._journalctl = JournalctlManager(self.command_quiet, self.logger)
         self._systemd_analyze = SystemdAnalyzer(self.command_quiet, self.logger)
         self._sysconfig = SystemConfigManager(self.command_quiet, self.logger)
+
+        # Initialize enhanced inspector
+        self._enhanced_inspector = EnhancedInspector(
+            mount_root=self._mount_root,
+            logger=self.logger,
+            cat_func=self.cat,
+            exists_func=self.exists,
+            is_dir_func=self.is_dir,
+            ls_func=self.ls,
+        )
 
         total_time = time.time() - start_time
         self._perf_metrics['total_launch'] = total_time
@@ -5219,6 +5233,332 @@ class VMCraft:
         if not self._resource_orchestrator:
             raise RuntimeError("Not launched")
         return self._resource_orchestrator.get_orchestration_metrics()
+
+    # ============================================================================
+    # Enhanced Inspection Methods (v10.0)
+    # ============================================================================
+
+    def inspect_network_config(self) -> list[dict[str, Any]]:
+        """
+        Inspect network configuration from multiple formats.
+
+        Supports Debian, RHEL, netplan, NetworkManager, systemd-networkd.
+
+        Returns:
+            List of network interface configurations
+
+        Example:
+            interfaces = g.inspect_network_config()
+            for iface in interfaces:
+                print(f"{iface['name']}: {iface['ip_address']} (DHCP: {iface['dhcp']})")
+                if iface['dns_servers']:
+                    print(f"  DNS: {iface['dns_servers']}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        interfaces = self._enhanced_inspector.inspect_network()
+        # Convert NetworkInterface objects to dicts
+        return [
+            {
+                "name": iface.name,
+                "ip_address": iface.ip_address,
+                "mac_address": iface.mac_address,
+                "dhcp": iface.dhcp,
+                "dns_servers": iface.dns_servers,
+            }
+            for iface in interfaces
+        ]
+
+    def inspect_dns_config(self) -> list[str]:
+        """
+        Get DNS server configuration.
+
+        Returns:
+            List of DNS server IP addresses
+
+        Example:
+            dns_servers = g.inspect_dns_config()
+            print(f"DNS servers: {dns_servers}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_dns()
+
+    def inspect_user_accounts(self) -> list[dict[str, str]]:
+        """
+        List all user accounts from /etc/passwd.
+
+        Returns:
+            List of user account information
+
+        Example:
+            users = g.inspect_user_accounts()
+            for user in users:
+                print(f"{user['username']} (UID: {user['uid']}, Home: {user['home']})")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        users = self._enhanced_inspector.inspect_users()
+        return [
+            {
+                "username": user.username,
+                "uid": user.uid,
+                "gid": user.gid,
+                "home": user.home,
+                "shell": user.shell,
+            }
+            for user in users
+        ]
+
+    def inspect_ssh_configuration(self) -> dict[str, str]:
+        """
+        Parse SSH server configuration.
+
+        Returns:
+            Dict of SSH configuration settings
+
+        Example:
+            ssh_config = g.inspect_ssh_configuration()
+            print(f"Port: {ssh_config.get('Port', '22')}")
+            print(f"PermitRootLogin: {ssh_config.get('PermitRootLogin', 'no')}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_ssh_config()
+
+    def inspect_selinux_status(self) -> str:
+        """
+        Check SELinux status.
+
+        Returns:
+            SELinux mode: enforcing, permissive, disabled, or unknown
+
+        Example:
+            selinux = g.inspect_selinux_status()
+            print(f"SELinux: {selinux}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_selinux()
+
+    def inspect_apparmor_status(self) -> bool:
+        """
+        Check if AppArmor is enabled.
+
+        Returns:
+            True if AppArmor is present/enabled
+
+        Example:
+            apparmor = g.inspect_apparmor_status()
+            print(f"AppArmor enabled: {apparmor}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_apparmor()
+
+    def inspect_installed_runtimes(self) -> dict[str, str]:
+        """
+        Detect installed language runtimes.
+
+        Checks for: Python, Node.js, Ruby, Java, Go, Perl, PHP, Rust
+
+        Returns:
+            Dict mapping runtime name to installation status
+
+        Example:
+            runtimes = g.inspect_installed_runtimes()
+            for name, status in runtimes.items():
+                print(f"{name}: {status}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_runtimes()
+
+    def inspect_installed_container_runtimes(self) -> list[str]:
+        """
+        Detect installed container runtimes.
+
+        Checks for: Docker, Podman, containerd, CRI-O, LXC, LXD
+
+        Returns:
+            List of detected container runtime names
+
+        Example:
+            runtimes = g.inspect_installed_container_runtimes()
+            print(f"Container runtimes: {runtimes}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_container_runtimes()
+
+    def inspect_cron_jobs(self) -> list[str]:
+        """
+        List cron jobs from system crontab and cron directories.
+
+        Returns:
+            List of cron job descriptions
+
+        Example:
+            cron_jobs = g.inspect_cron_jobs()
+            for job in cron_jobs:
+                print(f"Cron: {job}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_cron()
+
+    def inspect_systemd_timer_units(self) -> list[str]:
+        """
+        List systemd timer units.
+
+        Returns:
+            List of enabled systemd timer unit names
+
+        Example:
+            timers = g.inspect_systemd_timer_units()
+            for timer in timers:
+                print(f"Timer: {timer}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_systemd_timers()
+
+    def inspect_guest_tools(self) -> list[str]:
+        """
+        Detect installed virtualization guest tools.
+
+        Checks for: VMware Tools, QEMU Guest Agent, VirtualBox Guest Additions,
+                    Hyper-V integration services, Xen tools
+
+        Returns:
+            List of detected guest tool names
+
+        Example:
+            tools = g.inspect_guest_tools()
+            print(f"Guest tools installed: {tools}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_vm_tools()
+
+    def inspect_system_timezone(self) -> str:
+        """
+        Get system timezone.
+
+        Returns:
+            Timezone string (e.g., "America/New_York") or "unknown"
+
+        Example:
+            timezone = g.inspect_system_timezone()
+            print(f"Timezone: {timezone}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_timezone()
+
+    def inspect_system_locale(self) -> str:
+        """
+        Get system locale.
+
+        Returns:
+            Locale string (e.g., "en_US.UTF-8") or "unknown"
+
+        Example:
+            locale = g.inspect_system_locale()
+            print(f"Locale: {locale}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_locale()
+
+    def inspect_kernel_parameters(self) -> dict[str, str]:
+        """
+        Get kernel sysctl parameters from /etc/sysctl.conf.
+
+        Returns:
+            Dict of kernel parameter key-value pairs
+
+        Example:
+            params = g.inspect_kernel_parameters()
+            for key, value in params.items():
+                print(f"{key} = {value}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_kernel_params()
+
+    def inspect_swap_devices(self) -> list[str]:
+        """
+        Get swap devices from /etc/fstab.
+
+        Returns:
+            List of swap device paths
+
+        Example:
+            swap_devices = g.inspect_swap_devices()
+            print(f"Swap devices: {swap_devices}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_swap()
+
+    def inspect_fstab_entries(self) -> list[dict[str, Any]]:
+        """
+        Parse /etc/fstab into structured format.
+
+        Returns:
+            List of fstab entries with device, mountpoint, fstype, options, dump, pass
+
+        Example:
+            fstab = g.inspect_fstab_entries()
+            for entry in fstab:
+                print(f"{entry['device']} on {entry['mountpoint']} type {entry['fstype']}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        entries = self._enhanced_inspector.inspect_fstab()
+        return [
+            {
+                "device": entry.device,
+                "mountpoint": entry.mountpoint,
+                "fstype": entry.fstype,
+                "options": entry.options,
+                "dump": entry.dump,
+                "pass": entry.pass_num,
+            }
+            for entry in entries
+        ]
+
+    def inspect_cloud_init_installed(self) -> bool:
+        """
+        Detect if cloud-init is installed.
+
+        Returns:
+            True if cloud-init is present
+
+        Example:
+            has_cloud_init = g.inspect_cloud_init_installed()
+            print(f"Cloud-init installed: {has_cloud_init}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_cloud_init()
+
+    def inspect_ssl_certificates(self) -> list[dict[str, str]]:
+        """
+        List SSL certificates in common locations.
+
+        Returns:
+            List of dicts with certificate paths and types
+
+        Example:
+            certs = g.inspect_ssl_certificates()
+            for cert in certs:
+                print(f"{cert['type']}: {cert['path']}")
+        """
+        if not self._enhanced_inspector:
+            raise RuntimeError("Not launched")
+        return self._enhanced_inspector.inspect_certificates()
 
     # Context manager support
 
