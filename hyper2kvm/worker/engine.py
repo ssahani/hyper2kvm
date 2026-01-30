@@ -608,54 +608,165 @@ class WorkerEngine:
         self._emit_event(ProgressEvent(
             job_id=job_spec.job_id,
             phase="offline_fixes",
-            progress_percent=50,
-            message="Applying offline fixes to guest"
+            progress_percent=30,
+            message="Preparing offline fixes"
         ))
 
-        # TODO: Integrate with existing hyper2kvm offline fixer
-        # from ..fixers.offline_fixer import OfflineFSFix
-        # from ..fixers.windows.fixer import WindowsFixer
-        #
-        # # Detect OS type
-        # os_type = detect_os_type(conversion_result['outputs'].fixed_image)
-        #
-        # if os_type == 'linux':
-        #     fixer = OfflineFSFix(conversion_result['outputs'].fixed_image)
-        #     fixer.apply_all_fixes()
-        # elif os_type == 'windows':
-        #     fixer = WindowsFixer(conversion_result['outputs'].fixed_image)
-        #     fixer.apply_all_fixes()
+        # Get converted image path
+        fixed_image_path = Path(conversion_result['outputs'].fixed_image)
 
-        self._emit_event(ProgressEvent(
-            job_id=job_spec.job_id,
-            phase="offline_fixes",
-            progress_percent=100,
-            message="Offline fixes completed"
-        ))
+        # Integrate with OfflineFSFix
+        try:
+            from ..fixers.offline_fixer import OfflineFSFix
+            from ..fixers.filesystem.fstab import FstabMode
 
-        self.logger.info("✅ Full migration completed successfully")
-        self.logger.info("🎉 Guest is ready to boot in KVM/KubeVirt")
+            self._emit_event(ProgressEvent(
+                job_id=job_spec.job_id,
+                phase="offline_fixes",
+                progress_percent=40,
+                message="Mounting guest filesystem"
+            ))
 
-        return {
-            "outputs": JobOutput(
-                fixed_image=str(conversion_result['outputs'].fixed_image),
-                logs=None
-            ),
-            "metrics": {
-                **conversion_result.get("metrics", {}),
-                "offline_fixes_applied": True,
-                "capability_level": capability_report['level_name']
-            },
-            "warnings": [],
-            "fixes_applied": [
-                'fstab stabilized with UUID-based mounts',
-                'Virtio drivers injected into initramfs',
-                'GRUB configuration regenerated',
-                'Network adapted for virtio_net',
-                'VMware tools removed'
-            ],
-            "capability_info": capability_report
-        }
+            # Create OfflineFSFix instance
+            offline_fixer = OfflineFSFix(
+                logger=self.logger,
+                image=fixed_image_path,
+                dry_run=job_spec.parameters.get("dry_run", False),
+                no_backup=job_spec.parameters.get("no_backup", False),
+                print_fstab=job_spec.parameters.get("print_fstab", False),
+                update_grub=job_spec.parameters.get("update_grub", True),
+                regen_initramfs=job_spec.parameters.get("regen_initramfs", True),
+                fstab_mode=job_spec.parameters.get("fstab_mode", "uuid"),
+                report_path=Path(job_spec.artifacts.output_path) / f"{job_spec.job_id}_offline_fixes.json",
+                remove_vmware_tools=job_spec.parameters.get("remove_vmware_tools", True),
+                inject_cloud_init=job_spec.parameters.get("inject_cloud_init"),
+                firstboot_scripts=job_spec.parameters.get("firstboot_scripts"),
+                network_config_inject=job_spec.parameters.get("network_config_inject"),
+                user_config_inject=job_spec.parameters.get("user_config_inject"),
+                service_config_inject=job_spec.parameters.get("service_config_inject"),
+                hostname_config_inject=job_spec.parameters.get("hostname_config_inject"),
+                recovery_manager=None,
+                resize=job_spec.parameters.get("resize"),
+                virtio_drivers_dir=job_spec.parameters.get("virtio_drivers_dir"),
+                luks_enable=job_spec.parameters.get("luks_enable", False),
+                luks_passphrase=job_spec.parameters.get("luks_passphrase"),
+            )
+
+            self._emit_event(ProgressEvent(
+                job_id=job_spec.job_id,
+                phase="offline_fixes",
+                progress_percent=60,
+                message="Running offline fixes"
+            ))
+
+            # Execute offline fixes
+            offline_fixer.run()
+
+            self._emit_event(ProgressEvent(
+                job_id=job_spec.job_id,
+                phase="offline_fixes",
+                progress_percent=100,
+                message="Offline fixes completed"
+            ))
+
+            self.logger.info("✅ Full migration completed successfully")
+            self.logger.info("🎉 Guest is ready to boot in KVM/KubeVirt")
+
+            # Parse fixes from report
+            fixes_applied = []
+            if offline_fixer.report:
+                changes = offline_fixer.report.get("changes", {})
+                if changes.get("fstab"):
+                    fixes_applied.append("fstab stabilized with UUID-based mounts")
+                if changes.get("grub"):
+                    fixes_applied.append("GRUB configuration regenerated")
+                if changes.get("initramfs"):
+                    fixes_applied.append("Initramfs rebuilt with virtio drivers")
+                if changes.get("network"):
+                    fixes_applied.append("Network configuration updated")
+                if changes.get("vmware_tools"):
+                    fixes_applied.append("VMware tools removed")
+
+            return {
+                "outputs": JobOutput(
+                    fixed_image=str(fixed_image_path),
+                    logs=None,
+                    report=str(offline_fixer.report_path) if hasattr(offline_fixer, 'report_path') and offline_fixer.report_path else None
+                ),
+                "metrics": {
+                    **conversion_result.get("metrics", {}),
+                    "offline_fixes_applied": True,
+                    "capability_level": capability_report['level_name'],
+                    "fixes_count": len(fixes_applied)
+                },
+                "warnings": [],
+                "fixes_applied": fixes_applied if fixes_applied else [
+                    'Offline fixes applied (see report for details)'
+                ],
+                "capability_info": capability_report,
+                "offline_fixer_report": offline_fixer.report if hasattr(offline_fixer, 'report') else None
+            }
+
+        except ImportError as e:
+            # OfflineFSFix not available - fall back to placeholder
+            self.logger.warning(f"OfflineFSFix import failed: {e}")
+            self.logger.warning("Falling back to conversion-only mode")
+
+            self._emit_event(ProgressEvent(
+                job_id=job_spec.job_id,
+                phase="offline_fixes",
+                progress_percent=100,
+                message="Offline fixes skipped (OfflineFSFix not available)"
+            ))
+
+            return {
+                "outputs": JobOutput(
+                    fixed_image=str(fixed_image_path),
+                    logs=None
+                ),
+                "metrics": {
+                    **conversion_result.get("metrics", {}),
+                    "offline_fixes_applied": False,
+                    "capability_level": capability_report['level_name']
+                },
+                "warnings": [
+                    "OfflineFSFix not available - offline fixes skipped",
+                    "Image converted but may require manual configuration"
+                ],
+                "fixes_applied": [],
+                "capability_info": capability_report
+            }
+
+        except Exception as e:
+            # Offline fixes failed - return partial result
+            self.logger.error(f"Offline fixes failed: {e}")
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
+
+            self._emit_event(ProgressEvent(
+                job_id=job_spec.job_id,
+                phase="offline_fixes",
+                progress_percent=0,
+                message=f"Offline fixes failed: {str(e)}"
+            ))
+
+            return {
+                "outputs": JobOutput(
+                    fixed_image=str(fixed_image_path),
+                    logs=None
+                ),
+                "metrics": {
+                    **conversion_result.get("metrics", {}),
+                    "offline_fixes_applied": False,
+                    "capability_level": capability_report['level_name']
+                },
+                "warnings": [
+                    f"Offline fixes failed: {str(e)}",
+                    "Image was converted but may not boot without manual intervention"
+                ],
+                "fixes_applied": [],
+                "capability_info": capability_report,
+                "error": str(e)
+            }
 
     def _op_boot_repair(self, job_spec: JobSpec, state_machine: JobStateMachine) -> Dict:
         """Execute boot_repair operation."""
