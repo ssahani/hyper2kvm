@@ -856,18 +856,27 @@ class OfflineFSFix:
             self.logger.warning(f"Failed to get current NBD device: {e}")
 
         # Get LVM devices that belong to the current disk
-        # by checking which volume groups use the current NBD partitions as PVs
+        # VMCraft's lvs() with nbd_device filtering returns only NBD-backed LVs
         current_disk_lv = set()
         if current_nbd_parts:
             try:
-                # Get LVM volumes, but only those from the current disk
+                # Get LVM volumes from current disk (already filtered by VMCraft)
                 lvs_list = g.lvs() or [] if hasattr(g, "lvs") else []
                 for lv in lvs_list:
                     lv_text = U.to_text(lv)
-                    # For VMCraft, we can't easily tell which disk an LV came from
-                    # So we'll include mapper devices that were explicitly in our LV list
-                    if lv_text.startswith("/dev/mapper/"):
-                        current_disk_lv.add(lv_text)
+                    # Add all LV paths - VMCraft returns /dev/vg/lv format
+                    # These are valid device paths and should be included
+                    current_disk_lv.add(lv_text)
+
+                    # Also add common /dev/mapper/ symlink format
+                    # LVM creates symlinks: /dev/vg/lv -> /dev/mapper/vg-lv
+                    if lv_text.startswith("/dev/") and "/" in lv_text[5:]:
+                        parts = lv_text[5:].split("/", 1)
+                        if len(parts) == 2:
+                            vg, lv = parts
+                            mapper_path = f"/dev/mapper/{vg}-{lv}"
+                            current_disk_lv.add(mapper_path)
+
                 self.logger.debug(f"LVM devices from current disk: {current_disk_lv}")
             except Exception as e:
                 self.logger.warning(f"Failed to filter LVM devices: {e}")
@@ -876,12 +885,14 @@ class OfflineFSFix:
         # This prevents trying devices from other NBD connections or the host system
         nbd_filtered = []
         for d in filtered:
-            # Include mapper devices ONLY if they're in our LVM list
-            if d.startswith("/dev/mapper/"):
+            # Include LVM devices (both formats) ONLY if they're in our LVM list
+            if d.startswith("/dev/mapper/") or (d.startswith("/dev/") and d.count("/") >= 2 and not d.startswith("/dev/nbd")):
+                # Check both /dev/mapper/vg-lv and /dev/vg/lv formats
                 if d in current_disk_lv:
                     nbd_filtered.append(d)
+                    self.logger.debug(f"Including LVM device: {d}")
                 else:
-                    self.logger.debug(f"Filtering out mapper device not in LVM list: {d}")
+                    self.logger.debug(f"Filtering out LVM device not from current disk: {d}")
             # Include partitions from current NBD device
             elif current_nbd and d.startswith(current_nbd):
                 nbd_filtered.append(d)
@@ -894,12 +905,16 @@ class OfflineFSFix:
 
         self.logger.info(f"Filtered to current disk: {len(nbd_filtered)} of {len(filtered)} candidates")
 
-        # Prioritize LVM logical volumes and mapper devices
+        # Prioritize LVM logical volumes (both /dev/mapper/ and /dev/vg/lv formats)
         # Try these first as they're most likely to be root filesystems
         priority = []
         standard = []
         for d in nbd_filtered:
+            # LVM device in /dev/mapper/ format
             if d.startswith("/dev/mapper/") and "control" not in d.lower():
+                priority.append(d)
+            # LVM device in /dev/vg/lv format (check if it's in our LVM list)
+            elif d in current_disk_lv:
                 priority.append(d)
             else:
                 standard.append(d)
