@@ -3,8 +3,8 @@
 
 cmd: local
 
-# Source VMDK (relative path)
-vmdk: ../centos8/centos8.vmdk
+# Source VMDK
+vmdk: /home/ssahani/Downloads/centos8/64bit/centos8.vmdk
 
 # Output Configuration
 output_dir: out/centos8-relative-test
