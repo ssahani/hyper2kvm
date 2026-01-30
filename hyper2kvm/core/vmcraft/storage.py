@@ -108,6 +108,300 @@ class LVMActivator:
             return []
 
 
+class LVMCreator:
+    """
+    LVM creation and management operations.
+
+    Creates physical volumes, volume groups, and logical volumes.
+    Complements LVMActivator which only activates existing LVM structures.
+    """
+
+    @staticmethod
+    def pvcreate(logger: logging.Logger, devices: list[str]) -> dict[str, Any]:
+        """
+        Create physical volumes.
+
+        Args:
+            logger: Logger instance
+            devices: List of device paths to initialize as PVs
+
+        Returns:
+            Audit dict with created PV list
+
+        Example:
+            result = LVMCreator.pvcreate(logger, ["/dev/nbd0p1"])
+        """
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None, "pvs": []}
+
+        if not _has_command("pvcreate"):
+            audit["error"] = "lvm_tools_not_available"
+            return audit
+
+        if not devices:
+            audit["error"] = "no_devices_provided"
+            return audit
+
+        audit["attempted"] = True
+
+        try:
+            cmd = ["pvcreate", "-f"] + devices
+            run_sudo(logger, cmd, check=True, capture=True)
+
+            audit["ok"] = True
+            audit["pvs"] = devices
+            logger.info(f"Created physical volumes: {devices}")
+            return audit
+
+        except Exception as e:
+            audit["error"] = str(e)
+            logger.warning(f"PV creation failed: {e}")
+            return audit
+
+    @staticmethod
+    def vgcreate(logger: logging.Logger, vgname: str, pvs: list[str]) -> dict[str, Any]:
+        """
+        Create volume group.
+
+        Args:
+            logger: Logger instance
+            vgname: Volume group name
+            pvs: List of physical volumes
+
+        Returns:
+            Audit dict with VG name
+
+        Example:
+            result = LVMCreator.vgcreate(logger, "test_vg", ["/dev/nbd0p1"])
+        """
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None, "vg": None}
+
+        if not _has_command("vgcreate"):
+            audit["error"] = "lvm_tools_not_available"
+            return audit
+
+        if not vgname or not pvs:
+            audit["error"] = "invalid_parameters"
+            return audit
+
+        audit["attempted"] = True
+
+        try:
+            cmd = ["vgcreate", vgname] + pvs
+            run_sudo(logger, cmd, check=True, capture=True)
+
+            audit["ok"] = True
+            audit["vg"] = vgname
+            logger.info(f"Created volume group: {vgname}")
+            return audit
+
+        except Exception as e:
+            audit["error"] = str(e)
+            logger.warning(f"VG creation failed: {e}")
+            return audit
+
+    @staticmethod
+    def lvcreate(
+        logger: logging.Logger,
+        lvname: str,
+        vgname: str,
+        size_mb: int | None = None,
+        extents: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Create logical volume.
+
+        Args:
+            logger: Logger instance
+            lvname: Logical volume name
+            vgname: Volume group name
+            size_mb: Size in megabytes (mutually exclusive with extents)
+            extents: Size in extents (e.g., "100%FREE")
+
+        Returns:
+            Audit dict with LV path
+
+        Example:
+            # Create LV with specific size
+            result = LVMCreator.lvcreate(logger, "data", "vg0", size_mb=1024)
+
+            # Create LV using all free space
+            result = LVMCreator.lvcreate(logger, "data", "vg0", extents="100%FREE")
+        """
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None, "lv": None}
+
+        if not _has_command("lvcreate"):
+            audit["error"] = "lvm_tools_not_available"
+            return audit
+
+        if not lvname or not vgname:
+            audit["error"] = "invalid_parameters"
+            return audit
+
+        if not size_mb and not extents:
+            audit["error"] = "size_mb or extents required"
+            return audit
+
+        if size_mb and extents:
+            audit["error"] = "size_mb and extents are mutually exclusive"
+            return audit
+
+        audit["attempted"] = True
+
+        try:
+            cmd = ["lvcreate", "-n", lvname]
+
+            if size_mb:
+                cmd.extend(["-L", f"{size_mb}M"])
+            elif extents:
+                cmd.extend(["-l", extents])
+
+            cmd.append(vgname)
+
+            run_sudo(logger, cmd, check=True, capture=True)
+
+            lv_path = f"/dev/{vgname}/{lvname}"
+            audit["ok"] = True
+            audit["lv"] = lv_path
+            logger.info(f"Created logical volume: {lv_path}")
+            return audit
+
+        except Exception as e:
+            audit["error"] = str(e)
+            logger.warning(f"LV creation failed: {e}")
+            return audit
+
+    @staticmethod
+    def lvresize(logger: logging.Logger, lvpath: str, size_mb: int) -> dict[str, Any]:
+        """
+        Resize logical volume.
+
+        Args:
+            logger: Logger instance
+            lvpath: LV device path (e.g., "/dev/vg0/data")
+            size_mb: New size in megabytes
+
+        Returns:
+            Audit dict
+
+        Example:
+            result = LVMCreator.lvresize(logger, "/dev/vg0/data", 2048)
+        """
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None}
+
+        if not _has_command("lvresize"):
+            audit["error"] = "lvm_tools_not_available"
+            return audit
+
+        if not lvpath or size_mb <= 0:
+            audit["error"] = "invalid_parameters"
+            return audit
+
+        audit["attempted"] = True
+
+        try:
+            cmd = ["lvresize", "-L", f"{size_mb}M", lvpath]
+            run_sudo(logger, cmd, check=True, capture=True)
+
+            audit["ok"] = True
+            logger.info(f"Resized LV {lvpath} to {size_mb}M")
+            return audit
+
+        except Exception as e:
+            audit["error"] = str(e)
+            logger.warning(f"LV resize failed: {e}")
+            return audit
+
+    @staticmethod
+    def lvremove(logger: logging.Logger, lvpath: str, force: bool = False) -> dict[str, Any]:
+        """
+        Remove logical volume.
+
+        Args:
+            logger: Logger instance
+            lvpath: LV device path
+            force: Force removal without confirmation
+
+        Returns:
+            Audit dict
+
+        Example:
+            result = LVMCreator.lvremove(logger, "/dev/vg0/data", force=True)
+        """
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None}
+
+        if not _has_command("lvremove"):
+            audit["error"] = "lvm_tools_not_available"
+            return audit
+
+        if not lvpath:
+            audit["error"] = "invalid_parameters"
+            return audit
+
+        audit["attempted"] = True
+
+        try:
+            cmd = ["lvremove"]
+            if force:
+                cmd.append("-f")
+            cmd.append(lvpath)
+
+            run_sudo(logger, cmd, check=True, capture=True)
+
+            audit["ok"] = True
+            logger.info(f"Removed LV {lvpath}")
+            return audit
+
+        except Exception as e:
+            audit["error"] = str(e)
+            logger.warning(f"LV removal failed: {e}")
+            return audit
+
+    @staticmethod
+    def vgremove(logger: logging.Logger, vgname: str, force: bool = False) -> dict[str, Any]:
+        """
+        Remove volume group.
+
+        Args:
+            logger: Logger instance
+            vgname: Volume group name
+            force: Force removal without confirmation
+
+        Returns:
+            Audit dict
+
+        Example:
+            result = LVMCreator.vgremove(logger, "vg0", force=True)
+        """
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None}
+
+        if not _has_command("vgremove"):
+            audit["error"] = "lvm_tools_not_available"
+            return audit
+
+        if not vgname:
+            audit["error"] = "invalid_parameters"
+            return audit
+
+        audit["attempted"] = True
+
+        try:
+            cmd = ["vgremove"]
+            if force:
+                cmd.append("-f")
+            cmd.append(vgname)
+
+            run_sudo(logger, cmd, check=True, capture=True)
+
+            audit["ok"] = True
+            logger.info(f"Removed VG {vgname}")
+            return audit
+
+        except Exception as e:
+            audit["error"] = str(e)
+            logger.warning(f"VG removal failed: {e}")
+            return audit
+
+
 class LUKSUnlocker:
     """
     LUKS (Linux Unified Key Setup) encryption unlocking.

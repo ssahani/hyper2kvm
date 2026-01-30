@@ -10,8 +10,11 @@ enabling native Linux tools to access and modify VM disk images without libguest
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 from pathlib import Path
+
+from hyper2kvm.core.retry import retry_with_backoff
 
 from ._utils import run_sudo
 
@@ -124,6 +127,14 @@ class NBDDeviceManager:
             f"through /dev/nbd{self.nbd_max})"
         )
 
+    @retry_with_backoff(
+        max_attempts=3,
+        base_backoff_s=2.0,
+        max_backoff_s=10.0,
+        exceptions=(subprocess.CalledProcessError, OSError),
+        logger=logger,
+        log_level=logging.WARNING,
+    )
     def connect(
         self,
         image_path: str | Path,
@@ -132,7 +143,10 @@ class NBDDeviceManager:
         readonly: bool | None = None,
     ) -> str:
         """
-        Connect disk image to NBD device.
+        Connect disk image to NBD device with automatic retry on transient failures.
+
+        Uses exponential backoff retry strategy (max 3 attempts, 2-10s backoff) to
+        handle transient qemu-nbd command failures and OS-level errors.
 
         Args:
             image_path: Path to disk image
@@ -143,7 +157,9 @@ class NBDDeviceManager:
             Path to connected NBD device (e.g., /dev/nbd0)
 
         Raises:
-            RuntimeError: If connection fails or already connected
+            RuntimeError: If connection fails after all retry attempts or already connected
+            subprocess.CalledProcessError: If qemu-nbd command fails (after retries)
+            OSError: If file system operations fail (after retries)
         """
         if self._connected:
             raise RuntimeError("Already connected to an NBD device. Disconnect first.")
@@ -192,12 +208,21 @@ class NBDDeviceManager:
             self.logger.info(f"Successfully connected to {nbd_device}")
             return nbd_device
 
-        except Exception as e:
-            # Cleanup on failure
+        except (subprocess.CalledProcessError, OSError) as e:
+            # Cleanup on failure (for retryable errors)
             try:
                 run_sudo(self.logger, ["qemu-nbd", "--disconnect", nbd_device], check=False)
             except Exception:
                 pass
+            # Re-raise the original exception to allow retry decorator to catch it
+            raise
+        except Exception as e:
+            # Cleanup on failure (for non-retryable errors)
+            try:
+                run_sudo(self.logger, ["qemu-nbd", "--disconnect", nbd_device], check=False)
+            except Exception:
+                pass
+            # Wrap non-retryable exceptions in RuntimeError
             raise RuntimeError(f"Failed to connect NBD: {e}") from e
 
     def _scan_partitions(self, nbd_device: str) -> None:

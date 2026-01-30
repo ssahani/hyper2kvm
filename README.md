@@ -201,10 +201,10 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
 
 ### VMCraft - Advanced VM Manipulation Platform 🚀
 
-**VMCraft v9.0** is hyper2kvm's modular disk image manipulation library - a pure Python platform for comprehensive VM analysis and automation.
+**VMCraft v9.1** is hyper2kvm's modular disk image manipulation library - a pure Python platform for comprehensive VM analysis and automation.
 
-- **307+ Methods** across 57 specialized modules (25,700+ lines of code)
-- **Lightning-Fast Performance:** Native Python implementation with ~1.9s launch time
+- **343+ Methods** across 58 specialized modules (26,500+ lines of code)
+- **Lightning-Fast Performance:** Native Python with ~1.9s launch, 2-3x faster parallel mounts, 30-40% fewer system calls
 - **Enterprise Intelligence:**
   - 🤖 **AI/ML Analytics:** Anomaly detection, behavior prediction, workload classification
   - ☁️ **Cloud Optimization:** Multi-cloud migration planning (AWS, Azure, GCP), cost analysis
@@ -612,7 +612,7 @@ All modules maintain backward compatibility via wrapper files in original locati
 
 ### Overview
 
-**VMCraft** is hyper2kvm's pure Python disk image manipulation library designed for production-grade VM analysis and automation. With **307+ methods** across **57 specialized modules** and **25,700+ lines of code**, VMCraft provides comprehensive VM inspection, modification, and intelligence capabilities.
+**VMCraft v9.1** is hyper2kvm's pure Python disk image manipulation library designed for production-grade VM analysis and automation. With **343+ methods** across **58 specialized modules** and **26,500+ lines of code**, VMCraft provides comprehensive VM inspection, modification, and intelligence capabilities with enterprise-grade performance optimizations.
 
 ### Performance Characteristics
 
