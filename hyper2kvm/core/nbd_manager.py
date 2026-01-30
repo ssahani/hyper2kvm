@@ -257,7 +257,13 @@ class NBDDeviceManager:
             partitions = []
             nbd_name = Path(nbd_device).name
             for line in result.stdout.splitlines():
+                # Remove tree-drawing characters (└, ─, ├, │, etc.) from lsblk output
                 line = line.strip()
+                # Strip common box-drawing characters
+                for char in ['└', '─', '├', '│', '├─', '└─']:
+                    line = line.replace(char, '')
+                line = line.strip()
+
                 if line and line != nbd_name:
                     # This is a partition (e.g., nbd0p1)
                     partitions.append(f"/dev/{line}")
