@@ -32,6 +32,21 @@ rules:
   - patch
   - delete
 
+# OfflineFixJob CRD permissions
+- apiGroups:
+  - hyper2kvm.io
+  resources:
+  - offlinefixjobs
+  - offlinefixjobs/status
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+
 # Worker pod access
 - apiGroups:
   - ""
@@ -53,7 +68,7 @@ rules:
   - create
   - patch
 
-# ConfigMap access (for operator config)
+# ConfigMap access (for operator config and job specs)
 - apiGroups:
   - ""
   resources:
@@ -62,6 +77,36 @@ rules:
   - get
   - list
   - watch
+  - create
+  - update
+  - patch
+  - delete
+
+# Node access (for OfflineFixJob annotations)
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+
+# VirtualMachineInstance access (for OfflineFixJob VMs)
+- apiGroups:
+  - kubevirt.io
+  resources:
+  - virtualmachineinstances
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
 
 # Kopf operator framework requirements
 - apiGroups:

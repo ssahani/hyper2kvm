@@ -20,7 +20,7 @@ spec:
   # Execution configuration
   execution:
     mode: kubevirt-vm
-    vmImage: quay.io/hyper2kvm/offline-fix-vm:v1.0.0
+    vmImage: ghcr.io/ssahani/offline-fix-vm:v1.0.0
     resources:
       memory: "2Gi"
       cpu: "2"

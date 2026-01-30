@@ -63,7 +63,7 @@ spec:
 
       containers:
       - name: nbd-prep
-        image: quay.io/hyper2kvm/nbd-prep:v1.0.0
+        image: ghcr.io/ssahani/nbd-prep:v1.0.0
         imagePullPolicy: IfNotPresent
 
         env:
@@ -86,6 +86,11 @@ spec:
         # Host /dev for NBD devices
         - name: dev
           mountPath: /dev
+
+        # Host /lib/modules for kernel modules
+        - name: lib-modules
+          mountPath: /lib/modules
+          readOnly: true
 
         # Host root for chroot operations (if needed)
         - name: host-root
@@ -122,6 +127,11 @@ spec:
       - name: dev
         hostPath:
           path: /dev
+
+      - name: lib-modules
+        hostPath:
+          path: /lib/modules
+          type: Directory
 
       - name: host-root
         hostPath:
