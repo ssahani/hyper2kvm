@@ -121,3 +121,16 @@ tests/fixtures/images/
 DOCS_IMPROVEMENT_PLAN.md
 LIBRARY_API_PROPOSAL.md
 LINKEDIN_POST.md
+
+# =================================================
+# Test output directories (DO NOT COMMIT)
+# =================================================
+out/
+
+# Test VM directories
+win10/
+win11/
+
+# Test disk images (specific)
+photon.vmdk
+test-images/
