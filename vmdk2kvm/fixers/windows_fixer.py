@@ -312,7 +312,7 @@ def _find_windows_root(self, g: guestfs.GuestFS) -> Optional[str]:
 def _read_software_hive_version(self, g: guestfs.GuestFS, software_hive_path: str) -> Dict[str, Any]:
     """
     Parse SOFTWARE hive offline for:
-      SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProductName etc.
+      SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName etc.
     """
     logger = _safe_logger(self)
     out: Dict[str, Any] = {}
