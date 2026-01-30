@@ -105,7 +105,7 @@ This must pass before proceeding. If it fails, check KVM permissions and kernel 
 
 ```bash
 # Clone the repository
-git clone https://github.com/hyper2kvm/hyper2kvm.git
+git clone https://github.com/ssahani/hyper2kvm.git
 cd hyper2kvm
 
 # Create virtual environment
@@ -404,7 +404,7 @@ sudo python -m hyper2kvm local \
 
 ### Get Help
 
-- **GitHub Issues:** https://github.com/hyper2kvm/hyper2kvm/issues
+- **GitHub Issues:** https://github.com/ssahani/hyper2kvm/issues
 - **Documentation:** `docs/` directory
 - **Examples:** `examples/` directory
 
@@ -535,7 +535,7 @@ Now that you've completed your first migration:
 
 ## Getting Help
 
-- **Issues:** [GitHub Issues](https://github.com/hyper2kvm/hyper2kvm/issues)
+- **Issues:** [GitHub Issues](https://github.com/ssahani/hyper2kvm/issues)
 - **Troubleshooting:** [Failure Modes Guide](90-Failure-Modes.md)
 - **Documentation:** All docs in `docs/` directory
 

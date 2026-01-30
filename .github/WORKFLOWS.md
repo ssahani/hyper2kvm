@@ -69,8 +69,8 @@ Recommended settings for `main` branch:
 Add to README.md:
 
 ```markdown
-![Tests](https://github.com/hyper2kvm/hyper2kvm/workflows/Tests/badge.svg)
-![Security](https://github.com/hyper2kvm/hyper2kvm/workflows/Security%20Checks/badge.svg)
+![Tests](https://github.com/ssahani/hyper2kvm/workflows/Tests/badge.svg)
+![Security](https://github.com/ssahani/hyper2kvm/workflows/Security%20Checks/badge.svg)
 [![codecov](https://codecov.io/gh/hyper2kvm/hyper2kvm/branch/main/graph/badge.svg)](https://codecov.io/gh/hyper2kvm/hyper2kvm)
 ```
 

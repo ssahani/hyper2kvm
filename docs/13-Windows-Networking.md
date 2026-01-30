@@ -353,5 +353,5 @@ For Windows migrations:
 ## Getting Help
 
 - [Troubleshooting Guide](90-Failure-Modes.md)
-- [GitHub Issues](https://github.com/hyper2kvm/hyper2kvm/issues)
+- [GitHub Issues](https://github.com/ssahani/hyper2kvm/issues)
 

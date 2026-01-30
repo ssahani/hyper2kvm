@@ -283,9 +283,9 @@ SEE ALSO
 BUGS
 ====
 
-Report bugs to: https://github.com/hyper2kvm/hyper2kvm/issues
+Report bugs to: https://github.com/ssahani/hyper2kvm/issues
 
-Project documentation: https://github.com/hyper2kvm/hyper2kvm
+Project documentation: https://github.com/ssahani/hyper2kvm
 
 AUTHOR
 ======

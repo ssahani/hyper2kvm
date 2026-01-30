@@ -301,8 +301,8 @@ Found an error or want to improve docs?
 
 ## Getting Help
 
-- **GitHub Issues:** https://github.com/hyper2kvm/hyper2kvm/issues
-- **Discussions:** https://github.com/hyper2kvm/hyper2kvm/discussions
+- **GitHub Issues:** https://github.com/ssahani/hyper2kvm/issues
+- **Discussions:** https://github.com/ssahani/hyper2kvm/discussions
 - **Examples:** See `examples/` directory
 - **Source Code:** Browse `hyper2kvm/` for implementation details
 

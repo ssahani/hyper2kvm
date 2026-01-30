@@ -566,7 +566,7 @@ If you encounter issues not covered here:
 
 1. **Enable debug logging:** `--log-level DEBUG`
 2. **Generate a report:** `--report issue-report.md`
-3. **Check GitHub Issues:** https://github.com/hyper2kvm/hyper2kvm/issues
+3. **Check GitHub Issues:** https://github.com/ssahani/hyper2kvm/issues
 4. **Create a bug report:** Use the issue template
 
 ### Information to Include
