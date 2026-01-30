@@ -4,7 +4,7 @@
 cmd: local
 
 # Source VMDK
-vmdk: /home/ssahani/Downloads/cent0s9/64bit/centos-vmdk
+vmdk: /home/ssahani/Downloads/centos9/64bit/centos9.vmdk
 
 # Output Configuration
 output_dir: /home/ssahani/tt/hyper2kvm/out/centos9-download-test
