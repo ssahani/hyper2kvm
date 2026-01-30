@@ -39,9 +39,7 @@ class Config:
       - ✅ vSphere control-plane canonicalization (govc knobs, env aliases)
     """
 
-    # -----------------------------
     # Public API
-    # -----------------------------
 
     @staticmethod
     def load_one(logger: logging.Logger, path: str) -> Dict[str, Any]:

@@ -414,9 +414,7 @@ class ValidationSuite:
             )
         )
 
-    # ---------------------------
     # Skip + dependency logic
-    # ---------------------------
 
     def _should_skip(self, spec: CheckSpec, context: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         # Supported skip mechanisms:
@@ -451,9 +449,7 @@ class ValidationSuite:
                 return False, f"dependency_failed:{dep}"
         return True, None
 
-    # ---------------------------
     # Context narrowing/sanitization + redaction keys
-    # ---------------------------
 
     def _sanitize_context_for_child(self, context: Dict[str, Any], *, allow_keys: Optional[Sequence[str]]) -> Dict[str, Any]:
         ctx = context
@@ -490,9 +486,7 @@ class ValidationSuite:
         }
         return base | extra
 
-    # ---------------------------
     # Result post-processing
-    # ---------------------------
 
     def _postprocess_result(self, spec: CheckSpec, context: Dict[str, Any], r: CheckResult) -> CheckResult:
         if r.skipped or (not r.passed):
@@ -515,9 +509,7 @@ class ValidationSuite:
         r.result_truncated = bool(trunc1 or trunc2)
         return r
 
-    # ---------------------------
     # Execution: in-process (soft timeout) + subprocess (hard timeout)
-    # ---------------------------
 
     def _run_check_inprocess_once(self, spec: CheckSpec, context: Dict[str, Any], *, show_tracebacks: bool) -> CheckResult:
         t0 = time.monotonic()
@@ -723,9 +715,7 @@ class ValidationSuite:
 
         return last or CheckResult(name=spec.name, passed=False, critical=spec.critical, duration_s=0.0, error="unknown")
 
-    # ---------------------------
     # Parallel scheduler (process-based, spawn-safe, no nested multiprocessing)
-    # ---------------------------
 
     @staticmethod
     def _is_parallel_candidate(spec: CheckSpec) -> bool:
@@ -965,9 +955,7 @@ class ValidationSuite:
 
         return finished
 
-    # ---------------------------
     # JSON serialization + stats
-    # ---------------------------
 
     @staticmethod
     def _result_to_json(r: CheckResult, *, show_tracebacks: bool) -> Dict[str, Any]:
@@ -1028,9 +1016,7 @@ class ValidationSuite:
         top_n = max(1, int(top_n or 10))
         return [{"name": n, "duration_s": round(d, 3), "mode": m} for (n, d, m) in items[:top_n]]
 
-    # ---------------------------
     # Public API
-    # ---------------------------
 
     def run_all(
         self,
@@ -1396,9 +1382,7 @@ class ValidationSuite:
 
         return payload
 
-    # ---------------------------
     # Logging
-    # ---------------------------
 
     def _log_summary(self, payload: Dict[str, Any]) -> None:
         stats = payload.get("stats", {}) or {}

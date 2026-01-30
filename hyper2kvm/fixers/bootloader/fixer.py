@@ -137,9 +137,7 @@ class MultiBootloaderFixer:
         self.dry_run = dry_run
         self._backup_cb = backup_cb
 
-    # ---------------------------
     # Small guest helpers
-    # ---------------------------
 
     def _is_file(self, g, p: str) -> bool:
         try:
@@ -204,9 +202,7 @@ class MultiBootloaderFixer:
                 return p
         return None
 
-    # ---------------------------
     # Detection
-    # ---------------------------
 
     def detect_bootloaders(self, g) -> BootloaderFixResult:
         result = BootloaderFixResult()
@@ -308,9 +304,7 @@ class MultiBootloaderFixer:
 
         return bootloaders[0].type
 
-    # ---------------------------
     # Fixes (conservative)
-    # ---------------------------
 
     def apply_kvm_fixes(self, g, *, root_dev: Optional[str] = None) -> BootloaderFixResult:
         result = self.detect_bootloaders(g)
@@ -469,9 +463,7 @@ class MultiBootloaderFixer:
             fixes["note"] = "No legacy GRUB configs updated (none found or already had console)"
         return fixes
 
-    # ---------------------------
     # systemd-boot
-    # ---------------------------
 
     def _fix_systemd_boot(self, g, bl: BootloaderInfo) -> Dict[str, Any]:
         """

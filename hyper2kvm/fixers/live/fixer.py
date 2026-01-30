@@ -68,9 +68,7 @@ class LiveFixer:
         # one-time warnings to avoid log spam
         self._warned_missing: set[str] = set()
 
-    # ---------------------------------------------------------------------
     # SSH helpers
-    # ---------------------------------------------------------------------
 
     def _ssh(self, cmd: str) -> str:
         self.logger.debug("SSH: %s", cmd)
@@ -225,9 +223,7 @@ class LiveFixer:
         payload = "\n".join(payload_lines) + "\n"
         self._ssh("sh -lc " + shlex.quote(payload))
 
-    # ---------------------------------------------------------------------
     # fstab rewrite
-    # ---------------------------------------------------------------------
 
     def _convert_spec_to_stable(self, spec: str) -> str:
         """
@@ -323,9 +319,7 @@ class LiveFixer:
 
         return "".join(out_lines), changed, seen, changes
 
-    # ---------------------------------------------------------------------
     # VMware tools removal (multi-distro best-effort)
-    # ---------------------------------------------------------------------
 
     def _remove_vmware_tools(self) -> None:
         self.logger.info("Removing VMware tools (live)...")
@@ -406,9 +400,7 @@ class LiveFixer:
 
         self.logger.info("VMware tools removal attempted.")
 
-    # ---------------------------------------------------------------------
     # Entrypoint
-    # ---------------------------------------------------------------------
 
     def run(self) -> Dict[str, Any]:
         U.banner(self.logger, "Live fix (SSH)")

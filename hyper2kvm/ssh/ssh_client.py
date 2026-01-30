@@ -53,9 +53,7 @@ class SSHClient:
         self._rsync_append_verify = bool(getattr(cfg, "rsync_append_verify", False))
         self._ensure_remote_dir = bool(getattr(cfg, "ensure_remote_dir", True))
 
-    # ----------------------------
     # argv builders
-    # ----------------------------
 
     def _common(self) -> List[str]:
         opts: List[str] = [
@@ -116,9 +114,7 @@ class SSHClient:
 
         return args
 
-    # ----------------------------
     # command helpers
-    # ----------------------------
 
     def _target(self) -> str:
         return f"{self.cfg.user}@{self.cfg.host}"
@@ -201,9 +197,7 @@ class SSHClient:
         ).strip()
         raise subprocess.CalledProcessError(res.rc, res.argv, output=res.stdout, stderr=msg)
 
-    # ----------------------------
     # public API
-    # ----------------------------
 
     def run(
         self,
@@ -309,9 +303,7 @@ class SSHClient:
         self._raise_on_failure(res, "copy (to)")
         self.logger.info(f"Copied {local} -> {remote}")
 
-    # ----------------------------
     # safer remote probes (argument-based)
-    # ----------------------------
 
     def _probe(self, script: str, arg1: str, *, timeout: int = 10) -> str:
         """

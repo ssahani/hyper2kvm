@@ -77,9 +77,7 @@ class LiveGrubFixer:
 
         self._warned_once: set[str] = set()
 
-    # ---------------------------
     # ssh helpers
-    # ---------------------------
 
     def _warn_once(self, key: str, msg: str, *args: Any) -> None:
         if key in self._warned_once:
@@ -245,9 +243,7 @@ exit 0
         self._sh(f"rm -f {shlex.quote(path)} 2>/dev/null || true")
         self.logger.info("Removed %s (if existed)", path)
 
-    # ---------------------------
     # detection helpers
-    # ---------------------------
 
     def _read_os_release(self) -> Tuple[str, List[str]]:
         _, out = self._sh(
@@ -417,9 +413,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
 
         return spec
 
-    # ---------------------------
     # operations
-    # ---------------------------
 
     def remove_stale_device_map(self) -> int:
         removed = 0
@@ -538,9 +532,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
         self.report.updated_files.append(path)
         return True
 
-    # ---------------------------
     # regen logic (capability-first, split initramfs vs bootloader)
-    # ---------------------------
 
     def _detect_grub_cfg_targets(self) -> List[str]:
         targets: List[str] = []
@@ -719,9 +711,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
         self.logger.warning(msg)
         self.report.warnings.append(msg)
 
-    # ---------------------------
     # main entry
-    # ---------------------------
 
     def run(self) -> Dict[str, Any]:
         U.banner(self.logger, "GRUB fix (SSH)")

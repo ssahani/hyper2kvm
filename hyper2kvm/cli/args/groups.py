@@ -10,9 +10,7 @@ from ...fixers.filesystem.fstab import FstabMode
 
 
 def _add_global_config_logging(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Global config/logging (two-phase parse relies on these)
-    # ------------------------------------------------------------------
     from ... import __version__
 
     p.add_argument(
@@ -35,9 +33,7 @@ def _add_global_config_logging(p: argparse.ArgumentParser) -> None:
 
 
 def _add_project_control(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Project control: YAML-driven operation (no subcommands)
-    # ------------------------------------------------------------------
     p.add_argument(
         "--cmd",
         dest="cmd",
@@ -53,9 +49,7 @@ def _add_project_control(p: argparse.ArgumentParser) -> None:
 
 
 def _add_global_operation_flags(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Global operation flags
-    # ------------------------------------------------------------------
     p.add_argument("--output-dir", dest="output_dir", default="./out", help="Output directory root.")
     p.add_argument("--dry-run", dest="dry_run", action="store_true", help="Do not modify guest/convert output.")
     p.add_argument("--no-backup", dest="no_backup", action="store_true", help="Skip backups inside guest (dangerous).")
@@ -64,9 +58,7 @@ def _add_global_operation_flags(p: argparse.ArgumentParser) -> None:
 
 
 def _add_flatten_convert(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Flatten/convert
-    # ------------------------------------------------------------------
     p.add_argument("--flatten", action="store_true", help="Flatten snapshot chain into a single working image first.")
     p.add_argument(
         "--flatten-format",
@@ -88,9 +80,7 @@ def _add_flatten_convert(p: argparse.ArgumentParser) -> None:
 
 
 def _add_fixing_behavior(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Fixing behavior
-    # ------------------------------------------------------------------
     p.add_argument(
         "--fstab-mode",
         dest="fstab_mode",
@@ -132,9 +122,7 @@ def _add_fixing_behavior(p: argparse.ArgumentParser) -> None:
 
 
 def _add_windows_virtio_definitions(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Windows VirtIO driver *definitions* config (PnP payload discovery)
-    # ------------------------------------------------------------------
     p.add_argument(
         "--virtio-config",
         dest="virtio_config_path",
@@ -157,9 +145,7 @@ def _add_windows_virtio_definitions(p: argparse.ArgumentParser) -> None:
 
 
 def _add_v2v_flags(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # virt-v2v knobs
-    # ------------------------------------------------------------------
     p.add_argument("--post-v2v", dest="post_v2v", action="store_true", help="Run virt-v2v after internal fixes.")
     p.add_argument("--use-v2v", dest="use_v2v", action="store_true", help="Use virt-v2v for conversion if available.")
     p.add_argument(
@@ -178,9 +164,7 @@ def _add_v2v_flags(p: argparse.ArgumentParser) -> None:
 
 
 def _add_windows_network_override(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Windows network retention override (first-boot apply)
-    # ------------------------------------------------------------------
     p.add_argument(
         "--win-net-override",
         dest="win_net_override",
@@ -203,9 +187,7 @@ def _add_windows_network_override(p: argparse.ArgumentParser) -> None:
 
 
 def _add_luks_knobs(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # LUKS knobs
-    # ------------------------------------------------------------------
     p.add_argument(
         "--luks-passphrase",
         dest="luks_passphrase",
@@ -229,9 +211,7 @@ def _add_luks_knobs(p: argparse.ArgumentParser) -> None:
 
 
 def _add_tests(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Tests
-    # ------------------------------------------------------------------
     p.add_argument("--libvirt-test", dest="libvirt_test", action="store_true", help="Libvirt smoke test after conversion.")
     p.add_argument("--qemu-test", dest="qemu_test", action="store_true", help="QEMU smoke test after conversion.")
     p.add_argument("--vm-name", dest="vm_name", default="converted-vm", help="VM name for libvirt test.")
@@ -244,9 +224,7 @@ def _add_tests(p: argparse.ArgumentParser) -> None:
 
 
 def _add_domain_emission(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Libvirt domain XML emission (after pipeline)
-    # ------------------------------------------------------------------
     p.add_argument(
         "--emit-domain-xml",
         dest="emit_domain_xml",
@@ -329,17 +307,13 @@ def _add_domain_emission(p: argparse.ArgumentParser) -> None:
 
 
 def _add_daemon_flags(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Daemon flags
-    # ------------------------------------------------------------------
     p.add_argument("--daemon", action="store_true", help="Run in daemon mode (for systemd service).")
     p.add_argument("--watch-dir", dest="watch_dir", default=None, help="Directory to watch for new VMDK files in daemon mode.")
 
 
 def _add_ovf_ova_knobs(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # OVF/OVA knobs
-    # ------------------------------------------------------------------
     p.add_argument(
         "--log-virt-filesystems",
         dest="log_virt_filesystems",
@@ -370,9 +344,7 @@ def _add_ovf_ova_knobs(p: argparse.ArgumentParser) -> None:
 
 
 def _add_ami_extraction_knobs(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # AMI/cloud tarball extraction knobs
-    # ------------------------------------------------------------------
     p.add_argument("--extract-nested-tar", dest="extract_nested_tar", action="store_true", help="For AMI/cloud tarballs: extract one level of nested tarballs (tar-in-tar).")
     p.add_argument("--no-extract-nested-tar", dest="extract_nested_tar", action="store_false", help="Disable nested tar extraction for AMI/cloud tarballs.")
     p.set_defaults(extract_nested_tar=True)
@@ -400,9 +372,7 @@ def _add_ami_extraction_knobs(p: argparse.ArgumentParser) -> None:
 
 
 def _add_input_paths(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Former subcommand args, promoted to globals (YAML-driven; CLI overrides)
-    # ------------------------------------------------------------------
     p.add_argument("--vmdk", default=None, help="Local VMDK path (descriptor OR monolithic/binary VMDK)")
     p.add_argument("--ova", default=None, help="Path to .ova")
     p.add_argument("--ovf", default=None, help="Path to .ovf (disks in same dir)")
@@ -411,9 +381,7 @@ def _add_input_paths(p: argparse.ArgumentParser) -> None:
 
 
 def _add_ssh_fetch_knobs(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # fetch-and-fix + live-fix common SSH knobs:
-    # ------------------------------------------------------------------
     p.add_argument("--host", default=None, help="Remote host for fetch-and-fix/live-fix")
     p.add_argument("--user", default="root", help="Remote user (fetch-and-fix/live-fix)")
     p.add_argument("--port", type=int, default=22, help="SSH port (fetch-and-fix/live-fix)")
@@ -431,9 +399,7 @@ def _add_systemd_gen(p: argparse.ArgumentParser) -> None:
 
 
 def _add_vsphere_core_knobs(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # vSphere / vCenter knobs (promoted to globals)
-    # ------------------------------------------------------------------
     p.add_argument("--vcenter", default=None, help="vCenter/ESXi hostname or IP")
     p.add_argument("--vc-user", dest="vc_user", default=None, help="vCenter username")
     p.add_argument("--vc-password", dest="vc_password", default=None, help="vCenter password (or use --vc-password-env)")
@@ -499,9 +465,7 @@ def _add_govc_knobs(p: argparse.ArgumentParser) -> None:
 
 
 def _add_ovftool_knobs(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # OVF Tool (ovftool) knobs
-    # ------------------------------------------------------------------
     p.add_argument("--ovftool-path", dest="ovftool_path", default=None, help="Path to OVF Tool binary or install dir (optional; auto-detect if unset).")
     p.add_argument("--ovftool-no-ssl-verify", dest="ovftool_no_ssl_verify", action="store_true", help="OVF Tool: disable TLS verification (adds --noSSLVerify).")
     p.add_argument("--no-ovftool-no-ssl-verify", dest="ovftool_no_ssl_verify", action="store_false", help="OVF Tool: keep TLS verification (do not add --noSSLVerify).")
@@ -536,9 +500,7 @@ def _add_ovftool_knobs(p: argparse.ArgumentParser) -> None:
 
 
 def _add_vsphere_v2v_and_download_knobs(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Existing virt-v2v vSphere export knobs, download-only knobs, VDDK knobs...
-    # ------------------------------------------------------------------
     p.add_argument(
         "--vs-v2v",
         dest="vs_v2v",
@@ -611,9 +573,7 @@ def _add_vsphere_v2v_and_download_knobs(p: argparse.ArgumentParser) -> None:
 
 
 def _add_azure_knobs(p: argparse.ArgumentParser) -> None:
-    # ------------------------------------------------------------------
     # Azure VM migration knobs
-    # ------------------------------------------------------------------
     p.add_argument("--azure-subscription", dest="azure_subscription", default=None, help="Azure subscription ID (optional; uses current az account if unset)")
     p.add_argument("--azure-tenant", dest="azure_tenant", default=None, help="Azure tenant ID (optional)")
 

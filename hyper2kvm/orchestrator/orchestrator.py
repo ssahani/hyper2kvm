@@ -1,17 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
 # hyper2kvm/orchestrator/orchestrator.py
-# hyper2kvm/orchestrator/orchestrator_refactored.py
-"""
-Refactored orchestrator using focused component classes.
-
-Top-level pipeline runner with clean separation of concerns:
-- VirtV2VConverter: virt-v2v operations
-- VsphereExporter: vSphere VM export
-- DiskDiscovery: Input disk detection
-- DiskProcessor: Disk processing pipeline
-- Orchestrator: Main coordinator
-"""
 
 from __future__ import annotations
 
@@ -49,15 +38,7 @@ except ImportError:
 
 class Orchestrator:
     """
-    Top-level pipeline orchestrator (refactored).
-
-    Responsibilities:
-    - Coordinate specialized components
-    - Run sanity checks
-    - Manage recovery checkpoints
-    - Execute pre/post virt-v2v steps
-    - Run validation tests
-    - Emit libvirt domain XML
+    Main pipeline orchestrator.
     """
 
     def __init__(self, logger: logging.Logger, args: argparse.Namespace):

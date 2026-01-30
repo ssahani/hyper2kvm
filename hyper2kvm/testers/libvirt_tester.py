@@ -314,9 +314,7 @@ class LibvirtTest:
             if xml_path is not None:
                 U.safe_unlink(xml_path)
 
-    # ----------------------------
     # Helpers
-    # ----------------------------
 
     @staticmethod
     def _resolve_ovmf(logger: logging.Logger, fw: FirmwareConfig) -> Optional[OVMFPaths]:

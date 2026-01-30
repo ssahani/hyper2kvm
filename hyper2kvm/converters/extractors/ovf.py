@@ -401,9 +401,7 @@ class OVF:
             logger.warning(f"virt-filesystems failed for {image}: {e}")
             return {"ok": False, "error": str(e), "cmd": cmd}
 
-    # -----------------------------
     # Safe path helpers
-    # -----------------------------
 
     @staticmethod
     def _clean_posix_relpath(name: str) -> PurePosixPath:
@@ -474,9 +472,7 @@ class OVF:
 
         return target
 
-    # -----------------------------
     # Safe extraction
-    # -----------------------------
 
     @staticmethod
     def _safe_extract_one(

@@ -143,9 +143,7 @@ class GuestDetector:
         "/winnt/system32/config/SYSTEM",
     ]
 
-    # ---------------------------
     # Small parsing helpers
-    # ---------------------------
 
     @staticmethod
     def read_first_line(g: guestfs.GuestFS, path: str) -> Optional[str]:
@@ -181,9 +179,7 @@ class GuestDetector:
         content = content.strip()
         return content or None
 
-    # ---------------------------
     # Mounting (shape-safe)
-    # ---------------------------
 
     @staticmethod
     def _normalize_mountpoints(mps: Any) -> List[Tuple[str, str]]:
@@ -257,9 +253,7 @@ class GuestDetector:
             except Exception:
                 continue
 
-    # ---------------------------
     # Detection strategies
-    # ---------------------------
 
     @classmethod
     def detect_by_indicators(cls, g: guestfs.GuestFS) -> Dict[GuestType, float]:
@@ -335,9 +329,7 @@ class GuestDetector:
         except Exception as e:
             return (None, f"{type(e).__name__}: {e}")
 
-    # ---------------------------
     # Identity collection
-    # ---------------------------
 
     @staticmethod
     def _versionish_key(s: str) -> List[Tuple[int, Any]]:
@@ -498,9 +490,7 @@ class GuestDetector:
 
         return ident
 
-    # ---------------------------
     # Root selection + main detect()
-    # ---------------------------
 
     @classmethod
     def best_root(cls, g: guestfs.GuestFS) -> Optional[str]:

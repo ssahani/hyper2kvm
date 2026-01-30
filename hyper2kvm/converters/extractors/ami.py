@@ -192,9 +192,7 @@ class AMI:
             write_manifest=write_manifest,
         )
 
-    # -------------------------------------------------------------------------
     # extraction + discovery
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def _extract_and_find_disks(
@@ -484,9 +482,7 @@ class AMI:
                 logger.warning(f"Failed extracting nested tar {t}: {e}")
                 manifest.nested_extractions.append({"tar": str(t), "outdir": str(nested_out), "error": str(e)})
 
-    # -------------------------------------------------------------------------
     # disk discovery
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def _find_disk_payloads(
@@ -653,9 +649,7 @@ class AMI:
         names = [p.name + ("/" if p.is_dir() else "") for p in top[:30]]
         return ", ".join(names) or "(none)"
 
-    # -------------------------------------------------------------------------
     # conversion + logging
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def _convert_disks_to_qcow2(
@@ -764,9 +758,7 @@ class AMI:
             logger.warning(f"virt-filesystems failed for {image}: {e}")
             return {"ok": False, "error": str(e), "cmd": cmd}
 
-    # -------------------------------------------------------------------------
     # tar helpers + safe extraction
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def _looks_like_tar(p: Path) -> bool:

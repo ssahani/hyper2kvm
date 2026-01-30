@@ -523,9 +523,7 @@ class GovcRunner:
         )
         return cleaned
 
-    # ----------------------------------------------------------------------------------
     # VM info extraction with regex
-    # ----------------------------------------------------------------------------------
 
     def get_vm_info(self, vm: str) -> Dict[str, str]:
         """Get VM information using regex parsing."""
@@ -536,9 +534,7 @@ class GovcRunner:
             _log(self.logger, "debug", "Failed to get VM info: %s", e)
             return {}
 
-    # ----------------------------------------------------------------------------------
     # VM export helpers (OVF/OVA) - thin wrappers, reuse govc_export.py
-    # ----------------------------------------------------------------------------------
 
     def export_ovf(
         self,
@@ -681,9 +677,7 @@ class GovcRunner:
 
         return f"exported ova: vm={vm} out_file={out_file}"
 
-    # ----------------------------------------------------------------------------------
     # CD/DVD device management
-    # ----------------------------------------------------------------------------------
 
     def get_cdrom_devices(self, vm: str) -> List[str]:
         """Get list of CD/DVD devices for a VM."""
