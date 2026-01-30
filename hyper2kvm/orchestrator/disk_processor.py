@@ -342,37 +342,39 @@ class DiskProcessor:
                 self.logger.warning("   <loader readonly='yes' type='pflash'>/usr/share/OVMF/OVMF_CODE.fd</loader>")
                 self.logger.warning("")
 
-        # Abort on FATAL risks
+        # Warn on FATAL risks but continue (user requested non-blocking mode)
         if result.has_fatal_risks:
             fatal_risks = [r for r in result.risks if r.level == RiskLevel.FATAL]
-            error_msg = f"Pre-migration validation failed: {len(fatal_risks)} FATAL risk(s) detected"
+            self.logger.warning("")
+            self.logger.warning("=" * 70)
+            self.logger.warning(f"⚠️  FATAL: {len(fatal_risks)} CRITICAL risk(s) detected!")
+            self.logger.warning("=" * 70)
 
-            solutions = []
+            for risk in fatal_risks:
+                self.logger.warning(f"   ❌ {risk.message}")
+
+            self.logger.warning("")
+            self.logger.warning("💡 Recommended solutions:")
+
             for risk in fatal_risks:
                 if "snapshot" in risk.message.lower():
-                    solutions.append("Consolidate snapshots in VMware before migration")
-                    solutions.append("vSphere: Right-click VM → Snapshots → Consolidate")
+                    self.logger.warning("   → Consolidate snapshots in VMware before migration")
+                    self.logger.warning("      (vSphere: Right-click VM → Snapshots → Consolidate)")
                 elif "buslogic" in risk.message.lower():
-                    solutions.append("Change controller from BusLogic to LSI Logic or PVSCSI in VMware")
-                    solutions.append("BusLogic has no KVM driver - cannot be migrated")
+                    self.logger.warning("   → Change controller from BusLogic to LSI Logic or PVSCSI in VMware")
+                    self.logger.warning("      (BusLogic has no KVM driver - VM may not boot)")
                 elif "extent" in risk.message.lower() and "missing" in risk.message.lower():
-                    solutions.append("Verify all VMDK files are present (descriptor + extent)")
-                    solutions.append("Re-export VM from vSphere if files are incomplete")
+                    self.logger.warning("   → Verify all VMDK files are present (descriptor + extent)")
+                    self.logger.warning("      (Re-export VM from vSphere if files are incomplete)")
                 elif "size mismatch" in risk.message.lower():
-                    solutions.append("Re-export VMDK from vSphere")
-                    solutions.append("Current extent file appears truncated or corrupted")
+                    self.logger.warning("   → Re-export VMDK from vSphere")
+                    self.logger.warning("      (Current extent file appears truncated or corrupted)")
 
-            if not solutions:
-                solutions = ["Fix issues identified above before attempting migration"]
-
-            raise create_helpful_error(
-                Hyper2KvmError,
-                error_msg,
-                code=10,
-                solutions=solutions,
-                causes=[r.message for r in fatal_risks],
-                doc_link="features/vmdk-inspector.md"
-            )
+            self.logger.warning("")
+            self.logger.warning("⚠️  CONTINUING MIGRATION DESPITE FATAL RISKS!")
+            self.logger.warning("    Guest may not boot - manual intervention may be required")
+            self.logger.warning("=" * 70)
+            self.logger.warning("")
 
         # Warn on HIGH risks but continue
         if result.has_high_risks:
