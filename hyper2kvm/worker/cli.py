@@ -195,7 +195,7 @@ def job_status(job_id: str):
             try:
                 dt = datetime.fromisoformat(timestamp)
                 timestamp = dt.strftime("%H:%M:%S")
-            except:
+            except (ValueError, TypeError):  # Invalid timestamp format
                 pass
 
         from_state = entry.get("from_state", "-")

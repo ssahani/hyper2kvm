@@ -550,14 +550,14 @@ class CapabilityDetector:
                     capture_output=True,
                     timeout=5
                 )
-            except:
+            except Exception:  # Suppress all cleanup errors
                 pass
 
             # Clean up test image
             if test_image and os.path.exists(test_image):
                 try:
                     os.unlink(test_image)
-                except:
+                except Exception:  # Suppress file deletion errors
                     pass
 
     def _create_test_image(self) -> Optional[str]:

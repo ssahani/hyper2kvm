@@ -1304,7 +1304,7 @@ class ComprehensiveGuestInspector:
             for child in h.node_children(parent):
                 if h.node_name(child) == name:
                     return child
-        except:
+        except Exception:  # Suppress registry access errors
             pass
         return None
 
@@ -1402,7 +1402,7 @@ class ComprehensiveGuestInspector:
                                                 try:
                                                     val_str = val_data[1].decode('utf-16-le', errors='ignore').split('\x00')[0]
                                                     app_data[val_name] = val_str
-                                                except:
+                                                except (UnicodeDecodeError, IndexError):  # Malformed registry data
                                                     pass
 
                                         # Create application object if we have name
@@ -1418,7 +1418,7 @@ class ComprehensiveGuestInspector:
                                             # Limit to 100 applications
                                             if len(applications) >= 100:
                                                 break
-                                    except:
+                                    except Exception:  # Suppress per-app parsing errors
                                         pass
 
                 h.close()
