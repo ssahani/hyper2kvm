@@ -26,12 +26,8 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 - **[Troubleshooting Recipes](recipes/04-troubleshooting.md)** - Common issues and solutions
 
 ### 📖 API Reference
-- **[VMCraft API](api/vmcraft-api.md)** - Complete guest filesystem manipulation API
-- **[Validation API](api/validation-api.md)** - Post-migration validation framework
-- **[Rollback API](api/rollback-api.md)** - Migration rollback and recovery
-- **[CLI API](api/cli-api.md)** - Command-line interface and configuration
-- **[Backup Integration API](api/backup-api.md)** - Backup restore and DR testing
-- **[Live Migration API](api/live-migration-api.md)** - Live migration with minimal downtime
+- **[VMCraft API](api/vmcraft-api.md)** - Complete guest filesystem manipulation API (480+ methods)
+- **[CLI Reference](guides/cli/reference.md)** - Command-line interface and YAML configuration
 
 ### 🛠️ User Guides
 - **[CLI Reference](guides/cli/reference.md)** - Complete command-line reference
@@ -41,13 +37,10 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 - **[TUI Dashboard](guides/tui/dashboard.md)** - Terminal user interface guide
 
 ### 🔧 Feature Documentation
-- **[Live Migration](features/live-migration.md)** - Minimal-downtime migration
-- **[Database-Aware Migration](features/database-aware.md)** - Automated database preparation
-- **[Compliance & Audit](features/compliance-audit.md)** - Compliance reporting and audit trails
-- **[Container Extraction](features/container-extraction.md)** - VM-to-Kubernetes migration
-- **[Backup Integration](features/backup-integration.md)** - DR testing and backup restore
-- **[Migration Validation](features/migration-validation.md)** - Automated validation framework
-- **[Rollback Framework](features/rollback-framework.md)** - Recovery from failed migrations
+- **[VMCraft Complete Guide](features/vmcraft/complete-guide.md)** - Native VM manipulation engine
+- **[Enhanced Chroot](features/enhanced-chroot.md)** - Advanced filesystem access
+- **[Windows Support](os-support/windows/guide.md)** - VirtIO injection and registry modification
+- **[Cloud-Init Injection](features/cloud-init.md)** - Automated cloud configuration
 
 ### 🖥️ OS-Specific Documentation
 - **[Windows Migration](os-support/windows/guide.md)** - Windows VM migration guide
@@ -75,49 +68,57 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 
 | Feature | Status | Documentation |
 |---------|--------|---------------|
-| **VMCraft (Guest OS Manipulation)** | ✅ Production | [Complete Guide](features/vmcraft/complete-guide.md) |
-| **Live Migration** | ✅ Production | [Live Migration Guide](features/live-migration.md) |
-| **Batch Migration** | ✅ Production | [Batch Guide](guides/migration/batch-features.md) |
-| **Database-Aware Migration** | ✅ Production | [Database Guide](features/database-aware.md) |
-| **Compliance & Audit** | ✅ Production | [Compliance Guide](features/compliance-audit.md) |
-| **Container Extraction** | ✅ Production | [Container Guide](features/container-extraction.md) |
-| **Backup Integration** | ✅ Production | [Backup Guide](features/backup-integration.md) |
-| **Migration Validation** | ✅ Production | [Validation Guide](features/migration-validation.md) |
-| **Rollback Framework** | ✅ Production | [Rollback Guide](features/rollback-framework.md) |
-| **CLI Enhancement** | ✅ Production | [CLI Guide](api/cli-api.md) |
+| **VMCraft (480+ APIs)** | ✅ Production | [Complete Guide](features/vmcraft/complete-guide.md) |
+| **Local VMDK Migration** | ✅ Production | [Quick Start](getting-started/02-Quick-Start.md) |
+| **Remote ESXi Fetch** | ✅ Production | [SSH Fetch Guide](guides/migration/remote-fetch.md) |
+| **OVA/OVF Extraction** | ✅ Production | [OVA Guide](guides/migration/ova-ovf.md) |
+| **VHD/AMI Import** | ✅ Production | [VHD Guide](guides/migration/vhd-ami.md) |
+| **Live Fix (SSH)** | ✅ Production | [Live Fix Guide](guides/migration/live-fix.md) |
+| **Batch Processing** | ✅ Production | [Batch Guide](guides/migration/batch-features.md) |
+| **Windows Support** | ✅ Production | [Windows Guide](os-support/windows/guide.md) |
+| **vSphere Operations** | ✅ Production | [vSphere Guide](guides/migration/vsphere.md) |
+| **Post-Migration Testing** | ✅ Production | [Testing Guide](guides/testing.md) |
 
 ### 🏆 Key Capabilities
 
-- ✅ **480+ VMCraft APIs** - Comprehensive VM manipulation capabilities
-- ✅ **Live Migration** - <5s downtime for suitable workloads with HyperSDK
-- ✅ **Automated Fixes** - Bootloader, network, fstab, drivers automatically configured
-- ✅ **Multi-OS Support** - Windows, Linux (RHEL, Ubuntu, SUSE, Photon), BSD
-- ✅ **Enterprise Features** - Batch migration, compliance reporting, audit trails
-- ✅ **Database Support** - PostgreSQL, MySQL/MariaDB, MongoDB, Redis automatic preparation
-- ✅ **Container Extraction** - VM → Kubernetes migration with auto-generated manifests
-- ✅ **Backup Restore** - Veeam, Proxmox PBS, generic backup integration
-- ✅ **Validation Framework** - Automated health checks, service/network/database validation
-- ✅ **Rollback Capability** - Full and partial rollback with snapshot management
+- ✅ **480+ VMCraft APIs** - Native Python VM manipulation engine
+- ✅ **Multiple Input Formats** - VMDK, OVA, OVF, VHD, AMI, Azure VHD
+- ✅ **Automated Fixes** - Bootloader (GRUB), fstab stabilization, initramfs regeneration
+- ✅ **Multi-OS Support** - Windows (7-12, Server 2012-2025), Linux (RHEL, Ubuntu, SUSE, Photon), BSD
+- ✅ **Remote Operations** - SSH-based fetch from ESXi, live-fix without downtime
+- ✅ **Windows VirtIO** - Automatic driver injection and registry modification
+- ✅ **Batch Processing** - Parallel multi-VM migrations with JSON manifests
+- ✅ **Flexible Output** - qcow2, raw, VDI formats with compression levels
+- ✅ **Post-Migration Testing** - Libvirt/QEMU smoke tests with configurable timeout
+- ✅ **Cloud Integration** - Cloud-init injection, vSphere/Azure operations
 
 ---
 
 ## Common Use Cases
 
-### Scenario 1: Basic VM Migration
-**Goal**: Migrate a single Windows Server from Hyper-V to KVM
+### Scenario 1: Local VMDK Migration
+**Goal**: Migrate a VMware VMDK to KVM qcow2
+
+```yaml
+# migration.yaml
+command: local
+vmdk: /vms/windows-server.vmdk
+output_dir: /vms/converted
+to_output: windows-server.qcow2
+out_format: qcow2
+fstab_mode: stabilize-all
+regen_initramfs: true
+compress: true
+libvirt_test: true
+```
 
 ```bash
-# Install Hyper2KVM
-pip install hyper2kvm
-
-# Migrate VM
-hyper2kvm migrate /vms/windows-server.vhdx \
-    --target /vms/converted/windows-server.qcow2 \
-    --fix-all \
-    --validate
+# Install and run
+pip install "hyper2kvm[full]"
+hyper2kvm --config migration.yaml
 
 # Import to libvirt
-virsh define windows-server.xml
+virsh define /vms/converted/windows-server.xml
 virsh start windows-server
 ```
 
@@ -125,95 +126,58 @@ virsh start windows-server
 
 ---
 
-### Scenario 2: Batch Migration with Validation
-**Goal**: Migrate 50 Linux VMs with automated validation
+### Scenario 2: Remote ESXi Fetch
+**Goal**: Fetch and migrate VM directly from ESXi host
 
-```bash
-# Create batch config
-hyper2kvm batch create --config batch-config.yaml
-
-# Execute batch migration
-hyper2kvm batch execute batch-config.yaml \
-    --parallel 5 \
-    --validate-all \
-    --compliance-report
-
-# Generate summary report
-hyper2kvm batch report --format markdown
+```yaml
+# fetch.yaml
+command: fetch-and-fix
+host: 192.168.1.100
+user: root
+identity: ~/.ssh/id_rsa
+remote: /vmfs/volumes/datastore1/vm/vm.vmdk
+output_dir: /vms/migrated
+to_output: vm.qcow2
+fstab_mode: stabilize-all
+regen_initramfs: true
 ```
 
-**Documentation**: [Batch Migration Guide](guides/migration/batch-features.md) | [Validation Guide](features/migration-validation.md)
+```bash
+hyper2kvm --config fetch.yaml
+```
+
+**Documentation**: [Remote Fetch Guide](guides/migration/remote-fetch.md)
 
 ---
 
-### Scenario 3: Live Migration with Minimal Downtime
-**Goal**: Migrate production database server with <5s downtime
+### Scenario 3: Batch Migration
+**Goal**: Migrate multiple VMs in parallel
 
-```bash
-# Analyze migration feasibility
-hyper2kvm live analyze /vms/prod-db.vmdk
-
-# Execute live migration
-hyper2kvm live migrate /vms/prod-db.vmdk \
-    --target /vms/prod-db.qcow2 \
-    --provider vmware \
-    --max-downtime 5
-
-# Validate migration
-hyper2kvm validate /vms/prod-db.qcow2 \
-    --check-databases \
-    --check-services \
-    --check-network
+```yaml
+# batch.yaml
+command: local
+batch_manifest: migrations.json
+batch_parallel: 3
+batch_continue_on_error: true
+output_dir: /vms/batch
 ```
 
-**Documentation**: [Live Migration Tutorial](tutorials/03-advanced-features.md#live-migration) | [Live Migration API](api/live-migration-api.md)
-
----
-
-### Scenario 4: DR Testing from Backups
-**Goal**: Test disaster recovery by restoring from Veeam backups
-
-```bash
-# Restore from Veeam backup
-hyper2kvm backup restore \
-    --source veeam:///backups/veeam-repo \
-    --vm prod-app-01 \
-    --target /vms/dr-test/prod-app-01.qcow2
-
-# Run DR validation
-hyper2kvm validate /vms/dr-test/prod-app-01.qcow2 \
-    --full-check \
-    --report /reports/dr-test.json
-
-# Cleanup test environment
-virsh destroy prod-app-01-test
+```json
+// migrations.json
+{
+  "migrations": [
+    {"vmdk": "/vms/vm1.vmdk", "to_output": "vm1.qcow2"},
+    {"vmdk": "/vms/vm2.vmdk", "to_output": "vm2.qcow2"},
+    {"vmdk": "/vms/vm3.vmdk", "to_output": "vm3.qcow2"}
+  ]
+}
 ```
 
-**Documentation**: [Backup Integration Guide](features/backup-integration.md) | [Validation Guide](features/migration-validation.md)
-
----
-
-### Scenario 5: VM to Kubernetes Migration
-**Goal**: Extract containers from VM and deploy to Kubernetes
-
 ```bash
-# Extract containers from VM
-hyper2kvm container extract /vms/docker-host.qcow2 \
-    --output-dir /k8s/manifests \
-    --generate-manifests
-
-# Review generated manifests
-ls /k8s/manifests/
-# deployments/
-# services/
-# configmaps/
-# secrets/
-
-# Deploy to Kubernetes
-kubectl apply -f /k8s/manifests/
+hyper2kvm --config batch.yaml
 ```
 
-**Documentation**: [Container Extraction Guide](features/container-extraction.md) | [Container Recipes](recipes/03-application-specific.md#containerized-workloads)
+**Documentation**: [Batch Migration Guide](guides/migration/batch-features.md)
 
 ---
 
@@ -223,29 +187,30 @@ kubectl apply -f /k8s/manifests/
 
 | Command | Description |
 |---------|-------------|
-| `hyper2kvm migrate <source>` | Basic VM migration |
-| `hyper2kvm batch execute <config>` | Batch migration |
-| `hyper2kvm live migrate <source>` | Live migration with minimal downtime |
-| `hyper2kvm validate <disk>` | Post-migration validation |
-| `hyper2kvm backup restore` | Restore from backup |
-| `hyper2kvm container extract` | Extract containers from VM |
-| `hyper2kvm rollback <snapshot-id>` | Rollback failed migration |
+| `hyper2kvm --config <yaml>` | Execute migration from YAML config (recommended) |
+| `hyper2kvm --cmd local` | Local VMDK/disk migration |
+| `hyper2kvm --cmd fetch-and-fix` | Remote ESXi fetch via SSH |
+| `hyper2kvm --cmd ova` | OVA file extraction |
+| `hyper2kvm --cmd ovf` | OVF file extraction |
+| `hyper2kvm --cmd vhd` | VHD file import |
+| `hyper2kvm --cmd live-fix` | SSH-based live fixing |
+| `hyper2kvm --help` | Show full command reference |
 
 ### Common Workflows
 
 **Standard Migration**:
 ```
-1. Analyze source VM
-2. Create pre-migration snapshot
-3. Execute migration with fixes
-4. Run validation checks
-5. Import to libvirt
+1. Create YAML config file
+2. Run: hyper2kvm --config migration.yaml
+3. Automatic fstab/bootloader fixing
+4. Optional: libvirt/QEMU testing
+5. Import to libvirt with virsh
 ```
 
-**Live Migration**:
+**Remote Fetch**:
 ```
-1. Analyze feasibility
-2. Pre-copy memory/disk
+1. Configure SSH access to ESXi
+2. Create fetch-and-fix YAML config
 3. Final switchover (<5s downtime)
 4. Validate target
 5. Cutover production traffic
