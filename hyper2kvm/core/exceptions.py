@@ -13,14 +13,60 @@ def _safe_int(x: Any, default: int = 1) -> int:
         return default
 
 
+def _clamp_exit_code(code: int) -> int:
+    # Exit codes are typically 0..255; keep it safe and predictable.
+    try:
+        if code < 0:
+            return 1
+        if code > 255:
+            return 255
+        return code
+    except Exception:
+        return 1
+
+
 def _one_line(s: str, limit: int = 600) -> str:
     s = (s or "").strip().replace("\r", " ").replace("\n", " ")
     s = " ".join(s.split())
     return s if len(s) <= limit else (s[: limit - 3] + "...")
 
 
+_SECRET_KEY_PARTS = (
+    "pass",
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "apikey",
+    "api_key",
+    "auth",
+    "cookie",
+    "session",
+    "bearer",
+    "private",
+    "key",
+)
+
+
+def _is_secret_key(k: str) -> bool:
+    ks = (k or "").lower()
+    return any(p in ks for p in _SECRET_KEY_PARTS)
+
+
+def _format_context_compact(ctx: Dict[str, Any]) -> str:
+    # Stable order, redaction, single-line.
+    parts = []
+    for k in sorted(ctx.keys()):
+        v = ctx.get(k)
+        if _is_secret_key(str(k)):
+            parts.append(f"{k}=<redacted>")
+        else:
+            parts.append(f"{k}={v!r}")
+    return ", ".join(parts)
+
+
 @dataclass(eq=False)
-class Vmdk2KvmError(Exception):
+class Hyper2KvmError(Exception):
     """
     Base project error with:
       - stable fields for reporting/JSON
@@ -33,11 +79,13 @@ class Vmdk2KvmError(Exception):
     context: Optional[Dict[str, Any]] = None
 
     def __post_init__(self) -> None:
-        self.code = _safe_int(self.code, default=1)
-        self.msg = _one_line(self.msg)
+        self.code = _clamp_exit_code(_safe_int(self.code, default=1))
+        self.msg = _one_line(self.msg) or self.__class__.__name__
         super().__init__(self.msg)
+        # Some tooling inspects Exception.args directly.
+        self.args = (self.msg,)
 
-    def with_context(self, **ctx: Any) -> "Vmdk2KvmError":
+    def with_context(self, **ctx: Any) -> "Hyper2KvmError":
         if self.context is None:
             self.context = {}
         self.context.update(ctx)
@@ -48,13 +96,10 @@ class Vmdk2KvmError(Exception):
         Human-friendly message for CLI output/logs.
         """
         base = self.msg or self.__class__.__name__
-
         parts = [base]
 
         if include_context and self.context:
-            # Keep it compact and stable
-            kv = ", ".join(f"{k}={self.context[k]!r}" for k in sorted(self.context.keys()))
-            parts.append(f"[{kv}]")
+            parts.append(f"[{_one_line(_format_context_compact(self.context), limit=600)}]")
 
         if include_cause and self.cause is not None:
             parts.append(f"(cause: {type(self.cause).__name__}: {_one_line(str(self.cause))})")
@@ -77,14 +122,18 @@ class Vmdk2KvmError(Exception):
         return d
 
 
-class Fatal(Vmdk2KvmError):
+# Backward-compat alias (old name kept so imports don’t explode)
+Vmdk2KvmError = Hyper2KvmError
+
+
+class Fatal(Hyper2KvmError):
     """
     User-facing fatal error (exit code should be honored by top-level main()).
     """
     pass
 
 
-class VMwareError(Vmdk2KvmError):
+class VMwareError(Hyper2KvmError):
     """
     vSphere/vCenter operation failed.
     Use for pyvmomi / SDK / ESXi errors.
@@ -92,7 +141,7 @@ class VMwareError(Vmdk2KvmError):
     pass
 
 
-def wrap_fatal(code: int, msg: str, exc: Optional[BaseException] = None, **context: Any) -> Fatal:
+def wrap_fatal(msg: str, exc: Optional[BaseException] = None, code: int = 1, **context: Any) -> Fatal:
     return Fatal(code=code, msg=msg, cause=exc, context=context or None)
 
 
@@ -108,7 +157,7 @@ def format_exception_for_cli(e: BaseException, *, verbose: int = 0) -> str:
     verbose=1: message + compact context (if any)
     verbose>=2: message + context + cause
     """
-    if isinstance(e, Vmdk2KvmError):
+    if isinstance(e, Hyper2KvmError):
         return e.user_message(
             include_context=(verbose >= 1),
             include_cause=(verbose >= 2),
