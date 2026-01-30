@@ -24,6 +24,9 @@ class Convert:
         compress_level: Optional[int] = None,
         progress_callback: Optional[Callable[[float], None]] = None,
     ) -> None:
+        if not src.is_file():
+            logger.error(f"Source image file not found: {src}")
+            raise FileNotFoundError(f"Source image file not found: {src}")
         if U.which("qemu-img") is None:
             logger.error("qemu-img not found.")
             U.die(logger, "qemu-img not found.", 1)
@@ -41,11 +44,14 @@ class Convert:
             total_size = info.get("virtual-size", 0)
             logger.debug(f"Retrieved virtual size: {total_size}")
         except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to get image info: return code {e.returncode}, stdout: {e.stdout}, stderr: {e.stderr}")
+            logger.error(f"Failed to get image info: return code {e.returncode}, stdout: {e.stdout}, stderr: {e.stderr}")
+            raise
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse image info JSON: {str(e)}")
+            logger.error(f"Failed to parse image info JSON: {str(e)}")
+            raise
         except Exception as e:
-            logger.warning(f"Unexpected error getting image info: {str(e)}")
+            logger.error(f"Unexpected error getting image info: {str(e)}")
+            raise
         cmd = ["qemu-img", "convert", "-p", "-O", out_format]
         if compress and out_format == "qcow2":
             if compress_level is not None:
@@ -180,6 +186,9 @@ class Convert:
         )
     @staticmethod
     def validate(logger: logging.Logger, path: Path) -> None:
+        if not path.is_file():
+            logger.warning(f"Image file not found for validation: {path}")
+            return
         if U.which("qemu-img") is None:
             logger.warning("qemu-img not found, skipping validation.")
             return
