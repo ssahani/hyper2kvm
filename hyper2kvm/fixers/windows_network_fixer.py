@@ -109,6 +109,7 @@ from ..core.logging_utils import (
     log_step,
 )
 from ..core.guest_utils import guest_mkdir_p, guest_write_text, deep_merge_dict
+from ..core.list_utils import dedup_preserve_order_str
 from .windows_registry import (
     provision_firstboot_payload_and_service,
     _ensure_windows_root,  # internal helper in same package
@@ -378,15 +379,8 @@ def _extract_ipv4_list(s: Optional[str]) -> List[str]:
     # Fallback: regex across raw string
     if not ips:
         ips = [m.group(1) for m in _IP_RE.finditer(s)]
-    # Dedup preserve order
-    seen: set[str] = set()
-    out: List[str] = []
-    for ip in ips:
-        if ip in seen:
-            continue
-        seen.add(ip)
-        out.append(ip)
-    return out
+    # Dedup preserve order using shared utility
+    return dedup_preserve_order_str(ips)
 
 
 def _first_non_apipa(ips: List[str]) -> Optional[str]:
