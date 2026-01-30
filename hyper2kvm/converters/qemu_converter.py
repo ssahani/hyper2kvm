@@ -7,6 +7,7 @@ import os
 import re
 import selectors
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Callable, Iterable, Optional, Tuple
 from rich.progress import (
     BarColumn,
     Progress,
+    SpinnerColumn,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
@@ -26,16 +28,6 @@ from ..core.utils import U
 
 class Convert:
     """
-    qemu-img convert wrapper with:
-      ✅ reliable progress: uses qemu-img -p stderr percent when available
-      ✅ non-stuck UI: if qemu-img percent is missing/delayed, estimates from written bytes UNTIL first % arrives
-      ✅ liveness + stats: polls output size for "written MiB"
-      ✅ robust error handling: auto-fallback across incompatible flags (zstd/-m/cache)
-      ✅ atomic output (.part -> rename)
-      ✅ flat VMDK descriptor preference
-      ✅ full stderr tail capture (drains after exit)
-      ✅ Ctrl+C safety (terminate/kill qemu-img)
-
     Notes:
       - We intentionally DO NOT expose/attempt --target-is-zero here.
         qemu-img requires -n (no-create) for --target-is-zero, which doesn't fit
@@ -49,8 +41,6 @@ class Convert:
     _RE_PERCENT = re.compile(r"(\d+(?:\.\d+)?)%")
     _RE_JSON = re.compile(r"^\s*\{.*\}\s*$")
 
-    # stderr patterns that mean “this option set is incompatible / rejected”
-    # Keep this tight so we don’t hide real IO failures.
     _RE_EXPECTED_FALLBACK = re.compile(
         r"("
         r"unknown option|unrecognized option|invalid option|"
@@ -256,10 +246,6 @@ class Convert:
         out_format: str,
         compress: bool,
     ) -> Iterable[ConvertOptions]:
-        """
-        Fast -> compatible ladder (deduplicated).
-        """
-
         def key(o: Convert.ConvertOptions) -> tuple:
             return (
                 o.cache_mode,
@@ -281,7 +267,6 @@ class Convert:
 
         emit(base)
 
-        # Drop threads (-m)
         if base.threads:
             emit(
                 Convert.ConvertOptions(
@@ -293,7 +278,6 @@ class Convert:
                 )
             )
 
-        # qcow2 compression ladder
         if out_format == "qcow2" and compress:
             if base.compression_type == "zstd":
                 emit(
@@ -306,7 +290,6 @@ class Convert:
                     )
                 )
 
-            # omit compression_type
             emit(
                 Convert.ConvertOptions(
                     cache_mode=base.cache_mode,
@@ -317,7 +300,6 @@ class Convert:
                 )
             )
 
-            # omit compression_level too
             if base.compression_level is not None:
                 emit(
                     Convert.ConvertOptions(
@@ -329,7 +311,6 @@ class Convert:
                     )
                 )
 
-        # Disable cache flags (sometimes triggers weirdness)
         if base.cache_mode:
             emit(
                 Convert.ConvertOptions(
@@ -341,7 +322,6 @@ class Convert:
                 )
             )
 
-        # Final bare minimum
         emit(
             Convert.ConvertOptions(
                 cache_mode="",
@@ -370,21 +350,16 @@ class Convert:
         progress_callback: Optional[Callable[[float], None]],
         callback_min_delta: float = 0.001,  # 0.1%
         size_poll_s: float = 0.50,
+        log_every_s: float = 30.0,  # liveness logging even if % flat (non-interactive)
+        ui_desc_every_s: float = 2.0,  # throttle description changes
+        ui_desc_min_step_pct: float = 0.5,  # throttle description changes on tiny pct changes
+        ui_max_refresh_hz: float = 4.0,  # cap Rich redraw rate
     ) -> tuple[int, list[str]]:
-        """
-        Runs qemu-img convert with:
-          - nonblocking stderr read (avoids readline blocking edge cases)
-          - percent-based completion (robust even for sparse/compressed outputs)
-          - BUT: if qemu-img percent is missing/delayed, we estimate percent from written bytes
-                UNTIL the first real percent arrives (prevents "stuck at 0%" UX).
-          - output-size polling as liveness + stats (not completion once real % exists)
-          - drains stderr after exit so we don't miss the real error lines
-          - parses drained lines too (so final % updates are seen)
-          - opportunistic nonblocking read every loop when possible (reduces progress lag)
-          - terminates qemu-img on Ctrl+C
-        """
         start = time.time()
         stderr_lines: list[str] = []
+
+        # If we're not attached to an interactive terminal, Rich live redraw often turns into spam.
+        interactive = bool(sys.stderr.isatty() and sys.stdout.isatty())
 
         proc = subprocess.Popen(
             cmd,
@@ -442,8 +417,18 @@ class Convert:
         processed_lines = 0
         last_io_tick = time.time()
 
+        saw_real_pct = False
+        just_snapped_to_truth = False  # one-shot event flag
+
+        def clamp_pct(p: float) -> float:
+            # NaN-safe clamp
+            if p != p:
+                return 0.0
+            return max(0.0, min(100.0, p))
+
         def update_best(pct: float) -> None:
             nonlocal best_pct
+            pct = clamp_pct(pct)
             if pct > best_pct:
                 best_pct = pct
 
@@ -485,18 +470,28 @@ class Convert:
                 except Exception:
                     return None
 
-            m = Convert._RE_PERCENT.search(s)
-            if m:
-                try:
-                    v = float(m.group(1))
-                    return v if 0.0 <= v <= 100.0 else None
-                except Exception:
-                    return None
+            # Tightened bare "NN%" parsing: require strong progress-ish context
+            ss = s.lower()
+            looks_like_progress = (
+                "progress" in ss
+                or "converting" in ss
+                or "converted" in ss
+                or "copying" in ss
+                or "copied" in ss
+            )
+            if looks_like_progress:
+                m = Convert._RE_PERCENT.search(s)
+                if m:
+                    try:
+                        v = float(m.group(1))
+                        return v if 0.0 <= v <= 100.0 else None
+                    except Exception:
+                        return None
 
             return None
 
         def parse_new_lines() -> None:
-            nonlocal processed_lines, last_seen_pct
+            nonlocal processed_lines, last_seen_pct, saw_real_pct, best_pct, just_snapped_to_truth
             if processed_lines >= len(stderr_lines):
                 return
             new_lines = stderr_lines[processed_lines:]
@@ -505,8 +500,14 @@ class Convert:
                 pct = parse_progress_pct(line)
                 if pct is None:
                     continue
+                pct = clamp_pct(pct)
                 last_seen_pct = pct
-                update_best(pct)
+                if not saw_real_pct:
+                    best_pct = pct  # snap to truth once
+                    saw_real_pct = True
+                    just_snapped_to_truth = True
+                else:
+                    update_best(pct)
 
         def tmp_written_bytes() -> Optional[int]:
             try:
@@ -517,22 +518,16 @@ class Convert:
                 return None
 
         def maybe_advance_pct_from_written(written_b: Optional[int]) -> None:
-            """
-            If qemu-img hasn't emitted % yet, use written bytes as a temporary estimate
-            so the progressbar doesn't look stuck. Once we see real qemu % output,
-            we stop using this estimate.
-            """
             nonlocal best_pct
             if last_seen_pct is not None:
                 return
             if virt_size <= 0 or written_b is None:
                 return
             est = 100.0 * float(written_b) / float(virt_size)
-            # Don't show 100% until rc==0
+            # never claim "done" from file size; qemu may still be finishing metadata
             if est > 99.0:
                 est = 99.0
-            if est > best_pct:
-                best_pct = est
+            best_pct = max(best_pct, clamp_pct(est))
 
         last_cb_frac = -1.0
 
@@ -540,6 +535,7 @@ class Convert:
             nonlocal last_cb_frac
             if progress_callback is None:
                 return
+            frac = max(0.0, min(1.0, frac))
             if last_cb_frac < 0:
                 last_cb_frac = frac
                 Convert._safe_progress_callback(progress_callback, frac, logger=logger)
@@ -548,92 +544,180 @@ class Convert:
                 last_cb_frac = frac
                 Convert._safe_progress_callback(progress_callback, frac, logger=logger)
 
-        last_log_t = start
-        last_log_pct = 0.0
-
         last_size_poll = 0.0
         cached_written: Optional[int] = None
+
+        # --- dynamic log throttling (prevents spam while Rich is live) ---
+        last_emit_t = start
+        last_emit_pct = 0.0
+
+        def _clamp(v: float, lo: float, hi: float) -> float:
+            return max(lo, min(hi, v))
+
+        def should_emit_progress(now: float) -> bool:
+            nonlocal last_emit_t, last_emit_pct
+
+            base_target_s = 20.0 if interactive else 45.0
+            max_silence_s = 60.0 if interactive else 120.0
+
+            dt = max(1e-6, now - last_emit_t)
+            dp = max(0.0, best_pct - last_emit_pct)
+            pct_rate = dp / dt  # % per second since last emit
+
+            dyn_min_delta = _clamp(pct_rate * base_target_s, 0.5, 5.0)
+
+            time_due = (now - last_emit_t) >= base_target_s
+            progressed_enough = (best_pct - last_emit_pct) >= dyn_min_delta
+            too_silent = (now - last_emit_t) >= max_silence_s
+
+            if (time_due and progressed_enough) or too_silent:
+                last_emit_t = now
+                last_emit_pct = best_pct
+                return True
+            return False
+
+        def poll_io(sel: selectors.BaseSelector) -> None:
+            nonlocal last_io_tick
+            if nonblocking_ok:
+                n0 = read_available()
+                if n0 > 0:
+                    last_io_tick = time.time()
+                parse_new_lines()
+            events = sel.select(timeout=ui_poll_s)
+            if events:
+                n = read_available()
+                if n > 0:
+                    last_io_tick = time.time()
+                parse_new_lines()
+
+        def update_caches(now: float) -> None:
+            nonlocal last_size_poll, cached_written
+            if (now - last_size_poll) >= size_poll_s:
+                cached_written = tmp_written_bytes()
+                last_size_poll = now
+
+        def compute_best(now: float) -> None:
+            nonlocal best_pct, just_snapped_to_truth, last_emit_t, last_emit_pct
+            maybe_advance_pct_from_written(cached_written)
+            best_pct = clamp_pct(best_pct)
+
+            if just_snapped_to_truth:
+                logger.info("qemu-img progress detected; switching from estimation to true percent reporting.")
+                # Reset emit gate so we don't immediately spam after snapping.
+                last_emit_t = now
+                last_emit_pct = best_pct
+                just_snapped_to_truth = False
+
+        def log_progress(now: float) -> None:
+            nonlocal last_emit_t, last_emit_pct
+
+            # Interactive: bar/spinner is the UI; keep logs rare.
+            if interactive and not should_emit_progress(now):
+                return
+
+            # Non-interactive: gentle heartbeat regardless.
+            if (not interactive) and (now - last_emit_t) < log_every_s:
+                return
+
+            if virt_size > 0 and last_seen_pct is not None:
+                pct_for_rate = last_seen_pct  # truth-phase
+                est_bytes = (pct_for_rate / 100.0) * float(virt_size)
+                mb_s = (est_bytes / max(1e-6, (now - start))) / 1024 / 1024
+                logger.info(f"⏳ Conversion progress: {best_pct:.1f}% (~{mb_s:.1f} MB/s avg)")
+            else:
+                # In estimation/unknown phase: keep this line short (avoid noise)
+                logger.info(f"⏳ Conversion progress: {best_pct:.1f}%")
+
+            # Keep emit state aligned for both modes.
+            last_emit_t = now
+            last_emit_pct = best_pct
 
         try:
             with selectors.DefaultSelector() as sel:
                 sel.register(proc.stderr, selectors.EVENT_READ)
 
+                # Non-interactive mode: NO Rich progress bar.
+                if not interactive:
+                    while True:
+                        poll_io(sel)
+                        now = time.time()
+                        update_caches(now)
+                        compute_best(now)
+                        log_progress(now)
+                        maybe_callback(best_pct / 100.0)
+                        if proc.poll() is not None:
+                            break
+
+                    rc = proc.wait()
+                    drain_remaining()
+                    parse_new_lines()
+                    if rc == 0:
+                        best_pct = 100.0
+                        maybe_callback(1.0)
+                    return rc, stderr_lines
+
+                # Interactive mode: Rich spinner until qemu-img emits real %, then progress bar.
+                refresh_per_second = max(1, int(_clamp(ui_max_refresh_hz, 1.0, 20.0)))
+
                 with Progress(
+                    SpinnerColumn(),
                     TextColumn("{task.description}"),
                     BarColumn(),
                     TaskProgressColumn(),
                     TimeElapsedColumn(),
                     TimeRemainingColumn(),
+                    refresh_per_second=refresh_per_second,
                 ) as progress:
-                    task = progress.add_task("Converting", total=100.0)
+                    spinner_task = progress.add_task("Converting (waiting for qemu-img)", total=None, start=True)
+                    bar_task = progress.add_task("Converting", total=100.0, start=False)
+
+                    last_desc_t = 0.0
+                    last_desc_pct = -999.0
+                    last_desc_phase = ""
+
+                    bar_started = False
+
+                    def maybe_update_desc(now: float) -> None:
+                        nonlocal last_desc_t, last_desc_pct, last_desc_phase
+                        phase = "qemu-img" if last_seen_pct is not None else "estimating"
+                        if (
+                            (now - last_desc_t) < ui_desc_every_s
+                            and abs(best_pct - last_desc_pct) < ui_desc_min_step_pct
+                            and phase == last_desc_phase
+                        ):
+                            return
+                        last_desc_t = now
+                        last_desc_pct = best_pct
+                        last_desc_phase = phase
+
+                        if not bar_started:
+                            # Keep spinner message short and honest
+                            progress.update(spinner_task, description="Converting (waiting for qemu-img)")
+                        else:
+                            progress.update(bar_task, description="Converting")
 
                     while True:
-                        if nonblocking_ok:
-                            n0 = read_available()
-                            if n0 > 0:
-                                last_io_tick = time.time()
-                            parse_new_lines()
-
-                        events = sel.select(timeout=ui_poll_s)
-                        if events:
-                            n = read_available()
-                            if n > 0:
-                                last_io_tick = time.time()
-                            parse_new_lines()
-
+                        poll_io(sel)
                         now = time.time()
-                        if (now - last_size_poll) >= size_poll_s:
-                            cached_written = tmp_written_bytes()
-                            last_size_poll = now
+                        update_caches(now)
+                        compute_best(now)
 
-                        # ✅ keep bar moving until first real qemu %
-                        maybe_advance_pct_from_written(cached_written)
+                        # Switch UI mode once, when real qemu-img percent arrives.
+                        if (not bar_started) and (last_seen_pct is not None):
+                            bar_started = True
+                            progress.stop_task(spinner_task)
+                            progress.start_task(bar_task)
+                            progress.update(bar_task, completed=best_pct)
 
-                        progress.update(task, completed=best_pct)
-
-                        silent_for = now - last_io_tick
-                        written = cached_written
-
-                        if last_seen_pct is not None:
-                            if written is not None:
-                                progress.update(
-                                    task,
-                                    description=(
-                                        f"Converting (qemu-img {last_seen_pct:.1f}% | "
-                                        f"written {written/1024/1024:.1f} MiB | quiet {silent_for:.1f}s)"
-                                    ),
-                                )
-                            else:
-                                progress.update(
-                                    task,
-                                    description=f"Converting (qemu-img {last_seen_pct:.1f}% | quiet {silent_for:.1f}s)",
-                                )
+                        if bar_started:
+                            progress.update(bar_task, completed=best_pct)
                         else:
-                            # No qemu % yet: be explicit that it's an estimate.
-                            if written is not None:
-                                progress.update(
-                                    task,
-                                    description=(
-                                        f"Converting (estimating from written bytes | "
-                                        f"written {written/1024/1024:.1f} MiB | quiet {silent_for:.1f}s)"
-                                    ),
-                                )
-                            else:
-                                progress.update(
-                                    task,
-                                    description=f"Converting (waiting for qemu-img % | stderr quiet {silent_for:.1f}s)",
-                                )
+                            # Spinner phase: nothing to "complete"
+                            progress.update(spinner_task)
 
-                        if (now - last_log_t) >= 10.0 and best_pct > last_log_pct:
-                            if virt_size > 0:
-                                est_bytes = (best_pct / 100.0) * float(virt_size)
-                                mb_s = (est_bytes / max(1e-6, (now - start))) / 1024 / 1024
-                                logger.info(f"Conversion progress: {best_pct:.1f}% (~{mb_s:.1f} MB/s avg)")
-                            else:
-                                logger.info(f"Conversion progress: {best_pct:.1f}%")
-                            last_log_t = now
-                            last_log_pct = best_pct
+                        maybe_update_desc(now)
 
+                        log_progress(now)
                         maybe_callback(best_pct / 100.0)
 
                         if proc.poll() is not None:
@@ -645,7 +729,8 @@ class Convert:
 
                     if rc == 0:
                         best_pct = 100.0
-                        progress.update(task, completed=best_pct)
+                        if bar_started:
+                            progress.update(bar_task, completed=best_pct)
                         maybe_callback(1.0)
 
                     return rc, stderr_lines
@@ -782,12 +867,6 @@ class Convert:
 
     @staticmethod
     def _extract_match_snippet(text: str, match: re.Match[str], *, radius: int = 140) -> str:
-        """
-        Extract a compact snippet around a regex match for UX logs.
-
-        - Collapses whitespace
-        - Adds "…" when truncated
-        """
         if not text:
             return ""
         s = text.replace("\r", "\n")
