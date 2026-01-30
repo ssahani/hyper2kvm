@@ -188,7 +188,26 @@ class NBDPrepDaemon:
 
         except Exception as e:
             logger.error(f"NBD setup failed for {job_ref}: {e}")
-            # TODO: Update node annotation with error
+            logger.debug(f"NBD setup error details", exc_info=True)
+
+            # Update node annotation with error
+            try:
+                error_msg = str(e)[:200]  # Truncate if too long
+                body = {
+                    "metadata": {
+                        "annotations": {
+                            ANNOTATION_NBD_READY: 'false',
+                            "offlinefix.hyper2kvm.io/nbd-error": error_msg
+                        }
+                    }
+                }
+                self.api.patch_node(self.node_name, body)
+                logger.info(f"Updated node annotations with error for {job_ref}")
+            except Exception as patch_error:
+                logger.error(f"Failed to update node with error: {patch_error}")
+
+            # Don't crash the daemon - just log and continue watching
+            # The controller will see the error annotation and can retry or fail the job
 
     def cleanup_job(self, job_ref: str):
         """
@@ -243,28 +262,79 @@ class NBDPrepDaemon:
         for i in range(16):
             device = f"{NBD_BASE_PATH}{i}"
 
-            # Check if device is in use
+            # Method 1: Check if device exists
+            if not Path(device).exists():
+                logger.debug(f"{device} does not exist, skipping")
+                continue
+
+            # Method 2: Check /sys/block/nbdX/pid for active connection
+            # If pid file exists and contains non-zero PID, device is in use
+            pid_file = Path(f"/sys/block/nbd{i}/pid")
+            if pid_file.exists():
+                try:
+                    pid = int(pid_file.read_text().strip())
+                    if pid > 0:
+                        logger.debug(f"{device} is in use (pid={pid})")
+                        continue
+                except (ValueError, OSError):
+                    pass
+
+            # Method 3: Check with lsblk as fallback
             result = subprocess.run(
-                ["lsblk", device],
+                ["lsblk", "-n", device],
                 capture_output=True,
                 text=True
             )
 
-            # If lsblk fails or shows no partitions, device is free
-            if result.returncode != 0 or "part" not in result.stdout:
-                return device
+            # If lsblk shows the device with size > 0, it's connected
+            if result.returncode == 0 and result.stdout.strip():
+                # Check if it has a size (connected) vs just device node (free)
+                lines = [l for l in result.stdout.split('\n') if l.strip()]
+                if lines and 'nbd' in lines[0]:
+                    # Parse size (2nd column)
+                    parts = lines[0].split()
+                    if len(parts) >= 2 and parts[1] != '0B':
+                        logger.debug(f"{device} is in use (has size {parts[1]})")
+                        continue
 
+            logger.debug(f"{device} appears free")
+            return device
+
+        logger.error("No free NBD devices found")
         return None
 
     def attach_disk_to_nbd(self, disk_path: str, nbd_device: str):
         """Attach disk image to NBD device."""
         logger.info(f"Attaching {disk_path} to {nbd_device}")
 
+        # First, ensure device is disconnected (in case of previous failed attempt)
+        logger.debug(f"Ensuring {nbd_device} is disconnected before attach")
         subprocess.run(
-            ["qemu-nbd", f"--connect={nbd_device}", disk_path],
-            check=True,
-            capture_output=True
+            ["qemu-nbd", "--disconnect", nbd_device],
+            capture_output=True,
+            # Don't check=True - it's ok if disconnect fails (device not connected)
         )
+
+        # Small delay to let kernel release the device
+        time.sleep(0.5)
+
+        # Now attach the disk
+        result = subprocess.run(
+            ["qemu-nbd", f"--connect={nbd_device}", disk_path],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            # Log stderr for debugging
+            stderr = result.stderr.strip()
+            logger.error(f"qemu-nbd connect failed (exit {result.returncode}): {stderr}")
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                result.args,
+                output=result.stdout,
+                stderr=result.stderr
+            )
 
     def probe_partitions(self, nbd_device: str):
         """Force kernel to detect partitions."""
