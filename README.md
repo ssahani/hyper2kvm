@@ -48,14 +48,25 @@ That's it! hyper2kvm includes VMCraft, a native Python VM manipulation engine wi
 
 ### CLI Commands
 
-After installation, you have **two command names** (both identical):
+After installation, you have **two command names** serving different primary purposes:
 
 ```bash
-h2kvmctl --version        # Primary command (recommended) - kubectl-style ⭐
-hyper2kvm --version       # Legacy command (backwards compatible)
+h2kvmctl --version        # Primary CLI command for interactive/command-line usage ⭐
+hyper2kvm --version       # Primary command for daemon mode and systemd services
 ```
 
-> **Tip**: Use `h2kvmctl` for new work - it's shorter (8 chars vs 12 chars) and follows the kubectl/helmctl naming pattern.
+**Command Usage Guide**:
+- **`h2kvmctl`** - Use for interactive CLI workflows, one-off migrations, scripting
+  - Shorter syntax (8 chars vs 12)
+  - Follows kubectl/helmctl naming pattern
+  - Recommended for day-to-day command-line work
+
+- **`hyper2kvm`** - Use for daemon mode, systemd services, background processing
+  - Traditional naming for daemon processes
+  - Better suited for `hyper2kvm daemon`, systemd unit files
+  - Preferred in automated/background contexts
+
+> **Note**: Both commands are functionally identical and can be used interchangeably. Neither is deprecated - they serve complementary purposes.
 
 ### System Dependencies (Optional for Advanced Features)
 

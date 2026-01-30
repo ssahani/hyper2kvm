@@ -54,40 +54,53 @@ echo "conversion_dir: /var/lib/hyper2kvm/conversions" >> config.yaml
 
 #### h2kvmctl - Primary CLI Command (January 2026)
 
-**New Primary Command Following kubectl Pattern**:
-- Introduced `h2kvmctl` (Hyper2KVM Control) as the primary CLI command
+**New Primary Command for Interactive CLI Usage**:
+- Introduced `h2kvmctl` (Hyper2KVM Control) as the primary command for **interactive CLI workflows**
 - Follows industry-standard `*ctl` naming pattern (kubectl, helmctl, etc.)
-- Shorter: 8 characters vs 12 characters (saves typing)
+- Shorter: 8 characters vs 12 characters (saves typing for CLI usage)
 - Modern: Aligns with Kubernetes ecosystem conventions
+
+**Command Purpose Distinction**:
+- **`h2kvmctl`** - Primary for **interactive CLI and command-line usage**
+  - Interactive migrations, scripting, testing
+  - Day-to-day command-line work
+  - Follows kubectl-style naming
+
+- **`hyper2kvm`** - Primary for **daemon mode and systemd services**
+  - Background processing (`hyper2kvm daemon`)
+  - Systemd service units
+  - Traditional daemon naming convention
 
 **Design Decision: Dual Entry Points (Not a Wrapper)**:
 - Both `h2kvmctl` and `hyper2kvm` call the same Python function
 - Zero performance overhead - identical functionality
 - No wrapper subprocess - direct entry point
-- Both commands maintained indefinitely for compatibility
+- Both commands maintained indefinitely - neither is deprecated
 
 **Installation**:
 ```bash
 pip install hyper2kvm
 # Both commands available:
-h2kvmctl --version      # Primary (recommended)
-hyper2kvm --version     # Legacy (still works)
+h2kvmctl --version      # For CLI usage (recommended)
+hyper2kvm --version     # For daemon mode
 ```
 
 **TUI Commands**:
-- `h2kvmctl-tui` - Primary TUI command
-- `hyper2kvm-tui` - Legacy TUI command (still works)
+- `h2kvmctl-tui` - Interactive TUI dashboard
+- `hyper2kvm-tui` - Alternative TUI name (same functionality)
 
 **Documentation**:
 - Created comprehensive h2kvmctl guide: docs/guides/cli/h2kvmctl-guide.md
-- Updated README.md with both command names
+- Updated README.md with command purpose distinction
 - Development wrapper: ./h2kvmctl for local testing
 - No migration required - both commands coexist
 
-**Recommendation**:
-- **New projects**: Use `h2kvmctl` (shorter, modern)
-- **Existing scripts**: Keep `hyper2kvm` (no changes needed)
-- **No deprecation**: Both commands maintained forever
+**Usage Recommendations**:
+- **Interactive CLI work**: Use `h2kvmctl` (shorter, modern)
+- **Daemon mode**: Use `hyper2kvm daemon` (traditional daemon naming)
+- **Systemd services**: Use `hyper2kvm` in ExecStart (daemon convention)
+- **Existing scripts**: No changes needed - both work identically
+- **No deprecation**: Both commands actively maintained for their respective purposes
 
 #### CLI Commands Enhancement (January 2026)
 
