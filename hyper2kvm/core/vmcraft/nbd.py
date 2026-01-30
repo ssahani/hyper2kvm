@@ -219,10 +219,28 @@ class NBDDeviceManager:
             original_virtual_size = 0
 
         # Create temp qcow2 file
-        temp_dir = Path(tempfile.gettempdir()) / "vmcraft-conversions"
+        # Use /var/tmp instead of /tmp for large conversions (sparse VMDKs with -S 0 can be huge)
+        # /var/tmp is typically on the root filesystem with more space than tmpfs /tmp
+        temp_dir = Path("/var/tmp/vmcraft-conversions")
         temp_dir.mkdir(exist_ok=True, mode=0o700)
 
         temp_qcow2 = temp_dir / f"{vmdk_path.stem}.qcow2"
+
+        # Check available space before conversion
+        if original_virtual_size:
+            stat = subprocess.run(
+                ["df", "--output=avail", "-B1", str(temp_dir)],
+                capture_output=True, text=True, check=True
+            )
+            avail_bytes = int(stat.stdout.strip().split('\n')[-1])
+            # Estimate needed space: virtual_size * 0.3 (qcow2 compression estimate for -S 0)
+            needed_bytes = int(original_virtual_size * 0.4)  # 40% safety margin
+
+            if avail_bytes < needed_bytes:
+                self.logger.warning(
+                    f"Low disk space in {temp_dir}: {avail_bytes / (1024**3):.1f} GiB available, "
+                    f"~{needed_bytes / (1024**3):.1f} GiB needed for conversion"
+                )
 
         self.logger.info(f"Converting {vmdk_path.name} to qcow2...")
         self.logger.info(f"  Source: {vmdk_path}")
