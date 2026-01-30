@@ -54,62 +54,73 @@ class LVMActivator:
         audit["attempted"] = True
 
         try:
+            # Build LVM device filter to only see NBD devices (avoids VG name collisions with host)
+            lvm_config = None
+            if nbd_device:
+                # Extract base device name (e.g., "nbd0" from "/dev/nbd0")
+                nbd_base = nbd_device.replace("/dev/", "")
+                # LVM filter: accept NBD devices, reject everything else
+                lvm_config = f'devices {{ filter = [ "a|^/dev/{nbd_base}|", "r|.*|" ] }}'
+                logger.info(f"Using LVM device filter for {nbd_device}: {lvm_config}")
+
             # Refresh physical volume cache for NBD devices
             if _has_command("pvscan") and nbd_device:
-                # Scan only NBD partitions to avoid affecting host LVM
+                # Scan only NBD partitions with device filter
                 import glob
                 nbd_parts = glob.glob(f"{nbd_device}p*")
-                logger.debug(f"Found NBD partitions to scan: {nbd_parts}")
+                logger.info(f"Scanning NBD partitions: {nbd_parts}")
 
                 for part in nbd_parts:
-                    logger.debug(f"Scanning PV: {part}")
-                    result = run_sudo(logger, ["pvscan", "--cache", part], check=False, capture=True)
-                    logger.debug(f"pvscan output for {part}: {result.stdout.strip()}")
+                    cmd = ["pvscan", "--cache", part]
+                    if lvm_config:
+                        cmd = ["pvscan", "--config", lvm_config, "--cache", part]
+                    run_sudo(logger, cmd, check=False, capture=True)
 
-                # Also try a general pvscan to pick up any missed devices
-                logger.debug("Running general pvscan --cache")
-                result = run_sudo(logger, ["pvscan", "--cache"], check=False, capture=True)
-                logger.debug(f"General pvscan output: {result.stdout.strip()}")
+                # General scan with filter
+                cmd = ["pvscan", "--cache"]
+                if lvm_config:
+                    cmd = ["pvscan", "--config", lvm_config, "--cache"]
+                run_sudo(logger, cmd, check=False, capture=True)
             elif _has_command("pvscan"):
                 run_sudo(logger, ["pvscan", "--cache"], check=True, capture=True)
 
-            # Scan for volume groups
-            logger.debug("Running vgscan --cache")
-            run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
+            # Scan for volume groups with device filter
+            cmd = ["vgscan", "--cache"]
+            if lvm_config:
+                cmd = ["vgscan", "--config", lvm_config, "--cache"]
+            run_sudo(logger, cmd, check=True, capture=True)
 
-            # Find VGs that use NBD device PVs
+            # Find VGs that use NBD device PVs (with device filter)
             vgs_to_activate = []
             if nbd_device and _has_command("pvs"):
                 try:
-                    result = run_sudo(
-                        logger,
-                        ["pvs", "--noheadings", "-o", "vg_name,pv_name"],
-                        check=True,
-                        capture=True
-                    )
-                    logger.debug(f"pvs output:\n{result.stdout}")
+                    cmd = ["pvs", "--noheadings", "-o", "vg_name,pv_name"]
+                    if lvm_config:
+                        cmd = ["pvs", "--config", lvm_config, "--noheadings", "-o", "vg_name,pv_name"]
+
+                    result = run_sudo(logger, cmd, check=True, capture=True)
+                    logger.info(f"PVs on {nbd_device}:\n{result.stdout.strip()}")
 
                     for line in result.stdout.strip().split('\n'):
-                        logger.debug(f"Parsing line: '{line}'")
                         parts = line.strip().split()
                         if len(parts) >= 2:
                             vg_name, pv_name = parts[0], parts[1]
-                            logger.debug(f"  vg_name={vg_name}, pv_name={pv_name}")
-                            logger.debug(f"  Checking if '{nbd_device}' in '{pv_name}': {nbd_device in pv_name}")
                             if nbd_device in pv_name:
-                                logger.debug(f"  -> Match! Adding VG {vg_name}")
                                 vgs_to_activate.append(vg_name)
                     vgs_to_activate = list(set(vgs_to_activate))  # Remove duplicates
                     logger.info(f"Found VGs on {nbd_device}: {vgs_to_activate}")
                 except Exception as e:
-                    logger.debug(f"Could not determine VGs from NBD device: {e}")
+                    logger.warning(f"Could not determine VGs from NBD device: {e}")
 
-            # Activate only NBD-related VGs, or all if not NBD-specific
+            # Activate only NBD-related VGs with device filter (prevents VG name collisions)
             if vgs_to_activate:
                 for vg in vgs_to_activate:
                     try:
-                        run_sudo(logger, ["vgchange", "-ay", vg], check=True, capture=True)
-                        logger.info(f"Activated VG: {vg}")
+                        cmd = ["vgchange", "-ay", vg]
+                        if lvm_config:
+                            cmd = ["vgchange", "--config", lvm_config, "-ay", vg]
+                        run_sudo(logger, cmd, check=True, capture=True)
+                        logger.info(f"Activated VG: {vg} (from {nbd_device})")
                     except Exception as e:
                         logger.warning(f"Failed to activate VG {vg}: {e}")
                 audit["vgs"] = vgs_to_activate
