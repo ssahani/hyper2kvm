@@ -36,6 +36,7 @@ from .fstab_rewriter import (
 from .report_writer import write_report
 
 # Delegated fixers (keep OfflineFSFix “thin”)
+from . import filesystem_fixer  # type: ignore
 from . import network_fixer  # type: ignore
 from . import grub_fixer  # type: ignore
 from . import windows_fixer  # type: ignore
@@ -92,6 +93,7 @@ class OfflineFSFix:
     Offline (libguestfs) fix engine (thin orchestrator):
       - robust root detection + safe mount
       - rewrite fstab/crypttab -> stable IDs
+      - optional filesystem fixer pass (delegated)
       - network config sanitization (delegated)
       - grub root/device.map + regen (delegated)
       - Windows hooks (delegated)
@@ -104,7 +106,7 @@ class OfflineFSFix:
       - best-effort ZFS import if zpool exists in appliance
       - stronger brute-force root choice via scoring (multi-root safety)
 
-    Improvements added here (non-breaking, orchestrator-level):
+    Orchestrator-level improvements:
       - stage runner with timing + error capture per stage (report-friendly)
       - safer Windows hooks gating (don’t run on Linux)
       - optional gating for grub steps via flags (still delegated)
@@ -139,6 +141,8 @@ class OfflineFSFix:
         luks_passphrase_env: Optional[str] = None,
         luks_keyfile: Optional[Path] = None,
         luks_mapper_prefix: str = "vmdk2kvm-crypt",
+        # ---- filesystem fixer (delegated) ----
+        filesystem_repair_enable: bool = False,
     ):
         self.logger = logger
         self.image = Path(image)
@@ -163,6 +167,9 @@ class OfflineFSFix:
         self.luks_mapper_prefix = luks_mapper_prefix
         self._luks_opened: Dict[str, str] = {}  # luks_dev -> /dev/mapper/name
 
+        # Filesystem fixer flag (avoid shadowing method name)
+        self.filesystem_repair_enable = bool(filesystem_repair_enable)
+
         self.inspect_root: Optional[str] = None
         self.root_dev: Optional[str] = None
         self.root_btrfs_subvol: Optional[str] = None
@@ -177,7 +184,7 @@ class OfflineFSFix:
             "timestamps": {"start": _dt.datetime.now().isoformat()},
         }
 
-        # Enhancement (non-breaking): a place to stash timing/metrics if callers want it later.
+        # Timings/metrics stash
         self._timings: Dict[str, float] = {}
 
     # ---------------------------------------------------------------------
@@ -239,13 +246,11 @@ class OfflineFSFix:
     def _stash_guestfs_info(self, g: guestfs.GuestFS) -> None:
         info: Dict[str, Any] = {}
         try:
-            # python guestfs bindings typically expose version()
             if hasattr(g, "version"):
                 info["version"] = g.version()
         except Exception:
             pass
         try:
-            # not always present; harmless
             if hasattr(g, "get_backend_settings"):
                 info["backend_settings"] = g.get_backend_settings()
         except Exception:
@@ -438,82 +443,14 @@ class OfflineFSFix:
     # ---------------------------------------------------------------------
     # mount logic (safe + robust)
     # ---------------------------------------------------------------------
-    def _log_vfs_type_best_effort(self, g: guestfs.GuestFS, dev: str) -> None:
-        # Enhancement: log vfs type to help debug Photon/ext4 superblock issues.
-        try:
-            if hasattr(g, "vfs_type"):
-                vt = U.to_text(g.vfs_type(dev)).strip()
-                if vt:
-                    self.logger.info(f"Root vfs_type({dev}) = {vt}")
-        except Exception:
-            pass
-
-    def _best_effort_fsck(self, g: guestfs.GuestFS, dev: str) -> Dict[str, Any]:
-        """
-        Enhancement: attempt a safe fsck pass when mount fails, to handle
-        journal replay/unclean shutdowns / some appliance quirks.
-
-        - dry_run: prefer read-only checks (e2fsck -n, xfs_repair -n)
-        - non-dry_run: allow "auto/repair-ish" where possible
-        """
-        audit: Dict[str, Any] = {
-            "attempted": False,
-            "fstype": None,
-            "mode": "dry_run" if self.dry_run else "repair",
-            "ok": False,
-            "error": None,
-        }
-        fstype = ""
-        try:
-            if hasattr(g, "vfs_type"):
-                fstype = U.to_text(g.vfs_type(dev)).strip()
-        except Exception:
-            fstype = ""
-        audit["fstype"] = fstype or None
-
-        if not fstype:
-            return audit
-
-        # Never try btrfs "check" automatically; too risky.
-        if fstype.startswith("btrfs"):
-            return audit
-
-        audit["attempted"] = True
-        try:
-            # ext2/3/4
-            if fstype.startswith("ext"):
-                if hasattr(g, "command"):
-                    args = ["e2fsck", "-n" if self.dry_run else "-p", dev]
-                    g.command(args)
-                    audit["ok"] = True
-                    return audit
-                if hasattr(g, "e2fsck") and not self.dry_run:
-                    g.e2fsck(dev)
-                    audit["ok"] = True
-                    return audit
-
-            # xfs
-            if fstype == "xfs" and hasattr(g, "command"):
-                args = ["xfs_repair", "-n" if self.dry_run else "-L", dev]
-                g.command(args)
-                audit["ok"] = True
-                return audit
-
-            # vfat / others: no-op
-            return audit
-        except Exception as e:
-            audit["error"] = str(e)
-            return audit
-
     def _mount_root_direct(self, g: guestfs.GuestFS, dev: str, subvol: Optional[str]) -> None:
         """
         Enhanced (non-breaking): keep original behavior, but add a safe mount fallback ladder
         and a best-effort fsck pass for ext4/xfs when mount fails.
 
-        This specifically helps cases like Photon where guestfs mount may fail with
-        "can't read superblock" even though virt-filesystems detects ext4.
+        Helps cases where guestfs mount fails with superblock/journal quirks.
         """
-        self._log_vfs_type_best_effort(g, dev)
+        filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
 
         def _try_mount(mode: str) -> None:
             # mode: "rw" | "ro" | "opts:<csv>"
@@ -544,7 +481,7 @@ class OfflineFSFix:
             # fallback
             g.mount_ro(dev, "/")
 
-        # 1) original behavior path (rw unless dry-run, and btrfs subvol mount_options)
+        # 1) original behavior path
         try:
             _try_mount("rw" if not self.dry_run else "ro")
             self.root_dev = dev
@@ -553,7 +490,7 @@ class OfflineFSFix:
         except Exception as e:
             first_err = e
 
-        # 2) fallback ladder (helps ext4 w/ journal quirks / appliance feature mismatches)
+        # 2) fallback ladder
         tries = ["ro", "opts:noload", "opts:ro,noload", "opts:ro,norecovery"]
         last_err: Optional[Exception] = None
         for t in tries:
@@ -572,7 +509,7 @@ class OfflineFSFix:
 
         # 3) best-effort fsck then retry RO once
         self._safe_umount_all(g)
-        fsck_audit = self._best_effort_fsck(g, dev)
+        fsck_audit = filesystem_fixer.best_effort_fsck(self, g, dev)
         try:
             self.report.setdefault("analysis", {}).setdefault("mount", {})["fsck"] = fsck_audit
         except Exception:
@@ -594,7 +531,6 @@ class OfflineFSFix:
         raise RuntimeError(f"Failed mounting root {dev} (subvol={subvol}): {last_err or first_err}")
 
     def _looks_like_root(self, g: guestfs.GuestFS) -> bool:
-        # Cheap heuristics: a single hint is enough; more hints = stronger confidence.
         hits = 0
         for p in self._ROOT_HINT_FILES:
             try:
@@ -612,7 +548,7 @@ class OfflineFSFix:
                         hits += 1
             except Exception:
                 continue
-        return hits >= 2  # avoid false positives on random partitions
+        return hits >= 2
 
     def _score_root(self, g: guestfs.GuestFS) -> int:
         """
@@ -663,7 +599,7 @@ class OfflineFSFix:
             self.mount_root_bruteforce(g)
             return
 
-        # Avoid "roots[0]" roulette on multi-OS disks; pick the best-looking one.
+        # Pick best-looking root (avoid roots[0] roulette)
         best_root: Optional[str] = None
         best_score = -10**9
         for r in roots:
@@ -740,7 +676,7 @@ class OfflineFSFix:
             except Exception:
                 real = None
 
-        # by-path in guest inspection may be meaningless in a different VM topology
+        # by-path from inspection may be meaningless in a different VM topology
         if not real and root_dev.startswith("/dev/disk/by-path/"):
             self.logger.warning("Root spec is by-path and not resolvable; falling back to brute-force root detection.")
             self.mount_root_bruteforce(g)
@@ -768,7 +704,7 @@ class OfflineFSFix:
         """
         candidates: List[str] = []
 
-        # 1) partitions (fast + common)
+        # 1) partitions
         try:
             candidates.extend([U.to_text(p) for p in (g.list_partitions() or [])])
         except Exception:
@@ -787,7 +723,7 @@ class OfflineFSFix:
         except Exception:
             pass
 
-        # 3) LVs (if available)
+        # 3) LVs
         try:
             if hasattr(g, "lvs"):
                 for lv in (g.lvs() or []):
@@ -797,7 +733,7 @@ class OfflineFSFix:
         except Exception:
             pass
 
-        # 4) mdraid devices (if assembled)
+        # 4) mdraid devices
         try:
             if hasattr(g, "command"):
                 out = g.command(["sh", "-lc", "ls -1 /dev/md* 2>/dev/null || true"])
@@ -833,15 +769,14 @@ class OfflineFSFix:
         if not candidates:
             U.die(self.logger, "Failed to list partitions/filesystems for brute-force mount.", 1)
 
-        # Enhancement: keep a lightweight mount failure log for report/debugging
         mount_failures: List[Dict[str, str]] = []
 
-        # Try normal mounts first, but score candidates and pick best (multi-OS safety)
+        # Try normal mounts first, but score candidates and pick best
         best: Tuple[int, Optional[str]] = (-10**9, None)
         for dev in candidates:
             self._safe_umount_all(g)
             try:
-                self._log_vfs_type_best_effort(g, dev)
+                filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                 if self.dry_run:
                     g.mount_ro(dev, "/")
                 else:
@@ -882,7 +817,7 @@ class OfflineFSFix:
             for sv in self._BTRFS_COMMON_SUBVOLS:
                 self._safe_umount_all(g)
                 try:
-                    self._log_vfs_type_best_effort(g, dev)
+                    filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                     opts = f"subvol={sv}"
                     if self.dry_run:
                         opts = f"ro,{opts}"
@@ -901,7 +836,7 @@ class OfflineFSFix:
             sv = best_btrfs[2]
             self._safe_umount_all(g)
             try:
-                self._log_vfs_type_best_effort(g, dev)
+                filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                 opts = f"subvol={sv}"
                 if self.dry_run:
                     opts = f"ro,{opts}"
@@ -920,7 +855,7 @@ class OfflineFSFix:
             except Exception as e:
                 mount_failures.append({"device": f"{dev} subvol={sv}", "error": f"best_btrfs_mount_failed:{e}"})
 
-        # stash failures before dying (doesn't change exit behavior)
+        # stash failures before dying
         if mount_failures:
             try:
                 self.report.setdefault("analysis", {}).setdefault("mount", {})["bruteforce_failures"] = mount_failures
@@ -995,7 +930,7 @@ class OfflineFSFix:
                     mapped = rp
             except Exception:
                 mapped = None
-            # If still not mapped, try your inference helper (root_dev optional)
+            # If still not mapped, try inference helper (root_dev optional)
             if not mapped:
                 mapped = Ident.infer_partition_from_bypath(spec, self.root_dev) if self.root_dev else None
             if not mapped:
@@ -1200,6 +1135,12 @@ class OfflineFSFix:
         return changed
 
     # ---------------------------------------------------------------------
+    # Filesystem fixer (delegated)
+    # ---------------------------------------------------------------------
+    def fix_filesystems(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+        return filesystem_fixer.fix_filesystems(self, g)
+
+    # ---------------------------------------------------------------------
     # Delegated fixers (explicit wrappers; no monkey-patching)
     # ---------------------------------------------------------------------
     def fix_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:
@@ -1214,7 +1155,7 @@ class OfflineFSFix:
     def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         return grub_fixer.regen(self, g)
 
-    # Windows delegation (fixes your earlier AttributeError: OfflineFSFix has no is_windows)
+    # Windows delegation
     def is_windows(self, g: guestfs.GuestFS) -> bool:
         return windows_fixer.is_windows(self, g)
 
@@ -1236,13 +1177,13 @@ class OfflineFSFix:
     ) -> Tuple[bool, Optional[str], Optional[threading.Thread], List[str]]:
         """
         guestfs.mount_local_run() is a blocking FUSE loop.
-        The correct pattern is:
+        Pattern:
           - mount_local(mountpoint)
-          - start a background thread that calls mount_local_run()
-          - do your host-side file operations against mountpoint
-          - call umount_local() to stop the FUSE loop
+          - start background thread calling mount_local_run()
+          - do host-side file operations against mountpoint
+          - umount_local() to stop
 
-        Improvement: we now return any mount_local_run() exceptions collected in the background thread.
+        Returns any mount_local_run() exceptions collected in the background thread.
         """
         err: List[str] = []
 
@@ -1255,13 +1196,11 @@ class OfflineFSFix:
             try:
                 g.mount_local_run()
             except Exception as e:
-                # If umount_local() interrupts, guestfs may throw; record but don't panic.
                 err.append(str(e))
 
         t = threading.Thread(target=_runner, name="guestfs-mount-local-run", daemon=True)
         t.start()
 
-        # "ready" heuristic: mountpoint becomes non-empty or at least root dir accessible.
         deadline = time.time() + ready_timeout_s
         while time.time() < deadline:
             try:
@@ -1272,7 +1211,6 @@ class OfflineFSFix:
                 pass
             time.sleep(0.1)
 
-        # Timed out: try to unmount and return error
         try:
             g.umount_local()
         except Exception:
@@ -1281,13 +1219,10 @@ class OfflineFSFix:
 
     def remove_vmware_tools_func(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         """
-        Exposes the mounted guest filesystem via mount_local + a background mount_local_run(),
+        Exposes the mounted guest filesystem via mount_local + background mount_local_run(),
         then runs OfflineVmwareToolsRemover against that host-visible tree.
 
-        IMPORTANT: mount_local_run() is blocking. This implementation avoids deadlock and
-        always attempts umount_local() + cleanup.
-
-        Improvement: background thread errors are bubbled into warnings for debugging.
+        Always attempts umount_local() + cleanup.
         """
         if not self.remove_vmware_tools:
             return {"enabled": False}
@@ -1335,7 +1270,6 @@ class OfflineFSFix:
                 res.warnings.extend(rr.warnings)
 
             if thread_errs:
-                # Common harmless case: Interrupted system call on umount; still useful to store.
                 res.warnings.append(f"mount_local_run_errors:{thread_errs[:5]}")
 
             return res.as_dict()
@@ -1479,15 +1413,27 @@ class OfflineFSFix:
             self.report["analysis"]["luks"] = luks_audit
             self.logger.info(f"LUKS audit: {U.json_dump(luks_audit)}")
 
-            # 2) storage stack activation (additive): mdraid + zfs + lvm
+            # 2) storage stack activation (additive)
             stack_audit = self._run_stage("storage_stack", lambda: self._pre_mount_activate_storage_stack(g), default={})
             self.report.setdefault("analysis", {})["storage_stack"] = stack_audit
 
             # 3) LVM activation (existing behavior; safe even if no LVM)
             self._run_stage("lvm_activate", lambda: self._activate_lvm(g), default=None)
 
-            # 4) Mount root (critical: nothing else makes sense without it)
+            # 4) Mount root (critical)
             self._run_stage("mount_root", lambda: self.detect_and_mount_root(g), critical=True, default=None)
+
+            # 4.5) Filesystem fixer stage (optional; runs unmounted)
+            fs_audit = self._run_stage("filesystem_repair", lambda: self.fix_filesystems(g), default={"enabled": False})
+            self.report.setdefault("analysis", {})["filesystem_repair"] = fs_audit
+            if (fs_audit or {}).get("enabled"):
+                # fix_filesystems() unmounts; re-mount to proceed
+                self._run_stage(
+                    "remount_root_after_fs_repair",
+                    lambda: self.detect_and_mount_root(g),
+                    critical=True,
+                    default=None,
+                )
 
             # identity into report
             def _read_os_release() -> str:
@@ -1537,7 +1483,7 @@ class OfflineFSFix:
             c_crypt = self._run_stage("rewrite_crypttab", lambda: self.rewrite_crypttab(g), default=0)
             network_audit = self._run_stage("fix_network", lambda: self.fix_network_config(g), default={"enabled": False})
 
-            # keep grub-related things grub-related, but orchestrator should gate them properly
+            # grub steps gated
             c_devmap = 0
             c_grub = 0
             if self.update_grub:
@@ -1553,7 +1499,7 @@ class OfflineFSFix:
                 except Exception:
                     pass
 
-            # keep your existing mdraid_check()/inject_cloud_init()/resize_disk() if they exist
+            # keep your existing mdraid_check()/inject_cloud_init() if they exist
             mdraid = self._run_stage(
                 "mdraid_check",
                 lambda: getattr(self, "mdraid_check")(g) if hasattr(self, "mdraid_check") else {"present": False},
@@ -1568,8 +1514,16 @@ class OfflineFSFix:
             # Windows hooks: only run on Windows
             is_win = self._run_stage("detect_windows", lambda: self.is_windows(g), default=False)
             if is_win:
-                win = self._run_stage("windows_bcd_fix", lambda: self.windows_bcd_actual_fix(g), default={"enabled": True, "error": "failed"})
-                virtio = self._run_stage("windows_inject_virtio", lambda: self.inject_virtio_drivers(g), default={"enabled": True, "error": "failed"})
+                win = self._run_stage(
+                    "windows_bcd_fix",
+                    lambda: self.windows_bcd_actual_fix(g),
+                    default={"enabled": True, "error": "failed"},
+                )
+                virtio = self._run_stage(
+                    "windows_inject_virtio",
+                    lambda: self.inject_virtio_drivers(g),
+                    default={"enabled": True, "error": "failed"},
+                )
             else:
                 win = {"enabled": False, "skipped": "not_windows"}
                 virtio = {"enabled": False, "skipped": "not_windows"}
@@ -1583,7 +1537,11 @@ class OfflineFSFix:
 
             regen_info: Dict[str, Any]
             if self.regen_initramfs:
-                regen_info = self._run_stage("regen_initramfs_and_bootloader", lambda: self.regen(g), default={"enabled": True, "error": "failed"})
+                regen_info = self._run_stage(
+                    "regen_initramfs_and_bootloader",
+                    lambda: self.regen(g),
+                    default={"enabled": True, "error": "failed"},
+                )
             else:
                 regen_info = {"enabled": False, "skipped": "regen_initramfs_disabled"}
 
