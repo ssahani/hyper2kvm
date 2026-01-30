@@ -194,10 +194,11 @@ test_migration() {
 
     log_test "Run local migration with hyper2kvm"
 
-    # Run migration locally
+    # Run migration locally (requires root for mounting disk images)
     log_info "Running migration (this may take a few minutes)..."
     log_info "Using CLI: $H2KVM_CMD"
-    if $H2KVM_CMD --config "$CONFIG_FILE"; then
+    log_warn "Migration requires root permissions for disk mounting"
+    if sudo $H2KVM_CMD --config "$CONFIG_FILE"; then
         log_success "Migration completed successfully!"
 
         # Show output
