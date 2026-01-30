@@ -52,9 +52,29 @@ class Colors:
         if sys.platform == "win32":
             try:
                 import ctypes
+                from ctypes import wintypes
+
                 kernel32 = ctypes.windll.kernel32
-                # Enable ANSI escape sequences
-                kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+
+                # Get stdout handle
+                h_stdout = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+                if h_stdout == -1 or h_stdout == 0:
+                    return False  # Invalid handle
+
+                # Check if it's actually a console (not redirected to file)
+                console_mode = wintypes.DWORD()
+                if not kernel32.GetConsoleMode(h_stdout, ctypes.byref(console_mode)):
+                    # Not a console (redirected), ANSI codes won't work
+                    return False
+
+                # Enable VT100 processing (ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004)
+                ENABLE_VT100 = 0x0004
+                new_mode = console_mode.value | ENABLE_VT100
+
+                if not kernel32.SetConsoleMode(h_stdout, new_mode):
+                    # Failed to enable VT100 (old Windows)
+                    return False
+
                 return True
             except Exception:
                 return False
@@ -105,18 +125,30 @@ class SimpleProgressBar:
         Note:
             If total <= 0, it will be reset to 100.0 with a warning
         """
-        if total <= 0:
-            import logging
-            logging.warning(f"Invalid total value {total}, defaulting to 100.0")
-            total = 100.0
-        self.total = total
+        # Use property setter for validation
+        self._total = 100.0  # Default
+        self.total = total  # Will validate via property setter
         self.current = 0.0
         self.description = description
         self.config = config or ProgressBarConfig()
         self.file = file
-        self.start_time = time.time()
+        self.start_time = time.monotonic()  # Use monotonic clock to prevent negative elapsed time
         self.spinner_index = 0
         self._use_color = self.config.color_enabled and Colors.supports_color()
+
+    @property
+    def total(self) -> float:
+        """Get total value."""
+        return self._total
+
+    @total.setter
+    def total(self, value: float) -> None:
+        """Set total value with validation to prevent division by zero."""
+        if value <= 0:
+            import logging
+            logging.warning(f"Invalid total value {value}, using 100.0")
+            value = 100.0
+        self._total = value
 
     def update(self, current: float, description: Optional[str] = None) -> None:
         """
@@ -193,16 +225,19 @@ class SimpleProgressBar:
         # Add ETA
         eta_str = ""
         if self.config.show_eta and progress > 0 and progress < 1.0:
-            elapsed = time.time() - self.start_time
-            estimated_total = elapsed / progress
-            eta_seconds = estimated_total - elapsed
+            elapsed = time.monotonic() - self.start_time  # Use monotonic to prevent negative time
+            if elapsed > 1.0:  # Only show ETA after 1 second to avoid huge estimates
+                estimated_total = elapsed / progress
+                eta_seconds = max(0, estimated_total - elapsed)
+                # Cap ETA at reasonable maximum (7 days)
+                eta_seconds = min(eta_seconds, 86400 * 7)
 
-            if eta_seconds > 0:
-                eta_str = self._format_duration(eta_seconds)
-                if self._use_color:
-                    eta_str = f" {Colors.DIM}ETA: {eta_str}{Colors.RESET}"
-                else:
-                    eta_str = f" ETA: {eta_str}"
+                if eta_seconds > 0:
+                    eta_str = self._format_duration(eta_seconds)
+                    if self._use_color:
+                        eta_str = f" {Colors.DIM}ETA: {eta_str}{Colors.RESET}"
+                    else:
+                        eta_str = f" ETA: {eta_str}"
 
         # Build final output
         output = ""

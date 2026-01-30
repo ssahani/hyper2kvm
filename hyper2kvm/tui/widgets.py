@@ -87,6 +87,41 @@ class MigrationStatusWidget(Static):
 
         self.update(self._render_migration())
 
+    def _get_status_emoji(self, status: str) -> str:
+        """
+        Get status emoji with fallback for terminals that don't support Unicode.
+
+        Args:
+            status: Migration status
+
+        Returns:
+            Emoji or ASCII fallback
+        """
+        emoji_map = {
+            "pending": "⏳",
+            "in_progress": "🔄",
+            "completed": "✅",
+            "failed": "❌",
+        }
+
+        # Fallback for terminals that don't support Unicode
+        ascii_map = {
+            "pending": "[WAIT]",
+            "in_progress": "[WORK]",
+            "completed": "[DONE]",
+            "failed": "[FAIL]",
+        }
+
+        try:
+            # Check if stdout can encode emoji
+            import sys
+            emoji = emoji_map.get(status, "❓")
+            encoding = sys.stdout.encoding or 'utf-8'
+            emoji.encode(encoding)
+            return emoji
+        except (UnicodeEncodeError, LookupError, AttributeError):
+            return ascii_map.get(status, "[????]")
+
     def _render_migration(self) -> str:
         """Render migration status as text."""
         if not self.migration:
@@ -94,13 +129,8 @@ class MigrationStatusWidget(Static):
 
         m = self.migration
 
-        # Status emoji
-        status_emoji = {
-            "pending": "⏳",
-            "in_progress": "🔄",
-            "completed": "✅",
-            "failed": "❌",
-        }.get(m.status, "❓")
+        # Status emoji with fallback
+        status_emoji = self._get_status_emoji(m.status)
 
         # Format progress
         progress_pct = int(m.progress * 100)

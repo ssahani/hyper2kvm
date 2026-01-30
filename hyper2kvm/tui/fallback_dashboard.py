@@ -12,8 +12,9 @@ import curses
 import logging
 import time
 import threading
+from collections import deque
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, Deque, List, Optional, Any
 
 # Import shared types
 from .types import MigrationStatus, MAX_LOG_ENTRIES
@@ -46,7 +47,7 @@ class CursesDashboard:
         """
         self.refresh_interval = refresh_interval
         self._migrations: Dict[str, MigrationStatus] = {}
-        self._logs: List[str] = []
+        self._logs: Deque[str] = deque(maxlen=MAX_LOG_ENTRIES)  # Auto-eviction when full
         self._log_offset = 0
         self._running = False
         self._stdscr = None
@@ -386,11 +387,9 @@ class CursesDashboard:
         """
         now = datetime.now().strftime("%H:%M:%S")
         log_entry = f"[{now}] [{level}] {message}"
-        self._logs.append(log_entry)
 
-        # Keep only last MAX_LOG_ENTRIES logs
-        if len(self._logs) > MAX_LOG_ENTRIES:
-            self._logs = self._logs[-MAX_LOG_ENTRIES:]
+        with self._lock:
+            self._logs.append(log_entry)  # deque auto-evicts oldest when maxlen reached
 
 
 def run_curses_dashboard(refresh_interval: float = 1.0) -> None:

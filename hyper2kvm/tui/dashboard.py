@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -200,9 +201,40 @@ class MigrationDashboard(App):
                     logger.error(f"Error in refresh worker: {e}")
         except asyncio.CancelledError:
             logger.debug("Refresh worker cancelled")
+            # Clean up any pending operations
+            with self._lock:
+                # Clear widget references to prevent stale references
+                for widget_id in list(self._migration_widgets.keys()):
+                    try:
+                        widget = self._migration_widgets.get(widget_id)
+                        if widget and hasattr(widget, 'is_mounted') and widget.is_mounted:
+                            widget.remove()
+                    except Exception:
+                        pass  # Best effort cleanup
             raise  # Re-raise to ensure proper cleanup
         finally:
             logger.debug("Refresh worker terminated")
+
+    def _sanitize_text(self, text: str) -> str:
+        """
+        Sanitize text for safe display in logs and UI.
+
+        Removes control characters, escape sequences, and newlines to prevent
+        log injection and terminal escape sequence attacks.
+
+        Args:
+            text: Text to sanitize
+
+        Returns:
+            Sanitized text safe for display
+        """
+        # Remove control characters (0x00-0x1f, 0x7f-0x9f) except tab
+        sanitized = re.sub(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]', '', text)
+        # Replace newlines and tabs with spaces
+        sanitized = sanitized.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        # Collapse multiple spaces
+        sanitized = re.sub(r'\s+', ' ', sanitized)
+        return sanitized.strip()
 
     def refresh_display(self) -> None:
         """Refresh all widgets with latest data."""
@@ -265,30 +297,51 @@ class MigrationDashboard(App):
             migration: Migration status to add/update
         """
         vm_name = migration.vm_name
+        needs_mount = False
+        widget = None
 
-        # Update internal tracking
+        # Phase 1: Update data structures (hold lock briefly)
+        # This prevents TOCTOU race by checking and updating atomically
         with self._lock:
             self._migrations[vm_name] = migration
 
-        # Get migrations container
-        container = self.query_one("#migrations_container", ScrollableContainer)
+            if vm_name in self._migration_widgets:
+                widget = self._migration_widgets[vm_name]
+                # Will update existing widget outside lock
+            else:
+                # Create new widget
+                widget = MigrationStatusWidget(migration)
+                # Only add to dict after successful mount to prevent leaks
+                needs_mount = True
 
-        # Update or create widget
-        if vm_name in self._migration_widgets:
-            # Update existing widget
-            widget = self._migration_widgets[vm_name]
-            widget.migration = migration
+        # Phase 2: Update or mount widget (no lock held to prevent deadlock)
+        if needs_mount:
+            try:
+                container = self.query_one("#migrations_container", ScrollableContainer)
+                container.mount(widget)
+                # Only add to dict if mount succeeds (prevents memory leak)
+                with self._lock:
+                    self._migration_widgets[vm_name] = widget
+            except Exception as e:
+                # Clean up widget on failure
+                try:
+                    if hasattr(widget, 'remove'):
+                        widget.remove()
+                except Exception:
+                    pass
+                logger.error(f"Error mounting widget for {vm_name}: {e}")
+                raise
         else:
-            # Create new widget
-            widget = MigrationStatusWidget(migration)
-            with self._lock:
-                self._migration_widgets[vm_name] = widget
-            container.mount(widget)
+            # Update existing widget
+            widget.migration = migration
 
-        # Log the update
+        # Phase 3: Logging (no lock held, sanitize to prevent injection)
         log = self.query_one("#log_widget", TextualLog)
         now = datetime.now().strftime("%H:%M:%S")
-        log.write_line(f"[{now}] {migration.vm_name}: {migration.status} - {migration.current_stage}")
+        safe_vm_name = self._sanitize_text(migration.vm_name)
+        safe_status = self._sanitize_text(migration.status)
+        safe_stage = self._sanitize_text(migration.current_stage)
+        log.write_line(f"[{now}] {safe_vm_name}: {safe_status} - {safe_stage}")
 
         # Refresh display
         self.refresh_display()
@@ -300,20 +353,29 @@ class MigrationDashboard(App):
         Args:
             vm_name: Name of VM to remove
         """
-        # Remove widget first to prevent orphaned widgets
-        if vm_name in self._migration_widgets:
-            with self._lock:
-                widget = self._migration_widgets.pop(vm_name, None)
-            if widget:
-                try:
-                    widget.remove()
-                except Exception as e:
-                    logger.error(f"Error removing widget for {vm_name}: {e}")
-                    # Widget already removed from dict, no leak
+        widget_to_remove = None
 
-        # Then remove from migrations
+        # Atomically remove from both data structures to prevent races
         with self._lock:
             self._migrations.pop(vm_name, None)
+            widget_to_remove = self._migration_widgets.pop(vm_name, None)
+
+        # Remove widget outside lock to prevent deadlock
+        if widget_to_remove:
+            try:
+                # Check widget is still valid and mounted before removing
+                if hasattr(widget_to_remove, 'is_mounted') and widget_to_remove.is_mounted:
+                    widget_to_remove.remove()
+            except Exception as e:
+                logger.error(f"Error removing widget for {vm_name}: {e}", exc_info=True)
+                # Try force removal from parent
+                try:
+                    if hasattr(widget_to_remove, 'parent') and widget_to_remove.parent:
+                        parent = widget_to_remove.parent
+                        if hasattr(parent, 'children'):
+                            parent.children.remove(widget_to_remove)
+                except Exception:
+                    logger.critical(f"Failed to force-remove widget {vm_name}, potential memory leak")
 
         self.refresh_display()
 
@@ -365,7 +427,9 @@ class MigrationDashboard(App):
             "SUCCESS": "✅",
         }.get(level, "📝")
 
-        log.write_line(f"[{now}] {emoji} {message}")
+        # Sanitize message to prevent log injection
+        safe_message = self._sanitize_text(message)
+        log.write_line(f"[{now}] {emoji} {safe_message}")
 
     # Action handlers
 

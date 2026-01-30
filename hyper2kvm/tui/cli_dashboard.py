@@ -12,8 +12,9 @@ import sys
 import time
 import os
 import threading
+from collections import deque
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, Deque, List, Optional, Any
 
 # Import shared types
 from .types import MigrationStatus, MAX_LOG_ENTRIES_CLI, CLI_REFRESH_INTERVAL
@@ -36,7 +37,7 @@ class CLIDashboard:
         """
         self.refresh_interval = refresh_interval
         self._migrations: Dict[str, MigrationStatus] = {}
-        self._logs: List[str] = []
+        self._logs: Deque[str] = deque(maxlen=MAX_LOG_ENTRIES_CLI)  # Auto-eviction when full
         self._running = False
         self._last_line_count = 0
         self._lock = threading.RLock()  # Thread-safe access to data
@@ -286,10 +287,7 @@ class CLIDashboard:
         log_entry = f"[{now}] [{level}] {message}"
 
         with self._lock:
-            self._logs.append(log_entry)
-            # Keep only last MAX_LOG_ENTRIES_CLI logs
-            if len(self._logs) > MAX_LOG_ENTRIES_CLI:
-                self._logs = self._logs[-MAX_LOG_ENTRIES_CLI:]
+            self._logs.append(log_entry)  # deque auto-evicts oldest when maxlen reached
 
 
 def run_cli_dashboard(refresh_interval: float = 2.0) -> None:
