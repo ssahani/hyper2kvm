@@ -17,6 +17,12 @@ python3 security_audit.py /path/to/disk.vmdk --format html
 # Compare systemd configurations across VMs
 python3 systemd_comparison.py vm1.vmdk vm2.vmdk vm3.vmdk
 
+# Performance benchmarking
+python3 benchmark_systemd_tools.py vm1.vmdk vm2.vmdk
+
+# Advanced analytics dashboard
+python3 analytics_report_generator.py --format html
+
 # View all filesystem APIs (37+ methods)
 python3 vmcraft_filesystem_apis.py /path/to/disk.qcow2
 
@@ -200,31 +206,131 @@ KEY DIFFERENCES:
    Diff:    5.46s (53.5% slower)
 ```
 
+### 5. Performance Benchmark (`benchmark_systemd_tools.py`)
+
+Benchmark all production tools for performance testing and optimization.
+
+**Features**:
+- Benchmarks all 4 production tools
+- Measures execution time, memory usage, throughput
+- Multi-VM testing support
+- Performance statistics and insights
+- Identifies fastest/slowest tools
+
+**Usage**:
+```bash
+python3 benchmark_systemd_tools.py vm1.vmdk vm2.vmdk vm3.vmdk
+
+# Generates:
+# - /tmp/systemd_tools_benchmark.json
+```
+
+**Example output**:
+```
+Tool Performance Statistics:
+Tool                                Avg Time     Min/Max         Avg Mem
+--------------------------------------------------------------------------------
+systemd_forensic_analysis             5.22s       5.22/5.22 s       0.0 MB
+migration_readiness_check             4.53s       4.53/4.53 s       0.0 MB
+security_audit                        4.31s       4.31/4.31 s      15.2 MB
+filesystem_api_demo                   7.89s       7.89/7.89 s       0.0 MB
+
+Performance Insights:
+  ⚡ Fastest tool:  security_audit (4.31s avg)
+  🐌 Slowest tool:  filesystem_api_demo (7.89s avg)
+  💾 Most memory:   security_audit (15.2 MB avg)
+  🚀 Best throughput: security_audit (0.210 GB/s)
+```
+
+### 6. Advanced Analytics (`analytics_report_generator.py`)
+
+Generate comprehensive analytics dashboards from aggregated tool outputs.
+
+**Features**:
+- Aggregates results from multiple tool runs
+- Security compliance tracking over time
+- Migration readiness dashboard
+- Forensic issue aggregation
+- Performance trend analysis
+- Multiple output formats (HTML, JSON, Markdown)
+- Executive summary with actionable recommendations
+
+**Usage**:
+```bash
+# Run tools first
+python3 systemd_forensic_analysis.py vm*.vmdk
+python3 migration_readiness_check.py vm*.vmdk
+python3 security_audit.py vm*.vmdk --format json
+
+# Generate analytics
+python3 analytics_report_generator.py --format html
+
+# Generates:
+# - /tmp/analytics_report.html (visual dashboard)
+# - or /tmp/analytics_report.json (machine-readable)
+# - or /tmp/analytics_report.md (markdown)
+```
+
+**Example output**:
+```
+## Executive Summary
+
+| Metric | Value |
+|--------|-------|
+| VMs Audited (Security) | 15 |
+| VMs Assessed (Migration) | 15 |
+| VMs Analyzed (Forensics) | 12 |
+
+## Security Compliance Dashboard
+
+**Overall Statistics:**
+- Average Security Score: **75.2/100**
+- Score Range: 45-95
+- Grade Distribution: {'A': 3, 'B': 7, 'C': 4, 'F': 1}
+
+## Migration Readiness Dashboard
+
+**Status Overview:**
+- ✅ Ready for Migration: **12**
+- ❌ Not Ready: **3**
+- Risk Distribution: {'minimal': 5, 'low': 7, 'medium': 2, 'high': 1}
+
+## Recommendations
+
+### Security Improvements
+**3 VMs** have security scores below 70
+**Action**: Run security audit with `--format html` for detailed findings.
+
+### Migration Readiness
+**3 VMs** are not ready for migration
+**Action**: Review blockers and fix before attempting migration.
+```
+
 ## API Reference Examples
 
-### 5. systemd API Reference (`systemd_api_reference.py`)
+### 7. systemd API Reference (`systemd_api_reference.py`)
 
 Complete reference for all 46 systemd APIs with code examples.
 
-### 6. Interactive systemd Demo (`demo_systemd_apis.py`)
+### 8. Interactive systemd Demo (`demo_systemd_apis.py`)
 
 Interactive demonstration of systemd APIs with real VM analysis.
 
-### 7. Filesystem APIs (`vmcraft_filesystem_apis.py`)
+### 9. Filesystem APIs (`vmcraft_filesystem_apis.py`)
 
 All 37+ filesystem detection and manipulation APIs.
 
 ## Migration Workflow Examples
 
-### 8. Complete Migration Workflow (`complete_migration_workflow.py`)
+### 10. Complete Migration Workflow (`complete_migration_workflow.py`)
 
 End-to-end VMware to KVM migration with pre/post validation.
 
-### 9. Multi-VM Comparison (`compare_vms.py`)
+### 11. Multi-VM Comparison (`compare_vms.py`)
 
 Compare multiple VMs for migration planning.
 
-### 10. Migration Benchmark (`benchmark_migration.py`)
+### 12. Migration Benchmark (`benchmark_migration.py`)
 
 Performance benchmarking for migration operations.
 
