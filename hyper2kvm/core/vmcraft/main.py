@@ -403,6 +403,28 @@ class VMCraft:
         self._launched = False
         self.logger.info("VMCraft shut down successfully")
 
+    @property
+    def converted_image_path(self) -> Path | None:
+        """
+        Get path to converted qcow2 if a conversion was performed.
+
+        Returns None if no conversion was needed, or the path to the temporary
+        qcow2 file if the original VMDK required conversion.
+        """
+        if self._nbd_manager:
+            return self._nbd_manager.converted_image_path
+        return None
+
+    def keep_converted_image(self) -> None:
+        """
+        Preserve the converted qcow2 image (don't delete on shutdown).
+
+        Call this after launch() if you want to keep the temporary converted
+        qcow2 for further processing (e.g., as input to final conversion).
+        """
+        if self._nbd_manager:
+            self._nbd_manager.keep_converted_image()
+
     def close(self) -> None:
         """Close and cleanup."""
         # Ensure shutdown

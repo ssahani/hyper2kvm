@@ -411,6 +411,12 @@ class DiskProcessor:
         if hasattr(self.args, "initramfs_add_drivers") and self.args.initramfs_add_drivers:
             fixer.initramfs_add_drivers = self.args.initramfs_add_drivers
         fixer.run()
+
+        # Use converted image for final conversion if one was created
+        if fixer.converted_image_path:
+            working = fixer.converted_image_path
+            self.logger.info(f"Using converted image for final conversion: {working.name}")
+
         Log.ok(self.logger, "Offline fixes complete")
 
         # Convert to output format if requested

@@ -904,11 +904,10 @@ def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
         "dry_run": bool(getattr(self, "dry_run", False)),
     }
 
-    # root= stabilization (optional)
-    try:
-        info["root_update_changed"] = update_grub_root(self, g)
-    except Exception as e:
-        info["root_update_error"] = str(e)
+    # root= stabilization is handled by offline_fixer before regen() is called
+    # Do NOT call update_grub_root() here again as it causes duplicate updates
+    # that overwrite each other and result in missing root= parameter
+    info["root_update_changed"] = 0  # Handled externally
 
     # device.map cleanup (optional)
     try:

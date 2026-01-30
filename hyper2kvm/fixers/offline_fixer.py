@@ -191,6 +191,7 @@ class OfflineFSFix:
         self.inspect_root: str | None = None
         self.root_dev: str | None = None
         self.root_btrfs_subvol: str | None = None
+        self.converted_image_path: Path | None = None  # Path to converted qcow2 if created
 
         self.report: dict[str, Any] = {
             "tool": "hyper2kvm",
@@ -1657,6 +1658,16 @@ class OfflineFSFix:
                 self._safe_umount_all(g)
             except Exception:
                 pass
+
+            # Save converted image path before closing (for final conversion)
+            try:
+                if g.converted_image_path:
+                    self.converted_image_path = g.converted_image_path
+                    g.keep_converted_image()  # Don't delete the temp qcow2
+                    self.logger.info(f"Preserved converted image for final conversion: {self.converted_image_path.name}")
+            except Exception as e:
+                self.logger.debug(f"Could not preserve converted image: {e}")
+
             try:
                 g.close()
             except Exception:

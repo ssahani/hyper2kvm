@@ -71,6 +71,7 @@ class NBDDeviceManager:
         self._nbd_process = None
         self._connected = False
         self._converted_qcow2_path: Path | None = None  # Track temp qcow2 for cleanup
+        self._keep_converted = False  # Flag to preserve converted qcow2
 
     def _check_nbd_module(self) -> None:
         """Ensure NBD kernel module is loaded."""
@@ -129,6 +130,17 @@ class NBDDeviceManager:
             f"No free NBD devices available (checked /dev/nbd{self.nbd_min} "
             f"through /dev/nbd{self.nbd_max})"
         )
+
+    @property
+    def converted_image_path(self) -> Path | None:
+        """Get path to converted qcow2 if one was created, None otherwise."""
+        return self._converted_qcow2_path
+
+    def keep_converted_image(self) -> None:
+        """Mark the converted qcow2 to be kept (not deleted on disconnect)."""
+        self._keep_converted = True
+        if self._converted_qcow2_path:
+            self.logger.info(f"Preserving converted qcow2: {self._converted_qcow2_path.name}")
 
     def _needs_conversion(self, image_path: Path) -> bool:
         """
@@ -556,19 +568,23 @@ class NBDDeviceManager:
         except Exception as e:
             self.logger.warning(f"Error disconnecting {nbd_device}: {e}")
         finally:
-            # Clean up temporary converted qcow2 if it exists
+            # Clean up temporary converted qcow2 if it exists (unless marked to keep)
             if self._converted_qcow2_path and self._converted_qcow2_path.exists():
-                try:
-                    self.logger.info(f"Removing temporary converted qcow2: {self._converted_qcow2_path}")
-                    self._converted_qcow2_path.unlink()
-                    self.logger.info(f"✓ Cleaned up {self._converted_qcow2_path.name}")
-                except Exception as cleanup_error:
-                    self.logger.warning(f"Failed to remove temp qcow2: {cleanup_error}")
+                if self._keep_converted:
+                    self.logger.info(f"Keeping converted qcow2: {self._converted_qcow2_path}")
+                else:
+                    try:
+                        self.logger.info(f"Removing temporary converted qcow2: {self._converted_qcow2_path}")
+                        self._converted_qcow2_path.unlink()
+                        self.logger.info(f"✓ Cleaned up {self._converted_qcow2_path.name}")
+                    except Exception as cleanup_error:
+                        self.logger.warning(f"Failed to remove temp qcow2: {cleanup_error}")
 
             self._nbd_device = None
             self._connected = False
             self._nbd_process = None
-            self._converted_qcow2_path = None
+            if not self._keep_converted:
+                self._converted_qcow2_path = None
 
     def __enter__(self):
         """Context manager entry."""
