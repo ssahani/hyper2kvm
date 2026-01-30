@@ -230,6 +230,12 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
 
 **See:** [VMCraft Documentation](hyper2kvm/core/vmcraft/README.md) | [VMCraft v9.1 Release](docs/VMCRAFT_V9.1_RELEASE.md) | [Implementation Summary](docs/VMCRAFT_V9.1_IMPLEMENTATION_SUMMARY.md)
 
+**📘 VMCraft Specialized Guides (v9.1+):**
+- **[Performance Guide](docs/features/vmcraft-performance-guide.md)** - 2-3x speedup optimizations, caching, parallel operations
+- **[Partition Management](docs/features/vmcraft-partition-management.md)** - GPT/MBR manipulation, partition APIs
+- **[LVM Guide](docs/features/vmcraft-lvm-guide.md)** - Logical volume management, enterprise storage layouts
+- **[Augeas Configuration](docs/features/vmcraft-augeas-guide.md)** - Programmatic config editing for fstab, SSH, systemd
+
 ### Production-Ready Features 🏭
 
 - **YAML Configuration:** Version-controlled, mergeable configuration files 📝
