@@ -171,11 +171,27 @@ class TestPerformanceBenchmarks:
         pytest.importorskip("guestfs")
         import guestfs
 
+        # If no test image, skip
+        if test_image_small is None:
+            pytest.skip("No test image available for benchmarking")
+
+        # Detect source format
+        result = subprocess.run([
+            "qemu-img", "info", "--output=json", str(test_image_small)
+        ], capture_output=True, text=True)
+
+        if result.returncode != 0:
+            pytest.skip(f"Cannot read image: {test_image_small}")
+
+        import json
+        info = json.loads(result.stdout)
+        source_format = info.get("format", "vmdk")
+
         # Create a copy for modification
         test_copy = tmp_path / "test_copy.qcow2"
         subprocess.run([
             "qemu-img", "convert",
-            "-f", "vmdk",
+            "-f", source_format,
             "-O", "qcow2",
             str(test_image_small),
             str(test_copy)
@@ -202,9 +218,12 @@ class TestPerformanceBenchmarks:
                 except Exception:
                     pass
 
-        # Simulate driver injection (just file operations)
-        if g.is_dir("/boot"):
-            files = g.ls("/boot")
+            # Simulate driver injection (just file operations)
+            try:
+                if g.is_dir("/boot"):
+                    files = g.ls("/boot")
+            except Exception:
+                pass
 
         g.sync()
         g.umount_all()

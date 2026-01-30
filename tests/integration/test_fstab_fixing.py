@@ -64,7 +64,7 @@ def test_modify_fstab_with_uuid(test_linux_qcow2_image, cleanup_test_image):
     g.mount("/dev/sda1", "/")
 
     # Get filesystem UUID
-    uuid = g.get_uuid("/dev/sda1")
+    uuid = g.vfs_uuid("/dev/sda1")
 
     # Modify fstab to use UUID
     new_fstab = f"UUID={uuid} / ext4 defaults 0 1\n"

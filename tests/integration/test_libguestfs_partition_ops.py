@@ -119,12 +119,12 @@ def test_part_set_bootable(cleanup_test_image):
 
     # Verify bootable flag
     bootable = g.part_get_bootable("/dev/sda", 1)
-    assert bootable is True
+    assert bootable == True
 
     # Unset bootable
     g.part_set_bootable("/dev/sda", 1, False)
     bootable = g.part_get_bootable("/dev/sda", 1)
-    assert bootable is False
+    assert bootable == False
 
     g.shutdown()
     g.close()

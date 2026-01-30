@@ -57,7 +57,7 @@ class TestVSphereIntegration:
     @pytest.fixture
     def mock_vsphere_client(self):
         """Mock vSphere client for testing."""
-        with patch('hyper2kvm.vmware.VSphereClient') as mock:
+        with patch('hyper2kvm.vmware.VMwareClient') as mock:
             client = MagicMock()
             client.connect.return_value = True
             client.list_vms.return_value = [

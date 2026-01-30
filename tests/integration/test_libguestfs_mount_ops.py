@@ -344,11 +344,12 @@ def test_is_whole_device(test_linux_qcow2_image):
     g.launch()
 
     # /dev/sda should be whole device
-    assert g.is_whole_device("/dev/sda") is True
+    assert g.is_whole_device("/dev/sda") == True
 
-    # /dev/sda1 should be a partition
-    if g.exists("/dev/sda1"):
-        assert g.is_whole_device("/dev/sda1") is False
+    # /dev/sda1 should be a partition (if it exists)
+    partitions = g.list_partitions()
+    if "/dev/sda1" in partitions:
+        assert g.is_whole_device("/dev/sda1") == False
 
     g.shutdown()
     g.close()

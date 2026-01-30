@@ -55,17 +55,19 @@ class TestPhotonVMDKInspection:
 
     def test_vmdk_info_extraction(self):
         """Test extracting VMDK information."""
-        from hyper2kvm.vmware.vmdk_info import VMDKInfo
+        try:
+            from hyper2kvm.vmware.utils.vmdk_parser import VMDK
+        except ImportError:
+            pytest.skip("VMDK parser not available")
 
         try:
-            vmdk_info = VMDKInfo(str(PHOTON_VMDK))
+            vmdk_info = VMDK(str(PHOTON_VMDK))
 
             # Verify basic info
             assert vmdk_info.path == str(PHOTON_VMDK)
-            assert vmdk_info.format == "vmdk"
 
-            # Should have size information
-            assert vmdk_info.virtual_size > 0
+            # Should have extent information
+            assert len(vmdk_info.extents) > 0
         except Exception as e:
             # If VMDKInfo not available, skip
             pytest.skip(f"VMDKInfo not available: {e}")

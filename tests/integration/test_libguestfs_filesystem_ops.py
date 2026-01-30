@@ -419,16 +419,24 @@ def test_tar_operations(test_linux_qcow2_image, cleanup_test_image):
     g.write("/test-tar/file1.txt", "content1")
     g.write("/test-tar/dir1/file2.txt", "content2")
 
-    # Create tar archive
-    g.tar_out("/test-tar", "/tmp/test.tar", compress="gzip")
+    # Create tar archive (writes to host filesystem)
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tf:
+        tar_path = tf.name
 
-    # Verify tar was created
-    assert g.exists("/tmp/test.tar")
-    assert g.filesize("/tmp/test.tar") > 0
+    g.tar_out("/test-tar", tar_path, compress="gzip")
 
-    # Extract to different location
+    # Verify tar was created on host
+    import os
+    assert os.path.exists(tar_path)
+    assert os.path.getsize(tar_path) > 0
+
+    # Extract to different location in guest
     g.mkdir("/test-extract")
-    g.tar_in("/tmp/test.tar", "/test-extract", compress="gzip")
+    g.tar_in(tar_path, "/test-extract", compress="gzip")
+
+    # Clean up host tar file
+    os.unlink(tar_path)
 
     # Verify extracted files
     assert g.exists("/test-extract/file1.txt")
