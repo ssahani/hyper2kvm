@@ -17,6 +17,12 @@ from hyper2kvm.operator import offlinefixjob_controller  # noqa: F401
 # MigrationJob controller (K8s-native model - replaces old controller.py)
 from hyper2kvm.operator import migrationjob_controller  # noqa: F401
 
+# Live migration and lifecycle controllers
+from hyper2kvm.operator import live_migration_controller  # noqa: F401
+from hyper2kvm.operator import vm_lifecycle_controller  # noqa: F401
+from hyper2kvm.operator import migration_policy_controller  # noqa: F401
+from hyper2kvm.operator import storage_migration_controller  # noqa: F401
+
 __all__ = [
     'WorkerRegistry',
     'JobAssigner',

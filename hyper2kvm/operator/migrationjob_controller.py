@@ -602,67 +602,28 @@ async def create_virtual_machine(
     pvc_name: str,
     create_vm_spec: Dict[str, Any]
 ) -> str:
-    """Create KubeVirt VirtualMachine."""
-    vm_name = create_vm_spec.get('name', job_name)
-    cpu = create_vm_spec.get('cpu', '2')
-    memory = create_vm_spec.get('memory', '2Gi')
-    auto_start = create_vm_spec.get('autoStart', False)
-    network_type = create_vm_spec.get('networkType', 'masquerade')
+    """Create KubeVirt VirtualMachine using VMFactory."""
+    from .vm_factory import VMFactory
 
-    vm = {
-        'apiVersion': 'kubevirt.io/v1',
-        'kind': 'VirtualMachine',
-        'metadata': {
-            'name': vm_name,
-            'labels': {LABEL_MIGRATION_JOB: job_name}
-        },
-        'spec': {
-            'running': auto_start,
-            'template': {
-                'metadata': {
-                    'labels': {'kubevirt.io/vm': vm_name}
-                },
-                'spec': {
-                    'domain': {
-                        'devices': {
-                            'disks': [{
-                                'name': 'rootdisk',
-                                'disk': {'bus': 'virtio'}
-                            }],
-                            'interfaces': [{
-                                'name': 'default',
-                                network_type: {}
-                            }]
-                        },
-                        'resources': {
-                            'requests': {
-                                'memory': memory,
-                                'cpu': cpu
-                            }
-                        }
-                    },
-                    'networks': [{'name': 'default', 'pod': {}}],
-                    'volumes': [{
-                        'name': 'rootdisk',
-                        'persistentVolumeClaim': {'claimName': pvc_name}
-                    }]
-                }
-            }
-        }
-    }
+    # Initialize VMFactory
+    vm_factory = VMFactory(custom_api, metrics=_operator_metrics)
 
-    try:
-        custom_api.create_namespaced_custom_object(
-            group='kubevirt.io',
-            version='v1',
-            namespace=namespace,
-            plural='virtualmachines',
-            body=vm
+    # Create VM with all advanced features
+    vm_name = await vm_factory.create_virtual_machine(
+        namespace,
+        job_name,
+        pvc_name,
+        create_vm_spec
+    )
+
+    # Apply migration policy if specified
+    migration_policy_ref = create_vm_spec.get('migrationPolicyRef')
+    if migration_policy_ref:
+        await vm_factory.apply_migration_policy(
+            namespace,
+            vm_name,
+            migration_policy_ref
         )
-        logger.info(f"✅ Created VirtualMachine: {vm_name}")
-    except ApiException as e:
-        if e.status != 409:
-            raise
 
     return vm_name
 

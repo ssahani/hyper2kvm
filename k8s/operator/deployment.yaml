@@ -94,11 +94,41 @@ rules:
   - update
   - patch
 
-# VirtualMachineInstance access (for OfflineFixJob VMs)
+# KubeVirt resources access
 - apiGroups:
   - kubevirt.io
   resources:
+  - virtualmachines
   - virtualmachineinstances
+  - virtualmachineinstancemigrations
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+
+# MigrationPolicy CRD permissions
+- apiGroups:
+  - hyper2kvm.io
+  resources:
+  - migrationpolicies
+  - migrationpolicies/status
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+
+# PVC access for storage migrations
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
   verbs:
   - get
   - list
