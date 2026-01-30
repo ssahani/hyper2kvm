@@ -246,6 +246,35 @@ class FileOperations:
         """Check if path exists."""
         return self._get_metadata(path)["exists"]
 
+    def stat(self, path: str) -> dict[str, int]:
+        """
+        Get file stat information (guestfs-compatible format).
+
+        Returns:
+            Dict with size, mtime, and other stat fields
+        """
+        metadata = self._get_metadata(path)
+
+        if not metadata["exists"]:
+            raise FileNotFoundError(f"Path does not exist: {path}")
+
+        # Return guestfs-compatible stat dict
+        return {
+            "dev": 0,
+            "ino": 0,
+            "mode": metadata["permissions"],
+            "nlink": 1,
+            "uid": 0,
+            "gid": 0,
+            "rdev": 0,
+            "size": metadata["size"],
+            "blksize": 4096,
+            "blocks": (metadata["size"] + 4095) // 4096,
+            "atime": int(metadata["mtime"]),
+            "mtime": int(metadata["mtime"]),
+            "ctime": int(metadata["mtime"]),
+        }
+
     def read_file(self, path: str) -> bytes:
         """Read file contents as bytes."""
         return self._guest_path(path).read_bytes()

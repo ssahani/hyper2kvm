@@ -732,6 +732,12 @@ class VMCraft:
             raise RuntimeError("Not launched")
         return self._file_ops.exists(path)
 
+    def stat(self, path: str) -> dict[str, int]:
+        """Get file stat information (guestfs-compatible format)."""
+        if not self._file_ops:
+            raise RuntimeError("Not launched")
+        return self._file_ops.stat(path)
+
     def read_file(self, path: str) -> bytes:
         """Read file contents as bytes."""
         if not self._file_ops:
@@ -975,6 +981,66 @@ class VMCraft:
         else:
             self._partition_cache.clear()
             self.logger.debug("Cleared all partition caches")
+
+    def findfs_uuid(self, uuid: str) -> str:
+        """
+        Find device by filesystem UUID.
+
+        Args:
+            uuid: Filesystem UUID to search for
+
+        Returns:
+            Device path (e.g., /dev/sda1)
+
+        Raises:
+            RuntimeError: If device not found
+        """
+        if not self._nbd_device:
+            raise RuntimeError("Not launched")
+
+        # Get all partitions
+        partitions = self.list_partitions()
+
+        # Search for matching UUID
+        for part in partitions:
+            try:
+                part_uuid = self.vfs_uuid(part)
+                if part_uuid == uuid:
+                    return part
+            except Exception:
+                continue
+
+        raise RuntimeError(f"No device found with UUID={uuid}")
+
+    def findfs_label(self, label: str) -> str:
+        """
+        Find device by filesystem label.
+
+        Args:
+            label: Filesystem label to search for
+
+        Returns:
+            Device path (e.g., /dev/sda1)
+
+        Raises:
+            RuntimeError: If device not found
+        """
+        if not self._nbd_device:
+            raise RuntimeError("Not launched")
+
+        # Get all partitions
+        partitions = self.list_partitions()
+
+        # Search for matching label
+        for part in partitions:
+            try:
+                part_label = self.vfs_label(part)
+                if part_label == label:
+                    return part
+            except Exception:
+                continue
+
+        raise RuntimeError(f"No device found with LABEL={label}")
 
     def list_devices(self) -> list[str]:
         """List all devices."""
@@ -4079,10 +4145,11 @@ class VMCraft:
 
     def command_with_mounts(self, cmd: list[str], quiet: bool = False) -> str:
         """
-        Execute command in guest filesystem with /proc, /dev, /sys bind-mounted.
+        Execute command in guest filesystem with /proc, /dev, /sys, /run bind-mounted.
 
         This provides a more complete chroot environment needed by bootloader tools
-        like grub2-mkconfig, which require access to /proc/self/mountinfo and /dev.
+        like grub2-mkconfig and dracut, which require access to /proc/self/mountinfo,
+        /dev, and /run.
 
         Args:
             cmd: Command to execute inside chroot
@@ -4101,8 +4168,8 @@ class VMCraft:
         mounts_to_cleanup = []
 
         try:
-            # Set up bind mounts for /proc, /dev, /sys
-            for mount_point in ["proc", "dev", "sys"]:
+            # Set up bind mounts for /proc, /dev, /sys, /run
+            for mount_point in ["proc", "dev", "sys", "run"]:
                 target = mount_root / mount_point
 
                 # Create mount point if it doesn't exist

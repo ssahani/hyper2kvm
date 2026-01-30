@@ -363,6 +363,417 @@ class OfflineFSFix:
             except Exception:
                 pass
 
+    def _regenerate_xfs_uuids(self, g: guestfs.GuestFS) -> dict[str, Any]:
+        """
+        Regenerate UUIDs for all XFS filesystems to fix duplicates.
+
+        Critical for cloned VMware VMs which often have duplicate XFS UUIDs
+        that prevent mounting. Must run BEFORE mounting any filesystems.
+
+        Returns:
+            Audit dict with regeneration results
+        """
+        audit: dict[str, Any] = {
+            "attempted": False,
+            "xfs_partitions_found": 0,
+            "regenerated": [],
+            "fstab_updated": False,
+            "errors": [],
+        }
+
+        try:
+            # Find all XFS partitions
+            xfs_partitions = []
+            try:
+                partitions = g.list_partitions()
+                for part in partitions:
+                    try:
+                        fstype = U.to_text(g.vfs_type(part))
+                        if fstype == "xfs":
+                            xfs_partitions.append(part)
+                    except Exception:
+                        continue
+            except Exception as e:
+                audit["errors"].append(f"Failed to list partitions: {e}")
+                return audit
+
+            audit["xfs_partitions_found"] = len(xfs_partitions)
+
+            if not xfs_partitions:
+                self.logger.debug("No XFS filesystems found, skipping UUID regeneration")
+                return audit
+
+            audit["attempted"] = True
+            self.logger.info(f"Found {len(xfs_partitions)} XFS filesystem(s), regenerating UUIDs...")
+
+            # Regenerate UUID for each XFS partition
+            for device in xfs_partitions:
+                try:
+                    # Get old UUID
+                    old_uuid = None
+                    try:
+                        old_uuid = U.to_text(g.vfs_uuid(device))
+                    except Exception:
+                        pass
+
+                    if not old_uuid:
+                        self.logger.debug(f"  Skipping {device}: could not read UUID")
+                        continue
+
+                    # Generate new UUID (run on HOST, not in guest chroot)
+                    # At this point filesystems are unmounted, so we use host's xfs_admin
+                    try:
+                        run_sudo(self.logger, ["xfs_admin", "-U", "generate", device], check=True, capture=True)
+                    except Exception as e:
+                        error_msg = str(e).lower()
+                        if "mounted" in error_msg:
+                            audit["errors"].append(f"{device}: device_mounted")
+                            self.logger.debug(f"  Skipping {device}: currently mounted")
+                            continue
+                        raise
+
+                    # Get new UUID
+                    new_uuid = None
+                    try:
+                        new_uuid = U.to_text(g.vfs_uuid(device))
+                    except Exception:
+                        pass
+
+                    if new_uuid and new_uuid != old_uuid:
+                        audit["regenerated"].append({
+                            "device": device,
+                            "old_uuid": old_uuid,
+                            "new_uuid": new_uuid
+                        })
+                        self.logger.info(f"  ✓ Regenerated UUID for {device}: {old_uuid[:8]}... → {new_uuid[:8]}...")
+                    else:
+                        audit["errors"].append(f"{device}: could_not_read_new_uuid")
+
+                except Exception as e:
+                    audit["errors"].append(f"{device}: {str(e)}")
+                    self.logger.warning(f"  ⚠️  Failed to regenerate UUID for {device}: {e}")
+
+            if audit["regenerated"]:
+                self.logger.info(f"  ✓ Successfully regenerated {len(audit['regenerated'])} XFS UUIDs")
+            else:
+                self.logger.info("  No UUIDs were regenerated")
+
+        except Exception as e:
+            audit["errors"].append(f"Unexpected error: {e}")
+            self.logger.error(f"XFS UUID regeneration failed: {e}")
+
+        return audit
+
+    def _rebuild_fstab_from_disk_layout(self, g: guestfs.GuestFS, uuid_changes: list[dict[str, Any]]) -> bool:
+        """
+        Completely rebuild fstab when UUIDs don't match (indicates fstab from different VM).
+
+        Uses actual device layout and new UUIDs to create a fresh, correct fstab.
+
+        Args:
+            uuid_changes: List of dicts with device, old_uuid, new_uuid
+
+        Returns:
+            True if fstab was rebuilt, False otherwise
+        """
+        if not uuid_changes:
+            return False
+
+        self.logger.info("🔧 Rebuilding fstab from actual disk layout...")
+
+        try:
+            # Build device-to-uuid mapping
+            device_to_uuid = {change["device"]: change["new_uuid"] for change in uuid_changes}
+
+            # Read existing fstab to understand expected mountpoints
+            if not g.is_file("/etc/fstab"):
+                self.logger.warning("  No /etc/fstab found")
+                return False
+
+            old_fstab = g.read_file("/etc/fstab")
+            if isinstance(old_fstab, bytes):
+                old_fstab = old_fstab.decode('utf-8', errors='replace')
+
+            # Parse mountpoints from old fstab (to preserve the layout intention)
+            expected_mounts = {}  # mountpoint -> (fstype, options, dump, pass)
+            for line in old_fstab.splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    continue
+                parts = stripped.split()
+                if len(parts) >= 4:
+                    mountpoint = parts[1]
+                    fstype = parts[2]
+                    options = parts[3] if len(parts) > 3 else "defaults"
+                    dump = parts[4] if len(parts) > 4 else "0"
+                    passno = parts[5] if len(parts) > 5 else "0"
+                    expected_mounts[mountpoint] = (fstype, options, dump, passno)
+
+            self.logger.debug(f"  Expected mountpoints from old fstab: {list(expected_mounts.keys())}")
+
+            # Determine which device should be mounted where
+            # We know root is mounted already at self.root_dev
+            mountpoint_to_device = {}
+
+            if self.root_dev and "/" in expected_mounts:
+                mountpoint_to_device["/"] = self.root_dev
+                self.logger.debug(f"  Root: {self.root_dev} → /")
+
+            # For other mountpoints, we need to check what's actually on each partition
+            # Simplified: use partition numbering heuristics
+            for device in device_to_uuid.keys():
+                if device == self.root_dev:
+                    continue  # Already assigned
+
+                # Common patterns:
+                # p1 or sda1 → /boot
+                # p5 or sda5 → /home
+                # Higher numbered partitions → data partitions
+
+                if device.endswith('p1') or device.endswith('sda1'):
+                    if "/boot" in expected_mounts and "/boot" not in mountpoint_to_device:
+                        mountpoint_to_device["/boot"] = device
+                        self.logger.debug(f"  Boot: {device} → /boot")
+                elif device.endswith('p5') or device.endswith('sda5'):
+                    if "/home" in expected_mounts and "/home" not in mountpoint_to_device:
+                        mountpoint_to_device["/home"] = device
+                        self.logger.debug(f"  Home: {device} → /home")
+
+            # Build new fstab
+            new_lines = []
+            new_lines.append("#")
+            new_lines.append("# /etc/fstab")
+            new_lines.append("# Rebuilt by hyper2kvm based on actual disk UUIDs")
+            new_lines.append("#")
+            new_lines.append("# Accessible filesystems, by reference, are maintained under '/dev/disk/'.")
+            new_lines.append("# See man pages fstab(5), findfs(8), mount(8) and/or blkid(8) for more info.")
+            new_lines.append("#")
+
+            rebuilt_count = 0
+
+            # Add entries for known mountpoints
+            for mountpoint in sorted(expected_mounts.keys()):
+                if mountpoint == "none":
+                    # Swap - copy from old fstab
+                    for line in old_fstab.splitlines():
+                        if not line.strip().startswith('#') and 'swap' in line:
+                            new_lines.append(line)
+                            rebuilt_count += 1
+                    continue
+
+                if mountpoint not in mountpoint_to_device:
+                    self.logger.warning(f"  Could not determine device for {mountpoint}, skipping")
+                    continue
+
+                device = mountpoint_to_device[mountpoint]
+                if device not in device_to_uuid:
+                    self.logger.warning(f"  No UUID for device {device}, skipping")
+                    continue
+
+                uuid = device_to_uuid[device]
+                fstype, options, dump, passno = expected_mounts[mountpoint]
+
+                # Build entry
+                spec = f"UUID={uuid}"
+                entry = f"{spec} {mountpoint}\t{fstype}\t{options}\t{dump} {passno}"
+                new_lines.append(entry)
+                rebuilt_count += 1
+
+                self.logger.info(f"  ✓ Rebuilt entry: {mountpoint} → {device} (UUID: {uuid[:8]}...)")
+
+            if rebuilt_count == 0:
+                self.logger.warning("  No entries could be rebuilt")
+                return False
+
+            # Write new fstab
+            new_fstab = '\n'.join(new_lines) + '\n'
+
+            # Write using sudo (VMCraft mounts are owned by root)
+            import tempfile
+            try:
+                # Write to temp file first
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.fstab') as tf:
+                    tf.write(new_fstab)
+                    temp_path = tf.name
+
+                # Get the actual mount path
+                if hasattr(g, '_mount_root') and g._mount_root:
+                    fstab_path = Path(g._mount_root) / "etc" / "fstab"
+                else:
+                    # Fallback: try to find mount root
+                    self.logger.error("  Could not determine mount root")
+                    return False
+
+                # Backup old fstab first
+                backup_path = Path(str(fstab_path) + ".hyper2kvm_backup")
+                try:
+                    run_sudo(self.logger, ["cp", str(fstab_path), str(backup_path)], check=True, capture=True)
+                    self.logger.debug(f"  Backed up old fstab to {backup_path}")
+                except Exception as e:
+                    self.logger.debug(f"  Could not backup old fstab: {e}")
+
+                # Copy temp file to fstab using sudo
+                run_sudo(self.logger, ["cp", temp_path, str(fstab_path)], check=True, capture=True)
+
+                # Cleanup temp file
+                Path(temp_path).unlink()
+
+                self.logger.info(f"  ✓ Rebuilt /etc/fstab with {rebuilt_count} entries")
+                return True
+
+            except Exception as e:
+                self.logger.error(f"  Failed to write fstab: {e}")
+                import traceback
+                self.logger.debug(traceback.format_exc())
+                return False
+
+        except Exception as e:
+            self.logger.error(f"  ⚠️  Failed to rebuild fstab: {e}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
+            return False
+
+    def _update_fstab_with_new_uuids(self, g: guestfs.GuestFS, uuid_changes: list[dict[str, Any]]) -> None:
+        """
+        Update /etc/fstab with new UUIDs after XFS UUID regeneration.
+
+        Uses simple direct approach: for any fstab entry with a UUID= spec,
+        check if that device exists in our regenerated list and update it.
+
+        Args:
+            uuid_changes: List of dicts with device, old_uuid, new_uuid
+        """
+        if not uuid_changes:
+            self.logger.debug("  No UUID changes to apply to fstab")
+            return
+
+        self.logger.debug(f"  Received {len(uuid_changes)} UUID changes to apply")
+        for change in uuid_changes:
+            self.logger.debug(f"    {change['device']}: {change['old_uuid']} → {change['new_uuid']}")
+
+        # Build device-to-new-uuid mapping
+        device_to_new_uuid = {change["device"]: change["new_uuid"] for change in uuid_changes}
+        old_uuid_to_new = {change["old_uuid"]: (change["new_uuid"], change["device"]) for change in uuid_changes}
+
+        try:
+            if not g.is_file("/etc/fstab"):
+                self.logger.debug("No /etc/fstab found, skipping UUID update")
+                return
+
+            fstab_content = g.read_file("/etc/fstab")
+            if isinstance(fstab_content, bytes):
+                fstab_content = fstab_content.decode('utf-8', errors='replace')
+
+            self.logger.debug(f"  Read fstab content ({len(fstab_content)} bytes, {len(fstab_content.splitlines())} lines)")
+
+            # Show what UUIDs are currently in fstab
+            fstab_uuids = set()
+            for line in fstab_content.splitlines():
+                if 'UUID=' in line and not line.strip().startswith('#'):
+                    parts = line.strip().split()
+                    if parts and parts[0].startswith('UUID='):
+                        uuid_val = parts[0][5:]
+                        fstab_uuids.add(uuid_val)
+                        self.logger.debug(f"    fstab references UUID: {uuid_val}")
+
+            # Try matching by old UUID first
+            modified = False
+            new_lines = []
+            update_count = 0
+
+            for i, line in enumerate(fstab_content.splitlines(), 1):
+                new_line = line
+
+                # Skip comments and empty lines
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    new_lines.append(new_line)
+                    continue
+
+                # Parse fstab entry
+                parts = stripped.split()
+                if len(parts) < 2:
+                    new_lines.append(new_line)
+                    continue
+
+                fs_spec = parts[0]
+
+                # Update UUID= entries
+                if fs_spec.startswith("UUID="):
+                    old_uuid_in_fstab = fs_spec[5:]
+
+                    # Check if this is one of the old UUIDs we just changed
+                    if old_uuid_in_fstab in old_uuid_to_new:
+                        new_uuid, device = old_uuid_to_new[old_uuid_in_fstab]
+                        new_spec = f"UUID={new_uuid}"
+                        new_line = line.replace(fs_spec, new_spec, 1)
+                        modified = True
+                        update_count += 1
+                        mountpoint = parts[1] if len(parts) > 1 else "unknown"
+                        self.logger.info(f"  ✓ Updated fstab line {i} ({mountpoint}): UUID={old_uuid_in_fstab[:8]}... → UUID={new_uuid[:8]}...")
+                        self.logger.debug(f"    Device: {device}")
+                        self.logger.debug(f"    Old line: {line.strip()}")
+                        self.logger.debug(f"    New line: {new_line.strip()}")
+
+                new_lines.append(new_line)
+
+            if modified:
+                new_fstab = '\n'.join(new_lines) + '\n'
+
+                # Write using sudo (VMCraft mounts are owned by root)
+                import tempfile
+                try:
+                    # Write to temp file first
+                    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.fstab') as tf:
+                        tf.write(new_fstab)
+                        temp_path = tf.name
+
+                    # Get the actual mount path
+                    if hasattr(g, '_mount_root') and g._mount_root:
+                        fstab_path = Path(g._mount_root) / "etc" / "fstab"
+
+                        # Backup old fstab first
+                        backup_path = Path(str(fstab_path) + ".hyper2kvm_backup")
+                        try:
+                            run_sudo(self.logger, ["cp", str(fstab_path), str(backup_path)], check=True, capture=True)
+                            self.logger.debug(f"  Backed up old fstab to {backup_path}")
+                        except Exception as e:
+                            self.logger.debug(f"  Could not backup old fstab: {e}")
+
+                        # Copy temp file to fstab using sudo
+                        run_sudo(self.logger, ["cp", temp_path, str(fstab_path)], check=True, capture=True)
+
+                        # Cleanup temp file
+                        Path(temp_path).unlink()
+
+                        self.logger.info(f"  ✓ Updated /etc/fstab with {update_count} new UUID(s)")
+                    else:
+                        self.logger.error("  Could not determine mount root for fstab write")
+                        Path(temp_path).unlink()
+
+                except Exception as write_error:
+                    self.logger.error(f"  Failed to write fstab: {write_error}")
+                    if 'temp_path' in locals():
+                        Path(temp_path).unlink(missing_ok=True)
+            else:
+                self.logger.warning("  ⚠️  fstab UUIDs don't match any regenerated UUIDs")
+                self.logger.warning("  This likely means fstab is from a different VM or previous migration")
+                self.logger.debug(f"  fstab UUIDs: {fstab_uuids}")
+                self.logger.debug(f"  Old UUIDs we regenerated: {set(old_uuid_to_new.keys())}")
+                self.logger.debug(f"  Devices with new UUIDs: {list(device_to_new_uuid.keys())}")
+
+                # Try automatic fstab rebuild
+                self.logger.info("  Attempting automatic fstab rebuild...")
+                if self._rebuild_fstab_from_disk_layout(g, uuid_changes):
+                    self.logger.info("  ✓ fstab successfully rebuilt from disk layout")
+                else:
+                    self.logger.error("  ⚠️  Automatic fstab rebuild failed - manual intervention required")
+
+        except Exception as e:
+            self.logger.error(f"  ⚠️  Failed to update fstab with new UUIDs: {e}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
+
     def _unlock_luks_devices(self, g: guestfs.GuestFS) -> dict[str, Any]:
         audit: dict[str, Any] = {
             "attempted": False,
@@ -575,29 +986,89 @@ class OfflineFSFix:
         raise RuntimeError(f"Failed mounting root {dev} (subvol={subvol}): {last_err or first_err}")
 
     def _looks_like_root(self, g: guestfs.GuestFS) -> bool:
-        hits = 0
-        found_hints = []
-        for p in self._ROOT_HINT_FILES:
+        """
+        Check if mounted filesystem looks like guest root (not /boot).
+
+        Root signals (any one is enough):
+          - /etc/os-release exists (definitive)
+          - /etc exists AND (systemd or a shell exists)
+
+        /boot signals (reject if found):
+          - vmlinuz-* or initramfs-* at the top level
+          - AND any of: /grub2, /grub, /efi, /loader directories
+          - AND missing /etc/os-release
+        """
+        # Gather diagnostic information
+        has_os_release = False
+        has_etc = False
+        has_systemd = False
+        has_shell = False
+        has_vmlinuz = False
+        has_initramfs = False
+        has_boot_dirs = False
+
+        try:
+            # Best root signal: /etc/os-release
+            has_os_release = g.is_file("/etc/os-release")
+            if has_os_release:
+                self.logger.info("🔍 Accepted: has /etc/os-release (definitive root indicator)")
+                return True
+
+            # Check for /etc directory
+            has_etc = g.is_dir("/etc")
+
+            # Check for systemd
+            has_systemd = (g.is_file("/usr/bin/systemctl") or
+                          g.is_file("/usr/lib/systemd/systemd") or
+                          g.is_file("/lib/systemd/systemd"))
+
+            # Check for shell
+            has_shell = (g.is_file("/bin/bash") or
+                        g.is_file("/usr/bin/bash") or
+                        g.is_file("/bin/sh"))
+
+            # Check top-level for boot signatures
             try:
-                if g.is_file(p):
-                    hits += 1
-                    found_hints.append(p)
+                top_files = [U.to_text(x) for x in g.ls("/") if U.to_text(x)]
+                has_vmlinuz = any(name.startswith("vmlinuz-") for name in top_files)
+                has_initramfs = any(name.startswith("initramfs-") for name in top_files)
             except Exception:
-                continue
-        for p in self._ROOT_STRONG_HINTS:
-            try:
-                if p.endswith("/"):
-                    if g.is_dir(p[:-1]):
-                        hits += 1
-                        found_hints.append(p)
-                else:
-                    if g.is_file(p) or g.is_dir(p):
-                        hits += 1
-                        found_hints.append(p)
-            except Exception:
-                continue
-        self.logger.info(f"🔍 Root detection: {hits} hints found: {found_hints}")
-        return hits >= 2
+                pass
+
+            # Check for boot directories
+            has_boot_dirs = (g.is_dir("/grub2") or g.is_dir("/grub") or
+                           g.is_dir("/efi") or g.is_dir("/loader"))
+
+            # CRITICAL: Reject /boot partitions
+            # /boot has kernel/initramfs at top-level + boot directories + no /etc/os-release
+            if (has_vmlinuz or has_initramfs) and has_boot_dirs:
+                self.logger.info(
+                    f"🔍 Rejected: looks like /boot "
+                    f"(vmlinuz={has_vmlinuz}, initramfs={has_initramfs}, "
+                    f"boot_dirs={has_boot_dirs}, os_release={has_os_release})"
+                )
+                return False
+
+            # Secondary root signal: /etc + (systemd OR shell)
+            if has_etc and (has_systemd or has_shell):
+                self.logger.info(
+                    f"🔍 Accepted: has /etc + systemd/shell "
+                    f"(etc={has_etc}, systemd={has_systemd}, shell={has_shell})"
+                )
+                return True
+
+            # If we can't prove it's root, treat as not-root (safer)
+            self.logger.info(
+                f"🔍 Rejected: insufficient root indicators "
+                f"(os_release={has_os_release}, etc={has_etc}, "
+                f"systemd={has_systemd}, shell={has_shell}, "
+                f"vmlinuz={has_vmlinuz}, initramfs={has_initramfs})"
+            )
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"Error in root detection: {e}")
+            return False
 
     def _score_root(self, g: guestfs.GuestFS) -> int:
         """
@@ -997,7 +1468,15 @@ class OfflineFSFix:
                             # Continue with read-only mode for detection
                         except Exception as xfs_error:
                             self.logger.warning(f"XFS recovery mount also failed: {xfs_error}")
-                            raise mount_error
+                            # Try with nouuid (common for cloned VMware VMs with duplicate UUIDs)
+                            self.logger.info(f"XFS mount failed, retrying with nouuid for {dev}")
+                            try:
+                                g.mount_options("nouuid", dev, "/")
+                                self.logger.info(f"✓ Mount succeeded with nouuid: {dev}")
+                                # Continue with nouuid mode for detection
+                            except Exception as nouuid_error:
+                                self.logger.warning(f"XFS nouuid mount also failed: {nouuid_error}")
+                                raise mount_error
                     elif vfs_type == "ext4":
                         self.logger.warning(f"Attempting fsck for ext4 partition {dev}")
                         try:
@@ -1050,20 +1529,49 @@ class OfflineFSFix:
             dev = best[1]
             self._safe_umount_all(g)
             try:
-                if self.dry_run:
-                    g.mount_ro(dev, "/")
-                else:
-                    g.mount(dev, "/")
-                self.root_dev = dev
-                self.logger.info(f"✅ Mounted root filesystem: {dev} (score={best[0]})")
-                if mount_failures:
-                    try:
-                        self.report.setdefault("analysis", {}).setdefault("mount", {})[
-                            "bruteforce_failures"
-                        ] = mount_failures
-                    except Exception as e:
-                        self.logger.debug(f"Failed to store mount failures in report: {e}")
-                return
+                # Get filesystem type for proper mounting
+                vfs_type = None
+                try:
+                    vfs_type = filesystem_fixer._vfs_type(g, dev)
+                except Exception:
+                    pass
+
+                # Try mount with appropriate options (including XFS nouuid for cloned VMs)
+                mounted = False
+                try:
+                    if self.dry_run:
+                        g.mount_ro(dev, "/")
+                    else:
+                        g.mount(dev, "/")
+                    mounted = True
+                except Exception as mount_error:
+                    # Apply same XFS recovery strategies as during detection
+                    if vfs_type == "xfs":
+                        self.logger.info(f"Retrying root mount with XFS recovery options for {dev}")
+                        try:
+                            g.mount_options("ro,norecovery", dev, "/")
+                            mounted = True
+                        except Exception:
+                            try:
+                                g.mount_options("nouuid", dev, "/")
+                                mounted = True
+                                self.logger.info(f"Root mounted with nouuid option")
+                            except Exception:
+                                raise mount_error
+                    else:
+                        raise mount_error
+
+                if mounted:
+                    self.root_dev = dev
+                    self.logger.info(f"✅ Mounted root filesystem: {dev} (score={best[0]})")
+                    if mount_failures:
+                        try:
+                            self.report.setdefault("analysis", {}).setdefault("mount", {})[
+                                "bruteforce_failures"
+                            ] = mount_failures
+                        except Exception as e:
+                            self.logger.debug(f"Failed to store mount failures in report: {e}")
+                    return
             except Exception as e:
                 mount_failures.append({"device": dev, "error": f"best_root_mount_failed:{e}"})
         else:
@@ -1459,8 +1967,25 @@ class OfflineFSFix:
             # 3) LVM activation (existing behavior; safe even if no LVM)
             self._run_stage("lvm_activate", lambda: self._activate_lvm(g), default=None)
 
+            # 3.5) Regenerate XFS UUIDs (CRITICAL for cloned VMs with duplicate UUIDs)
+            # Must run BEFORE mounting (xfs_admin requires unmounted filesystems)
+            uuid_audit = self._run_stage("regenerate_xfs_uuids", lambda: self._regenerate_xfs_uuids(g), default={})
+            self.report.setdefault("analysis", {})["xfs_uuid_regeneration"] = uuid_audit
+
             # 4) Mount root (critical)
             self._run_stage("mount_root", lambda: self.detect_and_mount_root(g), critical=True, default=None)
+
+            # 4.1) Update fstab with new UUIDs if any were regenerated
+            regenerated_uuids = uuid_audit.get("regenerated", []) if uuid_audit else []
+            self.logger.debug(f"UUID audit: {uuid_audit}")
+            self.logger.debug(f"Regenerated UUIDs to update in fstab: {len(regenerated_uuids)}")
+            if regenerated_uuids:
+                self.logger.info(f"Updating fstab with {len(regenerated_uuids)} regenerated UUIDs...")
+                self._run_stage(
+                    "update_fstab_uuids",
+                    lambda: self._update_fstab_with_new_uuids(g, regenerated_uuids),
+                    default=None
+                )
 
             # 4.5) Filesystem fixer stage (optional; runs unmounted)
             fs_audit = self._run_stage("filesystem_repair", lambda: self.fix_filesystems(g), default={"enabled": False})

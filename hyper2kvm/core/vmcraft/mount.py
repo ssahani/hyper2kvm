@@ -128,6 +128,51 @@ class MountManager:
             self._mounted[mountpoint] = device
             self.logger.debug(f"Mounted {device} at {mountpoint} (fstype={fstype})")
         except subprocess.CalledProcessError as e:
+            # Check for XFS duplicate UUID error (common in cloned VMware VMs)
+            # XFS duplicate UUID errors appear in dmesg, not stderr
+            error_msg = (e.stderr or "").lower()
+            is_xfs_dup_uuid = False
+
+            if fstype == "xfs":
+                # Check stderr for generic mount errors
+                if "wrong fs type" in error_msg or "bad superblock" in error_msg:
+                    # Check dmesg for XFS duplicate UUID
+                    try:
+                        dmesg_result = run_sudo(
+                            self.logger,
+                            ["dmesg", "-T"],
+                            check=True,
+                            capture=True,
+                            failure_log_level=logging.DEBUG
+                        )
+                        dmesg_lines = dmesg_result.stdout.split('\n')[-50:]  # Last 50 lines
+                        device_name = device.split('/')[-1]  # Extract nbd2p1 from /dev/nbd2p1
+                        for line in dmesg_lines:
+                            if device_name in line and "duplicate uuid" in line.lower():
+                                is_xfs_dup_uuid = True
+                                break
+                    except Exception:
+                        pass
+
+            if is_xfs_dup_uuid:
+                self.logger.warning(f"XFS duplicate UUID detected for {device}, retrying with nouuid option...")
+                # Retry with nouuid option
+                cmd_nouuid = ["mount", "-t", "xfs"]
+                # Preserve existing options and add nouuid
+                if mount_opts:
+                    nouuid_opts = mount_opts + ["nouuid"]
+                else:
+                    nouuid_opts = ["nouuid"]
+                cmd_nouuid.extend(["-o", ",".join(nouuid_opts)])
+                cmd_nouuid.extend([device, str(target)])
+                try:
+                    run_sudo(self.logger, cmd_nouuid, check=True, capture=True, failure_log_level=failure_log_level)
+                    self._mounted[mountpoint] = device
+                    self.logger.info(f"Mounted {device} at {mountpoint} (fstype=xfs, nouuid)")
+                    return
+                except subprocess.CalledProcessError as e2:
+                    raise RuntimeError(f"Failed to mount {device} even with nouuid: {e2.stderr}")
+
             # If mount failed and it's a Windows filesystem, try with additional recovery options
             if fstype in ("ntfs", "vfat", "exfat") and not readonly:
                 self.logger.warning(f"Mount failed, retrying {device} in read-only mode...")
