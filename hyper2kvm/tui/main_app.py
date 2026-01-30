@@ -57,6 +57,7 @@ from .vm_browser import VMBrowser
 from .migrations_panel import MigrationsPanel
 from .batch_manager import BatchMigrationManager
 from .settings_panel import SettingsPanel
+from .migration_tracker import MigrationTracker
 
 logger = logging.getLogger(__name__)
 
@@ -215,12 +216,9 @@ class Hyper2KVMApp(App):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.theme = "textual-dark"
-        self.stats = {
-            "total_migrations": 0,
-            "active_migrations": 0,
-            "completed_today": 0,
-            "success_rate": 100.0,
-        }
+        self.migration_tracker = MigrationTracker(logger=logger)
+        self.migration_tracker.load()
+        self.stats = self.migration_tracker.get_statistics()
 
     def compose(self) -> ComposeResult:
         """Create the application UI."""
@@ -363,17 +361,29 @@ class Hyper2KVMApp(App):
     async def update_stats(self) -> None:
         """Update statistics in the background."""
         while True:
-            # TODO: Query actual migration metrics
             await asyncio.sleep(5)
 
-            # Update stats display if on welcome screen
+            # Reload migration history and update stats
             try:
+                self.migration_tracker.load()
+                self.stats = self.migration_tracker.get_statistics()
+
+                # Update stats display if on welcome screen
                 tabbed_content = self.query_one(TabbedContent)
                 if tabbed_content.active == "welcome":
                     # Refresh welcome screen stats
-                    pass
-            except Exception:
-                pass
+                    self.refresh_welcome_stats()
+            except Exception as e:
+                logger.debug(f"Failed to update stats: {e}")
+
+    def refresh_welcome_stats(self) -> None:
+        """Refresh statistics display on welcome screen."""
+        try:
+            # This would ideally update the static widgets with new values
+            # For now, just log the update
+            logger.debug(f"Stats updated: {self.stats}")
+        except Exception as e:
+            logger.debug(f"Failed to refresh welcome stats: {e}")
 
 
 def run_hyper2kvm_tui() -> None:
