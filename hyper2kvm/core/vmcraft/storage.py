@@ -54,71 +54,63 @@ class LVMActivator:
         audit["attempted"] = True
 
         try:
-            # Build LVM device filter to only see NBD devices (avoids VG name collisions with host)
-            lvm_config = None
-            if nbd_device:
-                # Extract base device name (e.g., "nbd0" from "/dev/nbd0")
-                nbd_base = nbd_device.replace("/dev/", "")
-                # LVM filter: accept NBD devices, reject everything else
-                lvm_config = f'devices {{ filter = [ "a|^/dev/{nbd_base}|", "r|.*|" ] }}'
-                logger.info(f"Using LVM device filter for {nbd_device}: {lvm_config}")
-
-            # Refresh physical volume cache for NBD devices
-            if _has_command("pvscan") and nbd_device:
-                # Scan only NBD partitions with device filter
+            # Gather NBD partitions for explicit device specification
+            nbd_partitions = []
+            if nbd_device and _has_command("pvscan"):
                 import glob
-                nbd_parts = glob.glob(f"{nbd_device}p*")
-                logger.info(f"Scanning NBD partitions: {nbd_parts}")
+                nbd_partitions = glob.glob(f"{nbd_device}p*")
+                logger.info(f"Scanning NBD partitions for LVM: {nbd_partitions}")
 
-                for part in nbd_parts:
-                    cmd = ["pvscan", "--cache", part]
-                    if lvm_config:
-                        cmd = ["pvscan", "--config", lvm_config, "--cache", part]
-                    run_sudo(logger, cmd, check=False, capture=True)
+                # Scan each NBD partition explicitly
+                for part in nbd_partitions:
+                    run_sudo(logger, ["pvscan", "--cache", part], check=False, capture=True)
+                    logger.info(f"  Scanned PV: {part}")
 
-                # General scan with filter
-                cmd = ["pvscan", "--cache"]
-                if lvm_config:
-                    cmd = ["pvscan", "--config", lvm_config, "--cache"]
-                run_sudo(logger, cmd, check=False, capture=True)
+                # General scan
+                run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
             elif _has_command("pvscan"):
                 run_sudo(logger, ["pvscan", "--cache"], check=True, capture=True)
+                run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
 
-            # Scan for volume groups with device filter
-            cmd = ["vgscan", "--cache"]
-            if lvm_config:
-                cmd = ["vgscan", "--config", lvm_config, "--cache"]
-            run_sudo(logger, cmd, check=True, capture=True)
-
-            # Find VGs that use NBD device PVs (with device filter)
+            # Find VGs using explicit device list (only NBD partitions)
             vgs_to_activate = []
-            if nbd_device and _has_command("pvs"):
+            if nbd_partitions and _has_command("pvs"):
                 try:
-                    cmd = ["pvs", "--noheadings", "-o", "vg_name,pv_name"]
-                    if lvm_config:
-                        cmd = ["pvs", "--config", lvm_config, "--noheadings", "-o", "vg_name,pv_name"]
+                    # Query each NBD partition directly with --devices to avoid host LVM
+                    vg_set = set()
+                    for part in nbd_partitions:
+                        try:
+                            result = run_sudo(
+                                logger,
+                                ["pvs", "--devices", part, "--noheadings", "-o", "vg_name"],
+                                check=True,
+                                capture=True,
+                                failure_log_level=logging.DEBUG
+                            )
+                            for line in result.stdout.strip().split('\n'):
+                                vg_name = line.strip()
+                                if vg_name:
+                                    vg_set.add(vg_name)
+                                    logger.info(f"  Found VG '{vg_name}' on {part}")
+                        except Exception as e:
+                            logger.debug(f"  No LVM PV on {part}: {e}")
+                            continue
 
-                    result = run_sudo(logger, cmd, check=True, capture=True)
-                    logger.info(f"PVs on {nbd_device}:\n{result.stdout.strip()}")
-
-                    for line in result.stdout.strip().split('\n'):
-                        parts = line.strip().split()
-                        if len(parts) >= 2:
-                            vg_name, pv_name = parts[0], parts[1]
-                            if nbd_device in pv_name:
-                                vgs_to_activate.append(vg_name)
-                    vgs_to_activate = list(set(vgs_to_activate))  # Remove duplicates
+                    vgs_to_activate = list(vg_set)
                     logger.info(f"Found VGs on {nbd_device}: {vgs_to_activate}")
                 except Exception as e:
-                    logger.warning(f"Could not determine VGs from NBD device: {e}")
+                    logger.warning(f"Could not determine VGs from NBD partitions: {e}")
 
-            # Activate only NBD-related VGs with device filter (prevents VG name collisions)
+            # Activate only NBD-related VGs
             if vgs_to_activate:
                 for vg in vgs_to_activate:
                     try:
-                        cmd = ["vgchange", "-ay", vg]
-                        if lvm_config:
-                            cmd = ["vgchange", "--config", lvm_config, "-ay", vg]
+                        # Build device list for vgchange to avoid host VG with same name
+                        devices_arg = []
+                        for part in nbd_partitions:
+                            devices_arg.extend(["--devices", part])
+
+                        cmd = ["vgchange"] + devices_arg + ["-ay", vg]
                         run_sudo(logger, cmd, check=True, capture=True)
                         logger.info(f"Activated VG: {vg} (from {nbd_device})")
                     except Exception as e:
