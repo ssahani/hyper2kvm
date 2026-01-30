@@ -390,12 +390,13 @@ class NBDDeviceManager:
 
     def _detect_layered_storage(self, raw_image: Path) -> bool:
         """
-        Detect if RAW image contains layered storage (LVM, mdraid, luks).
+        Detect if RAW image contains layered storage (LVM, mdraid, luks, btrfs).
 
         Using sparse detection (-S) with layered storage causes data corruption:
         - LVM metadata and extents may contain zero runs
         - mdraid superblocks span sparse regions
         - luks headers contain zero-padded areas
+        - btrfs metadata trees have sparse regions
 
         Sparse detection would punch holes through these critical structures,
         making volumes unreadable.
@@ -406,8 +407,10 @@ class NBDDeviceManager:
         Returns:
             True if layered storage detected, False otherwise
         """
+        detected_types = []
+
         try:
-            # Use qemu-img to get partition table info
+            # Method 1: Check partition table for known types
             result = subprocess.run(
                 ["parted", "-s", str(raw_image), "print"],
                 capture_output=True,
@@ -419,23 +422,49 @@ class NBDDeviceManager:
 
             # Check for LVM partition type (0x8e for DOS, E6D6D379-F507-44C2-A23C-238F2A3DF928 for GPT)
             if "lvm" in output or "8e" in output:
-                self.logger.info("  🔍 LVM partition detected in image")
-                return True
+                detected_types.append("LVM")
 
             # Check for Linux RAID (0xfd for DOS)
             if "raid" in output or "fd" in output:
-                self.logger.info("  🔍 mdraid partition detected in image")
-                return True
-
-            # For a more thorough check, we could mount via NBD and check /dev/mapper
-            # but that's more expensive. The partition type check catches most cases.
-
-            return False
+                detected_types.append("mdraid")
 
         except Exception as e:
-            self.logger.debug(f"Layered storage detection failed: {e}, assuming safe")
-            # If detection fails, err on the side of caution - disable sparse
+            self.logger.debug(f"Partition table check failed: {e}")
+
+        try:
+            # Method 2: Use file/blkid to detect filesystem signatures
+            # This catches luks and btrfs which may not have special partition types
+            result = subprocess.run(
+                ["file", "-s", str(raw_image)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            output = result.stdout.lower()
+
+            # Check for LUKS signature
+            if "luks" in output or "crypto_luks" in output:
+                detected_types.append("LUKS")
+
+            # Check for btrfs signature
+            if "btrfs" in output:
+                detected_types.append("btrfs")
+
+        except Exception as e:
+            self.logger.debug(f"Filesystem signature check failed: {e}")
+
+        if detected_types:
+            types_str = ", ".join(detected_types)
+            self.logger.info(f"  🔍 Layered storage detected: {types_str}")
+            self.logger.info(f"  ⚠️  Sparse detection will be disabled to prevent corruption")
             return True
+
+        # If detection fails or no results, err on the side of caution
+        if not detected_types:
+            self.logger.debug("  No layered storage detected, sparse-aware conversion is safe")
+
+        return False
 
     @retry_with_backoff(
         max_attempts=3,

@@ -1613,6 +1613,24 @@ class OfflineFSFix:
                 default={"enabled": False, "error": "failed"},
             )
 
+            # Post-conversion boot hardening (3 golden fixes for Linux)
+            # This runs for Linux guests only and applies production-grade boot fixes
+            post_conversion_audit: dict[str, Any] = {"enabled": False}
+            if not is_win and self.regen_initramfs:
+                from .bootloader.post_conversion import PostConversionBootFixer
+
+                post_conversion_audit = self._run_stage(
+                    "post_conversion_boot_hardening",
+                    lambda: PostConversionBootFixer(self.logger).apply_golden_fixes(
+                        g,
+                        harden_fstab=True,
+                        rebuild_initramfs=True,
+                        regenerate_grub=self.update_grub,
+                    ),
+                    default={"enabled": False, "error": "failed"},
+                )
+                self.logger.info(f"Post-conversion boot hardening: {U.json_dump(post_conversion_audit)}")
+
             regen_info: dict[str, Any]
             if self.regen_initramfs:
                 regen_info = self._run_stage(
@@ -1650,6 +1668,7 @@ class OfflineFSFix:
             self.report["analysis"]["virtio"] = virtio
             self.report["analysis"]["disk"] = disk
             self.report["analysis"]["regen"] = regen_info
+            self.report["analysis"]["post_conversion_boot_hardening"] = post_conversion_audit
             self.report["analysis"]["timings"] = dict(self._timings)
             self.report["timestamps"]["end"] = _dt.datetime.now().isoformat()
 
