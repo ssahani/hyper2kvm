@@ -45,6 +45,10 @@ from .appcompat.sqlserver import (
     generate_sql_reconfiguration_script,
 )
 from .appcompat.reporter import generate_compatibility_report
+from .performance.balloon import configure_balloon_driver
+from .performance.trim import enable_trim_discard
+from .performance.msi import enable_msi_interrupts
+from .performance.hyperv_cleanup import cleanup_hyperv_enlightenments
 
 
 def _safe_logger(self) -> logging.Logger:
@@ -257,6 +261,77 @@ class WindowsFixer:
 
         return "Unknown"
 
+    def optimize_performance(
+        self,
+        g: guestfs.GuestFS,
+        root: str,
+        enable_balloon: bool = True,
+        enable_trim: bool = True,
+        enable_msi: bool = True,
+        cleanup_hyperv: bool = False,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Apply performance optimizations for Windows on KVM.
+
+        Args:
+            g: GuestFS instance
+            root: Windows root path
+            enable_balloon: Configure VirtIO balloon driver (default: True)
+            enable_trim: Enable TRIM/discard for SSDs (default: True)
+            enable_msi: Enable MSI interrupts for VirtIO devices (default: True)
+            cleanup_hyperv: Remove Hyper-V enlightenments (default: False, auto-detect)
+            **kwargs: Additional options for specific optimizations
+
+        Returns:
+            Dict with optimization results
+        """
+        logger = _safe_logger(self)
+        logger.info("Applying performance optimizations")
+
+        results = {
+            "balloon": None,
+            "trim": None,
+            "msi": None,
+            "hyperv_cleanup": None,
+            "warnings": [],
+        }
+
+        try:
+            # Configure balloon driver
+            if enable_balloon:
+                balloon_interval = kwargs.get("balloon_memory_stats_interval", 10)
+                balloon_free_page = kwargs.get("balloon_free_page_reporting", True)
+
+                results["balloon"] = configure_balloon_driver(
+                    g, root, balloon_interval, balloon_free_page
+                )
+
+            # Enable TRIM/discard
+            if enable_trim:
+                trim_schedule = kwargs.get("trim_schedule_optimization", True)
+                results["trim"] = enable_trim_discard(g, root, trim_schedule)
+
+            # Enable MSI interrupts
+            if enable_msi:
+                msi_devices = kwargs.get("msi_devices", ["viostor", "netkvm"])
+                results["msi"] = enable_msi_interrupts(g, root, msi_devices)
+
+            # Cleanup Hyper-V enlightenments
+            if cleanup_hyperv:
+                hyperv_force = kwargs.get("hyperv_force_cleanup", False)
+                results["hyperv_cleanup"] = cleanup_hyperv_enlightenments(
+                    g, root, hyperv_force
+                )
+
+            logger.info("Performance optimization complete")
+
+        except Exception as e:
+            logger.error(f"Performance optimization failed: {e}")
+            logger.debug("Performance optimization error", exc_info=True)
+            results["warnings"].append(f"Optimization failed: {e}")
+
+        return results
+
 
 __all__ = [
     "WindowsFixer",
@@ -275,4 +350,8 @@ __all__ = [
     "detect_sql_server_instances",
     "generate_sql_reconfiguration_script",
     "generate_compatibility_report",
+    "configure_balloon_driver",
+    "enable_trim_discard",
+    "enable_msi_interrupts",
+    "cleanup_hyperv_enlightenments",
 ]
