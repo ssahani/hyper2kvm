@@ -1,1166 +1,281 @@
 # hyper2kvm Examples
 
-This directory contains **50+ working examples** for common hyper2kvm migration scenarios, organized by use case, including:
-- **VMCraft v9.0** library examples (AI/ML analytics, cloud optimization, DR planning)
-- Migration workflow examples (YAML/JSON configs)
-- Python library API examples for programmatic control
-
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [VMCraft Library Examples](#vmcraft-library-examples) ⭐ NEW
-- [Library API Examples](#library-api-examples)
-- [Python Script Examples](#python-script-examples)
-- [Directory Structure](#directory-structure)
-- [Common Scenarios](#common-scenarios)
-- [Configuration Format](#configuration-format)
-- [Complete Workflows](#complete-workflows)
-- [Tips and Best Practices](#tips-and-best-practices)
-
----
+Comprehensive examples demonstrating all features of hyper2kvm.
 
 ## Quick Start
 
-### 5-Minute Migration
-
 ```bash
-# 1. Install hyper2kvm (see docs/INSTALL.md)
-pip install -e .
+# Complete forensic analysis of VM (28 systemd methods)
+python3 systemd_forensic_analysis.py /path/to/disk.vmdk
 
-# 2. Run a basic conversion
-sudo python -m hyper2kvm local \
-  --vmdk /path/to/vm.vmdk \
-  --flatten \
-  --to-output vm-fixed.qcow2 \
-  --compress
+# Pre-migration readiness check
+python3 migration_readiness_check.py /path/to/disk.vmdk
 
-# 3. Or use a config file
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-basic.yaml
+# Security audit with HTML report
+python3 security_audit.py /path/to/disk.vmdk --format html
+
+# Compare systemd configurations across VMs
+python3 systemd_comparison.py vm1.vmdk vm2.vmdk vm3.vmdk
+
+# View all filesystem APIs (37+ methods)
+python3 vmcraft_filesystem_apis.py /path/to/disk.qcow2
+
+# Complete migration workflow
+python3 complete_migration_workflow.py /vmware/vm.vmdk /output/kvm
 ```
 
-### Using Configuration Files
+## Production Tools
 
+### 1. systemd Forensic Analysis (`systemd_forensic_analysis.py`)
+
+Complete offline forensic analysis using all 28 systemd inspection methods.
+
+**Categories analyzed:**
+- Virtualization detection & identity
+- Boot performance analysis
+- Security compliance & hardening
+- Anomaly detection (hidden units, suspicious sockets)
+- Crash data (core dumps, pstore)
+- Failed services analysis
+- Network configuration
+- Boot configuration (systemd-boot, UEFI)
+- System users & sessions
+- Migration readiness assessment
+- Advanced configuration (OOM daemon, time sync, extensions)
+- Journal analysis
+
+**Usage:**
 ```bash
-# Single config
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-basic.yaml
+python3 systemd_forensic_analysis.py /path/to/disk.vmdk
 
-# Merge multiple configs (later overrides earlier)
-sudo python -m hyper2kvm \
-  --config examples/yaml/00-common/common.yaml \
-  --config examples/yaml/10-local/local-linux-basic.yaml
-
-# Override with CLI args
-sudo python -m hyper2kvm \
-  --config examples/yaml/10-local/local-linux-basic.yaml \
-  --compress --to-output /custom/path.qcow2
+# Generates:
+# - Console output with formatted sections
+# - /tmp/forensic_analysis_report.json (detailed JSON report)
+# - /tmp/boot-plot.svg (boot timeline visualization)
+# - /tmp/journal_export.bin (exported journal logs)
 ```
 
----
-
-## VMCraft Library Examples
-
-**VMCraft v9.0** provides a pure Python VM manipulation platform with 307+ methods for comprehensive disk image operations, AI/ML intelligence, and enterprise features.
-
-### VMCraft Quick Start
-
-```python
-from hyper2kvm.core.vmcraft import VMCraft
-
-# Basic usage with context manager
-with VMCraft() as g:
-    # Add disk image
-    g.add_drive_opts("/path/to/disk.vmdk", readonly=True, format="vmdk")
-
-    # Launch (~1.9s)
-    g.launch()
-
-    # OS detection (15+ Linux distros, 20+ Windows versions)
-    roots = g.inspect_os()
-    for root in roots:
-        print(f"OS: {g.inspect_get_product_name(root)}")
-
-    # File operations (70+ methods)
-    hostname = g.cat("/etc/hostname")
-    g.write("/etc/motd", "Welcome!\n")
-
-    # Windows registry operations
-    if g.inspect_get_type(roots[0]) == "windows":
-        product = g.win_registry_read(
-            "SOFTWARE",
-            r"Microsoft\Windows NT\CurrentVersion",
-            "ProductName"
-        )
+**Example output:**
+```
+Security Compliance Score: 60/100
+Migration Ready: YES ✓
+Anomalies Found: 0
+Core Dumps: 0
+Boot Time: 12.34s (kernel: 3.21s, userspace: 9.13s)
 ```
 
-### AI/ML Analytics (v9.0)
+### 2. Migration Readiness Check (`migration_readiness_check.py`)
 
-```python
-with VMCraft() as g:
-    # Anomaly detection
-    metrics = {
-        "cpu_usage": [45, 50, 48, 95, 49],  # Spike detected
-        "memory_usage": [60, 62, 61, 63, 59]
-    }
-    result = g.ml_detect_anomalies(metrics, "cpu_usage")
+Pre-flight validation for VMware to KVM migrations.
 
-    # Workload classification
-    classification = g.ml_classify_workload(metrics)
-    print(f"Workload: {classification['workload_type']}")
-    # Output: "compute_intensive", "memory_intensive", etc.
+**6 comprehensive checks:**
+1. Virtualization detection
+2. systemd migration readiness
+3. Boot configuration compatibility
+4. Network configuration portability
+5. Security posture assessment
+6. Service health validation
 
-    # Behavior prediction
-    historical_data = [
-        {"timestamp": "2026-01-01T00:00:00", "cpu_usage": 45},
-        # ... more data points
-    ]
-    prediction = g.ml_predict_behavior(historical_data)
-```
+**Risk levels:**
+- **Minimal**: Ready to migrate immediately
+- **Low**: Minor issues, migration should proceed smoothly
+- **Medium**: Some issues, recommend fixing before migration
+- **High**: Critical blockers, MUST fix before migration
 
-### Cloud Optimization (v9.0)
-
-```python
-with VMCraft() as g:
-    # Cloud readiness assessment
-    system_info = {
-        "os_type": "linux",
-        "distro": "ubuntu",
-        "cpu_cores": 8,
-        "memory_gb": 16
-    }
-    readiness = g.cloud_analyze_readiness(system_info)
-    print(f"Ready: {readiness['ready']} (score: {readiness['score']}/100)")
-
-    # Instance recommendations (AWS, Azure, GCP)
-    requirements = {"cpu_cores": 8, "memory_gb": 16}
-    instances = g.cloud_recommend_instance_type(requirements, "aws")
-
-    # Cost calculation
-    usage_profile = {"hours_per_month": 730, "cpu_cores": 8}
-    costs = g.cloud_calculate_costs(usage_profile, "azure")
-```
-
-### Disaster Recovery (v9.0)
-
-```python
-with VMCraft() as g:
-    # Assess recovery requirements
-    system_info = {"business_criticality": "high"}
-    assessment = g.dr_assess_recovery_requirements(system_info)
-    print(f"Tier: {assessment['tier']}, RTO: {assessment['target_rto']}")
-
-    # Create backup strategy
-    requirements = {"tier": 1, "data_size_gb": 500}
-    strategy = g.dr_create_backup_strategy(requirements)
-
-    # Calculate RTO/RPO
-    backup_config = {"full_backup_frequency_hours": 24}
-    rto_rpo = g.dr_calculate_rto_rpo(backup_config)
-```
-
-### Audit Trail & Compliance (v9.0)
-
-```python
-with VMCraft() as g:
-    # Log audit events
-    g.audit_log_event(
-        category="security",
-        action="file_modified",
-        details={"path": "/etc/passwd"},
-        severity="CRITICAL"
-    )
-
-    # Generate compliance report (SOC2, PCI-DSS, HIPAA, GDPR)
-    report = g.audit_generate_compliance_report("SOC2", period_days=90)
-    print(f"Compliance score: {report['compliance_score']}/100")
-
-    # Verify integrity
-    verification = g.audit_verify_integrity()
-```
-
-### Resource Orchestration (v9.0)
-
-```python
-with VMCraft() as g:
-    # Analyze resource usage
-    current_metrics = {
-        "cpu_usage_percent": 75,
-        "memory_usage_percent": 60
-    }
-    analysis = g.orchestrate_analyze_resource_usage(current_metrics)
-
-    # Create auto-scaling policy
-    policy = g.orchestrate_create_scaling_policy(
-        policy_name="production",
-        policy_type="moderate"  # aggressive, moderate, conservative
-    )
-
-    # Execute scaling action
-    result = g.orchestrate_execute_scaling_action(
-        action="scale_up",
-        current_capacity=4,
-        reason="CPU threshold exceeded"
-    )
-```
-
-**Complete VMCraft Documentation:** See [docs/09-VMCraft.md](../docs/09-VMCraft.md) for all 307+ methods.
-
----
-
-## Library API Examples
-
-hyper2kvm can be used as a **Python library** for programmatic control over VM migrations. The following example scripts demonstrate library usage:
-
-### Local Conversion
-
-**`library_local_conversion.py`** - Convert local VMDK to qcow2
-
-```python
-from hyper2kvm import DiskProcessor
-
-processor = DiskProcessor()
-result = processor.process_disk(
-    source_path='/data/vm.vmdk',
-    output_path='/data/vm.qcow2',
-    flatten=True,
-    compress=True
-)
-```
-
-Usage:
+**Usage:**
 ```bash
-python library_local_conversion.py /data/vm.vmdk /data/vm.qcow2
+python3 migration_readiness_check.py /path/to/vm.vmdk
+
+# Exit codes:
+# 0 = Ready with minimal risk
+# 1 = Ready but risky (medium/high risk)
+# 2 = Not ready (blockers present)
+
+# Generates:
+# - Formatted console report with recommendations
+# - /tmp/migration_readiness_<vm-name>.json
 ```
 
-### vSphere Migration
+**Example output:**
+```
+✅ READY FOR MIGRATION
+Risk Level: LOW
+  Minor issues detected, migration should proceed smoothly.
 
-**`library_vsphere_migration.py`** - Migrate from vCenter/ESXi
-
-```python
-from hyper2kvm import VMwareClient, Orchestrator
-
-client = VMwareClient(
-    host='vcenter.example.com',
-    user='administrator@vsphere.local',
-    password=password,
-    datacenter='DC1'
-)
-
-orchestrator = Orchestrator(vmware_client=client)
-result = orchestrator.run(
-    vm_name='rhel9-prod',
-    output_dir='/var/lib/libvirt/images',
-    compress=True
-)
+NEXT STEPS:
+1. Perform backup of source VM
+2. Test migration in non-production environment
+3. Execute migration
+4. Run post-migration validation
 ```
 
-Usage:
+### 3. Security Audit (`security_audit.py`)
+
+Comprehensive security compliance audit with multiple output formats.
+
+**6 audit categories (weighted scoring):**
+1. systemd service security (25%)
+2. Security compliance checks (25%)
+3. Anomaly detection (20%)
+4. User & session security (15%)
+5. Network security (10%)
+6. Boot security (5%)
+
+**Output formats:**
+- **JSON**: Machine-readable detailed report
+- **HTML**: Visual report with grades and CSS styling
+- **Text**: Human-readable console output (default)
+
+**Usage:**
 ```bash
-export VCENTER_PASSWORD='your-password'
-python library_vsphere_migration.py vcenter.example.com vm-name
+# Console output (default)
+python3 security_audit.py /path/to/vm.vmdk
+
+# HTML report with visual grades
+python3 security_audit.py /path/to/vm.vmdk --format html
+
+# JSON for automation/CI
+python3 security_audit.py /path/to/vm.vmdk --format json
+
+# Generates:
+# - /tmp/security_audit_<vm>_<timestamp>.{html,json,txt}
 ```
 
-### Azure Migration
+**Example output:**
+```
+Overall Security Score: 84/100 (Grade: B) 🟡
+Risk Level: LOW
 
-**`library_azure_migration.py`** - Migrate from Azure
-
-```python
-from hyper2kvm import AzureSourceProvider, AzureConfig, Orchestrator
-
-config = AzureConfig(
-    subscription_id=subscription_id,
-    resource_group='my-rg',
-    vm_name='ubuntu-vm-01',
-    tenant_id=tenant_id,
-    client_id=client_id,
-    client_secret=client_secret
-)
-
-provider = AzureSourceProvider(config)
-orchestrator = Orchestrator(source_provider=provider)
-result = orchestrator.run(output_dir='/var/lib/libvirt/images')
+Category Scores:
+  compliance               60/100
+  anomalies               100/100
+  user_security            90/100
+  network_security        100/100
+  boot_security           100/100
 ```
 
-Usage:
+### 4. systemd Configuration Comparison (`systemd_comparison.py`)
+
+Compare systemd configurations across multiple VMs to identify distribution-specific behaviors.
+
+**Comparison metrics:**
+- Virtualization types
+- Boot performance
+- Security scores
+- Anomaly counts
+- Failed services
+- Network configurations
+- Migration readiness
+- System extensions
+
+**Usage:**
 ```bash
-export AZURE_SUBSCRIPTION_ID='...'
-export AZURE_TENANT_ID='...'
-export AZURE_CLIENT_ID='...'
-export AZURE_CLIENT_SECRET='...'
-python library_azure_migration.py my-rg my-vm
+python3 systemd_comparison.py vm1.vmdk vm2.vmdk vm3.vmdk
+
+# Generates:
+# - Side-by-side comparison table
+# - Key differences analysis
+# - Per-VM recommendations
+# - /tmp/systemd_comparison_report.json
 ```
 
-### Guest OS Fixing
+**Example output:**
+```
+Metric                              | Ubuntu          | openSUSE        | Fedora
+------------------------------------------------------------------------------
+Security Compliance Score           |              75 |              60 |              85
+Boot Time (seconds)                 |           12.34 |           15.67 |           10.21
+Migration Ready                     |             YES |             YES |             YES
+systemd-networkd Files              |               3 |               0 |               5
 
-**`library_guest_fixing.py`** - Apply offline fixes to converted VM
+KEY DIFFERENCES:
+🔒 Security Compliance:
+   Best:  Fedora (85/100)
+   Worst: openSUSE (60/100)
+   Gap:   25 points
 
-```python
-from hyper2kvm import GuestDetector
-from hyper2kvm.fixers import OfflineFSFix
-
-detector = GuestDetector()
-guest = detector.detect_from_image(image_path)
-
-fixer = OfflineFSFix(image_path=image_path, guest_identity=guest)
-fixer.fix_fstab()
-fixer.fix_grub()
-fixer.fix_network()
-fixer.regenerate_initramfs()
+⚡ Boot Performance:
+   Fastest: Fedora (10.21s)
+   Slowest: openSUSE (15.67s)
+   Diff:    5.46s (53.5% slower)
 ```
 
-Usage:
+## API Reference Examples
+
+### 5. systemd API Reference (`systemd_api_reference.py`)
+
+Complete reference for all 46 systemd APIs with code examples.
+
+### 6. Interactive systemd Demo (`demo_systemd_apis.py`)
+
+Interactive demonstration of systemd APIs with real VM analysis.
+
+### 7. Filesystem APIs (`vmcraft_filesystem_apis.py`)
+
+All 37+ filesystem detection and manipulation APIs.
+
+## Migration Workflow Examples
+
+### 8. Complete Migration Workflow (`complete_migration_workflow.py`)
+
+End-to-end VMware to KVM migration with pre/post validation.
+
+### 9. Multi-VM Comparison (`compare_vms.py`)
+
+Compare multiple VMs for migration planning.
+
+### 10. Migration Benchmark (`benchmark_migration.py`)
+
+Performance benchmarking for migration operations.
+
+## Usage Tips
+
+**For production migrations:**
 ```bash
-sudo python library_guest_fixing.py /var/lib/libvirt/images/vm.qcow2
+# 1. Pre-flight check
+python3 migration_readiness_check.py vm.vmdk
+# Exit code 0 = proceed, 1 = review warnings, 2 = fix blockers
+
+# 2. Security audit
+python3 security_audit.py vm.vmdk --format html
+# Review HTML report before migration
+
+# 3. Execute migration
+python3 complete_migration_workflow.py vm.vmdk /output/kvm
+
+# 4. Post-migration validation
+python3 systemd_forensic_analysis.py /output/kvm/vm.qcow2
 ```
 
-### Boot Testing
-
-**`library_boot_testing.py`** - Test VM boots correctly
-
-```python
-from hyper2kvm.testers import QemuTest
-
-tester = QemuTest(
-    image_path=image_path,
-    memory=4096,
-    vcpus=2,
-    uefi=True,
-    timeout=180
-)
-
-result = tester.test_boot()
-if result.success:
-    print(f"✓ Boot successful in {result.boot_time}s")
-```
-
-Usage:
+**For forensic investigation:**
 ```bash
-python library_boot_testing.py /var/lib/libvirt/images/vm.qcow2 auto
+# Full analysis
+python3 systemd_forensic_analysis.py crashed-vm.vmdk
+
+# Check for anomalies
+python3 security_audit.py crashed-vm.vmdk
+
+# Review journal logs
+# Check /tmp/journal_export.bin
 ```
 
-### Complete API Documentation
-
-For complete library API documentation, see **[docs/08-Library-API.md](../docs/08-Library-API.md)**
-
----
-
-## Python Script Examples
-
-### TUI (Text User Interface)
-
-Interactive dashboards and progress bars for migration monitoring:
-
-- **`tui/tui_demo.py`** - Basic TUI demonstration
-- **`tui/tui_dashboard_example.py`** - Complete dashboard with VM monitoring
-- **`tui/tui_integration_example.py`** - TUI integrated with migration workflows
-- **`tui/progress_bar_demo.py`** - Custom progress bars with orange theme
-
-See [tui/README.md](tui/README.md) for details.
-
-### Async/Parallel Migrations
-
-High-performance parallel VM migrations (3-5x speedup):
-
-- **`async/async_batch_migration_example.py`** - Parallel VM migrations using async/await
-- **`async/async_with_tui_example.py`** - Async migrations with TUI dashboard
-
-See [async/README.md](async/README.md) for details.
-
-### Daemon Mode
-
-Background processing with metrics and monitoring:
-
-- **`daemon/daemon_with_metrics_example.py`** - Daemon with Prometheus metrics
-- **`daemon/enhanced_features_example.py`** - Enhanced features (retry, validation, logging)
-
-See [daemon/README.md](daemon/README.md) for details.
-
-### Library API
-
-Programmatic VM migration via Python library:
-
-- **`library-api/library_local_conversion.py`** - Convert local VMDK to qcow2
-- **`library-api/library_vsphere_migration.py`** - Migrate from vSphere
-- **`library-api/library_azure_migration.py`** - Migrate from Azure
-- **`library-api/library_guest_fixing.py`** - Apply offline OS fixes
-- **`library-api/library_boot_testing.py`** - Boot validation testing
-
-See [library-api/README.md](library-api/README.md) for details.
-
----
-
-## Directory Structure
-
-```
-examples/
-├── README.md                    # This file
-│
-├── library-api/                 # Python library API examples
-│   ├── README.md                # Library examples documentation
-│   ├── library_local_conversion.py     # Convert local VMDK
-│   ├── library_vsphere_migration.py    # Migrate from vSphere
-│   ├── library_azure_migration.py      # Migrate from Azure
-│   ├── library_guest_fixing.py         # Apply offline fixes
-│   └── library_boot_testing.py         # Boot validation
-│
-├── tui/                         # TUI (Text UI) examples
-│   ├── README.md                # TUI examples documentation
-│   ├── tui_demo.py              # Basic TUI demo
-│   ├── tui_dashboard_example.py # Full dashboard
-│   ├── tui_integration_example.py # TUI + migration workflow
-│   └── progress_bar_demo.py     # Custom progress bars
-│
-├── async/                       # Async/parallel migration examples
-│   ├── README.md                # Async examples documentation
-│   ├── async_batch_migration_example.py  # Parallel VM migrations
-│   └── async_with_tui_example.py         # Async + TUI
-│
-├── daemon/                      # Daemon mode examples
-│   ├── README.md                # Daemon examples documentation
-│   ├── daemon_with_metrics_example.py    # Daemon + metrics
-│   └── enhanced_features_example.py      # Enhanced features demo
-│
-├── manifests/                   # Manifest examples and artifacts
-│   ├── artifact-manifest-local.json
-│   ├── artifact-manifest-minimal.json
-│   ├── artifact-manifest-multi-disk.json
-│   ├── artifact-manifest-vsphere.json
-│   ├── batch-migration-example.yaml
-│   └── single-vm-example.yaml
-│
-├── monitoring/                  # Monitoring configurations
-│   ├── grafana-dashboard.json   # Grafana dashboard for metrics
-│   └── prometheus.yml           # Prometheus configuration
-│
-├── batch/                       # Batch operation configs
-│   ├── CHECKPOINT_RESUME_GUIDE.md
-│   ├── batch-simple.json
-│   ├── batch-with-checkpoint.json
-│   ├── batch-with-profiles.yaml
-│   └── ... (more)
-│
-├── hooks/                       # Hook examples
-│   ├── README.md
-│   ├── manifest-with-hooks.json
-│   └── sample-hooks/
-│
-├── scripts/                     # Shell script examples
-│   ├── migrate-single-vm.sh     # Single VM migration script
-│   ├── migrate-batch.sh         # Batch migration script
-│   └── test-migration.sh        # Test converted VMs
-│
-├── yaml/                        # YAML configuration examples
-│   ├── 00-common/               # Reusable base configs
-│   ├── 10-local/                # Local VMDK conversions (14 examples)
-│   ├── 11-batch/                # Batch/multi-VM migrations (2 examples)
-│   ├── 20-live-fix/             # Live SSH fixes (3 examples)
-│   ├── 30-fetch-and-fix/        # Remote fetch (3 examples)
-│   ├── 40-ova-ovf/              # OVA/OVF handling (2 examples)
-│   ├── 50-daemon/               # Automation (2 examples)
-│   ├── 60-vsphere/              # vSphere integration (11 examples)
-│   └── 99-merge-demos/          # Config merging examples (3 examples)
-│
-└── json/                        # JSON configuration examples (organized by use case)
-    ├── 00-common/, 10-local/, 11-batch/, 20-live-fix/
-    ├── 30-fetch-and-fix/, 40-ova-ovf/, 50-daemon/
-    ├── 60-vsphere/, 70-complete-workflows/, 99-merge-demos/
-    └── ... (more)
-```
-
-**Total:** 50+ working examples (40+ YAML/JSON configs + 10+ Python scripts)
-
----
-
-## Common Scenarios
-
-### Linux Migrations
-
-#### 1. Basic Linux VM Conversion
-
+**For fleet management:**
 ```bash
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-basic.yaml
-```
-
-**What it does:**
-- Converts VMDK to qcow2
-- Flattens snapshots
-- Fixes /etc/fstab (UUID/PARTUUID)
-- Regenerates bootloader (GRUB)
-- Cleans network config
-- Compresses output
-
-**Use when:** You have a Linux VM VMDK file locally
-
-#### 2. Cloud-Init Ready Image
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-cloud-init.yaml
-```
-
-**What it does:**
-- Everything in basic conversion
-- Injects cloud-init
-- Configures for cloud deployment
-- Sets up console access
-
-**Use when:** Preparing VMs for cloud platforms (OpenStack, etc.)
-
-#### 3. Expand Root Partition
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-grow-root.yaml
-```
-
-**What it does:**
-- Resizes disk image
-- Expands root partition
-- Resizes filesystem
-- Fixes bootloader and fstab
-
-**Use when:** Your VM disk is too small for the target environment
-
-#### 4. UEFI Boot Test
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-libvirt-smoke-uefi.yaml
-```
-
-**What it does:**
-- Converts VM
-- Validates UEFI boot
-- Tests with libvirt
-- Generates boot report
-
-**Use when:** Migrating UEFI-based VMs
-
----
-
-### Windows Migrations
-
-#### 5. Windows with VirtIO Drivers
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-windows-virtio-basic.yaml
-```
-
-**What it does:**
-- Converts Windows VMDK
-- Injects VirtIO storage drivers (offline registry modification)
-- Injects VirtIO network drivers
-- Two-phase boot strategy (SATA → VirtIO)
-- Validates boot
-
-**Use when:** Migrating any Windows VM to KVM
-
-#### 6. Windows with Extra Devices
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-windows-virtio-extra-devices.yaml
-```
-
-**What it does:**
-- All basic Windows fixes
-- Adds VirtIO balloon driver
-- Adds VirtIO RNG driver
-- Adds VirtIO SCSI driver
-- QEMU guest agent
-
-**Use when:** You need advanced VirtIO devices for Windows
-
----
-
-### Remote/Network Migrations
-
-#### 7. Fetch from ESXi via SSH
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/30-fetch-and-fix/fetch-basic.yaml
-```
-
-**What it does:**
-- Connects to ESXi host via SSH
-- Downloads VMDK files
-- Flattens snapshot chains
-- Applies all fixes
-- Converts to qcow2
-
-**Use when:** Migrating VMs from ESXi without vCenter
-
-#### 8. Parallel Batch Fetch
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/30-fetch-and-fix/fetch-batch-parallel.yaml
-```
-
-**What it does:**
-- Fetches multiple VMs in parallel
-- Processes disks concurrently
-- Maximizes throughput
-- Individual error isolation
-
-**Use when:** Migrating many VMs from ESXi
-
----
-
-### vSphere Integration
-
-#### 9. List VMs in vSphere
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/60-vsphere/vsphere-list-vms.yaml
-```
-
-**What it does:**
-- Connects to vCenter
-- Lists all VMs
-- Shows VM properties
-- Exports to JSON/YAML
-
-**Use when:** Planning migrations from vSphere
-
-#### 10. Export VM from vSphere
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/60-vsphere/vsphere-export-vm.yaml
-```
-
-**What it does:**
-- Exports VM from vCenter
-- Downloads all disks
-- Applies fixes
-- Converts to qcow2
-- Validates boot
-
-**Use when:** Migrating from vCenter/vSphere
-
-#### 11. Enable CBT (Changed Block Tracking)
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/60-vsphere/vsphere-enable-cbt.yaml
-```
-
-**What it does:**
-- Enables CBT on VM
-- Configures for incremental backups
-- Prepares for fast syncs
-
-**Use when:** Setting up incremental migration workflows
-
----
-
-### Live Fixes (No Conversion)
-
-#### 12. Fix Running Linux VM
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/20-live-fix/live-fix-basic.yaml
-```
-
-**What it does:**
-- Connects to running VM via SSH
-- Fixes /etc/fstab
-- Regenerates GRUB
-- Cleans network config
-- NO conversion, NO downtime
-
-**Use when:** Fixing VMs already running on KVM
-
-#### 13. Dry-Run Preview
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/20-live-fix/live-fix-dry-run.yaml
-```
-
-**What it does:**
-- Shows what WOULD be changed
-- No actual modifications
-- Generates detailed report
-
-**Use when:** Testing fixes before applying
-
----
-
-### Batch Operations
-
-#### 14. Migrate Two VMs
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/11-batch/batch-local-two-vms.yaml
-```
-
-**What it does:**
-- Processes two VMs sequentially
-- Independent error handling
-- Individual reports
-
-**Use when:** Small batch migrations
-
-#### 15. Migrate Many VMs (YAML Matrix)
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/11-batch/batch-local-many.yaml
-```
-
-**What it does:**
-- Reads VM list from YAML
-- Processes all VMs
-- Parallel execution option
-- Batch summary report
-
-**Use when:** Large-scale migrations
-
----
-
-### Advanced Workflows
-
-#### 16. Raw Disk for DD
-
-```bash
-sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-raw-for-dd.yaml
-```
-
-**What it does:**
-- Converts to RAW format
-- Optimized for `dd` imaging
-- Sparse file support
-- Exact byte copy
-
-**Use when:** Creating bootable USB or bare-metal deployments
-
----
-
-## Configuration Format
-
-### YAML Example (Recommended)
-
-```yaml
-# Basic Linux migration
-cmd: local
-vmdk: /data/vms/web-server/web-server.vmdk
-flatten: true
-to_output: /data/kvm/web-server.qcow2
-compress: true
-
-# Fixes
-fix_fstab: true
-fix_grub: true
-fix_network: true
-
-# Validation
-libvirt_test: true
-
-# Reporting
-report: /var/log/migrations/web-server-$(date +%Y%m%d).md
-log_level: INFO
-```
-
-### Minimal Example
-
-```yaml
-cmd: local
-vmdk: /path/to/vm.vmdk
-to_output: /output/vm.qcow2
-```
-
-### Comprehensive Example
-
-```yaml
-# Command and input
-cmd: local
-vmdk: /data/vm/ubuntu-server.vmdk
-
-# Processing
-flatten: true
-compress: true
-grow_root: 20G
-
-# Linux fixes
-fix_fstab: true
-fix_grub: true
-fix_initramfs: true
-fix_network: true
-remove_vmware_tools: true
-
-# Cloud preparation
-inject_cloud_init: true
-
-# Testing
-libvirt_test: true
-qemu_test: true
-
-# Output
-to_output: /data/kvm/ubuntu-server.qcow2
-output_format: qcow2
-
-# Reporting
-report: ubuntu-server-migration.md
-log_level: DEBUG
-dry_run: false
-```
-
----
-
-## Complete Workflows
-
-### Workflow 1: VMware Workstation → KVM
-
-**Scenario:** Migrate a development VM from VMware Workstation to KVM
-
-```bash
-# Step 1: Locate the VMDK
-ls ~/vmware/Ubuntu-Development/*.vmdk
-
-# Step 2: Convert with fixes
-sudo python -m hyper2kvm local \
-  --vmdk ~/vmware/Ubuntu-Development/Ubuntu-Development.vmdk \
-  --flatten \
-  --to-output ~/kvm/ubuntu-dev.qcow2 \
-  --compress \
-  --fix-fstab \
-  --fix-grub \
-  --fix-network
-
-# Step 3: Test boot
-sudo python -m hyper2kvm local \
-  --vmdk ~/kvm/ubuntu-dev.qcow2 \
-  --qemu-test
-
-# Step 4: Import to libvirt
-sudo cp ~/kvm/ubuntu-dev.qcow2 /var/lib/libvirt/images/
-sudo virt-install \
-  --name ubuntu-dev \
-  --memory 4096 \
-  --vcpus 2 \
-  --disk /var/lib/libvirt/images/ubuntu-dev.qcow2,bus=virtio \
-  --network bridge=virbr0,model=virtio \
-  --graphics vnc \
-  --import
-```
-
-### Workflow 2: ESXi → KVM (Production)
-
-**Scenario:** Migrate production web server from ESXi to KVM
-
-```bash
-# Step 1: Fetch from ESXi
-sudo python -m hyper2kvm fetch-and-fix \
-  --host esxi-prod-01.example.com \
-  --user root \
-  --identity ~/.ssh/esxi_key \
-  --remote /vmfs/volumes/production/web-01/web-01.vmdk \
-  --fetch-all \
-  --flatten \
-  --to-output /staging/web-01.qcow2 \
-  --compress \
-  --report /staging/reports/web-01-migration.md
-
-# Step 2: Test on staging KVM host
-scp /staging/web-01.qcow2 staging-kvm:/var/lib/libvirt/images/
-ssh staging-kvm "sudo virsh define /staging/web-01.xml && sudo virsh start web-01"
-
-# Step 3: Validate
-ssh staging-kvm "curl http://localhost"  # Test web service
-
-# Step 4: Production deployment
-scp /staging/web-01.qcow2 prod-kvm:/var/lib/libvirt/images/
-ssh prod-kvm "sudo virsh define /prod/web-01.xml && sudo virsh start web-01"
-```
-
-### Workflow 3: vSphere → KVM (Batch)
-
-**Scenario:** Migrate 10 VMs from vCenter to KVM
-
-```bash
-# Step 1: Create VM list (vms-to-migrate.yaml)
-cat > vms-to-migrate.yaml <<EOF
-vms:
-  - vm_name: web-01
-    output: /data/kvm/web-01.qcow2
-  - vm_name: web-02
-    output: /data/kvm/web-02.qcow2
-  - vm_name: db-01
-    output: /data/kvm/db-01.qcow2
-  # ... more VMs
-EOF
-
-# Step 2: Export all VMs
-sudo python -m hyper2kvm vsphere \
-  --vcenter vcenter.example.com \
-  --username admin@vsphere.local \
-  --password-file ~/.vcenter_pass \
-  --vs-action export-batch \
-  --config vms-to-migrate.yaml \
-  --parallel 4
-
-# Step 3: Validate all
-for vm in /data/kvm/*.qcow2; do
-  sudo python -m hyper2kvm local \
-    --vmdk "$vm" \
-    --libvirt-test \
-    --dry-run
+# Compare all VMs
+python3 systemd_comparison.py vm*.vmdk
+
+# Audit all VMs
+for vm in vm*.vmdk; do
+    python3 security_audit.py "$vm" --format json
 done
+
+# Aggregate results
+jq -s 'map({name: .vm_name, score: .overall_score})' /tmp/security_audit_*.json
 ```
 
-### Workflow 4: Windows Migration
+## See Also
 
-**Scenario:** Migrate Windows 10 VM with full driver support
-
+Individual script help:
 ```bash
-# Step 1: Download VirtIO drivers
-wget https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso \
-  -O /data/virtio-win.iso
-
-# Step 2: Convert with driver injection
-sudo python -m hyper2kvm local \
-  --vmdk /data/vmware/Windows10-Pro/Windows10-Pro.vmdk \
-  --windows \
-  --inject-virtio \
-  --virtio-win-iso /data/virtio-win.iso \
-  --flatten \
-  --compress \
-  --to-output /data/kvm/windows10.qcow2 \
-  --report /data/reports/windows10-migration.md
-
-# Step 3: Import to libvirt with UEFI
-sudo virt-install \
-  --name windows10 \
-  --memory 8192 \
-  --vcpus 4 \
-  --disk /data/kvm/windows10.qcow2,bus=virtio \
-  --network network=default,model=virtio \
-  --os-variant win10 \
-  --boot uefi \
-  --graphics spice \
-  --import
+python3 <script>.py --help
 ```
-
----
-
-## Tips and Best Practices
-
-### General Best Practices
-
-1. **Always Flatten Snapshots**
-   ```yaml
-   flatten: true
-   ```
-   Ensures clean, single-file output without dependencies
-
-2. **Use Compression**
-   ```yaml
-   compress: true
-   ```
-   QCOW2 compression saves 40-60% disk space
-
-3. **Generate Reports**
-   ```yaml
-   report: migration-report-$(date +%Y%m%d-%H%M%S).md
-   ```
-   Documents all changes for troubleshooting
-
-4. **Test Before Production**
-   ```yaml
-   dry_run: true
-   libvirt_test: true
-   ```
-   Validate conversion plan and boot capability
-
-5. **Keep Backups**
-   - Never delete source VMDKs until new VM is verified
-   - Keep migration reports for audit trail
-
-### Performance Optimization
-
-1. **Parallel Processing**
-   ```yaml
-   parallel_processing: true
-   parallel_workers: 4
-   ```
-   Use for multi-disk VMs
-
-2. **Skip Unnecessary Fixes**
-   ```yaml
-   fix_network: false  # If network already correct
-   ```
-
-3. **Use RAW for Speed**
-   ```yaml
-   output_format: raw  # Faster than qcow2, but larger
-   ```
-
-### Troubleshooting
-
-1. **Enable Debug Logging**
-   ```yaml
-   log_level: DEBUG
-   ```
-
-2. **Dry-Run First**
-   ```yaml
-   dry_run: true
-   ```
-
-3. **Test Individual Components**
-   ```bash
-   # Test disk inspection
-   sudo guestfish --ro -a vm.vmdk -i
-
-   # Test qemu-img
-   qemu-img info vm.vmdk
-   ```
-
-### Security
-
-1. **Use SSH Keys**
-   ```yaml
-   identity: ~/.ssh/esxi_key
-   ```
-
-2. **Store Credentials Securely**
-   ```yaml
-   password_file: ~/.vcenter_pass  # Not in YAML!
-   ```
-
-3. **Validate Checksums**
-   ```yaml
-   verify_checksums: true
-   ```
-
----
-
-## Creating Custom Configurations
-
-### Template
-
-```yaml
-# ============================================
-# Migration Configuration
-# ============================================
-# Description: [What this migration does]
-# Use Case: [When to use this]
-# Prerequisites: [What you need]
-# ============================================
-
-# Command
-cmd: local  # or fetch-and-fix, vsphere, etc.
-
-# Input
-vmdk: /path/to/source.vmdk
-
-# Processing
-flatten: true
-compress: true
-
-# Fixes (enable as needed)
-fix_fstab: true
-fix_grub: true
-fix_network: true
-
-# Output
-to_output: /path/to/output.qcow2
-
-# Testing
-libvirt_test: false
-dry_run: false
-
-# Reporting
-report: migration-report.md
-log_level: INFO
-```
-
-### Save and Run
-
-```bash
-# Save as my-migration.yaml
-sudo python -m hyper2kvm --config my-migration.yaml
-```
-
----
-
-## Example Index
-
-### By Use Case
-
-**Quick Conversions:**
-- `10-local/local-linux-basic.yaml` - Fastest path to qcow2
-- `10-local/local-windows-virtio-basic.yaml` - Windows quick migration
-
-**Production Migrations:**
-- `30-fetch-and-fix/fetch-full-chain-and-test.yaml` - Complete workflow
-- `60-vsphere/vsphere-export-vm.yaml` - vSphere export
-
-**Testing/Validation:**
-- `10-local/local-linux-qemu-smoke.yaml` - QEMU boot test
-- `10-local/local-linux-libvirt-smoke-uefi.yaml` - UEFI validation
-- `20-live-fix/live-fix-dry-run.yaml` - Preview changes
-
-**Advanced:**
-- `10-local/local-with-batch-export-post.yaml` - Hybrid approach
-- `11-batch/batch-local-many.yaml` - Mass migration
-- `50-daemon/daemon-watch.yaml` - Automated monitoring
-
-### By Operating System
-
-**Linux:**
-- Ubuntu/Debian: `10-local/local-linux-basic.yaml`
-- RHEL/CentOS: `10-local/local-linux-basic.yaml`
-- Cloud Images: `10-local/local-linux-cloud-init.yaml`
-
-**Windows:**
-- Windows 10/11: `10-local/local-windows-virtio-basic.yaml`
-- Windows Server: `10-local/local-windows-virtio-extra-devices.yaml`
-
-**Specialized:**
-- PhotonOS: `yaml/photon-ova.yaml`
-- RHEL 10: `yaml/stabilizeall-esx8-rhel10.yaml`
-
----
-
-## Getting Help
-
-**Documentation:**
-- [Quick Start Guide](../docs/03-Quick-Start.md)
-- [CLI Reference](../docs/04-CLI-Reference.md)
-- [YAML Configuration Guide](../docs/05-YAML-Examples.md)
-- [Troubleshooting](../docs/90-Failure-Modes.md)
-
-**Command-Line Help:**
-```bash
-python -m hyper2kvm --help
-python -m hyper2kvm local --help
-python -m hyper2kvm vsphere --help
-```
-
-**Community:**
-- GitHub Issues: https://github.com/ssahani/hyper2kvm/issues
-- Discussions: https://github.com/ssahani/hyper2kvm/discussions
-
----
-
-## Contributing Examples
-
-Have a useful migration scenario? Share it!
-
-1. Create your configuration file
-2. Test it thoroughly
-3. Document the use case
-4. Submit a pull request
-
-**Example template:**
-```yaml
-# ============================================
-# [Example Name]
-# ============================================
-# Description: [Clear description of what this does]
-# Use Case: [When someone should use this]
-# Prerequisites: [What's needed to run this]
-# Author: [Your name]
-# Date: [Date created]
-# ============================================
-
-cmd: [command]
-# ... rest of config
-```
-
----
-
-**Explore the `yaml/` directory for 40+ ready-to-use examples!**
