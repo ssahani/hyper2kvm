@@ -75,9 +75,7 @@ _VDDK_CALLBACK_REFS: list[object] = []
 faulthandler.enable()
  
  
-# -----------------------------------------------------------------------------
 # ctypes structures
-# -----------------------------------------------------------------------------
  
  
 class _VixDiskLibConnectParams(ctypes.Structure):
@@ -231,9 +229,7 @@ def _fmt_eta(seconds: float) -> str:
     return f"{h}h{m:02d}m{s:02d}s"
  
  
-# -----------------------------------------------------------------------------
 # Crash handler (for debugging memory corruption)
-# -----------------------------------------------------------------------------
  
  
 def _setup_crash_handler(logger: logging.Logger) -> None:
@@ -266,9 +262,7 @@ def _setup_crash_handler(logger: logging.Logger) -> None:
     signal.signal(signal.SIGSEGV, sigsegv_handler)
  
  
-# -----------------------------------------------------------------------------
 # Dynamic loading & symbol binding
-# -----------------------------------------------------------------------------
  
  
 def _candidate_lib_names() -> Tuple[str, ...]:
@@ -495,9 +489,7 @@ def _is_likely_transient_error(msg: str) -> bool:
     return True
  
  
-# -----------------------------------------------------------------------------
 # VDDK logging callbacks
-# -----------------------------------------------------------------------------
  
 _VDDK_LOG_CB_SIMPLE = ctypes.CFUNCTYPE(None, ctypes.c_char_p)
  
@@ -545,9 +537,7 @@ def _mk_dummy_callback() -> _VDDK_LOG_CB_SIMPLE:
     return cb
  
  
-# -----------------------------------------------------------------------------
 # Global init (InitEx once) - SINGLE THREAD ONLY
-# -----------------------------------------------------------------------------
  
 _vddk_inited = False
  
@@ -651,9 +641,7 @@ def vddk_cleanup() -> None:
             _vddk_inited = False
  
  
-# -----------------------------------------------------------------------------
 # Public API
-# -----------------------------------------------------------------------------
  
 ProgressFn = Callable[[int, int, float], None]
 CancelFn = Callable[[], bool]

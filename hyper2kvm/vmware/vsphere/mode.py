@@ -76,9 +76,7 @@ _DEFAULT_HTTP_TIMEOUT = (10, 300)  # (connect, read) seconds
 _DEFAULT_CHUNK_SIZE = 1024 * 1024
 
 
-# -----------------------------------------------------------------------------
 # Utility Functions
-# -----------------------------------------------------------------------------
 def _boolish(v: Any) -> bool:
     """Convert various truthy values to boolean."""
     if isinstance(v, bool):
@@ -217,9 +215,7 @@ def _safe_rel_ds_path(ds_path: str) -> str:
     return clean
 
 
-# -----------------------------------------------------------------------------
 # Transport Policy Functions
-# -----------------------------------------------------------------------------
 def _get_transport_preference(args: argparse.Namespace) -> str:
     """Get transport preference for datastore file downloads.
 
@@ -271,9 +267,7 @@ def _get_http_retries(args: argparse.Namespace) -> int:
     return max(0, retries_i)
 
 
-# -----------------------------------------------------------------------------
 # HTTPS Download Functions
-# -----------------------------------------------------------------------------
 def _download_one_folder_file(
     client: "VMwareClient",
     vc_host: str,
@@ -402,9 +396,7 @@ def _get_response_status(e: requests.RequestException) -> Optional[int]:
     return None
 
 
-# -----------------------------------------------------------------------------
 # File Download Policy Functions
-# -----------------------------------------------------------------------------
 def _download_one_file_with_policy(
     client: "VMwareClient",
     args: argparse.Namespace,
@@ -500,9 +492,7 @@ def _try_vddk_download(
         return False
 
 
-# -----------------------------------------------------------------------------
 # Progress UI Functions
-# -----------------------------------------------------------------------------
 def _create_progress_ui(args: argparse.Namespace, total_files: int) -> Tuple[Optional["Progress"], Optional[Any], Optional[Any]]:
     """Create Rich progress UI for downloads."""
     if Progress is None or bool(getattr(args, "json", False)):
@@ -546,9 +536,7 @@ def _update_progress(
         progress.advance(files_task, files_advance)
 
 
-# -----------------------------------------------------------------------------
 # File Filtering Functions
-# -----------------------------------------------------------------------------
 def _filter_files_by_glob(
     files: List[str],
     include_glob: List[str],
@@ -605,9 +593,7 @@ def _get_vm_files_from_govc(
     return _filter_files_by_glob(files, include_glob, exclude_glob, max_files)
 
 
-# -----------------------------------------------------------------------------
 # VM Export Functions
-# -----------------------------------------------------------------------------
 def _export_vm_with_fallback(
     govc: GovcRunner,
     args: argparse.Namespace,
@@ -778,9 +764,7 @@ def _download_files_with_progress(
             download_job(p)
 
 
-# -----------------------------------------------------------------------------
 # OVF Tool Helper Functions
-# -----------------------------------------------------------------------------
 def _build_ovftool_source_url(
     client: "VMwareClient",
     vm_name: str,
@@ -829,9 +813,7 @@ def _get_vim_inventory_path(vm: vim.VirtualMachine, dc_name: str) -> str:
     return f"{dc_name}/vm/{vm.name}"
 
 
-# -----------------------------------------------------------------------------
 # Debug and Configuration Functions
-# -----------------------------------------------------------------------------
 def _debug_enabled(args: argparse.Namespace) -> bool:
     """Check if debug logging is enabled."""
     if _boolish(os.environ.get("VMDK2KVM_DEBUG") or os.environ.get("VMDK2KVM_VSPHERE_DEBUG")):
@@ -847,9 +829,7 @@ def _get_dc_name(args: argparse.Namespace) -> str:
     return v if v else "ha-datacenter"
 
 
-# -----------------------------------------------------------------------------
 # Main VsphereMode Class
-# -----------------------------------------------------------------------------
 class VsphereMode:
     """
     CLI entry for vSphere actions.

@@ -23,9 +23,7 @@ Profile = Literal["default", "minimal-bios-gui"]
 ClockOffset = Literal["utc", "localtime"]
 
 
-# --------------------------------------------------------------------------------------
 # Small utilities
-# --------------------------------------------------------------------------------------
 
 _DEFAULT_IMAGES_DIR = Path("/var/lib/libvirt/images")
 _DEFAULT_NVRAM_DIR = Path("/var/lib/libvirt/qemu/nvram")
@@ -60,9 +58,7 @@ def _validate_listen_addr(addr: str) -> None:
         raise ValueError("graphics_listen must be non-empty")
 
 
-# --------------------------------------------------------------------------------------
 # Disk copy policy (avoid perms/SELinux surprises)
-# --------------------------------------------------------------------------------------
 
 def copy_disk_for_libvirt(
     *,
@@ -104,9 +100,7 @@ def copy_disk_for_libvirt(
     return dst
 
 
-# --------------------------------------------------------------------------------------
 # Spec
-# --------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class LinuxDomainSpec:
@@ -166,9 +160,7 @@ class LinuxDomainSpec:
     clock: ClockOffset = "utc"
 
 
-# --------------------------------------------------------------------------------------
 # XML rendering
-# --------------------------------------------------------------------------------------
 
 def _render_minimal_bios_gui_xml(spec: LinuxDomainSpec) -> str:
     """
@@ -406,9 +398,7 @@ def render_linux_domain_xml(spec: LinuxDomainSpec) -> str:
     raise ValueError(f"invalid profile: {spec.profile}")
 
 
-# --------------------------------------------------------------------------------------
 # Write/define helpers
-# --------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class LinuxDomainPaths:
@@ -463,9 +453,7 @@ def define_linux_domain(*, xml_path: Path) -> None:
         ) from e
 
 
-# --------------------------------------------------------------------------------------
 # High-level "emit" function (your main entry point)
-# --------------------------------------------------------------------------------------
 
 def emit_linux_domain(
     *,

@@ -259,9 +259,7 @@ class V2VExportOptions:
     vddk_download_log_every_bytes: int = 256 * 1024 * 1024
 
 
-# ---------------------------------------------------------------------------
 # Import all functions from split modules
-# ---------------------------------------------------------------------------
 
 # Import datastore operations
 from ..utils.datastore import (
@@ -306,9 +304,7 @@ from ..transports.vddk_loader import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Client
-# ---------------------------------------------------------------------------
 
 
 class VMwareClient:

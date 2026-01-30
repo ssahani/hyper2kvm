@@ -41,9 +41,7 @@ def _sha256_path(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-# ---------------------------
 # Injection pipeline (split into smaller functions)
-# ---------------------------
 
 def _virtio_preflight(self, g: guestfs.GuestFS) -> Tuple[Optional[Path], Optional[Dict[str, Any]]]:
     logger = _safe_logger(self)

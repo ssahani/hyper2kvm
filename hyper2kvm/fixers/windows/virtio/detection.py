@@ -31,9 +31,7 @@ except ImportError:
     hivex = None  # type: ignore
 
 
-# ---------------------------
 # Plan + Driver model
-# ---------------------------
 
 @dataclass(frozen=True)
 class WindowsVirtioPlan:
@@ -93,9 +91,7 @@ def _plan_to_dict(plan: WindowsVirtioPlan) -> Dict[str, Any]:
     }
 
 
-# ---------------------------
 # Windows detection + version/build
-# ---------------------------
 
 def is_windows(self, g: guestfs.GuestFS) -> bool:
     logger = _safe_logger(self)

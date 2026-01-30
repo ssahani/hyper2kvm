@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/bootloader/fixer.py
-# ---------------------------------------------------------------------
 # Multi-bootloader detection + KVM-friendly “safe” fixes.
 #
 # Goals:
@@ -12,7 +11,6 @@
 #       * preserve configs: backup before write (optional callback)
 #
 # Works with libguestfs GuestFS handle `g` (mounted guest).
-# ---------------------------------------------------------------------
 
 from __future__ import annotations
 

@@ -16,9 +16,7 @@ from ....config.config_loader import YAML_AVAILABLE, yaml
 from .utils import _safe_logger
 
 
-# ---------------------------
 # Windows Constants & Enums
-# ---------------------------
 
 class DriverType(Enum):
     STORAGE = "storage"
@@ -62,9 +60,7 @@ class DriverStartType(Enum):
     DISABLED = 4
 
 
-# ---------------------------
 # Config (drivers + OS->bucket mapping)
-# ---------------------------
 
 DEFAULT_VIRTIO_CONFIG: Dict[str, Any] = {
     # Default is Windows 11, not Windows 10.

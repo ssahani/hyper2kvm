@@ -24,9 +24,7 @@ from ..clients.client import VMwareClient
 from .errors import VsphereExitCode, _classify_exit_code
 
 
-# --------------------------------------------------------------------------------------
 # Small generic helpers
-# --------------------------------------------------------------------------------------
 
 
 def _p(s: Optional[str]) -> Optional[Path]:
@@ -112,9 +110,7 @@ def _as_payload(obj: Any) -> Any:
     return obj
 
 
-# --------------------------------------------------------------------------------------
 # Output policy (single source of truth)
-# --------------------------------------------------------------------------------------
 
 
 class _Emitter:
@@ -156,9 +152,7 @@ class _Emitter:
         self.logger.info("%s", U.json_dump(payload))
 
 
-# --------------------------------------------------------------------------------------
 # govc adapter (centralized subprocess execution)
-# --------------------------------------------------------------------------------------
 
 
 class GovmomiCLI(GovcRunner):

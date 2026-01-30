@@ -13,9 +13,7 @@ from ...core.utils import U
 from ...ssh.ssh_client import SSHClient
 
 
-# ---------------------------------------------------------------------
 # Report model (JSON-friendly)
-# ---------------------------------------------------------------------
 
 @dataclass
 class LiveGrubFixReport:
@@ -36,9 +34,7 @@ class LiveGrubFixReport:
     errors: List[str] = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------
 # Live fixer (SSH)
-# ---------------------------------------------------------------------
 
 class LiveGrubFixer:
     """
