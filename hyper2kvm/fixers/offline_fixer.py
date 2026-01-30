@@ -1632,7 +1632,13 @@ class OfflineFSFix:
                 self.logger.info(f"Post-conversion boot hardening: {U.json_dump(post_conversion_audit)}")
 
             regen_info: dict[str, Any]
-            if self.regen_initramfs:
+            # Skip old regen if post_conversion already rebuilt initramfs successfully
+            # Otherwise the old regen will overwrite the generic initramfs with a hostonly one
+            skip_old_regen = post_conversion_audit.get("initramfs_rebuilt", False)
+            if skip_old_regen:
+                self.logger.info("⏭️  Skipping old initramfs regen (post_conversion already rebuilt generic initramfs)")
+                regen_info = {"enabled": False, "skipped": "post_conversion_handled_initramfs"}
+            elif self.regen_initramfs:
                 regen_info = self._run_stage(
                     "regen_initramfs_and_bootloader",
                     lambda: self.regen(g),
