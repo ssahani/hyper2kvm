@@ -60,7 +60,7 @@ The core principles guide the tool's behavior to address real-world vSphere chal
 
 ### Control-Plane ≠ Data-Plane (Don't Mix Them)
 - **Control-Plane** (powered by **hypersdk**, VMware's modern Python SDK - `pyvmomi` / `pyVim` / `pyVmomi`): Handles resolution of inventory objects, datacenters, hosts, snapshots, Changed Block Tracking (CBT), and datastore browsing with enterprise-grade, type-safe API access.
-- **Data-Plane** (using `virt-v2v` / HTTPS `/folder` / VDDK): Focuses solely on moving bytes, such as exporting/converting disks or downloading VM folders.
+- **Data-Plane** (using HTTPS `/folder` / VDDK): Focuses solely on moving bytes, such as exporting/converting disks or downloading VM folders.
 In `hyper2kvm`, **hypersdk** is strictly used to *find and describe* resources (e.g., locating a VM or disk), after which a dedicated data-plane mechanism takes over for efficient byte transfer. This prevents overhead from blending discovery with heavy I/O operations.
 
 ### Don’t Scan the Universe Unless Asked
@@ -73,21 +73,21 @@ vCenter inventories can be massive, and naive "list everything" approaches lead 
 `hyper2kvm` resolves a common failure where libvirt rejects cluster-only paths:
 - Avoid: `host/<cluster>`  (frequently rejected).
 - Resolve to: `host/<cluster-or-compute>/<esx-host>` , or fallback to `host/<esx-host>` .
-This fix prevents errors like **“Path … does not specify a host system”** when constructing `vpx://...` URIs for tools like `virt-v2v`.
+This fix prevents errors like **"Path … does not specify a host system"** when constructing `vpx://...` URIs.
 
 ### Bytes Should Be Explicit (Download ≠ Convert)
 Operators need control over operations to avoid surprises. `hyper2kvm` exposes distinct data-plane modes:
-- **virt-v2v Export**: Converts to local `qcow2/raw` formats, potentially inspecting/modifying the guest.
+- **Direct Export**: Converts to local `qcow2/raw` formats, potentially inspecting/modifying the guest.
 - **HTTP Download-Only**: Pulls exact byte-for-byte VM folder files (e.g., VMDKs, VMX).
 - **VDDK Single-Disk Pull**: Raw extraction of one disk via VDDK, without conversion.
 No "download" mode accidentally mutates guests—transparency is key.
 
-### Async Where It Matters, Sync Where It’s Safe
-- `VMwareClient` is async-first, leveraging `asyncio` for benefits in downloads and subprocess log streaming (e.g., handling large outputs from `virt-v2v`).
+### Async Where It Matters, Sync Where It's Safe
+- `VMwareClient` is async-first, leveraging `asyncio` for benefits in downloads and subprocess log streaming.
 - `VsphereMode` remains synchronous but incorporates concurrency via `ThreadPoolExecutor` for parallel tasks like file downloads.
 
 ### Never Hide the Real Failure
-vSphere and `virt-v2v` failures often involve cryptic issues (e.g., TLS mismatches, invalid thumbprints, path errors, or verbose stderr). `vmware_client.py` addresses this with:
+vSphere failures often involve cryptic issues (e.g., TLS mismatches, invalid thumbprints, path errors, or verbose stderr). `vmware_client.py` addresses this with:
 - Stderr tail capture to expose the *actual* root cause in logs/errors.
 - Chunk-based stream pumping to prevent `asyncio LimitOverrunError` from tools emitting excessively long lines without newlines.
 
@@ -132,7 +132,7 @@ graph TB
         end
 
         subgraph DP["Data-Plane Modes"]
-            DP1[virt-v2v Export]
+            DP1[Direct Export]
             DP2[HTTP Download]
             DP3[VDDK Disk Pull]
         end
@@ -234,8 +234,7 @@ Key Patterns:
 #### Data-Plane Options in `hyper2kvm`
 1. **Direct Export Mode (`export_mode="export"`)**:
    - Implemented in `VMwareClient`.
-   - Builds correct `vpx://user@host/<dc>/<compute>` URIs.
-   - Writes passwords to temp files for export processing.
+   - Builds correct paths for disk access.
    - Validates/resolves `vddk-libdir` for VDDK transport.
    - Streams subprocess output safely with chunking.
    - Emits local output to `output_dir`.
@@ -284,7 +283,7 @@ This transforms vSphere into an efficient incremental block source, avoiding ful
 ## Mode Selection Cheatsheet (for `hyper2kvm`)
 | Need | Mode | Transport/Details |
 |------|------|-------------------|
-| **Converted qcow2/raw (accept direct export conversion)** | `export_mode="export"` | `vddk` or `ssh` |
+| **Converted qcow2/raw** | `export_mode="export"` | `vddk` or `ssh` |
 | **Exact VM folder contents from datastore** | `export_mode="download_only"` | HTTP `/folder` |
 | **One disk as raw bytes via VDDK** | `export_mode="vddk_download"` | VDDK client |
 | **Incremental updates on local disk** | `cbt_sync` | CBT + ranged HTTP reads |
@@ -294,7 +293,7 @@ This transforms vSphere into an efficient incremental block source, avoiding ful
 ### Example 1: Basic VM Export
 
 ```bash
-# Export VM using virt-v2v
+# Export VM
 python -m hyper2kvm vsphere \
   --vcenter vcenter.example.com \
   --username admin@vsphere.local \

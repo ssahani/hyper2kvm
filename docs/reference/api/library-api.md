@@ -23,7 +23,7 @@
   - [Converters](#converters)
   - [Fixers](#fixers)
   - [Testers](#testers)
-- [V2V-Style Migration APIs](#v2v-style-migration-apis)
+- [Batch Migration APIs](#batch-migration-apis)
   - [Batch Orchestration](#batch-orchestration)
   - [Migration Profiles](#migration-profiles)
   - [Hook System](#hook-system)
@@ -202,7 +202,6 @@ For advanced users who need more control:
 
 ```python
 from hyper2kvm.orchestrator import (
-    VirtV2VConverter,
     VsphereExporter,
 )
 

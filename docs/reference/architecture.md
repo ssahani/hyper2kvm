@@ -19,8 +19,7 @@
     - [1. **Orchestrator** (`orchestrator/orchestrator.py`)](#1-orchestrator-orchestratororchestratorpy)
     - [2. **DiskDiscovery** (`orchestrator/disk_discovery.py`)](#2-diskdiscovery-orchestratordisk_discoverypy)
     - [3. **DiskProcessor** (`orchestrator/disk_processor.py`)](#3-diskprocessor-orchestratordisk_processorpy)
-    - [4. **VirtV2VConverter** (`orchestrator/virt_v2v_converter.py`)](#4-virtv2vconverter-orchestratorvirt_v2v_converterpy)
-    - [5. **VsphereExporter** (`orchestrator/vsphere_exporter.py`)](#5-vsphereexporter-orchestratorvsphere_exporterpy)
+    - [4. **VsphereExporter** (`orchestrator/vsphere_exporter.py`)](#4-vsphereexporter-orchestratorvsphere_exporterpy)
   - [Refactoring Benefits](#refactoring-benefits)
 - [Control-Plane vs Data-Plane (VMware)](#control-plane-vs-data-plane-vmware)
   - [Control-Plane: Inventory, Planning, Orchestration](#control-plane-inventory-planning-orchestration)
@@ -103,7 +102,6 @@
 - [Performance Considerations](#performance-considerations)
   - [Parallel Processing](#parallel-processing)
     - [Disk Processing](#disk-processing)
-    - [virt-v2v Conversion](#virt-v2v-conversion)
   - [I/O Optimization](#io-optimization)
     - [VDDK (VMware)](#vddk-vmware)
     - [Compression](#compression)
@@ -389,7 +387,6 @@ hyper2kvm/
 │   ├── orchestrator.py               # Main pipeline coordinator (refactored)
 │   ├── disk_discovery.py             # Input disk discovery logic
 │   ├── disk_processor.py             # Disk processing pipeline executor
-│   ├── virt_v2v_converter.py         # virt-v2v integration wrapper
 │   └── vsphere_exporter.py           # vSphere VM export orchestration
 │
 ├── ssh/                              # SSH/SCP transport layer
@@ -425,7 +422,6 @@ hyper2kvm/
     │   ├── __init__.py
     │   ├── datastore.py              # Datastore path parsing
     │   ├── utils.py                  # General VMware utilities
-    │   ├── v2v.py                    # virt-v2v VMware integration
     │   └── vmdk_parser.py            # VMDK descriptor file parser
     │
     └── vsphere/                      # vSphere control-plane operations
@@ -442,7 +438,7 @@ hyper2kvm/
 
 ## Orchestrator Architecture (Refactored)
 
-The orchestrator was refactored from a single 1,197-line monolithic class into **5 focused components**, each under 300 lines and following the Single Responsibility Principle.
+The orchestrator was refactored from a single 1,197-line monolithic class into **4 focused components**, each under 300 lines and following the Single Responsibility Principle.
 
 ### Component Breakdown
 
@@ -454,7 +450,6 @@ The orchestrator was refactored from a single 1,197-line monolithic class into *
 - `_setup_recovery()` - Initialize crash recovery
 - `_discover_disks()` - Delegate to DiskDiscovery
 - `_process_disks()` - Delegate to DiskProcessor
-- `_run_pre_v2v()` / `_run_post_v2v()` - Optional virt-v2v stages
 - `_run_tests()` - Execute validation tests
 - `_emit_domain_xml()` - Generate libvirt domain XML
 
@@ -488,22 +483,7 @@ The orchestrator was refactored from a single 1,197-line monolithic class into *
 - Progress tracking
 - Error isolation per-disk
 
-#### 4. **VirtV2VConverter** (`orchestrator/virt_v2v_converter.py`)
-**Responsibility:** Export integration
-
-**Features:**
-- Single or parallel conversion
-- LUKS key handling (passphrase/keyfile)
-- Automatic output discovery
-- Temp file cleanup
-- Retry logic
-
-**Use Cases:**
-- Pre-conversion for complex formats
-- Post-conversion for additional fixes
-- Standalone export mode
-
-#### 5. **VsphereExporter** (`orchestrator/vsphere_exporter.py`)
+#### 4. **VsphereExporter** (`orchestrator/vsphere_exporter.py`)
 **Responsibility:** vSphere VM export orchestration
 
 **Export Modes:**
@@ -521,7 +501,7 @@ The orchestrator was refactored from a single 1,197-line monolithic class into *
 
 | Aspect | Before (Monolithic) | After (Refactored) |
 |--------|---------------------|-------------------|
-| **Lines of Code** | 1,197 lines, 50+ methods | 5 files, each < 310 lines |
+| **Lines of Code** | 1,197 lines, 50+ methods | 4 files, each < 310 lines |
 | **Testability** | Difficult to test in isolation | Each component independently testable |
 | **Maintainability** | All concerns mixed | Single Responsibility Principle |
 | **Reusability** | Tightly coupled | Components usable independently |
@@ -1187,15 +1167,6 @@ Fixers should:
 **Implementation:** ThreadPoolExecutor (multiple disks processed concurrently)
 
 **When to Use:** Multi-disk VMs (e.g., VM with OS disk + data disks)
-
-#### Export Conversion
-**Module:** `orchestrator/virt_v2v_converter.py`
-
-**Option:** `args.export_parallel = True` + `args.export_concurrency = N`
-
-**Implementation:** ProcessPoolExecutor (avoid GIL for CPU-bound work)
-
-**When to Use:** Batch conversion of multiple VMs
 
 ### I/O Optimization
 

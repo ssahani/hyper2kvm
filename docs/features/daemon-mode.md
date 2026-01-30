@@ -269,8 +269,6 @@ checksum: true
 
 # Performance (for large VMs)
 parallel_processing: true
-v2v_parallel: true
-v2v_concurrency: 2
 
 # Guest OS fixes
 fstab_mode: stabilize-all
@@ -302,10 +300,8 @@ watch_dir: /var/lib/hyper2kvm/queue
 output_dir: /mnt/storage/converted-vms
 workdir: /var/lib/hyper2kvm/work
 
-# Use direct export for faster conversions
-use_export: true
-export_parallel: true
-export_concurrency: 4
+# Enable parallel processing
+parallel_processing: true
 
 # Skip time-consuming operations
 fstab_mode: minimal
