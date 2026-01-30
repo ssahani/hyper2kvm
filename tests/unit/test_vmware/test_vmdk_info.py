@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from hyper2kvm.vmware.utils.vmdk_parser import VMDKParser
+from hyper2kvm.vmware.utils.vmdk_parser import VMDK
 
 
 class TestVMDKInfo(unittest.TestCase):
@@ -36,7 +36,7 @@ ddb.adapterType = "lsilogic"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             info = parser.parse(vmdk)
 
             self.assertIsNotNone(info)
@@ -60,7 +60,7 @@ ddb.virtualHWVersion = "14"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             info = parser.parse(vmdk)
             extents = parser.get_extents(vmdk)
 
@@ -78,7 +78,7 @@ RW 41943040 SPARSE "test.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             info = parser.parse(vmdk)
 
             self.assertEqual(info.get("createType"), "monolithicSparse")
@@ -94,7 +94,7 @@ RW 41943040 FLAT "test-flat.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             info = parser.parse(vmdk)
 
             self.assertEqual(info.get("createType"), "monolithicFlat")
@@ -110,7 +110,7 @@ ddb.adapterType = "lsilogic"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             info = parser.parse(vmdk)
 
             self.assertEqual(info.get("adapterType"), "lsilogic")
@@ -126,7 +126,7 @@ ddb.virtualHWVersion = "14"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             info = parser.parse(vmdk)
 
             self.assertEqual(info.get("virtualHWVersion"), "14")
@@ -146,7 +146,7 @@ RW 41943040 SPARSE "test.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             info = parser.parse(vmdk)
 
             # Should parse successfully despite comments
@@ -160,7 +160,7 @@ RW 41943040 SPARSE "test.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(invalid_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
 
             # Should handle gracefully
             try:
@@ -191,7 +191,7 @@ RW 4192256 SPARSE "test-s002.vmdk"
             (Path(td) / "test-s001.vmdk").write_bytes(b"extent1")
             (Path(td) / "test-s002.vmdk").write_bytes(b"extent2")
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             extents = parser.get_extents(vmdk)
 
             extent_names = [e.get("filename") for e in extents]
@@ -209,7 +209,7 @@ RW 4192256 SPARSE "test-s002.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDKParser(self.logger)
+            parser = VMDK(self.logger)
             total_size = parser.get_total_size(vmdk)
 
             # Total should be sum of extent sizes (in sectors)

@@ -247,3 +247,30 @@ def generate_systemd_unit(args: Any, logger=None) -> None:
 
     # No output path: print to stdout
     print(unit)
+
+
+# Simple class wrapper for tests
+class SystemdTemplate:
+    """Simple wrapper class for systemd template generation."""
+
+    def __init__(self, vm_name: str, description: str = "", exec_start: str = "", exec_stop: str = ""):
+        self.vm_name = vm_name
+        self.description = description
+        self.exec_start = exec_start
+        self.exec_stop = exec_stop
+
+    def render(self) -> str:
+        """Render a simple systemd unit file."""
+        return f"""[Unit]
+Description={self.description or self.vm_name}
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart={self.exec_start}
+ExecStop={self.exec_stop}
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+"""
