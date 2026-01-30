@@ -82,7 +82,7 @@ pip install -e .
 
 #### Package Locations
 
-- **PyPI:** https://pypi.org/project/hyper2kvm/ (v0.1.0+)
+- **PyPI:** https://pypi.org/project/hyper2kvm/ (v0.2.0+)
 - **GitHub:** https://github.com/hyper2kvm/hyper2kvm (primary development)
 - **GitLab:** https://gitlab.com/hyper2kvm/hyper2kvm (auto-synced mirror)
 - **Documentation:** [docs/](docs/)
@@ -205,6 +205,12 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
 
 - **343+ Methods** across 58 specialized modules (26,500+ lines of code)
 - **Lightning-Fast Performance:** Native Python with ~1.9s launch, 2-3x faster parallel mounts, 30-40% fewer system calls
+- **🆕 New in v9.1 (36 APIs):**
+  - 🔧 **Partition Management:** Create/delete partitions, GPT/MBR support (7 methods)
+  - 💾 **LVM Creation:** Full PV/VG/LV lifecycle management (6 methods)
+  - 📝 **Augeas Configuration:** Structured config file editing (10 methods)
+  - 📦 **Archive Operations:** Tar/gzip workflows for backups (4 methods)
+  - ⚡ **Performance Boost:** Parallel mounts (2-3x faster), intelligent caching, NBD retry logic
 - **Enterprise Intelligence:**
   - 🤖 **AI/ML Analytics:** Anomaly detection, behavior prediction, workload classification
   - ☁️ **Cloud Optimization:** Multi-cloud migration planning (AWS, Azure, GCP), cost analysis
@@ -216,7 +222,7 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
   - 🪟 **Windows:** 20+ versions, registry operations, driver injection, user management
 - **Modern Architecture:** Modular design with NBD, LVM, LUKS, RAID, ZFS support
 
-**See:** [VMCraft Documentation](hyper2kvm/core/vmcraft/README.md) | [VMCraft v9.0 Summary](docs/vmcraft/VMCRAFT_V9_SUMMARY.md)
+**See:** [VMCraft Documentation](hyper2kvm/core/vmcraft/README.md) | [VMCraft v9.1 Release](docs/VMCRAFT_V9.1_RELEASE.md) | [Implementation Summary](docs/VMCRAFT_V9.1_IMPLEMENTATION_SUMMARY.md)
 
 ### Production-Ready Features 🏭
 
