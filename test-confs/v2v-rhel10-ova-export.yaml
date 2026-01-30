@@ -9,7 +9,7 @@
 command: vsphere
 
 # vCenter connection (control-plane)
-vcenter: 11.11.11.11
+vcenter: 10.73.213.134
 vc_user: administrator@vsphere.local
 vc_password_env: VC_PASSWORD
 vc_insecure: true

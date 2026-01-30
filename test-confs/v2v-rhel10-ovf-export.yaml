@@ -1,0 +1,34 @@
+# v2v-rhel10-ovf-export.yaml
+# Goal: Export VM as OVF directory using govc (stable exporter; NO virt-v2v, NO inspection)
+#
+# Notes:
+# - This uses govc export.ovf (OVF = a folder with .ovf + .vmdk + .mf etc.)
+# - Requires govc available (GOVC_BIN or govc in PATH) and credentials
+# - Snapshot/power settings are optional; keep them off unless you need them.
+
+command: vsphere
+
+# vCenter connection (control-plane)
+vcenter: 11.11.11.11
+vc_user: administrator@vsphere.local
+vc_password_env: VC_PASSWORD
+vc_insecure: true
+dc_name: data
+
+# Action (OVF export)
+vs_action: export_vm
+export_mode: ovf_export
+vm_name: esx8.0-rhel10.0beta-x86_64-efi
+
+# Output
+output_dir: ./exports/ovf/esx8.0-rhel10.0beta-x86_64-efi
+
+# Optional govc export knobs
+govc_export_snapshot: null        # e.g. "snap-123" (name or moRef depending on your govc wrapper)
+govc_export_power_off: false      # set true if vCenter requires it for export
+govc_export_disk_mode: null       # e.g. "thin" (if your GovcRunner supports it)
+
+# Logging / output
+verbose: 2
+json: false
+
