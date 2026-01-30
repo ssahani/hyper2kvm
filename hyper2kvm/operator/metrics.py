@@ -566,6 +566,84 @@ class OperatorMetrics:
             ['namespace']
         )
 
+        # Live migration metrics (KubeVirt VirtualMachineInstanceMigration)
+        self.live_migrations_total = Counter(
+            'hyper2kvm_live_migrations_total',
+            'Total number of live migrations initiated',
+            ['namespace', 'source_node', 'target_node']
+        )
+
+        self.live_migrations_succeeded_total = Counter(
+            'hyper2kvm_live_migrations_succeeded_total',
+            'Total number of successful live migrations',
+            ['namespace']
+        )
+
+        self.live_migrations_failed_total = Counter(
+            'hyper2kvm_live_migrations_failed_total',
+            'Total number of failed live migrations',
+            ['namespace', 'reason']
+        )
+
+        self.live_migration_duration_seconds = Histogram(
+            'hyper2kvm_live_migration_duration_seconds',
+            'Duration of live migrations',
+            ['namespace'],
+            buckets=[10, 30, 60, 120, 300, 600, 900, 1200]  # 10s to 20min
+        )
+
+        self.live_migration_data_transferred_bytes = Histogram(
+            'hyper2kvm_live_migration_data_transferred_bytes',
+            'Amount of data transferred during live migration',
+            ['namespace'],
+            buckets=[100*1024*1024, 500*1024*1024, 1024*1024*1024,
+                    5*1024*1024*1024, 10*1024*1024*1024,
+                    25*1024*1024*1024, 50*1024*1024*1024]  # 100MB to 50GB
+        )
+
+        self.live_migration_downtime_ms = Histogram(
+            'hyper2kvm_live_migration_downtime_ms',
+            'VM downtime during live migration in milliseconds',
+            ['namespace'],
+            buckets=[10, 50, 100, 200, 500, 1000, 2000]  # 10ms to 2s
+        )
+
+        self.migration_policy_violations_total = Counter(
+            'hyper2kvm_migration_policy_violations_total',
+            'Total number of migration policy violations',
+            ['namespace', 'policy_name', 'violation_type']
+        )
+
+        self.post_copy_activations_total = Counter(
+            'hyper2kvm_post_copy_activations_total',
+            'Total number of post-copy activations',
+            ['namespace']
+        )
+
+        self.auto_converge_activations_total = Counter(
+            'hyper2kvm_auto_converge_activations_total',
+            'Total number of auto-converge activations',
+            ['namespace']
+        )
+
+        self.live_migrations_active = Gauge(
+            'hyper2kvm_live_migrations_active',
+            'Number of currently active live migrations',
+            ['namespace', 'phase']
+        )
+
+        self.migration_bandwidth_bytes_per_second = Gauge(
+            'hyper2kvm_migration_bandwidth_bytes_per_second',
+            'Current migration bandwidth in bytes per second',
+            ['namespace', 'vm_name']
+        )
+
+        self.migration_dirty_rate_bytes_per_second = Gauge(
+            'hyper2kvm_migration_dirty_rate_bytes_per_second',
+            'Current memory dirty rate in bytes per second',
+            ['namespace', 'vm_name']
+        )
+
     # Migration methods
 
     def record_migration_created(self, namespace: str, source_type: str):
@@ -647,3 +725,67 @@ class OperatorMetrics:
     def update_running_vms(self, namespace: str, count: int):
         """Update running VM count."""
         self.vms_running.labels(namespace=namespace).set(count)
+
+    # Live migration methods
+
+    def record_live_migration_started(self, namespace: str, source_node: str, target_node: str):
+        """Record that a live migration was started."""
+        self.live_migrations_total.labels(
+            namespace=namespace,
+            source_node=source_node,
+            target_node=target_node
+        ).inc()
+
+    def record_live_migration_succeeded(self, namespace: str, duration: float,
+                                       data_transferred: int = 0, downtime_ms: float = 0):
+        """Record a successful live migration."""
+        self.live_migrations_succeeded_total.labels(namespace=namespace).inc()
+        self.live_migration_duration_seconds.labels(namespace=namespace).observe(duration)
+        if data_transferred > 0:
+            self.live_migration_data_transferred_bytes.labels(namespace=namespace).observe(data_transferred)
+        if downtime_ms > 0:
+            self.live_migration_downtime_ms.labels(namespace=namespace).observe(downtime_ms)
+
+    def record_live_migration_failed(self, namespace: str, reason: str):
+        """Record a failed live migration."""
+        self.live_migrations_failed_total.labels(
+            namespace=namespace,
+            reason=reason
+        ).inc()
+
+    def update_active_live_migrations(self, namespace: str, phase: str, count: int):
+        """Update the count of active live migrations in a phase."""
+        self.live_migrations_active.labels(
+            namespace=namespace,
+            phase=phase
+        ).set(count)
+
+    def record_migration_policy_violation(self, namespace: str, policy_name: str, violation_type: str):
+        """Record a migration policy violation."""
+        self.migration_policy_violations_total.labels(
+            namespace=namespace,
+            policy_name=policy_name,
+            violation_type=violation_type
+        ).inc()
+
+    def record_post_copy_activation(self, namespace: str):
+        """Record that post-copy was activated."""
+        self.post_copy_activations_total.labels(namespace=namespace).inc()
+
+    def record_auto_converge_activation(self, namespace: str):
+        """Record that auto-converge was activated."""
+        self.auto_converge_activations_total.labels(namespace=namespace).inc()
+
+    def update_migration_bandwidth(self, namespace: str, vm_name: str, bandwidth_bps: float):
+        """Update current migration bandwidth."""
+        self.migration_bandwidth_bytes_per_second.labels(
+            namespace=namespace,
+            vm_name=vm_name
+        ).set(bandwidth_bps)
+
+    def update_migration_dirty_rate(self, namespace: str, vm_name: str, dirty_rate_bps: float):
+        """Update current memory dirty rate."""
+        self.migration_dirty_rate_bytes_per_second.labels(
+            namespace=namespace,
+            vm_name=vm_name
+        ).set(dirty_rate_bps)
