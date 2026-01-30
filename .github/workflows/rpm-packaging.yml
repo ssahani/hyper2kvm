@@ -164,7 +164,7 @@ jobs:
         echo "========================================="
 
     - name: Upload RPM artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: rpm-packages-fedora-${{ matrix.fedora-version }}
         path: |
