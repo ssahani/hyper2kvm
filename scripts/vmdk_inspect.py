@@ -103,16 +103,53 @@ def parse_vmdk_descriptor(path: Path) -> VMDKInfo:
                 key = line.split(".")[-1].split("=")[0]
                 info.geometry[key] = _val(line)
 
-            elif line.startswith("RW"):
+            elif line.startswith("RW") or line.startswith("RDONLY"):
                 m = EXTENT_RE.match(line)
                 if m:
                     info.sectors = int(m.group(1))
                     info.extent_type = m.group(2)
                     info.extent_file = m.group(3)
 
+    # Fallback: infer size from file if descriptor didn't provide it
+    if info.sectors is None:
+        _infer_size_from_file(info)
+
     analyze_risks(info)
     detect_boot_mode(info)
     return info
+
+
+def _infer_size_from_file(info: VMDKInfo):
+    """Infer size from extent file or VMDK itself (streamOptimized)."""
+    extent_path = None
+
+    # Try separate extent file first
+    if info.extent_file:
+        extent_path = info.path.parent / info.extent_file
+        if not extent_path.exists():
+            extent_path = None
+
+    # Try VMDK file itself (monolithic/streamOptimized)
+    if extent_path is None:
+        try:
+            vmdk_size = info.path.stat().st_size
+            if vmdk_size > 1024 * 1024:  # > 1MB
+                extent_path = info.path
+        except Exception:
+            pass
+
+    if extent_path:
+        try:
+            file_size = extent_path.stat().st_size
+            if file_size > 0:
+                info.sectors = file_size // 512
+                source = "extent file" if extent_path != info.path else "VMDK file (streamOptimized)"
+                info.risks.append(Risk(
+                    "INFO",
+                    f"Size inferred from {source} ({info.size_gb:.2f} GB)"
+                ))
+        except Exception:
+            pass
 
 
 def _val(line: str) -> str:
@@ -299,8 +336,9 @@ def main():
 
         if not json_mode:
             print(f"\n=== {vmdk} ===")
-            print(f"Size      : {info.size_gb} GB")
-            print(f"Adapter   : {info.adapter_type}")
+            size_display = f"{info.size_gb} GB" if info.size_gb is not None else "UNKNOWN"
+            print(f"Size      : {size_display}")
+            print(f"Adapter   : {info.adapter_type or 'UNKNOWN'}")
             print(f"Boot mode : {info.boot_mode}")
             for r in info.risks:
                 print(f"[{r.level}] {r.message}")

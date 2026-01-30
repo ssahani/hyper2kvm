@@ -172,6 +172,10 @@ class VMDKInspector:
         # Parse descriptor
         self._parse_descriptor(vmdk_path, result)
 
+        # Fallback: infer size from flat file if descriptor didn't provide it
+        if result.sectors is None:
+            self._infer_size_from_extent(result)
+
         # Analyze risks
         self._analyze_snapshot_risks(result)
         self._analyze_controller_risks(result)
@@ -230,6 +234,57 @@ class VMDKInspector:
     def _extract_value(self, line: str) -> str:
         """Extract value from descriptor key=value line."""
         return line.split("=", 1)[1].strip().strip('"')
+
+    def _infer_size_from_extent(self, result: VMDKInspectionResult):
+        """
+        Infer disk size from extent file when descriptor parsing fails.
+
+        This is a fallback for:
+        - streamOptimized VMDKs (binary header, no RW line)
+        - Thin-provisioned ESXi exports
+        - Corrupted descriptors
+        - Monolithic VMDK files (descriptor + data in one file)
+        """
+        extent_path = None
+
+        # Try 1: Separate extent file referenced in descriptor
+        if result.extent_file:
+            extent_path = result.path.parent / result.extent_file
+            if not extent_path.exists():
+                self.logger.debug(f"Referenced extent file not found: {extent_path}")
+                extent_path = None
+
+        # Try 2: The VMDK itself might be monolithic (streamOptimized, etc.)
+        if extent_path is None:
+            # Check if the VMDK file itself is large enough to be a disk image
+            try:
+                vmdk_size = result.path.stat().st_size
+                if vmdk_size > 1024 * 1024:  # > 1MB, likely contains data
+                    extent_path = result.path
+                    self.logger.debug(f"Using VMDK file itself as extent (monolithic format)")
+            except Exception as e:
+                self.logger.debug(f"Failed to check VMDK file size: {e}")
+
+        if not extent_path:
+            self.logger.debug("No extent file available for size inference")
+            return
+
+        try:
+            extent_size = extent_path.stat().st_size
+            if extent_size > 0:
+                # Infer sectors from file size
+                result.sectors = extent_size // 512
+                source = "extent file" if extent_path != result.path else "VMDK file (streamOptimized)"
+                self.logger.debug(
+                    f"Inferred size from {source}: {result.size_gb:.2f} GB ({extent_size} bytes)"
+                )
+                result.risks.append(Risk(
+                    RiskLevel.INFO,
+                    f"Size inferred from {source} ({result.size_gb:.2f} GB)",
+                    "extent"
+                ))
+        except Exception as e:
+            self.logger.debug(f"Failed to infer size: {e}")
 
     def _analyze_snapshot_risks(self, result: VMDKInspectionResult):
         """Check for snapshot chains."""
