@@ -48,12 +48,12 @@ jobs:
 
     - name: Run unit tests
       run: |
-        hatch run test || true
+        hatch run test
 
     - name: Run unit tests with coverage
       if: matrix.python-version == '3.12'
       run: |
-        hatch run test-cov || true
+        hatch run test-cov
 
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.12'
@@ -85,8 +85,7 @@ jobs:
 
     - name: Run lint
       run: |
-        hatch run lint || true
-      continue-on-error: true
+        hatch run lint
 
   integration:
     name: Integration Tests

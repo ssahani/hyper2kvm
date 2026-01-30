@@ -35,13 +35,12 @@ jobs:
 
     - name: Run security scans
       run: |
-        hatch run security-audit || true
-        hatch run security || true
-      continue-on-error: true
+        hatch run security-audit
+        hatch run security
 
     - name: Check for known vulnerabilities in dependencies
       run: |
-        pip-audit --desc || true
+        pip-audit --desc
       continue-on-error: true
 
     - name: Upload security results

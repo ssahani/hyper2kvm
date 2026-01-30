@@ -4,10 +4,13 @@
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/hyper2kvm)](https://pypi.org/project/hyper2kvm/)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![GitHub stars](https://img.shields.io/github/stars/ssahani/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/ssahani/hyper2kvm/stargazers/)
-[![CI](https://github.com/ssahani/hyper2kvm/workflows/tests/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
-[![Security](https://github.com/ssahani/hyper2kvm/workflows/security/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
-[![codecov](https://codecov.io/gh/ssahani/hyper2kvm/branch/main/graph/badge.svg)](https://codecov.io/gh/ssahani/hyper2kvm)
+[![GitHub stars](https://img.shields.io/github/stars/hyper2kvm/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/hyper2kvm/hyper2kvm/stargazers/)
+
+[![Tests](https://github.com/hyper2kvm/hyper2kvm/actions/workflows/tests.yml/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions/workflows/tests.yml)
+[![Security](https://github.com/hyper2kvm/hyper2kvm/actions/workflows/security.yml/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions/workflows/security.yml)
+[![Pylint](https://github.com/hyper2kvm/hyper2kvm/actions/workflows/pylint.yml/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions/workflows/pylint.yml)
+[![RPM Packaging](https://github.com/hyper2kvm/hyper2kvm/actions/workflows/rpm-packaging.yml/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions/workflows/rpm-packaging.yml)
+[![codecov](https://codecov.io/gh/hyper2kvm/hyper2kvm/branch/main/graph/badge.svg)](https://codecov.io/gh/hyper2kvm/hyper2kvm)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
