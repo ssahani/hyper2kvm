@@ -66,8 +66,9 @@ def extract_license_info(guestfs, root: str) -> LicenseInfo:
     Raises:
         RuntimeError: If registry hives cannot be accessed
     """
-    from ..registry.io import download_and_open_hive
-    from ..virtio.paths import detect_windows_hive
+    import tempfile
+    from pathlib import Path
+    from ..registry.io import download_and_open_hive, detect_windows_hive
 
     logger.info("Extracting Windows license information")
 
@@ -80,42 +81,50 @@ def extract_license_info(guestfs, root: str) -> LicenseInfo:
             logger.warning("SOFTWARE hive not found")
             return license_info
 
-        hive = download_and_open_hive(guestfs, software_path)
+        # Download and open hive
+        from ..registry.encoding import _close_best_effort
 
-        # Extract license data from registry
-        license_data = _read_license_registry_values(hive)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_hive = Path(tmpdir) / "SOFTWARE"
+            hive = download_and_open_hive(logger, guestfs, software_path, local_hive, write=False)
 
-        # Decode product key
-        license_info.product_key = decode_product_key(license_data)
+            try:
+                # Extract license data from registry
+                license_data = _read_license_registry_values(hive)
 
-        # Extract product ID
-        license_info.product_id = license_data.get("ProductId")
+                # Decode product key
+                license_info.product_key = decode_product_key(license_data)
 
-        # Extract edition
-        license_info.edition = license_data.get("EditionID")
-        license_info.licensed_product_name = license_data.get("ProductName")
+                # Extract product ID
+                license_info.product_id = license_data.get("ProductId")
 
-        # Detect license type
-        license_info.license_type = detect_license_type(license_data)
+                # Extract edition
+                license_info.edition = license_data.get("EditionID")
+                license_info.licensed_product_name = license_data.get("ProductName")
 
-        # Extract KMS information if applicable
-        if license_info.license_type == LicenseType.KMS:
-            license_info.kms_server = license_data.get("KeyManagementServiceName")
-            kms_port_str = license_data.get("KeyManagementServicePort")
-            if kms_port_str:
-                try:
-                    license_info.kms_port = int(kms_port_str)
-                except (ValueError, TypeError):
-                    license_info.kms_port = 1688  # Default KMS port
+                # Detect license type
+                license_info.license_type = detect_license_type(license_data)
 
-        # Determine activation status
-        license_info.activation_status = _determine_activation_status(license_data)
-        license_info.is_activated = license_info.activation_status == "Licensed"
+                # Extract KMS information if applicable
+                if license_info.license_type == LicenseType.KMS:
+                    license_info.kms_server = license_data.get("KeyManagementServiceName")
+                    kms_port_str = license_data.get("KeyManagementServicePort")
+                    if kms_port_str:
+                        try:
+                            license_info.kms_port = int(kms_port_str)
+                        except (ValueError, TypeError):
+                            license_info.kms_port = 1688  # Default KMS port
 
-        logger.info(
-            f"Extracted license info: type={license_info.license_type.value}, "
-            f"edition={license_info.edition}, activated={license_info.is_activated}"
-        )
+                # Determine activation status
+                license_info.activation_status = _determine_activation_status(license_data)
+                license_info.is_activated = license_info.activation_status == "Licensed"
+
+                logger.info(
+                    f"Extracted license info: type={license_info.license_type.value}, "
+                    f"edition={license_info.edition}, activated={license_info.is_activated}"
+                )
+            finally:
+                _close_best_effort(hive)
 
     except Exception as e:
         logger.error(f"Failed to extract license information: {e}")

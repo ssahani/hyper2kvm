@@ -47,8 +47,10 @@ def extract_domain_info(guestfs, root: str) -> DomainInfo:
     Raises:
         RuntimeError: If registry hives cannot be accessed
     """
-    from ..registry.io import download_and_open_hive
-    from ..virtio.paths import detect_windows_hive
+    import tempfile
+    from pathlib import Path
+    from ..registry.io import download_and_open_hive, detect_windows_hive
+    from ..registry.encoding import _close_best_effort
 
     logger.info("Extracting Active Directory domain information")
 
@@ -61,96 +63,108 @@ def extract_domain_info(guestfs, root: str) -> DomainInfo:
             logger.warning("SYSTEM hive not found")
             return domain_info
 
-        system_hive = download_and_open_hive(guestfs, system_path)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_system_hive = Path(tmpdir) / "SYSTEM"
+            system_hive = download_and_open_hive(logger, guestfs, system_path, local_system_hive, write=False)
 
-        # Determine current control set
-        from ..registry.encoding import read_registry_value
+            try:
+                # Determine current control set
+                from ..registry.encoding import read_registry_value
 
-        try:
-            current_cs = read_registry_value(
-                system_hive, "Select", "Current", default=1
-            )
-            controlset = f"ControlSet{current_cs:03d}"
-        except Exception:
-            controlset = "ControlSet001"  # Default
+                try:
+                    current_cs = read_registry_value(
+                        system_hive, "Select", "Current", default=1
+                    )
+                    controlset = f"ControlSet{current_cs:03d}"
+                except Exception:
+                    controlset = "ControlSet001"  # Default
 
-        logger.debug(f"Using {controlset} for domain info extraction")
+                logger.debug(f"Using {controlset} for domain info extraction")
 
-        # Extract computer name
-        computer_name_path = f"{controlset}\\Control\\ComputerName\\ComputerName"
-        try:
-            domain_info.computer_name = read_registry_value(
-                system_hive, computer_name_path, "ComputerName"
-            )
-            logger.debug(f"Computer name: {domain_info.computer_name}")
-        except Exception as e:
-            logger.debug(f"Could not read computer name: {e}")
+                # Extract computer name
+                computer_name_path = f"{controlset}\\Control\\ComputerName\\ComputerName"
+                try:
+                    domain_info.computer_name = read_registry_value(
+                        system_hive, computer_name_path, "ComputerName"
+                    )
+                    logger.debug(f"Computer name: {domain_info.computer_name}")
+                except Exception as e:
+                    logger.debug(f"Could not read computer name: {e}")
 
-        # Extract domain/workgroup information
-        tcpip_params_path = f"{controlset}\\Services\\Tcpip\\Parameters"
-        try:
-            # Check for domain membership
-            domain = read_registry_value(system_hive, tcpip_params_path, "Domain")
-            if domain:
-                domain_info.domain_name = domain
-                domain_info.is_domain_joined = True
-                logger.info(f"Domain-joined: {domain}")
-            else:
-                # Not domain-joined, check workgroup
-                workgroup = read_registry_value(
-                    system_hive, tcpip_params_path, "NV Domain"
-                )
-                if workgroup:
-                    domain_info.workgroup = workgroup
-                    logger.info(f"Workgroup: {workgroup}")
-        except Exception as e:
-            logger.debug(f"Could not read domain/workgroup: {e}")
+                # Extract domain/workgroup information
+                tcpip_params_path = f"{controlset}\\Services\\Tcpip\\Parameters"
+                try:
+                    # Check for domain membership
+                    domain = read_registry_value(system_hive, tcpip_params_path, "Domain")
+                    if domain:
+                        domain_info.domain_name = domain
+                        domain_info.is_domain_joined = True
+                        logger.info(f"Domain-joined: {domain}")
+                    else:
+                        # Not domain-joined, check workgroup
+                        workgroup = read_registry_value(
+                            system_hive, tcpip_params_path, "NV Domain"
+                        )
+                        if workgroup:
+                            domain_info.workgroup = workgroup
+                            logger.info(f"Workgroup: {workgroup}")
+                except Exception as e:
+                    logger.debug(f"Could not read domain/workgroup: {e}")
 
-        # Try to get DNS domain (more reliable for domain-joined systems)
-        try:
-            dns_domain = read_registry_value(
-                system_hive, tcpip_params_path, "DhcpDomain"
-            )
-            if not dns_domain:
-                dns_domain = read_registry_value(
-                    system_hive, tcpip_params_path, "Domain"
-                )
+                # Try to get DNS domain (more reliable for domain-joined systems)
+                try:
+                    dns_domain = read_registry_value(
+                        system_hive, tcpip_params_path, "DhcpDomain"
+                    )
+                    if not dns_domain:
+                        dns_domain = read_registry_value(
+                            system_hive, tcpip_params_path, "Domain"
+                        )
 
-            if dns_domain and dns_domain != domain_info.workgroup:
-                domain_info.dns_domain = dns_domain
-                logger.debug(f"DNS domain: {dns_domain}")
-        except Exception as e:
-            logger.debug(f"Could not read DNS domain: {e}")
+                    if dns_domain and dns_domain != domain_info.workgroup:
+                        domain_info.dns_domain = dns_domain
+                        logger.debug(f"DNS domain: {dns_domain}")
+                except Exception as e:
+                    logger.debug(f"Could not read DNS domain: {e}")
+
+            finally:
+                _close_best_effort(system_hive)
 
         # Try SOFTWARE hive for Group Policy information (contains DC info)
         try:
             software_path = detect_windows_hive(guestfs, root, "SOFTWARE")
             if software_path:
-                software_hive = download_and_open_hive(guestfs, software_path)
+                with tempfile.TemporaryDirectory() as tmpdir2:
+                    local_software_hive = Path(tmpdir2) / "SOFTWARE"
+                    software_hive = download_and_open_hive(logger, guestfs, software_path, local_software_hive, write=False)
 
-                # Extract last known domain controller from Group Policy history
-                gp_history_path = r"Microsoft\Windows\CurrentVersion\Group Policy\History"
-                try:
-                    dc_name = read_registry_value(
-                        software_hive, gp_history_path, "DCName"
-                    )
-                    if dc_name:
-                        domain_info.last_dc = dc_name
-                        logger.debug(f"Last DC: {dc_name}")
-                except Exception as e:
-                    logger.debug(f"Could not read DC name: {e}")
-
-                # Verify DNS domain from GP history if not found earlier
-                if not domain_info.dns_domain:
                     try:
-                        network_name = read_registry_value(
-                            software_hive, gp_history_path, "NetworkName"
-                        )
-                        if network_name:
-                            domain_info.dns_domain = network_name
-                            logger.debug(f"DNS domain from GP: {network_name}")
-                    except Exception as e:
-                        logger.debug(f"Could not read GP network name: {e}")
+                        # Extract last known domain controller from Group Policy history
+                        gp_history_path = r"Microsoft\Windows\CurrentVersion\Group Policy\History"
+                        try:
+                            dc_name = read_registry_value(
+                                software_hive, gp_history_path, "DCName"
+                            )
+                            if dc_name:
+                                domain_info.last_dc = dc_name
+                                logger.debug(f"Last DC: {dc_name}")
+                        except Exception as e:
+                            logger.debug(f"Could not read DC name: {e}")
+
+                        # Verify DNS domain from GP history if not found earlier
+                        if not domain_info.dns_domain:
+                            try:
+                                network_name = read_registry_value(
+                                    software_hive, gp_history_path, "NetworkName"
+                                )
+                                if network_name:
+                                    domain_info.dns_domain = network_name
+                                    logger.debug(f"DNS domain from GP: {network_name}")
+                            except Exception as e:
+                                logger.debug(f"Could not read GP network name: {e}")
+
+                    finally:
+                        _close_best_effort(software_hive)
 
         except Exception as e:
             logger.debug(f"Could not access SOFTWARE hive for GP info: {e}")

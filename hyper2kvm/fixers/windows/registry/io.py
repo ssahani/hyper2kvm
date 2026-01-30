@@ -92,3 +92,71 @@ def _log_mountpoints_best_effort(logger: logging.Logger, g: guestfs.GuestFS) -> 
         logger.debug("guestfs mountpoints=%r", mps)
     except Exception:
         pass
+
+
+def detect_windows_hive(g: guestfs.GuestFS, root: str, hive_name: str) -> Optional[str]:
+    """
+    Detect Windows registry hive path.
+
+    Args:
+        g: GuestFS instance
+        root: Windows root path (e.g., "/mnt/windows" or "/")
+        hive_name: Hive name (e.g., "SYSTEM", "SOFTWARE", "SAM")
+
+    Returns:
+        Full path to hive file, or None if not found
+    """
+    # Try standard locations
+    candidates = [
+        f"{root}/Windows/System32/config/{hive_name}",
+        f"{root}/WINDOWS/System32/config/{hive_name}",
+        f"{root}/Windows/System32/Config/{hive_name}",
+        f"{root}/winnt/system32/config/{hive_name}",
+        f"{root}/WINNT/system32/config/{hive_name}",
+    ]
+
+    for path in candidates:
+        try:
+            if g.is_file(path):
+                return path
+        except Exception:
+            continue
+
+    return None
+
+
+def download_and_open_hive(
+    logger: logging.Logger,
+    g: guestfs.GuestFS,
+    remote_path: str,
+    local_temp_path: Path,
+    write: bool = False,
+):
+    """
+    Download Windows registry hive and open with hivex.
+
+    Args:
+        logger: Logger instance
+        g: GuestFS instance
+        remote_path: Path to hive in guest filesystem
+        local_temp_path: Local temporary path to download to
+        write: Whether to open hive for writing
+
+    Returns:
+        hivex.Hivex instance (caller must close)
+
+    Raises:
+        RuntimeError: If download or open fails
+    """
+    try:
+        import hivex  # type: ignore
+    except ImportError:
+        raise RuntimeError("hivex module not available")
+
+    from .encoding import _open_hive_local
+
+    # Download hive to local temp file
+    _download_hive_local(logger, g, remote_path, local_temp_path)
+
+    # Open with hivex
+    return _open_hive_local(local_temp_path, write=write)
