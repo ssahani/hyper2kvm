@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import argparse
@@ -10,12 +11,13 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from ..core.utils import U
 
 try:
     import yaml  # type: ignore
+
     YAML_AVAILABLE = True
 except Exception:
     YAML_AVAILABLE = False
@@ -31,6 +33,7 @@ class Config:
       - optional HMAC signature verification
       - VM fan-out via 'vms' list, with deep-merge per VM override
       - argparse defaults application with type coercion
+      - ✅ alias canonicalization (command<->cmd, vs_action<->action)
     """
 
     # -----------------------------
@@ -66,6 +69,10 @@ class Config:
 
         # Normalize keys deeply: dash -> underscore
         out = Config._normalize_keys(logger, data, path=str(p))
+
+        # ✅ NEW: alias canonicalization (keeps YAML 'command' usable everywhere)
+        out = Config._canonicalize_aliases(out)
+
         logger.debug(f"Loaded config {p}:\n{U.json_dump(out)}")
         return out
 
@@ -181,6 +188,9 @@ class Config:
             for p in paths:
                 conf = Config.merge_dicts(conf, Config.load_one(logger, p), list_mode=list_mode)
                 progress.update(task, advance=1)
+
+        # ✅ NEW: canonicalize aliases on final merged view too (covers edge cases)
+        conf = Config._canonicalize_aliases(conf)
 
         return conf
 
@@ -316,11 +326,38 @@ class Config:
 
                 progress.update(task, advance=1)
 
+        # ✅ NEW: canonicalize aliases across each vm config too
+        vm_confs = [Config._canonicalize_aliases(c) for c in vm_confs]
+
         return vm_confs
 
     # -----------------------------
     # Internals
     # -----------------------------
+
+    @staticmethod
+    def _canonicalize_aliases(d: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Canonicalize common alias keys so YAML can stay stable while code evolves.
+
+        Policy:
+          - Keep 'command' canonical for new project readability,
+            but populate 'cmd' for legacy/compat dispatchers.
+          - Keep 'vs_action' canonical but populate 'action' (and vice-versa).
+        """
+        # command <-> cmd
+        if "command" in d and "cmd" not in d:
+            d["cmd"] = d["command"]
+        elif "cmd" in d and "command" not in d:
+            d["command"] = d["cmd"]
+
+        # vs_action <-> action
+        if "vs_action" in d and "action" not in d:
+            d["action"] = d["vs_action"]
+        elif "action" in d and "vs_action" not in d:
+            d["vs_action"] = d["action"]
+
+        return d
 
     @staticmethod
     def _normalize_keys(logger: logging.Logger, obj: Any, *, path: str, _prefix: str = "") -> Any:
