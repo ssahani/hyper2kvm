@@ -170,6 +170,24 @@ class NBDDeviceManager:
 
         readonly = readonly if readonly is not None else self.readonly
 
+        # Auto-detect format from extension if not specified
+        # This is critical for VMDKs, especially ESXi thin-provisioned ones
+        if not format:
+            suffix = image_path.suffix.lower()
+            format_map = {
+                ".vmdk": "vmdk",
+                ".qcow2": "qcow2",
+                ".qcow": "qcow2",
+                ".vdi": "vdi",
+                ".vhd": "vpc",
+                ".vhdx": "vhdx",
+                ".img": "raw",
+                ".raw": "raw",
+            }
+            format = format_map.get(suffix)
+            if format:
+                self.logger.info(f"Auto-detected format '{format}' from extension '{suffix}'")
+
         # Find free NBD device
         nbd_device = self.find_free_nbd()
 
@@ -178,9 +196,18 @@ class NBDDeviceManager:
 
         if format:
             cmd.extend(["--format", format])
+        else:
+            self.logger.warning(f"No format specified and couldn't auto-detect from '{image_path.suffix}' - qemu-nbd will try to auto-detect")
 
         if readonly:
             cmd.append("--read-only")
+
+        # Use cache=none for data integrity (prevents corruption from kernel cache issues)
+        # This is especially important for write operations
+        cmd.extend(["--cache", "none"])
+
+        # Enable discard for thin-provisioned images (VMware, qcow2)
+        cmd.extend(["--discard", "unmap"])
 
         cmd.append(str(image_path))
 
