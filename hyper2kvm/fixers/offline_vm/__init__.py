@@ -12,6 +12,7 @@ All fixers are:
 """
 
 from .fix_fstab import FstabFixer
+from .fix_initramfs import InitramfsFixer
 from .utils import (
     get_block_device_uuid,
     get_block_device_label,
@@ -21,6 +22,7 @@ from .utils import (
 
 __all__ = [
     'FstabFixer',
+    'InitramfsFixer',
     'get_block_device_uuid',
     'get_block_device_label',
     'detect_os_from_root',
