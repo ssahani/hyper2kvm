@@ -13,9 +13,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import guestfs  # type: ignore
 
 from ....core.utils import U
-from .config import WindowsRelease
-from .paths import WindowsSystemPaths, _resolve_windows_system_paths
-from .utils import (
+from .windows_virtio_config import WindowsRelease
+from .windows_virtio_paths import WindowsSystemPaths, _resolve_windows_system_paths
+from .windows_virtio_utils import (
     _log,
     _normalize_product_name,
     _safe_logger,

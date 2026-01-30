@@ -1,0 +1,30 @@
+# Windows 10 Test Configuration with VirtIO Driver Injection
+# Tests VMCraft's Windows driver injection capabilities
+
+cmd: local
+
+# Source VMDK (split/sparse format)
+vmdk: /home/ssahani/tt/hyper2kvm/win10/win10.vmdk
+
+# Output Configuration
+output_dir: /home/ssahani/tt/hyper2kvm/out/win10-virtio-test
+to_output: /home/ssahani/tt/hyper2kvm/out/win10-virtio-test/win10-virtio.qcow2
+out_format: qcow2
+compress: true
+
+# Working Directory
+workdir: /home/ssahani/tt/hyper2kvm/out/win10-virtio-test/work
+
+# Windows Configuration
+windows: true
+
+# VirtIO Driver Injection - ABSOLUTE PATH
+virtio_drivers_dir: /home/ssahani/tt/hyper2kvm1/virtio-win-extracted
+
+# Testing
+dry_run: false
+verbose: 2
+
+# Report
+report: /home/ssahani/tt/hyper2kvm/out/win10-virtio-test/migration-report.md
+log_file: /home/ssahani/tt/hyper2kvm/out/win10-virtio-test/migration.log

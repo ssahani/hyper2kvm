@@ -19,7 +19,7 @@ import guestfs  # type: ignore
 from ....core.utils import U
 
 # Import from split modules - configuration
-from .config import (
+from .windows_virtio_config import (
     DEFAULT_VIRTIO_CONFIG,
     DriverStartType,
     DriverType,
@@ -28,7 +28,7 @@ from .config import (
 )
 
 # Import from split modules - utilities
-from .utils import (
+from .windows_virtio_utils import (
     _log,
     _log_mountpoints_best_effort,
     _safe_logger,
@@ -36,7 +36,7 @@ from .utils import (
 )
 
 # Import from split modules - paths
-from .paths import (
+from .windows_virtio_paths import (
     WindowsSystemPaths,
     _find_windows_root,
 )
@@ -65,6 +65,7 @@ from .install import (
     _virtio_init_result,
     _virtio_preflight,
     _virtio_provision_firstboot,
+    _virtio_remove_vmware_sys_files,
     _virtio_stage_manual_setup_cmd,
     _virtio_stage_packages,
     _virtio_update_devicepath,
@@ -471,6 +472,7 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
     _virtio_stage_manual_setup_cmd(self, g, result)
     _virtio_edit_registry_system(self, g, result, paths, drivers)
+    _virtio_remove_vmware_sys_files(self, g, result, paths)
     _virtio_update_devicepath(self, g, result, paths, devicepath_append)
     _virtio_provision_firstboot(self, g, result, paths, staging_root)
     _virtio_bcd_backup(self, g, result)

@@ -33,6 +33,7 @@ from ..core.guestfs_factory import create_guestfs
 from .. import __version__
 from ..core.recovery_manager import RecoveryManager
 from ..core.utils import U, blinking_progress, guest_has_cmd
+from ..core.vmcraft._utils import run_sudo
 from ..core.validation_suite import ValidationSuite
 from . import network_fixer  # type: ignore
 from .bootloader import grub as grub_fixer  # type: ignore
@@ -879,18 +880,65 @@ class OfflineFSFix:
 
         mount_failures: list[dict[str, str]] = []
 
+        # Validate partition devices exist before attempting mount
+        import os
+        validated_candidates = []
+        for dev in candidates:
+            if os.path.exists(dev):
+                validated_candidates.append(dev)
+            else:
+                self.logger.warning(f"⚠️ Device {dev} doesn't exist, skipping")
+                mount_failures.append({"device": dev, "error": "device_not_found"})
+
+        if not validated_candidates:
+            U.die(self.logger, "No valid partition devices found.", 1)
+
+        self.logger.info(f"Validated {len(validated_candidates)} of {len(candidates)} candidate devices")
+        candidates = validated_candidates
+
+        # Give a brief pause for devices to settle (especially important for non-sequential partition layouts)
+        import time
+        time.sleep(0.3)
+
         # Try normal mounts first, but score candidates and pick best
         best: tuple[int, str | None] = (-10**9, None)
         for dev in candidates:
             self._safe_umount_all(g)
             try:
+                # Get filesystem type before attempting mount
+                vfs_type = None
+                try:
+                    vfs_type = filesystem_fixer._vfs_type(g, dev)
+                    self.logger.debug(f"Device {dev} has filesystem type: {vfs_type}")
+                except Exception as e:
+                    self.logger.debug(f"Could not determine vfs_type for {dev}: {e}")
+
                 filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                 self.logger.info(f"🔄 Attempting to mount {dev} at /...")
 
-                if self.dry_run:
-                    g.mount_ro(dev, "/")
-                else:
-                    g.mount(dev, "/")
+                # Try mount with appropriate options
+                try:
+                    if self.dry_run:
+                        g.mount_ro(dev, "/")
+                    else:
+                        g.mount(dev, "/")
+                except Exception as mount_error:
+                    # If mount fails, try filesystem-specific repair
+                    if vfs_type == "ext4":
+                        self.logger.warning(f"Mount failed for ext4 partition {dev}, attempting fsck")
+                        try:
+                            # Run fsck in non-interactive mode
+                            run_sudo(self.logger, ["fsck.ext4", "-p", "-f", dev], check=False, capture=True)
+                            # Retry mount after repair
+                            if self.dry_run:
+                                g.mount_ro(dev, "/")
+                            else:
+                                g.mount(dev, "/")
+                        except Exception as repair_error:
+                            self.logger.debug(f"Filesystem repair failed: {repair_error}")
+                            raise mount_error
+                    else:
+                        raise
 
                 self.logger.info(f"✓ Mount succeeded for {dev}, checking if it looks like root...")
 
@@ -962,26 +1010,40 @@ class OfflineFSFix:
 
             self.logger.info(f"Discovering btrfs subvolumes on {dev}")
 
-            # Discover actual subvolumes by mounting and listing
+            # Discover actual subvolumes using host-side btrfs command
             discovered_subvols = []
+            temp_mount = None
             try:
-                # Mount without subvol to access subvolume list
-                self._safe_umount_all(g)
-                if hasattr(g, "mount_options"):
-                    g.mount_options("subvolid=5" if not self.dry_run else "ro,subvolid=5", dev, "/mnt")
-                else:
-                    # Fallback: try default mount
-                    if self.dry_run:
-                        g.mount_ro(dev, "/mnt")
-                    else:
-                        g.mount(dev, "/mnt")
+                # Create temporary mount point for btrfs inspection
+                import tempfile
+                import os
+                temp_mount = tempfile.mkdtemp(prefix="hyper2kvm-btrfs-")
+                self.logger.debug(f"Created temp mount point: {temp_mount}")
 
-                # List subvolumes - try different approaches
+                # Mount the btrfs filesystem on the host to list subvolumes
                 try:
-                    # Try btrfs subvolume list if available
-                    result = g.command(["btrfs", "subvolume", "list", "/mnt"])
-                    output = U.to_text(result).strip()
+                    self.logger.debug(f"Mounting {dev} at {temp_mount} with subvolid=5")
+                    run_sudo(
+                        self.logger,
+                        ["mount", "-o", "ro,subvolid=5", dev, temp_mount],
+                        check=True,
+                        capture=True
+                    )
+                    self.logger.debug("Mount successful, listing subvolumes")
+
+                    # List subvolumes using host btrfs command
+                    result = run_sudo(
+                        self.logger,
+                        ["btrfs", "subvolume", "list", temp_mount],
+                        check=True,
+                        capture=True
+                    )
+
+                    output = U.to_text(result.stdout).strip()
+                    self.logger.debug(f"Btrfs subvolume list output: {output[:200]}")
+
                     # Parse output like: "ID 256 gen 7 top level 5 path @"
+                    # or "ID 256 gen 7 top level 5 path root"
                     for line in output.splitlines():
                         parts = line.split()
                         if "path" in parts:
@@ -989,13 +1051,23 @@ class OfflineFSFix:
                             if idx + 1 < len(parts):
                                 subvol = parts[idx + 1]
                                 discovered_subvols.append(subvol)
-                    self.logger.info(f"Discovered {len(discovered_subvols)} btrfs subvolumes: {discovered_subvols}")
-                except Exception as e:
-                    self.logger.debug(f"Could not list btrfs subvolumes: {e}")
+                                self.logger.debug(f"Found subvolume: {subvol}")
 
-                self._safe_umount_all(g)
+                    self.logger.info(f"✅ Discovered {len(discovered_subvols)} btrfs subvolumes: {discovered_subvols}")
+
+                except Exception as e:
+                    self.logger.warning(f"Could not list btrfs subvolumes using host command: {e}")
+                finally:
+                    # Unmount and cleanup
+                    try:
+                        run_sudo(self.logger, ["umount", temp_mount], check=False, capture=True)
+                        os.rmdir(temp_mount)
+                        self.logger.debug(f"Cleaned up temp mount: {temp_mount}")
+                    except Exception as cleanup_error:
+                        self.logger.debug(f"Cleanup warning: {cleanup_error}")
+
             except Exception as e:
-                self.logger.debug(f"Could not discover btrfs subvolumes on {dev}: {e}")
+                self.logger.warning(f"Could not discover btrfs subvolumes on {dev}: {e}")
 
             # Combine discovered and common subvolumes
             subvols_to_try = discovered_subvols if discovered_subvols else self._BTRFS_COMMON_SUBVOLS

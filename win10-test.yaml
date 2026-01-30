@@ -1,0 +1,28 @@
+# Windows 10 Test Configuration
+# Tests VMCraft capabilities on Windows 10 VMDK
+
+cmd: local
+
+# Source VMDK (split/sparse format)
+vmdk: /home/ssahani/tt/hyper2kvm/win10/win10.vmdk
+
+# Output Configuration
+output_dir: /home/ssahani/tt/hyper2kvm/out/win10-test
+to_output: /home/ssahani/tt/hyper2kvm/out/win10-test/win10-converted.qcow2
+out_format: qcow2
+compress: true
+
+# Working Directory
+workdir: /home/ssahani/tt/hyper2kvm/out/win10-test/work
+
+# Basic conversion without driver injection (for testing)
+# VirtIO injection disabled since drivers not available
+windows: true
+
+# Testing
+dry_run: false
+verbose: 2
+
+# Report
+report: /home/ssahani/tt/hyper2kvm/out/win10-test/migration-report.md
+log_file: /home/ssahani/tt/hyper2kvm/out/win10-test/migration.log

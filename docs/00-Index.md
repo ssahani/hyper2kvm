@@ -16,6 +16,7 @@
 
 ### 🏗️ Architecture & Design
 - **[🏗️ 01-Architecture](01-Architecture.md)** - System architecture and design
+- **[🚀 09-VMCraft](09-VMCraft.md)** - VMCraft Platform (307+ methods, AI/ML intelligence)
 - **[🎨 07-vSphere-Design](07-vSphere-Design.md)** - vSphere integration (powered by hypersdk)
 
 ### 👨‍🍳 Recipes & Workflows
@@ -169,6 +170,7 @@ report: /tmp/hyper2kvm-report.md
 6. **[👨‍🍳 Cookbook](06-Cookbook.md)** - Common migration recipes
 7. **[🎨 vSphere Design](07-vSphere-Design.md)** - vSphere integration architecture
 8. **[🐍 Library API](08-Library-API.md)** - Python library API documentation
+9. **[🚀 VMCraft Platform](09-VMCraft.md)** - Advanced VM manipulation (307+ methods, AI/ML intelligence)
 
 ### Daemon Mode
 10. **[⚙️ Daemon Mode](10-Daemon-Mode.md)** - Background processing basics
@@ -300,8 +302,10 @@ See the main [README](../README.md) for contribution guidelines.
 
 ---
 
-**Last Updated:** 2026-01-15 \
-**Documentation Version:** 1.0 \
+**Last Updated:** 2026-01-25 \
+**Documentation Version:** 1.1 \
+**hyper2kvm Version:** 0.1.0 \
+**VMCraft Version:** v9.0 \
 **Maintained by:** Susant Sahani <ssahani@gmail.com>
 
 ---
@@ -310,15 +314,17 @@ See the main [README](../README.md) for contribution guidelines.
 
 ### Most Popular Guides
 1. **[🚀 Quick Start](03-Quick-Start.md)** - Start here!
-2. **[🪟 Windows Guide](10-Windows-Guide.md)** - Windows migrations
-3. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere integration
-4. **[⚠️ Failure Modes](90-Failure-Modes.md)** - Troubleshooting
+2. **[🚀 VMCraft Platform](09-VMCraft.md)** - Advanced VM manipulation (NEW!)
+3. **[🪟 Windows Guide](10-Windows-Guide.md)** - Windows migrations
+4. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere integration
+5. **[⚠️ Failure Modes](90-Failure-Modes.md)** - Troubleshooting
 
 ### Recently Updated
+- **[09-VMCraft](09-VMCraft.md)** - NEW: VMCraft v9.0 with AI/ML intelligence (307+ methods)
 - **[14-Configuration-Injection-Guide](14-Configuration-Injection-Guide.md)** - NEW: Pre-boot VM customization
 - **[95-Testing-Guide](95-Testing-Guide.md)** - NEW: Complete testing guide (100% coverage)
-- **[20-RHEL-10](20-RHEL-10.md)** - Updated for RHEL 10 Beta
-- **[02-Installation](02-Installation.md)** - Added macOS & Windows WSL2
+- **[README](../README.md)** - Updated with VMCraft v9.0 features
+- **[CHANGELOG](../CHANGELOG.md)** - VMCraft version history added
 
 ---
 

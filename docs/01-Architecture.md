@@ -54,6 +54,12 @@
   - [Linux Domain (`linux_domain.py`)](#linux-domain-linux_domainpy)
   - [Windows Domain (`windows_domain.py`)](#windows-domain-windows_domainpy)
 - [Core Utilities](#core-utilities)
+- [VMCraft - VM Manipulation Engine](#vmcraft---vm-manipulation-engine)
+  - [Architecture](#architecture)
+  - [Key Capabilities](#key-capabilities)
+  - [Integration with Pipeline](#integration-with-pipeline)
+  - [Performance](#performance)
+  - [Usage in hyper2kvm](#usage-in-hyper2kvm)
   - [Essential Utilities](#essential-utilities)
     - [Guest Identity (`guest_identity.py`)](#guest-identity-guest_identitypy)
     - [Recovery Manager (`recovery_manager.py`)](#recovery-manager-recovery_managerpy)
@@ -869,6 +875,118 @@ The foundational layer providing infrastructure for all other modules.
 - Rich console output (colors, progress bars)
 - Structured logging (JSON)
 - Log level management
+
+---
+
+## VMCraft - VM Manipulation Engine
+
+**Module:** `core/vmcraft/`
+
+**Version:** v9.0
+
+VMCraft is hyper2kvm's pure Python disk image manipulation platform, serving as the primary VM inspection and modification engine.
+
+### Architecture
+
+VMCraft consists of **57 specialized modules** organized into focused categories:
+
+```
+core/vmcraft/
+├── main.py                    # Orchestrator
+├── Core Infrastructure (4 modules)
+│   ├── nbd.py                 # NBD device management
+│   ├── storage.py             # LVM/LUKS/RAID/ZFS
+│   ├── mount.py               # Filesystem mounting
+│   └── file_ops.py            # File operations (70+ methods)
+├── OS Detection (3 modules)
+│   ├── inspection.py          # Orchestration
+│   ├── linux_detection.py     # 15+ Linux distros
+│   └── windows_detection.py   # 20+ Windows versions
+├── Windows Support (6 modules)
+│   ├── windows_registry.py    # Registry operations
+│   ├── windows_drivers.py     # Driver injection
+│   ├── windows_users.py       # User management
+│   ├── windows_services.py    # Service control
+│   ├── windows_applications.py # App detection
+│   └── scheduled_tasks.py     # Task Scheduler
+├── Linux Support (1 module)
+│   └── linux_services.py      # Systemd/init services
+├── Enterprise Intelligence (5 modules)
+│   ├── ml_analyzer.py         # AI/ML analytics
+│   ├── cloud_optimizer.py     # Cloud migration
+│   ├── disaster_recovery.py   # DR planning
+│   ├── audit_trail.py         # Compliance logging
+│   └── resource_orchestrator.py # Auto-scaling
+└── Operational Tools (5 modules)
+    ├── backup.py              # Backup/restore
+    ├── security.py            # Security auditing
+    ├── optimization.py        # Disk optimization
+    ├── advanced_analysis.py   # Forensics
+    └── export.py              # VM export
+```
+
+### Key Capabilities
+
+**Core Operations:**
+- **Fast launch:** ~1.9s (NBD connection + storage activation)
+- **OS detection:** 15+ Linux distros, 20+ Windows versions
+- **File operations:** 70+ methods for comprehensive file manipulation
+- **Storage stack:** LVM, LUKS, RAID, ZFS support
+
+**Cross-Platform:**
+- **Linux:** Package management, service control, driver analysis
+- **Windows:** Registry operations, driver injection, user/service management
+
+**Enterprise Intelligence (v9.0):**
+- **AI/ML Analytics:** Anomaly detection, behavior prediction, workload classification
+- **Cloud Optimization:** Multi-cloud migration planning (AWS, Azure, GCP)
+- **Disaster Recovery:** RTO/RPO planning, backup strategies
+- **Audit Trail:** Multi-standard compliance (SOC2, PCI-DSS, HIPAA, GDPR)
+- **Resource Orchestration:** Auto-scaling, workload balancing
+
+### Integration with Pipeline
+
+VMCraft integrates into the migration pipeline at these stages:
+
+1. **INSPECT:** OS detection and filesystem analysis
+2. **FIX:** Offline file modifications, registry edits, driver injection
+3. **VALIDATE:** Pre-migration verification
+
+### Performance
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| Launch | ~1.9s | NBD + storage |
+| OS Inspection | ~0.3s | Linux/Windows detection |
+| File Read | <50ms | Direct filesystem access |
+| Registry Read | ~150ms | Windows offline registry |
+
+### Usage in hyper2kvm
+
+```python
+from hyper2kvm.core.vmcraft import VMCraft
+
+with VMCraft() as g:
+    g.add_drive_opts("/path/to/disk.vmdk", readonly=False)
+    g.launch()
+
+    # OS detection
+    roots = g.inspect_os()
+
+    # File operations
+    g.write("/etc/motd", "Migrated to KVM\n")
+
+    # Windows registry (if Windows)
+    g.win_registry_write("SOFTWARE", r"Microsoft\...", "Key", "Value")
+
+    # AI/ML analytics (v9.0)
+    anomalies = g.ml_detect_anomalies(metrics, "cpu")
+
+    # Cloud optimization (v9.0)
+    readiness = g.cloud_analyze_readiness(system_info)
+```
+
+**Documentation:** See [VMCraft Platform Guide](09-VMCraft.md) for complete reference (307+ methods).
 
 ---
 

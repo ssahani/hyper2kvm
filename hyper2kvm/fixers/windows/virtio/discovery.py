@@ -8,8 +8,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .utils import _safe_logger, _log
-from .config import DriverType, DriverStartType, _parse_start_type
+from .windows_virtio_utils import _safe_logger, _log
+from .windows_virtio_config import DriverType, DriverStartType, _parse_start_type
 from .detection import WindowsVirtioPlan, DriverFile, _bucket_candidates
 
 

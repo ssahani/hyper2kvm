@@ -22,7 +22,7 @@ from ..registry_core import (
     provision_firstboot_payload_and_service,
     _ensure_windows_root,
 )
-from .utils import (
+from .windows_virtio_utils import (
     _safe_logger,
     _log,
     _guest_mkdir_p,
@@ -30,8 +30,8 @@ from .utils import (
     _guest_sha256,
     _is_probably_driver_payload,
 )
-from .config import DriverStartType, DriverType
-from .paths import WindowsSystemPaths, _guestfs_to_windows_path
+from .windows_virtio_config import DriverStartType, DriverType
+from .windows_virtio_paths import WindowsSystemPaths, _guestfs_to_windows_path
 from .detection import WindowsVirtioPlan, DriverFile, _plan_to_dict
 
 
@@ -326,7 +326,7 @@ def _virtio_stage_manual_setup_cmd(self, g: guestfs.GuestFS, result: Dict[str, A
 def _virtio_edit_registry_system(self, g: guestfs.GuestFS, result: Dict[str, Any], paths: WindowsSystemPaths, drivers: List[DriverFile]) -> None:
     from .windows_virtio_utils import _step
     logger = _safe_logger(self)
-    with _step(logger, "🧬 Edit SYSTEM hive (Services + CDD + StartOverride)"):
+    with _step(logger, "🧬 Edit SYSTEM hive (Services + CDD + StartOverride + Remove VMware)"):
         try:
             reg_res = edit_system_hive(
                 self,
@@ -339,11 +339,49 @@ def _virtio_edit_registry_system(self, g: guestfs.GuestFS, result: Dict[str, Any
             result["registry_changes"] = reg_res
             if not reg_res.get("success"):
                 _log(logger, logging.WARNING, "SYSTEM hive edit reported errors: %s", reg_res.get("errors"))
+
+            # Report VMware removal stats
+            vmware_removed = reg_res.get("vmware_services_removed", [])
+            if vmware_removed:
+                _log(logger, logging.INFO, "Removed %d VMware services from registry: %s",
+                     len(vmware_removed), ", ".join(vmware_removed[:5]))
         except Exception as e:
             result["registry_changes"] = {"success": False, "error": str(e)}
             msg = f"Registry edit failed: {e}"
             result["warnings"].append(msg)
             _log(logger, logging.WARNING, "%s", msg)
+
+
+def _virtio_remove_vmware_sys_files(self, g: guestfs.GuestFS, result: Dict[str, Any], paths: WindowsSystemPaths) -> None:
+    """
+    Delete VMware .sys driver files from System32\\drivers to prevent boot errors.
+    """
+    from .windows_virtio_utils import _step
+    logger = _safe_logger(self)
+    dry_run = bool(result.get("dry_run"))
+
+    vmware_sys_files = [
+        "vm3dmp.sys", "vmmouse.sys", "vmusbmouse.sys", "vmxnet3.sys", "vmxnet.sys",
+        "vmhgfs.sys", "vmci.sys", "vmscsi.sys", "pvscsi.sys", "vmmemctl.sys",
+        "vsock.sys", "vmrawdsk.sys"
+    ]
+
+    deleted = []
+    with _step(logger, "🗑️ Remove VMware driver files from System32\\drivers"):
+        for sys_file in vmware_sys_files:
+            sys_path = f"{paths.drivers_dir}/{sys_file}"
+            try:
+                if g.is_file(sys_path):
+                    if not dry_run:
+                        g.rm(sys_path)
+                    deleted.append(sys_file)
+                    _log(logger, logging.INFO, "Deleted VMware driver: %s", sys_path)
+            except Exception as e:
+                _log(logger, logging.DEBUG, "VMware driver %s not found or cannot delete: %s", sys_file, e)
+
+    result["vmware_sys_files_deleted"] = deleted
+    if deleted:
+        _log(logger, logging.INFO, "Removed %d VMware .sys files from System32\\drivers", len(deleted))
 
 
 def _virtio_update_devicepath(self, g: guestfs.GuestFS, result: Dict[str, Any], paths: WindowsSystemPaths, devicepath_append: str) -> None:
@@ -409,7 +447,7 @@ def _virtio_provision_firstboot(self, g: guestfs.GuestFS, result: Dict[str, Any]
 
 
 def _virtio_bcd_backup(self, g: guestfs.GuestFS, result: Dict[str, Any]) -> None:
-    from .utils import _step
+    from .windows_virtio_utils import _step
     # Import here to avoid circular dependency
     from .core import windows_bcd_actual_fix
     logger = _safe_logger(self)

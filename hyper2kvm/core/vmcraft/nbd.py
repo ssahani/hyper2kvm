@@ -210,12 +210,28 @@ class NBDDeviceManager:
         try:
             # First try partprobe (simpler)
             run_sudo(self.logger, ["partprobe", nbd_device], check=False, capture=True)
-            time.sleep(0.2)  # Give kernel time to create partition devices
+            time.sleep(0.5)  # Give kernel time to create partition devices
+
+            # Verify partitions were created by checking for partition devices
+            # This is especially important for non-sequential partition layouts (e.g., Photon OS)
+            max_retries = 3
+            for attempt in range(max_retries):
+                result = run_sudo(self.logger, ["lsblk", "-n", "-o", "NAME", nbd_device], check=False, capture=True)
+                if result.stdout:
+                    lines = result.stdout.strip().splitlines()
+                    # If we have more than just the main device, partitions exist
+                    if len(lines) > 1:
+                        self.logger.debug(f"Partitions verified after {attempt + 1} attempt(s)")
+                        break
+
+                if attempt < max_retries - 1:
+                    self.logger.debug(f"Waiting for partitions to appear (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(0.3)
         except Exception:
             # Fallback to kpartx if available
             try:
                 run_sudo(self.logger, ["kpartx", "-a", nbd_device], check=False, capture=True)
-                time.sleep(0.2)
+                time.sleep(0.5)
             except Exception:
                 # If both fail, partitions might still work
                 pass

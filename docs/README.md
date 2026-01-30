@@ -11,6 +11,7 @@ Complete documentation for the hyper2kvm VM migration toolkit.
 
 ### Core Concepts
 - **[Architecture](01-Architecture.md)** - System design and components
+- **[VMCraft Platform](09-VMCraft.md)** - Advanced VM manipulation (307+ methods, AI/ML intelligence)
 - **[YAML Configuration](05-YAML-Examples.md)** - Configuration file reference
 
 ### Platform-Specific Guides

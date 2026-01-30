@@ -1,6 +1,6 @@
 # 📁 hyper2kvm Configuration Examples
 
-This directory contains production-ready configuration examples for various migration scenarios.
+This directory contains production-ready configuration examples for various migration scenarios, utilizing **hyper2kvm v0.1.0** with **VMCraft v9.0** capabilities.
 
 ## 📑 Table of Contents
 
@@ -288,10 +288,11 @@ To customize a configuration:
 ## 📖 Documentation
 
 For detailed documentation, see:
-- **docs/03-Quick-Start.md** - Getting started guide
-- **docs/04-CLI-Reference.md** - All CLI options
-- **docs/05-YAML-Examples.md** - Configuration examples
-- **docs/06-Cookbook.md** - Common recipes
+- **[docs/03-Quick-Start.md](../docs/03-Quick-Start.md)** - Getting started guide
+- **[docs/04-CLI-Reference.md](../docs/04-CLI-Reference.md)** - All CLI options
+- **[docs/05-YAML-Examples.md](../docs/05-YAML-Examples.md)** - Configuration examples
+- **[docs/06-Cookbook.md](../docs/06-Cookbook.md)** - Common recipes
+- **[docs/09-VMCraft.md](../docs/09-VMCraft.md)** - VMCraft Platform (307+ methods) ⭐ NEW
 
 ---
 
@@ -305,5 +306,7 @@ If you encounter issues:
 
 ---
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-01-25
+**hyper2kvm Version:** v0.1.0
+**VMCraft Version:** v9.0
 **Maintained by:** Susant Sahani <ssahani@gmail.com>

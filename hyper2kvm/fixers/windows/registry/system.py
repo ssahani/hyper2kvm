@@ -304,6 +304,48 @@ def _verify_services_post_write(
             _close_best_effort(vh)
 
 
+def _remove_vmware_driver_services(
+    logger: logging.Logger,
+    h: hivex.Hivex,
+    services_node: int,
+    *,
+    results: Dict[str, Any],
+) -> None:
+    """
+    Remove VMware driver service entries from the SYSTEM hive Services key.
+
+    This prevents Windows from showing error messages about missing VMware drivers
+    in Device Manager and Event Viewer.
+
+    Args:
+        logger: Logger instance
+        h: Opened hivex handle
+        services_node: Node ID of Services key in ControlSet
+        results: Results dict to accumulate vmware_services_removed list
+    """
+    vmware_drivers = [
+        "vm3dmp", "vmmouse", "vmusbmouse", "vmxnet3", "vmxnet",
+        "vmhgfs", "vmci", "vmscsi", "pvscsi", "vmmemctl", "vsock",
+        "vmrawdsk", "vm3dservice", "vmvss", "VMTools", "VGAuthService",
+        "vmware-aliases", "vmtoolsd"
+    ]
+
+    removed = results.setdefault("vmware_services_removed", [])
+
+    for svc_name in vmware_drivers:
+        try:
+            svc_node = _node_id(h.node_get_child(services_node, svc_name))
+            if svc_node != 0:
+                # Service exists - delete it
+                h.node_delete_child(svc_node)
+                removed.append(svc_name)
+                logger.info(f"Removed VMware service from registry: Services\\{svc_name}")
+        except Exception as e:
+            # Service doesn't exist or can't be deleted - that's fine
+            logger.debug(f"VMware service {svc_name} not found or already removed: {e}")
+            pass
+
+
 def edit_system_hive(
     self,
     g: guestfs.GuestFS,
@@ -392,6 +434,9 @@ def edit_system_hive(
                 storage_type_norm=storage_type_norm,
                 results=results,
             )
+
+            # Remove VMware drivers from Services to prevent boot errors
+            _remove_vmware_driver_services(logger, h, services, results=results)
 
             if not dry_run:
                 try:

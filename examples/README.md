@@ -1,11 +1,16 @@
 # hyper2kvm Examples
 
-This directory contains **40+ working examples** for common hyper2kvm migration scenarios, organized by use case, plus **library API examples** for programmatic usage.
+This directory contains **50+ working examples** for common hyper2kvm migration scenarios, organized by use case, including:
+- **VMCraft v9.0** library examples (AI/ML analytics, cloud optimization, DR planning)
+- Migration workflow examples (YAML/JSON configs)
+- Python library API examples for programmatic control
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [VMCraft Library Examples](#vmcraft-library-examples) ⭐ NEW
 - [Library API Examples](#library-api-examples)
+- [Python Script Examples](#python-script-examples)
 - [Directory Structure](#directory-structure)
 - [Common Scenarios](#common-scenarios)
 - [Configuration Format](#configuration-format)
@@ -49,6 +54,155 @@ sudo python -m hyper2kvm \
   --config examples/yaml/10-local/local-linux-basic.yaml \
   --compress --to-output /custom/path.qcow2
 ```
+
+---
+
+## VMCraft Library Examples
+
+**VMCraft v9.0** provides a pure Python VM manipulation platform with 307+ methods for comprehensive disk image operations, AI/ML intelligence, and enterprise features.
+
+### VMCraft Quick Start
+
+```python
+from hyper2kvm.core.vmcraft import VMCraft
+
+# Basic usage with context manager
+with VMCraft() as g:
+    # Add disk image
+    g.add_drive_opts("/path/to/disk.vmdk", readonly=True, format="vmdk")
+
+    # Launch (~1.9s)
+    g.launch()
+
+    # OS detection (15+ Linux distros, 20+ Windows versions)
+    roots = g.inspect_os()
+    for root in roots:
+        print(f"OS: {g.inspect_get_product_name(root)}")
+
+    # File operations (70+ methods)
+    hostname = g.cat("/etc/hostname")
+    g.write("/etc/motd", "Welcome!\n")
+
+    # Windows registry operations
+    if g.inspect_get_type(roots[0]) == "windows":
+        product = g.win_registry_read(
+            "SOFTWARE",
+            r"Microsoft\Windows NT\CurrentVersion",
+            "ProductName"
+        )
+```
+
+### AI/ML Analytics (v9.0)
+
+```python
+with VMCraft() as g:
+    # Anomaly detection
+    metrics = {
+        "cpu_usage": [45, 50, 48, 95, 49],  # Spike detected
+        "memory_usage": [60, 62, 61, 63, 59]
+    }
+    result = g.ml_detect_anomalies(metrics, "cpu_usage")
+
+    # Workload classification
+    classification = g.ml_classify_workload(metrics)
+    print(f"Workload: {classification['workload_type']}")
+    # Output: "compute_intensive", "memory_intensive", etc.
+
+    # Behavior prediction
+    historical_data = [
+        {"timestamp": "2026-01-01T00:00:00", "cpu_usage": 45},
+        # ... more data points
+    ]
+    prediction = g.ml_predict_behavior(historical_data)
+```
+
+### Cloud Optimization (v9.0)
+
+```python
+with VMCraft() as g:
+    # Cloud readiness assessment
+    system_info = {
+        "os_type": "linux",
+        "distro": "ubuntu",
+        "cpu_cores": 8,
+        "memory_gb": 16
+    }
+    readiness = g.cloud_analyze_readiness(system_info)
+    print(f"Ready: {readiness['ready']} (score: {readiness['score']}/100)")
+
+    # Instance recommendations (AWS, Azure, GCP)
+    requirements = {"cpu_cores": 8, "memory_gb": 16}
+    instances = g.cloud_recommend_instance_type(requirements, "aws")
+
+    # Cost calculation
+    usage_profile = {"hours_per_month": 730, "cpu_cores": 8}
+    costs = g.cloud_calculate_costs(usage_profile, "azure")
+```
+
+### Disaster Recovery (v9.0)
+
+```python
+with VMCraft() as g:
+    # Assess recovery requirements
+    system_info = {"business_criticality": "high"}
+    assessment = g.dr_assess_recovery_requirements(system_info)
+    print(f"Tier: {assessment['tier']}, RTO: {assessment['target_rto']}")
+
+    # Create backup strategy
+    requirements = {"tier": 1, "data_size_gb": 500}
+    strategy = g.dr_create_backup_strategy(requirements)
+
+    # Calculate RTO/RPO
+    backup_config = {"full_backup_frequency_hours": 24}
+    rto_rpo = g.dr_calculate_rto_rpo(backup_config)
+```
+
+### Audit Trail & Compliance (v9.0)
+
+```python
+with VMCraft() as g:
+    # Log audit events
+    g.audit_log_event(
+        category="security",
+        action="file_modified",
+        details={"path": "/etc/passwd"},
+        severity="CRITICAL"
+    )
+
+    # Generate compliance report (SOC2, PCI-DSS, HIPAA, GDPR)
+    report = g.audit_generate_compliance_report("SOC2", period_days=90)
+    print(f"Compliance score: {report['compliance_score']}/100")
+
+    # Verify integrity
+    verification = g.audit_verify_integrity()
+```
+
+### Resource Orchestration (v9.0)
+
+```python
+with VMCraft() as g:
+    # Analyze resource usage
+    current_metrics = {
+        "cpu_usage_percent": 75,
+        "memory_usage_percent": 60
+    }
+    analysis = g.orchestrate_analyze_resource_usage(current_metrics)
+
+    # Create auto-scaling policy
+    policy = g.orchestrate_create_scaling_policy(
+        policy_name="production",
+        policy_type="moderate"  # aggressive, moderate, conservative
+    )
+
+    # Execute scaling action
+    result = g.orchestrate_execute_scaling_action(
+        action="scale_up",
+        current_capacity=4,
+        reason="CPU threshold exceeded"
+    )
+```
+
+**Complete VMCraft Documentation:** See [docs/09-VMCraft.md](../docs/09-VMCraft.md) for all 307+ methods.
 
 ---
 

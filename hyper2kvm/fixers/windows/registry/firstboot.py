@@ -66,7 +66,7 @@ def _safe_logger(self) -> logging.Logger:
 # First-boot mechanism: create a one-shot SERVICE (more reliable than RunOnce)
 
 _DEFAULT_GUEST_DIR = "/hyper2kvm"
-_DEFAULT_DRIVER_STAGE_DIR = "/hyper2kvm/drivers"
+_DEFAULT_DRIVER_STAGE_DIR = "/hyper2kvm/drivers/virtio"
 _DEFAULT_LOG_PATH = "/Windows/Temp/hyper2kvm-firstboot.log"
 _DEFAULT_MARKER_PATH = "/hyper2kvm/firstboot.done"
 
@@ -247,12 +247,52 @@ for %%S in (VMTools VGAuthService vmvss vmware-aliases vmtoolsd) do (
   )
 )
 
-echo --- VMware driver/services disable (best-effort) --- >> "%LOG%"
-for %%D in (vm3dmp vmmouse vmusbmouse vmxnet3 vmhgfs vmci vmscsi pvscsi) do (
-  reg query "HKLM\SYSTEM\CurrentControlSet\Services\%%D" >> "%LOG%" 2>&1
-  if %ERRORLEVEL%==0 (
-    reg add "HKLM\SYSTEM\CurrentControlSet\Services\%%D" /v Start /t REG_DWORD /d 4 /f >> "%LOG%" 2>&1
+echo --- VMware driver/services DELETE (aggressive cleanup) --- >> "%LOG%"
+for %%D in (vm3dmp vmmouse vmusbmouse vmxnet3 vmxnet vmhgfs vmci vmscsi pvscsi vmmemctl vsock vmrawdsk vm3dservice vmvss) do (
+  echo Removing driver service: %%D >> "%LOG%"
+  sc.exe stop "%%D" >> "%LOG%" 2>&1
+  sc.exe delete "%%D" >> "%LOG%" 2>&1
+  reg delete "HKLM\SYSTEM\CurrentControlSet\Services\%%D" /f >> "%LOG%" 2>&1
+  reg delete "HKLM\SYSTEM\ControlSet001\Services\%%D" /f >> "%LOG%" 2>&1
+  reg delete "HKLM\SYSTEM\ControlSet002\Services\%%D" /f >> "%LOG%" 2>&1
+)
+
+echo --- VMware driver files DELETE from System32\drivers --- >> "%LOG%"
+for %%F in (vm3dmp.sys vmmouse.sys vmusbmouse.sys vmxnet3.sys vmxnet.sys vmhgfs.sys vmci.sys vmscsi.sys pvscsi.sys vmmemctl.sys vsock.sys vmrawdsk.sys) do (
+  if exist "%SystemRoot%\System32\drivers\%%F" (
+    echo Deleting: %SystemRoot%\System32\drivers\%%F >> "%LOG%"
+    del /f /q "%SystemRoot%\System32\drivers\%%F" >> "%LOG%" 2>&1
   )
+)
+
+echo --- VMware PnP drivers removal via pnputil --- >> "%LOG%"
+where pnputil >> "%LOG%" 2>&1
+if %ERRORLEVEL%==0 (
+  for /f "tokens=1" %%I in ('pnputil /enum-drivers ^| findstr /i "vmware"') do (
+    echo Removing PnP driver: %%I >> "%LOG%"
+    pnputil /delete-driver %%I /uninstall /force >> "%LOG%" 2>&1
+  )
+) else (
+  echo pnputil not available; skipping PnP driver removal >> "%LOG%"
+)
+
+echo --- VMware devices removal from Device Manager --- >> "%LOG%"
+where powershell >> "%LOG%" 2>&1
+if %ERRORLEVEL%==0 (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ErrorActionPreference='Continue';" ^
+    "try {" ^
+    " $devcon = Get-WmiObject Win32_PnPEntity | Where-Object { $_.Name -match 'VMware' -or $_.Manufacturer -match 'VMware' };" ^
+    " if($devcon) {" ^
+    "  foreach($d in $devcon) {" ^
+    "   ('Removing device: ' + $d.Name) | Out-File -Append -Encoding ascii $env:LOG;" ^
+    "   try { $d.Delete() } catch { $_ | Out-File -Append -Encoding ascii $env:LOG }" ^
+    "  }" ^
+    " } else {" ^
+    "  'No VMware devices found in Device Manager' | Out-File -Append -Encoding ascii $env:LOG;" ^
+    " }" ^
+    "} catch { $_ | Out-File -Append -Encoding ascii $env:LOG }" ^
+    >> "%LOG%" 2>&1
 )
 
 echo --- VMware Tools directory cleanup (best-effort but deterministic) --- >> "%LOG%"
@@ -334,11 +374,11 @@ def _enforce_firstboot_policy_paths(
 
 def _firstboot_windows_paths(service_name: str) -> _FirstbootWinPaths:
     # Windows runtime paths aligned with policy guestfs paths:
-    #   guestfs /hyper2kvm        -> Windows C:\hyper2kvm
-    #   guestfs /hyper2kvm/drivers-> Windows C:\hyper2kvm\drivers
-    #   guestfs /Windows/Temp/...-> Windows C:\Windows\Temp\...
+    #   guestfs /hyper2kvm               -> Windows C:\hyper2kvm
+    #   guestfs /hyper2kvm/drivers/virtio-> Windows C:\hyper2kvm\drivers\virtio
+    #   guestfs /Windows/Temp/...        -> Windows C:\Windows\Temp\...
     win_guest_dir = r"%SystemDrive%\hyper2kvm"
-    win_stage_dir = fr"{win_guest_dir}\drivers"
+    win_stage_dir = fr"{win_guest_dir}\drivers\virtio"
     win_log = r"%SystemRoot%\Temp\hyper2kvm-firstboot.log"
     win_marker = fr"{win_guest_dir}\firstboot.done"
     _ = service_name  # kept for future shaping (service name is in script variables)
@@ -591,7 +631,7 @@ def provision_firstboot_payload_and_service(
     results["notes"] += [
         "Firstboot uses a SERVICE (LocalSystem) instead of RunOnce: less fragile across logon/autologon quirks.",
         "Log file will be at C:\\Windows\\Temp\\hyper2kvm-firstboot.log (guestfs: /Windows/Temp/hyper2kvm-firstboot.log).",
-        "Drivers must be staged under C:\\hyper2kvm\\drivers (guestfs: /hyper2kvm/drivers).",
+        "Drivers must be staged under C:\\hyper2kvm\\drivers\\virtio (guestfs: /hyper2kvm/drivers/virtio).",
         "A completion marker is written to C:\\hyper2kvm\\firstboot.done to avoid reruns if the service delete fails.",
         "uploaded_files includes sha256+size so you can prove what landed on disk.",
     ]
