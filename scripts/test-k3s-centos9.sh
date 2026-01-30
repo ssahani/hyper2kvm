@@ -30,12 +30,12 @@ log_info() {
 
 log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
 }
 
 log_fail() {
     echo -e "${RED}[FAIL]${NC} $1"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
 }
 
 log_warn() {
@@ -43,7 +43,7 @@ log_warn() {
 }
 
 log_test() {
-    ((TESTS_TOTAL++))
+    TESTS_TOTAL=$((TESTS_TOTAL + 1))
     echo -e "${BLUE}[TEST $TESTS_TOTAL]${NC} $1"
 }
 
@@ -174,15 +174,8 @@ EOF
     if [ $? -eq 0 ]; then
         log_success "PVC created"
 
-        # Wait for PVC to bind
-        log_info "Waiting for PVC to bind (timeout: 60s)..."
-        if kubectl wait --for=condition=Bound pvc/centos9-disk -n $NAMESPACE --timeout=60s &> /dev/null; then
-            log_success "PVC bound successfully"
-        else
-            log_fail "PVC failed to bind"
-            kubectl get pvc -n $NAMESPACE
-            return 1
-        fi
+        # Note: local-path uses WaitForFirstConsumer, so PVC won't bind until a pod uses it
+        log_info "PVC created (will bind when first pod uses it - this is normal for local-path)"
     else
         log_fail "Failed to create PVC"
         return 1
@@ -253,9 +246,17 @@ EOF
         return 1
     fi
 
-    # Wait for pod to be ready
-    log_info "Waiting for uploader pod..."
-    kubectl wait --for=condition=Ready pod/disk-uploader -n $NAMESPACE --timeout=60s &> /dev/null
+    # Wait for pod to be ready (this will also trigger PVC binding)
+    log_info "Waiting for uploader pod (this will bind the PVC)..."
+    if kubectl wait --for=condition=Ready pod/disk-uploader -n $NAMESPACE --timeout=120s &> /dev/null; then
+        log_success "Uploader pod ready and PVC bound"
+    else
+        log_fail "Uploader pod failed to become ready"
+        kubectl get pod disk-uploader -n $NAMESPACE
+        kubectl get pvc -n $NAMESPACE
+        kubectl delete pod disk-uploader -n $NAMESPACE &> /dev/null || true
+        return 1
+    fi
 
     # Copy QCOW2 to PVC
     log_info "Copying QCOW2 to PVC (this may take a while)..."
