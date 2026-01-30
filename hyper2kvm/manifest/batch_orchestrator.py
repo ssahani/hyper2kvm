@@ -22,6 +22,7 @@ from ..config.config_loader import Config
 from ..core.logger import Log
 from ..core.utils import U
 from .batch_loader import BatchLoader, VMBatchItem
+from .batch_progress import ProgressTracker
 from .batch_reporter import BatchReporter
 from .checkpoint_manager import CheckpointManager
 from .orchestrator import ManifestOrchestrator
@@ -68,6 +69,7 @@ class BatchOrchestrator:
         batch_manifest_path: str | Path,
         logger: logging.Logger | None = None,
         enable_checkpoint: bool = True,
+        enable_progress: bool = True,
     ):
         self.logger = logger or logging.getLogger(__name__)
         self.batch_path = Path(batch_manifest_path)
@@ -76,6 +78,8 @@ class BatchOrchestrator:
         self.results: list[VMConversionResult] = []
         self.enable_checkpoint = enable_checkpoint
         self.checkpoint_manager: CheckpointManager | None = None
+        self.enable_progress = enable_progress
+        self.progress_tracker: ProgressTracker | None = None
 
     def run(self) -> dict[str, Any]:
         """
@@ -146,6 +150,17 @@ class BatchOrchestrator:
                 self.logger.info("✅ All VMs already processed (checkpoint resume)")
                 return self._generate_report(batch_start, time.time())
 
+            # Initialize progress tracker if enabled
+            if self.enable_progress:
+                progress_file = self._get_progress_file()
+                self.progress_tracker = ProgressTracker(
+                    progress_file=progress_file,
+                    batch_id=batch_id,
+                    total_vms=len(self.loader.get_vms()),
+                    logger=self.logger,
+                )
+                self.logger.info(f"📊 Progress tracking enabled: {progress_file}")
+
             # Process VMs
             if parallel_limit > 1 and len(vms) > 1:
                 self._process_vms_parallel(vms, parallel_limit, continue_on_error, shared_config)
@@ -171,9 +186,17 @@ class BatchOrchestrator:
                 self.logger.info(f"   Failed: {failed_count}/{len(vms)}")
             self.logger.info("=" * 80)
 
+            # Complete progress tracking
+            if self.enable_progress and self.progress_tracker:
+                self.progress_tracker.complete_batch()
+
             # Cleanup checkpoint on successful completion
             if self.enable_checkpoint and self.checkpoint_manager and failed_count == 0:
                 self.checkpoint_manager.cleanup()
+
+            # Cleanup progress file on successful completion
+            if self.enable_progress and self.progress_tracker and failed_count == 0:
+                self.progress_tracker.cleanup()
 
             return report
 
@@ -342,6 +365,10 @@ class BatchOrchestrator:
         """
         vm_start = time.time()
 
+        # Track VM start in progress
+        if self.enable_progress and self.progress_tracker:
+            self.progress_tracker.start_vm(vm.id)
+
         try:
             # Validate manifest exists
             if not vm.manifest_path.exists():
@@ -360,10 +387,18 @@ class BatchOrchestrator:
                 vm.manifest_path,
             )
 
+            # Update progress: extraction stage
+            if self.enable_progress and self.progress_tracker:
+                self.progress_tracker.update_vm_stage(vm.id, "extraction")
+
             orchestrator = ManifestOrchestrator(effective_manifest, logger=self.logger)
             report = orchestrator.run()
 
             vm_duration = time.time() - vm_start
+
+            # Track VM completion in progress
+            if self.enable_progress and self.progress_tracker:
+                self.progress_tracker.complete_vm(vm.id, success=True)
 
             return VMConversionResult(
                 vm_item=vm,
@@ -383,6 +418,10 @@ class BatchOrchestrator:
                 error_msg,
                 exc_info=True,
             )
+
+            # Track VM failure in progress
+            if self.enable_progress and self.progress_tracker:
+                self.progress_tracker.complete_vm(vm.id, success=False, error=error_msg)
 
             return VMConversionResult(
                 vm_item=vm,
@@ -483,6 +522,17 @@ class BatchOrchestrator:
             checkpoint_dir = self.batch_path.parent / ".checkpoints"
 
         return checkpoint_dir
+
+    def _get_progress_file(self) -> Path:
+        """Get progress file path."""
+        # Use output directory if available, otherwise batch manifest directory
+        output_dir = self.loader.get_output_directory()
+        if output_dir:
+            progress_file = output_dir / ".progress" / "batch_progress.json"
+        else:
+            progress_file = self.batch_path.parent / ".progress" / "batch_progress.json"
+
+        return progress_file
 
     def _restore_previous_results(self, checkpoint_data: dict[str, Any]) -> None:
         """Restore previous VM results from checkpoint."""
