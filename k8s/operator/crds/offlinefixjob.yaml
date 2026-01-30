@@ -71,7 +71,7 @@ spec:
                     default: pod
                   vmImage:
                     type: string
-                    default: "quay.io/hyper2kvm/offline-fix-vm:v1.0.0"
+                    default: "ghcr.io/hyper2kvm/offline-fix-vm:v1.0.0"
                   resources:
                     type: object
                     properties:

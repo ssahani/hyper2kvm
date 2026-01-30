@@ -267,7 +267,7 @@ async def create_fixer_vm(
 
         # Get execution settings
         execution = spec.get('execution', {})
-        vm_image = execution.get('vmImage', 'quay.io/hyper2kvm/offline-fix-vm:v1.0.0')
+        vm_image = execution.get('vmImage', 'ghcr.io/hyper2kvm/offline-fix-vm:v1.0.0')
         resources = execution.get('resources', {})
         memory = resources.get('memory', '2Gi')
         cpu = resources.get('cpu', '2')

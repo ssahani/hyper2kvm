@@ -6,7 +6,7 @@
 
 set -e
 
-REGISTRY="${REGISTRY:-quay.io/hyper2kvm}"
+REGISTRY="${REGISTRY:-ghcr.io/hyper2kvm}"
 VERSION="${VERSION:-v1.0.0}"
 
 echo "╔═══════════════════════════════════════════════════════════════════╗"
