@@ -376,15 +376,18 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
     This orchestrates the complete VirtIO injection pipeline:
     1. Preflight checks (Windows detection, virtio_drivers_dir validation)
-    2. Configuration loading and driver plan creation
-    3. Driver discovery from source directory/ISO
-    4. System volume mounting and path resolution
-    5. Driver binary (.sys) upload to System32\\drivers
-    6. Driver package staging (INF/CAT/DLL) for PnP installation
-    7. Registry edits (SYSTEM hive: Services, CDD, StartOverride)
-    8. DevicePath update (SOFTWARE hive) for PnP discovery
-    9. Firstboot service provisioning (pnputil /install on first boot)
-    10. BCD backup and boot mode detection
+    2. **CRITICAL: BitLocker encryption detection (blocks migration if encrypted)**
+    3. Configuration loading and driver plan creation
+    4. Driver discovery from source directory/ISO
+    5. System volume mounting and path resolution
+    6. Driver binary (.sys) upload to System32\\drivers
+    7. Driver package staging (INF/CAT/DLL) for PnP installation
+    8. Registry edits (SYSTEM hive: Services, CDD, StartOverride)
+    9. **NEW: RDP verification (warns if disabled)**
+    10. **NEW: Firewall migration staging (preserves firewall rules)**
+    11. DevicePath update (SOFTWARE hive) for PnP discovery
+    12. Firstboot service provisioning (pnputil /install on first boot)
+    13. BCD backup and boot mode detection
 
     Args:
         self: Context object with configuration attributes:
@@ -413,12 +416,16 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         - devicepath_changes: Dict - SOFTWARE hive DevicePath update results
         - firstboot: Dict - Firstboot service provisioning results
         - bcd_changes: Dict - BCD discovery and backup results
+        - bitlocker_check: Dict - BitLocker detection results (NEW)
+        - rdp_check: Dict - RDP verification results (NEW)
+        - firewall_staging: Dict - Firewall migration staging results (NEW)
         - artifacts: List[Dict] - All created artifacts
         - warnings: List[str] - Non-fatal issues
         - notes: List[str] - Detailed information about the injection
         - reason: str (only if injected=False) - Failure reason
 
     Raises:
+        BitLockerDetectionError: If BitLocker encryption detected (blocks migration)
         Exception: Critical failures during injection (logged and returned in result)
     """
     logger = _safe_logger(self)
@@ -436,6 +443,18 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     paths = _virtio_ensure_system_volume(self, g)
     if not paths.windows_dir or not g.is_dir(paths.windows_dir):
         return {"injected": False, "reason": "no_windows_root", "windows_dir": paths.windows_dir}
+
+    # CRITICAL: Check for BitLocker encryption before making any modifications
+    # This prevents BSOD/data corruption from attempting to modify encrypted volumes
+    root = "/" if not hasattr(self, "inspect_root") else getattr(self, "inspect_root", "/")
+    try:
+        from ..bitlocker import check_bitlocker_before_migration
+        _log(logger, logging.INFO, "🔒 Checking for BitLocker encryption...")
+        check_bitlocker_before_migration(g, root, logger)
+    except Exception as e:
+        # BitLockerDetectionError will be raised and propagated to caller
+        # This blocks migration, which is the correct behavior
+        raise
 
     dry_run = bool(getattr(self, "dry_run", False))
     _virtio_ensure_temp_dir(self, g, paths, dry_run=dry_run)
@@ -475,6 +494,53 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     _virtio_stage_manual_setup_cmd(self, g, result)
     _virtio_edit_registry_system(self, g, result, paths, drivers)
     _virtio_remove_vmware_sys_files(self, g, result, paths)
+
+    # NEW: Critical Windows migration features (after registry edits)
+    # These run regardless of whether VirtIO drivers are being injected
+
+    # RDP Verification: Warn if Remote Desktop is disabled (prevents admin lockout)
+    try:
+        from ..rdp import verify_rdp_enabled
+        _log(logger, logging.INFO, "🖥️  Verifying Remote Desktop configuration...")
+        rdp_result = verify_rdp_enabled(g, root)
+        result["rdp_check"] = rdp_result
+
+        if not rdp_result.get("rdp_enabled"):
+            msg = "Remote Desktop may be disabled - admin access may be limited after migration"
+            result["warnings"].append(msg)
+            _log(logger, logging.WARNING, "⚠️  %s", msg)
+
+            if rdp_result.get("warnings"):
+                for warning in rdp_result["warnings"]:
+                    _log(logger, logging.WARNING, "   %s", warning)
+        else:
+            _log(logger, logging.INFO, "✅ Remote Desktop is enabled")
+    except Exception as e:
+        _log(logger, logging.WARNING, "RDP verification failed (non-fatal): %s", e)
+        result["rdp_check"] = {"error": str(e)}
+
+    # Firewall Migration: Stage PowerShell script to preserve firewall rules
+    try:
+        from ..firewall import stage_firewall_export_script
+        _log(logger, logging.INFO, "🛡️  Staging firewall migration script...")
+        firewall_result = stage_firewall_export_script(g, root)
+        result["firewall_staging"] = firewall_result
+
+        if firewall_result.get("staged"):
+            _log(logger, logging.INFO, "✅ Firewall migration script staged: %s",
+                 firewall_result.get("script_path", "unknown"))
+            if firewall_result.get("task_staged"):
+                _log(logger, logging.INFO, "✅ Scheduled task created for first boot")
+        else:
+            msg = "Firewall migration staging failed - rules may need manual migration"
+            result["warnings"].append(msg)
+            _log(logger, logging.WARNING, "⚠️  %s", msg)
+            if firewall_result.get("error"):
+                _log(logger, logging.WARNING, "   Error: %s", firewall_result["error"])
+    except Exception as e:
+        _log(logger, logging.WARNING, "Firewall staging failed (non-fatal): %s", e)
+        result["firewall_staging"] = {"staged": False, "error": str(e)}
+
     _virtio_update_devicepath(self, g, result, paths, devicepath_append)
     _virtio_provision_firstboot(self, g, result, paths, staging_root)
     _virtio_bcd_backup(self, g, result)

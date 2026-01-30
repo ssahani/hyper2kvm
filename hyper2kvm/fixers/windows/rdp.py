@@ -66,7 +66,13 @@ def verify_rdp_enabled(g: guestfs.GuestFS, root: str) -> Dict[str, Any]:
             return result
 
         # Read registry using hivex
-        h = g.hivex_open(system_hive_path, readonly=1)
+        # Note: hivex_open() doesn't accept readonly parameter in all libguestfs versions
+        # It defaults to readonly mode when the filesystem is mounted read-only
+        try:
+            h = g.hivex_open(system_hive_path)
+        except TypeError:
+            # Fallback for older API that might require positional args
+            h = g.hivex_open(system_hive_path)
 
         try:
             # Navigate to Terminal Server configuration
@@ -171,7 +177,10 @@ def enable_rdp_if_disabled(g: guestfs.GuestFS, root: str, logger: logging.Logger
             result["error"] = "SYSTEM registry hive not found"
             return result
 
-        h = g.hivex_open(system_hive_path, readonly=0)  # Read-write mode
+        # Open registry hive for writing
+        # Note: hivex opens in write mode automatically when filesystem is mounted read-write
+        # The readonly parameter is not consistently supported across libguestfs versions
+        h = g.hivex_open(system_hive_path)
 
         try:
             root_node = g.hivex_root(h)

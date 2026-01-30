@@ -49,6 +49,52 @@ def _virtio_preflight(self, g: guestfs.GuestFS) -> Tuple[Optional[Path], Optiona
     if not virtio_dir:
         _log(logger, logging.INFO, "VirtIO inject: virtio_drivers_dir not set -> skip")
 
+        # Even without VirtIO drivers, run critical Windows migration checks
+        result = {"injected": False, "reason": "virtio_drivers_dir_not_set"}
+
+        # Get root path for critical checks
+        root = "/" if not hasattr(self, "inspect_root") else getattr(self, "inspect_root", "/")
+
+        # CRITICAL: Check for BitLocker encryption
+        try:
+            from ..bitlocker import check_bitlocker_before_migration
+            _log(logger, logging.INFO, "🔒 Checking for BitLocker encryption...")
+            check_bitlocker_before_migration(g, root, logger)
+            result["bitlocker_check"] = {"passed": True}
+        except Exception as e:
+            # BitLocker detection errors are fatal - re-raise
+            _log(logger, logging.ERROR, f"BitLocker check failed: {e}")
+            raise
+
+        # RDP Verification
+        try:
+            from ..rdp import verify_rdp_enabled
+            _log(logger, logging.INFO, "🖥️  Verifying Remote Desktop configuration...")
+            rdp_result = verify_rdp_enabled(g, root)
+            result["rdp_check"] = rdp_result
+            if rdp_result.get("rdp_enabled"):
+                _log(logger, logging.INFO, "✅ Remote Desktop is enabled")
+            elif rdp_result.get("warnings"):
+                for warning in rdp_result["warnings"]:
+                    _log(logger, logging.WARNING, "⚠️  %s", warning)
+        except Exception as e:
+            _log(logger, logging.WARNING, f"RDP verification failed (non-fatal): {e}")
+            result["rdp_check"] = {"error": str(e)}
+
+        # Firewall Migration Staging
+        try:
+            from ..firewall import stage_firewall_export_script
+            _log(logger, logging.INFO, "🛡️  Staging firewall migration script...")
+            firewall_result = stage_firewall_export_script(g, root)
+            result["firewall_staging"] = firewall_result
+            if firewall_result.get("staged"):
+                _log(logger, logging.INFO, "✅ Firewall migration script staged")
+            else:
+                _log(logger, logging.WARNING, f"⚠️  Firewall staging failed: {firewall_result.get('error')}")
+        except Exception as e:
+            _log(logger, logging.WARNING, f"Firewall staging failed (non-fatal): {e}")
+            result["firewall_staging"] = {"staged": False, "error": str(e)}
+
         # Emit detailed warning about performance impact
         try:
             from ..virtio_warning import warn_no_virtio_drivers
@@ -66,7 +112,7 @@ def _virtio_preflight(self, g: guestfs.GuestFS) -> Tuple[Optional[Path], Optiona
             # Don't fail if warning fails
             _log(logger, logging.DEBUG, f"Could not emit VirtIO warning: {e}")
 
-        return None, {"injected": False, "reason": "virtio_drivers_dir_not_set"}
+        return None, result
 
     virtio_src = Path(str(virtio_dir))
     if not virtio_src.exists():
