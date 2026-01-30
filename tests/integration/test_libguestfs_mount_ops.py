@@ -176,7 +176,7 @@ def test_mountpoints_detection(test_linux_qcow2_image):
     for mp, device in sorted(mountpoints.items(), key=lambda x: len(x[0])):
         try:
             g.mount(device, mp)
-        except:
+        except Exception:
             pass
 
     # Verify mounted

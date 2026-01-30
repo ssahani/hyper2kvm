@@ -85,7 +85,7 @@ def test_part_get_bootable(test_linux_qcow2_image):
 
         # Should be boolean
         assert isinstance(bootable, bool)
-    except:
+    except Exception:
         # May not be supported on all partition types
         pytest.skip("Bootable flag not supported")
 

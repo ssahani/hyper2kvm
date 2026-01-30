@@ -192,7 +192,7 @@ def test_get_filesystem_uuids(test_linux_qcow2_image):
                 uuid = g.get_uuid(device)
                 if uuid:
                     ext4_uuids[device] = uuid
-            except:
+            except Exception:
                 pass  # Some devices may not have UUIDs
 
     # Should find at least one ext4 filesystem with UUID

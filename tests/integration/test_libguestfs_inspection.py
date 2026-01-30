@@ -175,7 +175,7 @@ def test_inspect_list_applications(test_linux_qcow2_image):
     for mp, device in sorted(mountpoints.items(), key=lambda x: len(x[0])):
         try:
             g.mount(device, mp)
-        except:
+        except Exception:
             pass  # Some mounts may fail
 
     # List applications (may return empty list for test images without package DB)
@@ -183,7 +183,7 @@ def test_inspect_list_applications(test_linux_qcow2_image):
         apps = g.inspect_list_applications(root)
         # Should return a list (may be empty for minimal test image)
         assert isinstance(apps, list)
-    except:
+    except Exception:
         # Some systems may not support this
         pass
 
@@ -220,7 +220,7 @@ def test_inspect_get_hostname(test_linux_qcow2_image):
         if hostname:
             assert isinstance(hostname, str)
             assert len(hostname) > 0
-    except:
+    except Exception:
         # Not all systems have hostname detection
         pass
 

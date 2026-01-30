@@ -154,7 +154,7 @@ def test_get_uuid(test_linux_qcow2_image):
             # Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
             # But allow for different formats
             assert len(uuid) > 0
-    except:
+    except Exception:
         # Some filesystems may not have UUIDs
         pytest.skip("UUID not available")
 
@@ -219,7 +219,7 @@ def test_get_label(test_linux_qcow2_image):
         # If label exists, should be a string
         if label:
             assert isinstance(label, str)
-    except:
+    except Exception:
         # Not all filesystems support labels
         pass
 
@@ -370,7 +370,7 @@ def test_vfs_uuid(test_linux_qcow2_image):
         # If UUID exists, should be a string
         if uuid:
             assert isinstance(uuid, str)
-    except:
+    except Exception:
         # May not be available
         pass
 
@@ -400,7 +400,7 @@ def test_vfs_label(test_linux_qcow2_image):
         # If label exists, should be a string
         if label:
             assert isinstance(label, str)
-    except:
+    except Exception:
         # May not be available
         pass
 

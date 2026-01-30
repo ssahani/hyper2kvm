@@ -83,7 +83,7 @@ class TestQemuTestStaticAPI(unittest.TestCase):
                     display=display,
                     timeout_s=1
                 )
-            except:
+            except Exception:
                 pass  # Mock may cause errors, we're just checking it doesn't crash
 
             # Test VNC mode
@@ -98,7 +98,7 @@ class TestQemuTestStaticAPI(unittest.TestCase):
                     display=display,
                     timeout_s=1
                 )
-            except:
+            except Exception:
                 pass
 
     @patch('subprocess.Popen')
@@ -128,7 +128,7 @@ class TestQemuTestStaticAPI(unittest.TestCase):
                     net=net,
                     timeout_s=1
                 )
-            except:
+            except Exception:
                 pass
 
             # Test without SSH forwarding
@@ -143,7 +143,7 @@ class TestQemuTestStaticAPI(unittest.TestCase):
                     net=net,
                     timeout_s=1
                 )
-            except:
+            except Exception:
                 pass
 
     @patch('hyper2kvm.core.utils.U.which')
