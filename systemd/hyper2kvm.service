@@ -16,8 +16,9 @@ Environment="CONFIG_FILE=/etc/hyper2kvm/hyper2kvm.conf"
 WorkingDirectory=/var/lib/hyper2kvm
 
 # Command to run hyper2kvm in daemon/watch mode
-# This watches for migration jobs and processes them
-ExecStart=/usr/bin/hyper2kvm --config ${CONFIG_FILE} --daemon
+# The config file should specify: command: daemon, watch_dir: <path>
+# This watches for incoming disk files and processes them automatically
+ExecStart=/usr/bin/python3 -m hyper2kvm --config ${CONFIG_FILE}
 
 # Restart policy
 Restart=on-failure

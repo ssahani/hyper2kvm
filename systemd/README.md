@@ -96,21 +96,27 @@ sudo chmod 750 /etc/hyper2kvm
 ```bash
 # Example configuration for daemon mode
 cat > /tmp/hyper2kvm-daemon.yaml <<'EOF'
-command: local
+# Daemon mode - watches directory for new disk files
+command: daemon
+daemon: true
 
-# Daemon mode settings
-daemon:
-  enabled: true
-  watch_dir: /var/lib/hyper2kvm/queue
-  poll_interval: 60  # seconds
-  max_concurrent: 2
+# Directory to watch for incoming disk files
+# Supports: .vmdk, .ova, .ovf, .vhd, .vhdx, .raw, .img, .ami
+watch_dir: /var/lib/hyper2kvm/queue
 
-# Default settings for migrations
+# Output directory for converted VMs
 output_dir: /var/lib/hyper2kvm/output
+
+# Working directory for temporary files
 workdir: /var/lib/hyper2kvm/work
+
+# Output format and compression
 out_format: qcow2
 compress: true
-checksum: true
+flatten: true
+
+# Enable recovery mode for resumable conversions
+enable_recovery: true
 
 # Logging
 log_file: /var/log/hyper2kvm/hyper2kvm.log
@@ -180,24 +186,28 @@ ReadWritePaths=/var/lib/hyper2kvm /var/log/hyper2kvm /tmp
 
 ```yaml
 # /etc/hyper2kvm/vsphere-prod.yaml
-command: vsphere
+# Daemon mode for watching directory and processing vSphere exports
+command: daemon
+daemon: true
 
-vcenter: vcenter.example.com
-vc_user: migration@vsphere.local
-vc_password_env: VCENTER_PASSWORD
-dc_name: Production-DC
+# Watch directory for vSphere-exported disk files
+watch_dir: /var/lib/hyper2kvm/vsphere-queue
 
-daemon:
-  enabled: true
-  watch_dir: /var/lib/hyper2kvm/vsphere-queue
-  poll_interval: 300
-
+# Output settings
 output_dir: /var/lib/hyper2kvm/vsphere-output
+workdir: /var/lib/hyper2kvm/vsphere-work
 out_format: qcow2
 compress: true
+flatten: true
+enable_recovery: true
 
+# Guest OS fixes
 fstab_mode: stabilize-all
 regen_initramfs: true
+
+# Logging
+log_file: /var/log/hyper2kvm/vsphere.log
+verbose: 1
 ```
 
 ```bash
@@ -223,18 +233,24 @@ sudo systemctl enable --now hyper2kvm@vsphere-prod.service
 
 ```yaml
 # /etc/hyper2kvm/azure-batch.yaml
-command: azure
+# Daemon mode for watching directory and processing Azure exports
+command: daemon
+daemon: true
 
-azure:
-  subscription: "Production"
-  resource_group: legacy-vms
+# Watch directory for Azure-exported disk files
+watch_dir: /var/lib/hyper2kvm/azure-queue
 
-daemon:
-  enabled: true
-  watch_dir: /var/lib/hyper2kvm/azure-queue
-  batch_size: 5
-
+# Output settings
 output_dir: /var/lib/hyper2kvm/azure-output
+workdir: /var/lib/hyper2kvm/azure-work
+out_format: qcow2
+compress: true
+flatten: true
+enable_recovery: true
+
+# Logging
+log_file: /var/log/hyper2kvm/azure.log
+verbose: 1
 ```
 
 ## Monitoring
