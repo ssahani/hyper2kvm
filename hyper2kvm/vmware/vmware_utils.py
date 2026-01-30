@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import re
 import sys
+from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 
 def safe_vm_name(name: Optional[str]) -> str:
@@ -71,3 +73,48 @@ def create_console():
         return Console(stderr=False)
     except Exception:
         return None
+
+
+def quote_inventory_path(path: str) -> str:
+    """Quote inventory path segments for vi:// URLs while keeping '/' as a separator.
+
+    Args:
+        path: Inventory path to quote (may contain spaces and special characters)
+
+    Returns:
+        URL-quoted path with '/' preserved as separator
+
+    Note:
+        Spaces and special characters do appear in vCenter inventory paths.
+        Common safe characters plus '/' separators are preserved unescaped.
+
+    Example:
+        >>> quote_inventory_path("My VM/Folder Name")
+        'My%20VM/Folder%20Name'
+        >>> quote_inventory_path("vm-folder/test.vm")
+        'vm-folder/test.vm'
+    """
+    # keep common safe characters plus '/' separators
+    return quote(path, safe="/-_.()@")
+
+
+def ensure_output_dir(base: Path) -> Path:
+    """Ensure output directory exists and return the resolved path.
+
+    Args:
+        base: Base directory path (may be relative, use ~, etc.)
+
+    Returns:
+        Resolved absolute Path with directory created
+
+    Note:
+        Creates parent directories as needed (like mkdir -p).
+        Expands user home directory (~) and resolves to absolute path.
+
+    Example:
+        >>> ensure_output_dir(Path("~/output"))
+        PosixPath('/home/user/output')
+    """
+    out = Path(base).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    return out

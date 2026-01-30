@@ -151,18 +151,9 @@ except Exception:  # pragma: no cover
     VDDK_CLIENT_AVAILABLE = False
 
 
-from .vmware_utils import safe_vm_name as _safe_vm_name
+from .vmware_utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path
 
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
-
-
-def _quote_inventory_path(path: str) -> str:
-    """
-    Quote inventory path segments for vi:// URLs while keeping '/' as a separator.
-    Spaces and special characters do appear in vCenter inventory.
-    """
-    # keep common safe characters plus '/' separators
-    return quote(path, safe="/-_.()@")
 
 
 class GovmomiCLI(GovcRunner):
