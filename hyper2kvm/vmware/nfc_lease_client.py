@@ -1,0 +1,574 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# hyper2kvm/vsphere/nfc_lease_client_govc.py
+# -*- coding: utf-8 -*-
+"""
+NFC export/download via govc CLI (govmomi).
+
+Key fact:
+- `govc export.ovf` / `govc export.ova` use VMware's HttpNfcLease mechanism under the hood
+  (aka "NFC export"): lease acquisition + keepalive + signed URL fetch + downloads.
+
+Why this exists:
+- You already have a *custom* NFC data-plane downloader (requests + Range + retries).
+- Sometimes you want the "just export it" path: let govc manage HttpNfcLease + keepalive
+  + URL signing + downloads, and you simply orchestrate it reliably.
+
+Important differences vs nfc_lease_client.py:
+- govc is NOT a pure data-plane client. It performs control-plane + data-plane together
+  for export.ovf / export.ova.
+- There is no lease heartbeat callback here: govc keeps the lease alive internally.
+- Resume semantics are best-effort: govc does not guarantee HTTP Range resume.
+  We implement "idempotent skip" (when enabled) + retries around the govc command,
+  and best-effort publish of the result.
+
+Notes on "atomic publish":
+- For OVA (single file), publish is truly atomic via os.replace().
+- For OVF (directory tree), publish is best-effort: we merge/overwrite files into the
+  final directory. This is safe and idempotent for typical tool usage, but readers could
+  observe partial updates if they inspect the directory mid-copy.
+
+Docs/refs:
+- govc is shipped from vmware/govmomi and provides export.ovf / export.ova commands.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import tempfile
+import time
+import random
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Callable
+
+
+class NFCLeaseError(RuntimeError):
+    """Generic NFC (govc) export/download error."""
+
+
+class NFCLeaseCancelled(NFCLeaseError):
+    """Raised when a caller cancels an in-progress export."""
+
+
+ProgressFn = Callable[[int, int, float], None]
+CancelFn = Callable[[], bool]
+LeaseHeartbeatFn = Callable[[int, int], None]  # accepted but not used (govc handles keepalive)
+
+
+@dataclass(frozen=True)
+class GovcSessionSpec:
+    """
+    govc auth/session config.
+
+    You can supply either explicit fields below, or rely on existing GOVC_* env
+    already exported in the process environment.
+    """
+    url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+    # govc -k / GOVC_INSECURE
+    insecure: Optional[bool] = None
+
+    # Optional extras
+    ca_certs: Optional[str] = None           # GOVC_TLS_CA_CERTS
+    thumbprint: Optional[str] = None         # GOVC_THUMBPRINT
+    token: Optional[str] = None              # GOVC_TOKEN (if you use it)
+    debug: Optional[bool] = None             # GOVC_DEBUG (very noisy)
+    persist_session: Optional[bool] = None   # GOVC_PERSIST_SESSION
+
+    # Optional inventory context
+    datacenter: Optional[str] = None         # GOVC_DATACENTER
+    datastore: Optional[str] = None          # GOVC_DATASTORE
+    folder: Optional[str] = None             # GOVC_FOLDER
+    resource_pool: Optional[str] = None      # GOVC_RESOURCE_POOL
+    host: Optional[str] = None               # GOVC_HOST
+    cluster: Optional[str] = None            # GOVC_CLUSTER
+
+
+@dataclass(frozen=True)
+class GovcExportSpec:
+    """
+    What to export.
+
+    vm: inventory path or name that govc can resolve (often "vm/MyVM" or "MyVM").
+    out_dir: final output directory where exported files should land.
+    """
+    vm: str
+    out_dir: Path
+
+    # export options
+    export_ova: bool = False  # if True, uses `govc export.ova`; else `govc export.ovf`
+    name: Optional[str] = None  # optional target base name under out_dir (see OVA note below)
+
+    # Pass-through flags (used only if set)
+    dc: Optional[str] = None
+    ds: Optional[str] = None
+    folder: Optional[str] = None
+    pool: Optional[str] = None
+    host: Optional[str] = None
+    cluster: Optional[str] = None
+
+    # govc binary path (default: resolve from PATH)
+    govc_bin: str = "govc"
+
+    # Preflight checks (recommended)
+    preflight: bool = True
+    preflight_vm_info: bool = True  # if True, verify VM is resolvable before export
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _env_apply(session: GovcSessionSpec, base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    env = dict(base or os.environ)
+
+    def set_if(k: str, v: Optional[str]) -> None:
+        if v is not None:
+            env[k] = v
+
+    def set_bool(k: str, v: Optional[bool]) -> None:
+        if v is not None:
+            env[k] = "1" if v else "0"
+
+    set_if("GOVC_URL", session.url)
+    set_if("GOVC_USERNAME", session.username)
+    set_if("GOVC_PASSWORD", session.password)
+
+    set_bool("GOVC_INSECURE", session.insecure)
+    set_if("GOVC_TLS_CA_CERTS", session.ca_certs)
+    set_if("GOVC_THUMBPRINT", session.thumbprint)
+    set_if("GOVC_TOKEN", session.token)
+    set_bool("GOVC_DEBUG", session.debug)
+    set_bool("GOVC_PERSIST_SESSION", session.persist_session)
+
+    set_if("GOVC_DATACENTER", session.datacenter)
+    set_if("GOVC_DATASTORE", session.datastore)
+    set_if("GOVC_FOLDER", session.folder)
+    set_if("GOVC_RESOURCE_POOL", session.resource_pool)
+    set_if("GOVC_HOST", session.host)
+    set_if("GOVC_CLUSTER", session.cluster)
+
+    return env
+
+
+def _mkdirp(p: Path) -> None:
+    p.mkdir(parents=True, exist_ok=True)
+
+
+def _best_effort_publish_dir(tmp_dir: Path, final_dir: Path) -> None:
+    """
+    Best-effort publish of an exported directory tree:
+    - ensure final exists
+    - merge/overwrite files from tmp into final
+    - then remove tmp
+
+    This is safe and idempotent, but not strictly atomic for directory readers.
+    """
+    _mkdirp(final_dir)
+    for root, _dirs, files in os.walk(tmp_dir):
+        rel = Path(root).relative_to(tmp_dir)
+        dst_root = final_dir / rel
+        _mkdirp(dst_root)
+        for fn in files:
+            src = Path(root) / fn
+            dst = dst_root / fn
+            os.replace(str(src), str(dst))
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _parse_govc_progress(line: str) -> Optional[Tuple[int, int, float]]:
+    """
+    Best-effort parsing of govc progress output.
+    govc output formats vary by command/version; we keep it permissive.
+
+    Recognizes:
+      - "xx%" patterns (no bytes)
+      - "<done>/<total>" integers when present (rare; depends on govc output)
+
+    Returns (done, total, pct).
+    """
+    m = re.search(r"(\d+(?:\.\d+)?)\s*%", line)
+    if m:
+        pct = float(m.group(1))
+        return (-1, -1, pct)
+
+    m2 = re.search(r"\b(\d+)\s*/\s*(\d+)\b", line)
+    if m2:
+        done = int(m2.group(1))
+        total = int(m2.group(2))
+        pct = (done * 100.0 / total) if total > 0 else 0.0
+        return (done, total, pct)
+
+    return None
+
+
+def _should_append_ova_ext(name: str) -> bool:
+    n = name.strip().lower()
+    return not (n.endswith(".ova") or n.endswith(".ovf"))
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+class GovcNfcExporter:
+    """
+    govc-backed exporter.
+
+    Guarantees we provide:
+    - retries/backoff around the govc invocation
+    - publish into final out_dir
+      * OVA: atomic os.replace()
+      * OVF: best-effort merge/overwrite publish
+    - optional "skip if already exported" heuristic
+
+    Reminder:
+    - This path uses HttpNfcLease implicitly via govc export.ovf/export.ova.
+    """
+
+    def __init__(self, logger: logging.Logger, session: GovcSessionSpec):
+        self.logger = logger
+        self.session = session
+
+    def export(
+        self,
+        spec: GovcExportSpec,
+        *,
+        resume: bool = True,
+        progress: Optional[ProgressFn] = None,
+        progress_interval_s: float = 0.5,
+        cancel: Optional[CancelFn] = None,
+        heartbeat: Optional[LeaseHeartbeatFn] = None,  # accepted for signature compatibility; ignored
+        max_retries: int = 5,
+        base_backoff_s: float = 1.0,
+        max_backoff_s: float = 20.0,
+        jitter_s: float = 0.5,
+        skip_if_present: bool = True,
+        stage_gc_max_age_s: float = 7 * 24 * 3600,  # 7 days
+    ) -> Path:
+        _ = heartbeat  # explicitly ignored (govc handles lease keepalive internally)
+
+        out_dir = Path(spec.out_dir).expanduser().resolve()
+        _mkdirp(out_dir)
+
+        target_name = spec.name or self._default_name_from_vm(spec.vm)
+
+        # OVA naming: unless caller explicitly uses .ova, we append it for sanity.
+        if spec.export_ova and _should_append_ova_ext(target_name):
+            target_name = f"{target_name}.ova"
+
+        final_path = out_dir / target_name
+
+        # Stage root (per-export target)
+        stage_parent = out_dir / f".{target_name}.govc.stage"
+        _mkdirp(stage_parent)
+        self._gc_stage_dirs(stage_parent, max_age_s=float(stage_gc_max_age_s))
+
+        env = _env_apply(self.session)
+
+        # Optional preflight: fail fast if auth/env is broken or VM isn't resolvable
+        if spec.preflight:
+            self._preflight(env=env, govc_bin=spec.govc_bin, vm=spec.vm, do_vm_info=spec.preflight_vm_info)
+
+        # Resume knob: disable skip fast-path when resume is False
+        effective_skip = bool(skip_if_present) and bool(resume)
+
+        # Fast path: already exported
+        if effective_skip and final_path.exists():
+            if spec.export_ova:
+                if final_path.is_file() and final_path.stat().st_size > 0:
+                    self.logger.info("✅ govc: output already present, skipping: %s", final_path)
+                    return final_path
+            else:
+                ovf_files = list(final_path.glob("*.ovf"))
+                if final_path.is_dir() and ovf_files:
+                    self.logger.info("✅ govc: output already present, skipping: %s", final_path)
+                    return final_path
+
+        # Build base command (NFC export path)
+        cmd: List[str] = [spec.govc_bin]
+        if spec.export_ova:
+            cmd += ["export.ova", "-vm", spec.vm]
+        else:
+            cmd += ["export.ovf", "-vm", spec.vm]
+
+        # Optional flags (only if set)
+        if spec.dc:
+            cmd += ["-dc", spec.dc]
+        if spec.ds:
+            cmd += ["-ds", spec.ds]
+        if spec.folder:
+            cmd += ["-folder", spec.folder]
+        if spec.pool:
+            cmd += ["-pool", spec.pool]
+        if spec.host:
+            cmd += ["-host", spec.host]
+        if spec.cluster:
+            cmd += ["-cluster", spec.cluster]
+
+        attempt = 0
+        last_cb = 0.0  # last progress callback timestamp (for throttling)
+
+        while True:
+            if cancel and cancel():
+                raise NFCLeaseCancelled("Export cancelled")
+
+            attempt += 1
+            stage_dir = Path(tempfile.mkdtemp(prefix=f"{target_name}.", dir=str(stage_parent)))
+
+            if spec.export_ova:
+                stage_out = stage_dir / Path(target_name).name
+                cmd_run = cmd + [str(stage_out)]
+            else:
+                stage_out = stage_dir / Path(target_name).stem
+                cmd_run = cmd + [str(stage_out)]
+
+            self.logger.info(
+                "📦 govc (HttpNfcLease): export start (attempt %d/%d): %s",
+                attempt,
+                int(max_retries),
+                " ".join(shlex.quote(x) for x in cmd_run),
+            )
+
+            last_cb_holder = [last_cb]
+
+            try:
+                self._run_govc(
+                    cmd_run,
+                    env=env,
+                    cancel=cancel,
+                    progress=progress,
+                    progress_interval_s=progress_interval_s,
+                    last_cb_holder=last_cb_holder,
+                )
+                last_cb = float(last_cb_holder[0])
+
+                if spec.export_ova:
+                    if not stage_out.exists() or stage_out.stat().st_size <= 0:
+                        raise NFCLeaseError(f"govc export produced empty OVA: {stage_out}")
+                    os.replace(str(stage_out), str(final_path))
+                    shutil.rmtree(stage_dir, ignore_errors=True)
+                else:
+                    if not stage_out.exists() or not stage_out.is_dir():
+                        raise NFCLeaseError(f"govc export did not create output dir: {stage_out}")
+                    ovfs = list(stage_out.glob("*.ovf"))
+                    if not ovfs:
+                        raise NFCLeaseError(f"govc export output missing .ovf: {stage_out}")
+
+                    if final_path.exists() and final_path.is_file():
+                        raise NFCLeaseError(f"Final path exists as file, expected dir: {final_path}")
+
+                    _mkdirp(final_path)
+                    _best_effort_publish_dir(stage_out, final_path)
+                    shutil.rmtree(stage_dir, ignore_errors=True)
+
+                self.logger.info("✅ govc: export done: %s", final_path)
+                return final_path
+
+            except NFCLeaseCancelled:
+                self.logger.warning("🛑 govc: export cancelled (kept stage dir): %s", stage_dir)
+                raise
+            except Exception as e:
+                shutil.rmtree(stage_dir, ignore_errors=True)
+
+                if attempt >= int(max_retries):
+                    raise NFCLeaseError(f"govc export failed after {attempt} attempts: {e}") from e
+
+                backoff = min(float(max_backoff_s), float(base_backoff_s) * (2 ** (attempt - 1)))
+                backoff += random.uniform(0.0, max(0.0, float(jitter_s)))
+
+                self.logger.warning(
+                    "🔁 govc: transient export error: %s (retry %d/%d in %.2fs)",
+                    e,
+                    attempt,
+                    int(max_retries),
+                    backoff,
+                )
+                time.sleep(backoff)
+
+    def _default_name_from_vm(self, vm: str) -> str:
+        return vm.replace("/", "_").replace("\\", "_").strip() or "vm"
+
+    def _gc_stage_dirs(self, stage_parent: Path, *, max_age_s: float) -> None:
+        try:
+            now = time.time()
+            for p in stage_parent.iterdir():
+                try:
+                    st = p.stat()
+                    age = now - float(st.st_mtime)
+                    if age > float(max_age_s):
+                        if p.is_dir():
+                            shutil.rmtree(p, ignore_errors=True)
+                        else:
+                            p.unlink(missing_ok=True)  # type: ignore[arg-type]
+                except Exception:
+                    continue
+        except Exception:
+            return
+
+    def _preflight(self, *, env: Dict[str, str], govc_bin: str, vm: str, do_vm_info: bool) -> None:
+        """
+        Fail fast if govc can't talk to vCenter or VM isn't resolvable.
+        This avoids spending minutes exporting before discovering auth/env issues.
+        """
+        try:
+            # Cheap connectivity/auth check
+            self._run_quick([govc_bin, "about"], env=env)
+        except Exception as e:
+            raise NFCLeaseError(f"govc preflight failed (about): {e}") from e
+
+        if do_vm_info:
+            try:
+                self._run_quick([govc_bin, "vm.info", "-vm", vm], env=env)
+            except Exception as e:
+                raise NFCLeaseError(f"govc preflight failed (vm.info -vm {vm!r}): {e}") from e
+
+    def _run_quick(self, cmd: List[str], *, env: Dict[str, str]) -> None:
+        p = subprocess.run(
+            cmd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if p.returncode != 0:
+            out = (p.stdout or "").strip()
+            msg = out[-2000:] if out else f"rc={p.returncode}"
+            raise NFCLeaseError(f"command failed: {' '.join(shlex.quote(x) for x in cmd)} :: {msg}")
+
+    def _terminate_process_group(
+        self,
+        logger: logging.Logger,
+        p: subprocess.Popen,
+        *,
+        term_grace_s: float = 2.0,
+        kill_grace_s: float = 2.0,
+    ) -> None:
+        try:
+            pgid = os.getpgid(p.pid)
+        except Exception:
+            pgid = None
+
+        try:
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGTERM)
+            else:
+                p.terminate()
+        except Exception:
+            pass
+
+        try:
+            p.wait(timeout=float(term_grace_s))
+            return
+        except Exception:
+            pass
+
+        try:
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                p.kill()
+        except Exception:
+            pass
+
+        try:
+            p.wait(timeout=float(kill_grace_s))
+        except Exception:
+            logger.debug("govc: process did not exit promptly after SIGKILL (pid=%s)", p.pid)
+
+    def _run_govc(
+        self,
+        cmd: List[str],
+        *,
+        env: Dict[str, str],
+        cancel: Optional[CancelFn],
+        progress: Optional[ProgressFn],
+        progress_interval_s: float,
+        last_cb_holder: List[float],
+    ) -> None:
+        p = subprocess.Popen(
+            cmd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+            start_new_session=True,
+        )
+
+        try:
+            assert p.stdout is not None
+            for raw in p.stdout:
+                if cancel and cancel():
+                    self._terminate_process_group(self.logger, p)
+                    raise NFCLeaseCancelled("Export cancelled")
+
+                line = raw.rstrip("\n")
+                if line:
+                    self.logger.debug("govc: %s", line)
+
+                if progress is not None:
+                    parsed = _parse_govc_progress(line)
+                    if parsed is not None:
+                        done, total, pct = parsed
+                        now = time.time()
+                        if (now - float(last_cb_holder[0])) >= max(0.05, float(progress_interval_s)):
+                            last_cb_holder[0] = now
+                            progress(done, total, pct)
+
+            rc = p.wait()
+            if rc != 0:
+                raise NFCLeaseError(f"govc exited with rc={rc}")
+        finally:
+            try:
+                if p.stdout:
+                    p.stdout.close()
+            except Exception:
+                pass
+
+
+def export_with_govc(
+    logger: logging.Logger,
+    session: GovcSessionSpec,
+    vm: str,
+    out_dir: Path,
+    *,
+    export_ova: bool = False,
+    name: Optional[str] = None,
+    preflight: bool = True,
+    preflight_vm_info: bool = True,
+    # Compat knobs
+    resume: bool = True,
+    progress: Optional[ProgressFn] = None,
+    progress_interval_s: float = 0.5,
+    cancel: Optional[CancelFn] = None,
+    heartbeat: Optional[LeaseHeartbeatFn] = None,  # ignored
+    max_retries: int = 5,
+) -> Path:
+    spec = GovcExportSpec(
+        vm=vm,
+        out_dir=out_dir,
+        export_ova=export_ova,
+        name=name,
+        preflight=preflight,
+        preflight_vm_info=preflight_vm_info,
+    )
+    return GovcNfcExporter(logger, session).export(
+        spec,
+        resume=resume,
+        progress=progress,
+        progress_interval_s=progress_interval_s,
+        cancel=cancel,
+        heartbeat=heartbeat,
+        max_retries=max_retries,
+    )
