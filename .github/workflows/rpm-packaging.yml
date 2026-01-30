@@ -58,11 +58,8 @@ jobs:
         VERSION="${{ steps.get_version.outputs.version }}"
         TARBALL_NAME="hyper2kvm-${VERSION}"
 
-        # Create a clean directory for tarball
-        mkdir -p /tmp/${TARBALL_NAME}
-
-        # Copy source files (excluding .git and build artifacts)
-        rsync -av \
+        # Create tarball directly with exclusions (no rsync needed)
+        tar czf ~/rpmbuild/SOURCES/${TARBALL_NAME}.tar.gz \
           --exclude='.git' \
           --exclude='*.pyc' \
           --exclude='__pycache__' \
@@ -72,14 +69,13 @@ jobs:
           --exclude='.pytest_cache' \
           --exclude='.coverage' \
           --exclude='htmlcov' \
-          ./ /tmp/${TARBALL_NAME}/
-
-        # Create tarball
-        cd /tmp
-        tar czf ${TARBALL_NAME}.tar.gz ${TARBALL_NAME}/
-
-        # Move to rpmbuild SOURCES
-        mv ${TARBALL_NAME}.tar.gz ~/rpmbuild/SOURCES/
+          --exclude='.venv' \
+          --exclude='venv' \
+          --exclude='*.swp' \
+          --exclude='*.swo' \
+          --exclude='*~' \
+          --transform="s,^,${TARBALL_NAME}/," \
+          .
 
         echo "Source tarball created: ~/rpmbuild/SOURCES/${TARBALL_NAME}.tar.gz"
         ls -lh ~/rpmbuild/SOURCES/
