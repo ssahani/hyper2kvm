@@ -1,14 +1,30 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """
-vmdk_inspect.py (v1.1)
+vmdk_inspect.py (v1.2)
 
 Enterprise-grade VMDK inspection tool for ESXi → KVM migration.
 
 Exit codes:
-  0 = OK
+  0 = OK (or --no-fail mode)
   2 = HIGH risks present
   3 = FATAL risks present
+
+Options:
+  --json      Output results as JSON
+  --no-fail   Exit with code 0 even if risks found (inventory mode)
+
+Usage examples:
+  # Pre-migration validation (fails on risks)
+  ./vmdk_inspect.py disk.vmdk
+
+  # Fleet inventory scan (never fails, collects all findings)
+  ./vmdk_inspect.py --no-fail --json *.vmdk > inventory.json
+
+  # Audit existing VMs (non-blocking)
+  for vmdk in /vmfs/volumes/*/VMs/*/*.vmdk; do
+    ./vmdk_inspect.py --no-fail "$vmdk"
+  done
 """
 
 import re
@@ -308,11 +324,12 @@ def generate_libvirt_disk_xml(image_path: str, boot_mode: str = "BIOS") -> str:
 
 def main():
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} [--json] <vmdk | glob>")
+        print(f"Usage: {sys.argv[0]} [--json] [--no-fail] <vmdk | glob>")
         sys.exit(1)
 
     json_mode = "--json" in sys.argv
-    args = [a for a in sys.argv[1:] if a != "--json"]
+    no_fail = "--no-fail" in sys.argv
+    args = [a for a in sys.argv[1:] if a not in ("--json", "--no-fail")]
 
     vmdks = []
     for a in args:
@@ -321,6 +338,9 @@ def main():
     if not vmdks:
         print("ERROR: no VMDK files found")
         sys.exit(1)
+
+    if no_fail and not json_mode:
+        print("[INVENTORY MODE: --no-fail enabled, will exit 0 regardless of risks]\n")
 
     worst = 0
     results = []
@@ -363,7 +383,9 @@ def main():
     if json_mode:
         print(json.dumps(results, indent=2))
 
-    sys.exit(worst)
+    # In --no-fail mode, always exit 0 (useful for inventory/audit scans)
+    exit_code = 0 if no_fail else worst
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
