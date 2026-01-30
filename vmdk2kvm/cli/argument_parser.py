@@ -201,6 +201,37 @@ verbose: 1
 # uefi: true
 #
 # --------------------------------------------------------------------------------------
+# 1c) AMI / Generic Cloud Image Tarball (tar/tar.gz/tgz/tar.xz)
+# --------------------------------------------------------------------------------------
+# These tarballs are typically just archives that contain a disk payload
+# (raw/img/qcow2/vmdk/vhd/...) plus metadata. vmdk2kvm will extract disk payload(s),
+# optionally convert payload(s) to qcow2, then continue the normal fix/convert pipeline.
+#
+# Basic example: extract + convert payload disk to qcow2, then proceed with normal pipeline
+# command: ami
+# ami: ./some-linux-cloud-image.tar.gz
+# output_dir: ./out
+# flatten: true
+# flatten_format: qcow2
+# to_output: cloud-image-fixed.qcow2
+# out_format: qcow2
+# compress: true
+# compress_level: 6
+# fstab_mode: stabilize-all
+# print_fstab: true
+# regen_initramfs: true
+# checksum: true
+# report: cloud-image-report.md
+# verbose: 1
+#
+# If the archive contains nested tarballs (tar-in-tar), enable one-level nested extraction:
+# command: ami
+# ami: ./vendor-bundle.tar.gz
+# extract_nested_tar: true
+# convert_payload_to_qcow2: true
+# verbose: 2
+#
+# --------------------------------------------------------------------------------------
 # 2) LIVE-FIX (apply fixes to a running VM via SSH)
 # --------------------------------------------------------------------------------------
 # Basic live-fix: rewrite fstab + regen initramfs/grub + optionally remove VMware tools
@@ -434,7 +465,7 @@ def build_parser() -> argparse.ArgumentParser:
         + c(YAML_EXAMPLE, "cyan")
         + "\n"
         + c("Feature summary:\n", "cyan", ["bold"])
-        + c(" • Inputs: local VMDK/VHD, remote ESXi fetch, OVA/OVF extract, live SSH fix, vSphere pyvmomi\n", "cyan")
+        + c(" • Inputs: local VMDK/VHD, remote ESXi fetch, OVA/OVF extract, AMI/cloud tarball extract, live SSH fix, vSphere pyvmomi\n", "cyan")
         + c(" • Snapshot: flatten convert, recursive parent descriptor fetch, vSphere snapshots/CBT hooks\n", "cyan")
         + c(
             " • Fixes: fstab UUID/PARTUUID/LABEL, btrfs canonicalization, grub root=, crypttab, mdraid checks\n",
@@ -657,6 +688,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compression level 1-9 for qcow2 conversion of OVA/OVF disks.",
     )
 
+    # ✅ NEW (generic AMI/cloud tarball extraction knobs)
+    # NOTE: These are only used by the "ami" subcommand; harmless globally.
+    p.add_argument(
+        "--extract-nested-tar",
+        dest="extract_nested_tar",
+        action="store_true",
+        help="For AMI/cloud tarballs: extract one level of nested tarballs (tar-in-tar).",
+    )
+    p.add_argument(
+        "--no-extract-nested-tar",
+        dest="extract_nested_tar",
+        action="store_false",
+        help="Disable nested tar extraction for AMI/cloud tarballs.",
+    )
+    p.set_defaults(extract_nested_tar=True)
+    p.add_argument(
+        "--convert-payload-to-qcow2",
+        dest="convert_payload_to_qcow2",
+        action="store_true",
+        help="For AMI/cloud tarballs: convert extracted payload disk(s) to qcow2 before continuing pipeline.",
+    )
+    p.add_argument(
+        "--payload-qcow2-dir",
+        dest="payload_qcow2_dir",
+        default=None,
+        help="Output directory for qcow2 created from AMI/cloud payload disks (default: <output-dir>/qcow2).",
+    )
+    p.add_argument(
+        "--payload-convert-compress",
+        dest="payload_convert_compress",
+        action="store_true",
+        help="When converting AMI/cloud payload disks to qcow2, enable compression.",
+    )
+    p.add_argument(
+        "--payload-convert-compress-level",
+        dest="payload_convert_compress_level",
+        type=int,
+        choices=range(1, 10),
+        default=None,
+        help="Compression level 1-9 for qcow2 conversion of AMI/cloud payload disks.",
+    )
+
     # Subcommands
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -690,6 +763,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--vhd",
         required=True,
         help="Path to .vhd OR tarball containing a .vhd (e.g. .tar/.tar.gz/.tgz).",
+    )
+
+    # ✅ NEW: AMI / generic cloud-image tarball mode
+    pami = sub.add_parser("ami", help="Offline: AMI/cloud-image tarball (extract payload disk(s) from tar archives)")
+    pami.add_argument(
+        "--ami",
+        required=True,
+        help="Path to tar/tar.gz/tgz/tar.xz containing a disk payload (raw/img/qcow2/vmdk/vhd/...).",
     )
 
     plive = sub.add_parser("live-fix", help="LIVE: fix running VM over SSH")

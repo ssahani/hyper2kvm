@@ -482,7 +482,27 @@ class Orchestrator:
                 convert_compress=bool(self.args.compress),
                 convert_compress_level=self.args.compress_level,
                 log_virt_filesystems=True,
-            )       
+            )   
+        elif cmd == "ami":
+            from vmdk2kvm.converters.ami_extractor import AMI  # new extractor
+
+            temp_dir = out_root / "extracted"
+
+            self.disks = AMI.extract_ami_or_tar(
+                self.logger,
+                Path(self.args.ami).expanduser().resolve(),
+                temp_dir,
+                extract_nested_tar=bool(getattr(self.args, "extract_nested_tar", True)),
+                convert_to_qcow2=bool(getattr(self.args, "convert_payload_to_qcow2", False)),
+                convert_outdir=(
+                    Path(self.args.payload_qcow2_dir).expanduser().resolve()
+                    if getattr(self.args, "payload_qcow2_dir", None)
+                else (out_root / "qcow2")
+        ),
+        convert_compress=bool(getattr(self.args, "payload_convert_compress", False)),
+        convert_compress_level=getattr(self.args, "payload_convert_compress_level", None),
+        log_virt_filesystems=True,
+        )
         elif cmd == "live-fix":
             sshc = SSHClient(
                 self.logger,
