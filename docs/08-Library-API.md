@@ -49,19 +49,27 @@ hyper2kvm can be used both as a **command-line tool** and as a **Python library*
 
 ## Installation
 
-### As a Library
+### From PyPI (Recommended)
+
+hyper2kvm is published on PyPI and can be installed with pip:
 
 ```bash
 pip install hyper2kvm
 ```
 
-### Development Installation
+**PyPI Package:** https://pypi.org/project/hyper2kvm/
+
+### From Source
+
+For development or to get the latest unreleased features:
 
 ```bash
 git clone https://github.com/ssahani/hyper2kvm.git
 cd hyper2kvm
 pip install -e .
 ```
+
+**GitHub Repository:** https://github.com/ssahani/hyper2kvm
 
 ### Dependencies
 
