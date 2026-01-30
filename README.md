@@ -617,6 +617,12 @@ h2kvmctl --config batch.yaml
 - **[OpenShift Test Summary](docs/test-results/OPENSHIFT_TEST_SUMMARY.md)** - OpenShift testing
 - **[Test Results Index](docs/test-results/README.md)** - All test results
 
+### 🗺️ Project & Development
+- **[Roadmap](docs/roadmap/README.md)** - Future features and planned enhancements
+- **[Advanced Windows Support](docs/roadmap/Advanced-Windows-Support.md)** - Enterprise Windows features (v0.3.0+)
+- **[CHANGELOG](CHANGELOG.md)** - Version history and release notes
+- **[Contributing](docs/development/contributing.md)** - Contribution guidelines
+
 ### 🖥️ OS-Specific Guides
 - **[Windows Migration](docs/os-support/windows/guide.md)** - Windows VMs
 - **[RHEL/CentOS](docs/os-support/rhel-10.md)** - Red Hat Enterprise Linux
