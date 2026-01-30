@@ -1,5 +1,5 @@
 Name:           hyper2kvm
-Version:        0.0.1
+Version:        0.0.2
 Release:        1%{?dist}
 Summary:        Production-grade hypervisor to KVM/QEMU migration toolkit
 

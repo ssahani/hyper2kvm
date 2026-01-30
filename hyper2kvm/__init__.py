@@ -23,7 +23,7 @@ Usage as a library:
 See docs/08-Library-API.md for detailed usage examples.
 """
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 # High-level orchestration
 from .orchestrator import Orchestrator, DiskProcessor
