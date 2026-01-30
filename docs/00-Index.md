@@ -59,6 +59,7 @@ Linux migrations are generally more straightforward, but each distro has specifi
 ### Linux Migration Features
 - ✅ **Automatic initramfs regeneration** - Dracut or update-initramfs
 - ✅ **UUID-based fstab** - Stable device references ([11-Fstab-Stabilization](11-Fstab-Stabilization.md))
+- ✅ **Enhanced chroot for bootloader** - Reliable GRUB regeneration ([24-Enhanced-Chroot](24-Enhanced-Chroot.md))
 - ✅ **GRUB root= fixing** - Kernel parameters
 - ✅ **Network config migration** - NetworkManager, netplan, systemd-networkd
 
@@ -189,10 +190,12 @@ report: /tmp/hyper2kvm-report.md
 21. **[🌟 Photon OS](21-Photon-OS.md)** - VMware Photon OS migration
 22. **[🐧 Ubuntu 24.04](22-Ubuntu-24.04.md)** - Ubuntu/Debian migration
 23. **[🦎 SUSE](23-SUSE.md)** - openSUSE/SUSE Linux migration
+24. **[🔧 Enhanced Chroot](24-Enhanced-Chroot.md)** - Bootloader regeneration with bind mounts (NEW!)
 
 ### Advanced Topics
 11. **[🔧 Fstab Stabilization](11-Fstab-Stabilization.md)** - Converting device paths to stable UUIDs
 14. **[⚙️ Configuration Injection](14-Configuration-Injection-Guide.md)** - Pre-boot network, user, service, and script injection
+24. **[⚙️ Enhanced Chroot](24-Enhanced-Chroot.md)** - Reliable GRUB regeneration with pseudo-filesystems (NEW!)
 30. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere to KVM using direct export
 
 ### Troubleshooting & Support
@@ -303,8 +306,8 @@ See the main [README](../README.md) for contribution guidelines.
 
 ---
 
-**Last Updated:** 2026-01-25 \
-**Documentation Version:** 1.1 \
+**Last Updated:** 2026-01-26 \
+**Documentation Version:** 1.2 \
 **hyper2kvm Version:** 0.1.0 \
 **VMCraft Version:** v9.0 \
 **Maintained by:** Susant Sahani <ssahani@gmail.com>
@@ -321,11 +324,11 @@ See the main [README](../README.md) for contribution guidelines.
 5. **[⚠️ Failure Modes](90-Failure-Modes.md)** - Troubleshooting
 
 ### Recently Updated
+- **[24-Enhanced-Chroot](24-Enhanced-Chroot.md)** - NEW: Bootloader regeneration with bind mounts (2026-01-26)
 - **[09-VMCraft](09-VMCraft.md)** - NEW: VMCraft v9.0 with AI/ML intelligence (307+ methods)
 - **[14-Configuration-Injection-Guide](14-Configuration-Injection-Guide.md)** - NEW: Pre-boot VM customization
 - **[95-Testing-Guide](95-Testing-Guide.md)** - NEW: Complete testing guide (100% coverage)
-- **[README](../README.md)** - Updated with VMCraft v9.0 features
-- **[CHANGELOG](../CHANGELOG.md)** - VMCraft version history added
+- **[README](../README.md)** - Updated with enhanced chroot and VMCraft v9.0 features
 
 ---
 
