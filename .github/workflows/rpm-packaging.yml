@@ -216,7 +216,7 @@ jobs:
           qemu-img
 
     - name: Download RPM artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v7
       with:
         name: rpm-packages-fedora-43
 
