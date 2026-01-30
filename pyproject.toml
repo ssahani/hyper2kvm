@@ -154,8 +154,15 @@ Repository = "https://github.com/ssahani/hyper2kvm"
 Changelog = "https://github.com/ssahani/hyper2kvm/releases"
 
 [project.scripts]
+# Primary CLI command (kubectl-style naming)
+h2kvmctl = "hyper2kvm.__main__:main"
+
+# Backwards-compatible alias (legacy name)
 hyper2kvm = "hyper2kvm.__main__:main"
+
+# TUI dashboard
 hyper2kvm-tui = "hyper2kvm.tui.main_app:run_hyper2kvm_tui"
+h2kvmctl-tui = "hyper2kvm.tui.main_app:run_hyper2kvm_tui"
 
 [tool.setuptools]
 include-package-data = true

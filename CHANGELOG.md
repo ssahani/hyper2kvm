@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### h2kvmctl - Primary CLI Command (January 2026)
+
+**New Primary Command Following kubectl Pattern**:
+- Introduced `h2kvmctl` (Hyper2KVM Control) as the primary CLI command
+- Follows industry-standard `*ctl` naming pattern (kubectl, helmctl, etc.)
+- Shorter: 8 characters vs 12 characters (saves typing)
+- Modern: Aligns with Kubernetes ecosystem conventions
+
+**Design Decision: Dual Entry Points (Not a Wrapper)**:
+- Both `h2kvmctl` and `hyper2kvm` call the same Python function
+- Zero performance overhead - identical functionality
+- No wrapper subprocess - direct entry point
+- Both commands maintained indefinitely for compatibility
+
+**Installation**:
+```bash
+pip install hyper2kvm
+# Both commands available:
+h2kvmctl --version      # Primary (recommended)
+hyper2kvm --version     # Legacy (still works)
+```
+
+**TUI Commands**:
+- `h2kvmctl-tui` - Primary TUI command
+- `hyper2kvm-tui` - Legacy TUI command (still works)
+
+**Documentation**:
+- Created comprehensive h2kvmctl guide: docs/guides/cli/h2kvmctl-guide.md
+- Updated README.md with both command names
+- Development wrapper: ./h2kvmctl for local testing
+- No migration required - both commands coexist
+
+**Recommendation**:
+- **New projects**: Use `h2kvmctl` (shorter, modern)
+- **Existing scripts**: Keep `hyper2kvm` (no changes needed)
+- **No deprecation**: Both commands maintained forever
+
 #### CLI Commands Enhancement (January 2026)
 
 **Command Alias Support**:

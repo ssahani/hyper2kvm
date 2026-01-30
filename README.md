@@ -46,6 +46,17 @@ pip install "hyper2kvm[full]"
 
 That's it! hyper2kvm includes VMCraft, a native Python VM manipulation engine with zero C library dependencies.
 
+### CLI Commands
+
+After installation, you have **two command names** (both identical):
+
+```bash
+h2kvmctl --version        # Primary command (recommended) - kubectl-style ⭐
+hyper2kvm --version       # Legacy command (backwards compatible)
+```
+
+> **Tip**: Use `h2kvmctl` for new work - it's shorter (8 chars vs 12 chars) and follows the kubectl/helmctl naming pattern.
+
 ### System Dependencies (Optional for Advanced Features)
 
 ```bash
@@ -80,6 +91,10 @@ compress: true
 
 Run migration:
 ```bash
+# Using primary command (recommended)
+h2kvmctl --config migration.yaml
+
+# Or using legacy command (still works)
 hyper2kvm --config migration.yaml
 
 # Import to libvirt
@@ -90,7 +105,7 @@ virsh start windows-server
 ### Option 2: Using Command Line Flags
 
 ```bash
-hyper2kvm --cmd local \
+h2kvmctl --cmd local \
     --vmdk /vmware/windows-server.vmdk \
     --output-dir /kvm \
     --to-output windows-server.qcow2 \
