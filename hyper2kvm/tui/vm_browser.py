@@ -42,13 +42,13 @@ class VMBrowser(Container):
     DEFAULT_CSS = """
     VMBrowser {
         height: 100%;
-        border: heavy $primary;
+        border: heavy #DE7356;  /* Coral brand color */
         background: $surface;
     }
 
     .browser-header {
         height: 5;
-        background: $primary;
+        background: #DE7356;  /* Coral brand color */
         color: white;
         padding: 1 2;
         text-style: bold;
@@ -67,7 +67,7 @@ class VMBrowser(Container):
 
     .browser-sidebar {
         width: 30;
-        border-right: solid $primary;
+        border-right: solid #DE7356;  /* Coral brand color */
         padding: 1;
     }
 

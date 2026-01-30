@@ -45,13 +45,13 @@ class MigrationWizard(Container):
     DEFAULT_CSS = """
     MigrationWizard {
         height: 100%;
-        border: heavy $primary;
+        border: heavy #DE7356;  /* Coral brand color */
         background: $surface;
     }
 
     .wizard-header {
         height: 5;
-        background: $primary;
+        background: #DE7356;  /* Coral brand color */
         color: white;
         padding: 1 2;
         text-style: bold;
@@ -87,7 +87,7 @@ class MigrationWizard(Container):
     }
 
     .step-active {
-        color: $accent;
+        color: #DE7356;  /* Coral brand color */
         text-style: bold;
     }
 
@@ -125,7 +125,7 @@ class MigrationWizard(Container):
 
     .source-option {
         height: auto;
-        border: round $accent-lighten-1;
+        border: round #F5B5A3;  /* Lighter coral */
         background: $surface-darken-1;
         padding: 1 2;
         margin: 1 0;
@@ -133,16 +133,16 @@ class MigrationWizard(Container):
 
     .source-option:hover {
         background: $surface;
-        border: round $accent;
+        border: round #DE7356;  /* Coral brand color */
     }
 
     .source-selected {
-        border: heavy $accent;
-        background: $primary-darken-3;
+        border: heavy #DE7356;  /* Coral brand color */
+        background: #3D2620;  /* Dark coral-tinted background */
     }
 
     .info-box {
-        border: solid $accent-lighten-2;
+        border: solid #F5B5A3;  /* Lighter coral */
         background: $surface-darken-1;
         padding: 1 2;
         margin: 1 0;

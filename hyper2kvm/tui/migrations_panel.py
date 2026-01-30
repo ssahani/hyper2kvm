@@ -44,7 +44,7 @@ class MigrationsPanel(Container):
 
     .migrations-header {
         height: 5;
-        background: $primary;
+        background: #DE7356;  /* Coral brand color */
         color: white;
         padding: 1 2;
         text-style: bold;
@@ -82,7 +82,7 @@ class MigrationsPanel(Container):
     }
 
     .status-running {
-        color: $accent;
+        color: #DE7356;  /* Coral brand color */
         text-style: bold;
     }
 

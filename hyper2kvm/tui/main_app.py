@@ -78,13 +78,13 @@ class Hyper2KVMApp(App):
     SUB_TITLE = "Enterprise-grade Hypervisor to KVM/QEMU Migration"
 
     CSS = """
-    /* Professional dark theme with orange accents */
+    /* Professional dark theme with coral accents (RGB: 222, 115, 86 / Pantone 7416 C) */
     Screen {
         background: $surface;
     }
 
     Header {
-        background: $primary;
+        background: #DE7356;  /* Coral brand color */
         color: $text;
         text-style: bold;
     }
@@ -94,17 +94,17 @@ class Hyper2KVMApp(App):
     }
 
     Header .header--subtitle {
-        color: $accent;
+        color: #F5B5A3;  /* Lighter coral for subtitle */
     }
 
     Footer {
-        background: $primary;
+        background: #DE7356;  /* Coral brand color */
         color: white;
     }
 
     TabbedContent {
         height: 1fr;
-        border: solid $primary;
+        border: solid #DE7356;  /* Coral brand color */
     }
 
     TabPane {
@@ -123,11 +123,11 @@ class Hyper2KVMApp(App):
 
     Tab:hover {
         background: $surface;
-        color: $accent;
+        color: #F5B5A3;  /* Lighter coral on hover */
     }
 
     Tab.-active {
-        background: $primary;
+        background: #DE7356;  /* Coral brand color for active tab */
         color: white;
     }
 
@@ -140,7 +140,7 @@ class Hyper2KVMApp(App):
     .welcome-box {
         width: 80;
         height: auto;
-        border: heavy $primary;
+        border: heavy #DE7356;  /* Coral brand color */
         background: $surface-darken-1;
         padding: 2 4;
     }
@@ -148,7 +148,7 @@ class Hyper2KVMApp(App):
     .welcome-title {
         text-align: center;
         text-style: bold;
-        color: $accent;
+        color: #DE7356;  /* Coral brand color */
         margin: 0 0 1 0;
     }
 
@@ -171,7 +171,7 @@ class Hyper2KVMApp(App):
 
     .stats-panel {
         height: auto;
-        border: solid $primary;
+        border: solid #DE7356;  /* Coral brand color */
         background: $surface-darken-1;
         padding: 1 2;
         margin: 1 0;
@@ -185,7 +185,7 @@ class Hyper2KVMApp(App):
 
     .stat-box {
         height: 5;
-        border: round $accent-lighten-1;
+        border: round #F5B5A3;  /* Lighter coral */
         background: $surface;
         padding: 1;
         content-align: center middle;
@@ -193,7 +193,7 @@ class Hyper2KVMApp(App):
 
     .stat-value {
         text-style: bold;
-        color: $accent;
+        color: #DE7356;  /* Coral brand color */
         text-align: center;
     }
 

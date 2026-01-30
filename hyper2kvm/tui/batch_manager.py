@@ -40,13 +40,13 @@ class BatchMigrationManager(Container):
     DEFAULT_CSS = """
     BatchMigrationManager {
         height: 100%;
-        border: heavy $primary;
+        border: heavy #DE7356;  /* Coral brand color */
         background: $surface;
     }
 
     .batch-header {
         height: 5;
-        background: $primary;
+        background: #DE7356;  /* Coral brand color */
         color: white;
         padding: 1 2;
         text-style: bold;
@@ -84,7 +84,7 @@ class BatchMigrationManager(Container):
     }
 
     .status-active {
-        color: $accent;
+        color: #DE7356;  /* Coral brand color */
         text-style: bold;
     }
 

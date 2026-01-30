@@ -50,7 +50,7 @@ class SettingsPanel(Container):
 
     .settings-header {
         height: 5;
-        background: $primary;
+        background: #DE7356;  /* Coral brand color */
         color: white;
         padding: 1 2;
         text-style: bold;
@@ -69,7 +69,7 @@ class SettingsPanel(Container):
     }
 
     .settings-section {
-        border: solid $accent-lighten-2;
+        border: solid #F5B5A3;  /* Lighter coral */
         background: $surface-darken-1;
         padding: 1 2;
         margin: 1 0;
@@ -77,7 +77,7 @@ class SettingsPanel(Container):
 
     .section-title {
         text-style: bold;
-        color: $accent;
+        color: #DE7356;  /* Coral brand color */
         margin: 0 0 1 0;
     }
 
@@ -111,7 +111,7 @@ class SettingsPanel(Container):
     }
 
     .info-box {
-        border: solid $accent-lighten-2;
+        border: solid #F5B5A3;  /* Lighter coral */
         background: $surface-darken-2;
         padding: 1 2;
         margin: 1 0;

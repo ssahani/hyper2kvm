@@ -157,9 +157,9 @@ Configure all hyper2kvm options:
 
 ## Theme
 
-Professional dark theme with orange accents:
-- Primary color: Orange (#ff6600)
-- Accent color: Gold-orange (#ffaa44)
+Professional dark theme with coral accents:
+- Primary color: Coral (#DE7356 / RGB: 222, 115, 86 / Pantone 7416 C)
+- Accent color: Light Coral (#F5B5A3)
 - Background: Dark surface
 - Success: Green
 - Error: Red
