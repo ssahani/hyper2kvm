@@ -302,5 +302,5 @@ Optionally enable debug kernel args in the XML `<cmdline>` (commented in the XML
 
 ---
 
-**Status:** ✅ Verified working for RHEL 10 qcow2 (UEFI, GUI)
+**Status:**  Verified working for RHEL 10 qcow2 (UEFI, GUI)
 

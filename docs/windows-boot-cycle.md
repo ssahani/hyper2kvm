@@ -1,5 +1,5 @@
 
-# Windows Boot Cycle (hyper2kvm) 🪟➡️🧠➡️🚀
+# Windows Boot Cycle (hyper2kvm) ➡➡
 
 This document explains **how hyper2kvm makes Windows reliably boot on KVM/QEMU** after coming from *any* hypervisor (VMware, Hyper-V, cloud images, raw disks).
 
@@ -10,12 +10,12 @@ The core idea is simple:
 
 We implement a **two-phase boot cycle** to avoid the classic failure mode:
 
-* ❌ `INACCESSIBLE_BOOT_DEVICE` BSOD (VirtIO storage not ready at boot)
+*  `INACCESSIBLE_BOOT_DEVICE` BSOD (VirtIO storage not ready at boot)
 
 Instead we do:
 
-* ✅ Phase A: **Bootstrap** with SATA/IDE (safe, almost always boots)
-* ✅ Phase B: **Finalize** with VirtIO (fast, correct, production)
+*  Phase A: **Bootstrap** with SATA/IDE (safe, almost always boots)
+*  Phase B: **Finalize** with VirtIO (fast, correct, production)
 
 ---
 
@@ -122,7 +122,7 @@ We stage VirtIO storage drivers and ensure:
 
 This single step prevents:
 
-* ❌ `INACCESSIBLE_BOOT_DEVICE`
+*  `INACCESSIBLE_BOOT_DEVICE`
 
 ---
 
