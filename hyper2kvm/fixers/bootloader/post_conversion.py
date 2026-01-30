@@ -821,8 +821,10 @@ class PostConversionBootFixer:
         fixed_lines = []
 
         for i, line in enumerate(lines):
-            # Check for GRUB_CMDLINE_LINUX without closing quote
-            if line.startswith('GRUB_CMDLINE_LINUX='):
+            # Check for GRUB_CMDLINE_LINUX or GRUB_CMDLINE_LINUX_DEFAULT without closing quote
+            # Also handle lines with leading whitespace
+            stripped = line.lstrip()
+            if stripped.startswith('GRUB_CMDLINE_LINUX=') or stripped.startswith('GRUB_CMDLINE_LINUX_DEFAULT='):
                 # Count quotes
                 quote_count = line.count('"')
 
