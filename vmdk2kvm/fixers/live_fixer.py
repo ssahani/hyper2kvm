@@ -1,13 +1,15 @@
 from __future__ import annotations
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple, List
 
 from ..core.utils import U
 from ..ssh.ssh_client import SSHClient
 from ..ssh.ssh_config import SSHConfig
 import shlex
 import re
+from .live_grub_fixer import LiveGrubFixer
+
 class LiveFixer:
     """
     LIVE fix via SSH:
@@ -226,8 +228,12 @@ class LiveFixer:
             self.logger.info("DRY-RUN: would update /etc/fstab (live).")
         if self.remove_vmware_tools and not self.dry_run:
             self._remove_vmware_tools()
+        # Directly call LiveGrubFixer in the run method
         if self.update_grub:
-            self._update_grub_root_best_effort()
+            from .live_grub_fixer import LiveGrubFixer
+            self.logger.info("Running LiveGrubFixer for GRUB updates")
+            grub_fixer = LiveGrubFixer(logger=self.logger, ssh_client=self.sshc)
+            grub_fixer.run()
         if self.regen_initramfs and not self.dry_run:
             self._regen_initramfs_and_grub()
         self.logger.info("Live fix completed.")

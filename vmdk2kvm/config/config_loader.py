@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import argparse
 import glob
 import hashlib
@@ -7,9 +8,10 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+
 from ..core.utils import U
 
 try:
@@ -17,55 +19,79 @@ try:
     YAML_AVAILABLE = True
 except Exception:
     YAML_AVAILABLE = False
+
+
 class Config:
+    """
+    Config loader/merger with:
+      - JSON/YAML support
+      - safe glob/dir expansion (correct suffix filtering)
+      - deep merge with configurable list strategy
+      - dash-key -> underscore normalization (deep)
+      - optional HMAC signature verification
+      - VM fan-out via 'vms' list, with deep-merge per VM override
+      - argparse defaults application with type coercion
+    """
+
+    # -----------------------------
+    # Public API
+    # -----------------------------
+
     @staticmethod
     def load_one(logger: logging.Logger, path: str) -> Dict[str, Any]:
         p = Path(path).expanduser().resolve()
         if not p.exists():
             U.die(logger, f"Config not found: {p}", 1)
-        # Verify config signature if available
+
+        # Verify signature if enabled
         Config.verify_signature(logger, p)
+
         try:
+            raw = p.read_text(encoding="utf-8")
             if p.suffix.lower() == ".json":
-                data = json.loads(p.read_text(encoding="utf-8"))
+                data = json.loads(raw)
             else:
                 if not YAML_AVAILABLE:
                     U.die(logger, "PyYAML not installed. Install with: pip install PyYAML", 1)
-                data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError as e:
-            U.die(logger, f"Invalid YAML in config {p}: {e}", 1)
+                data = yaml.safe_load(raw) or {}
         except Exception as e:
+            # Keep YAML-specific errors nice if available
+            if YAML_AVAILABLE and isinstance(e, getattr(yaml, "YAMLError", Exception)):
+                U.die(logger, f"Invalid YAML in config {p}: {e}", 1)
             U.die(logger, f"Failed to load config {p}: {e}", 1)
+
         if not isinstance(data, dict):
             U.die(logger, f"Config must be a mapping/dict: {p}", 1)
-        # normalize dash keys -> underscore keys
-        out: Dict[str, Any] = {}
-        for k, v in data.items():
-            nk = str(k).replace("-", "_")
-            out[nk] = v
-            if nk != k:
-                logger.debug(f"Normalized config key: {k} -> {nk}")
+
+        # Normalize keys deeply: dash -> underscore
+        out = Config._normalize_keys(logger, data, path=str(p))
         logger.debug(f"Loaded config {p}:\n{U.json_dump(out)}")
         return out
+
     @staticmethod
     def verify_signature(logger: logging.Logger, config_path: Path) -> bool:
-        """Verify config file signature for production use"""
+        """
+        Verify config file signature for production use.
+
+        Behavior:
+          - If VM2KVM_CONFIG_SECRET is unset -> verification disabled (returns True).
+          - If .sig file missing -> warn + allow (returns True). (You can tighten this if desired.)
+          - If present and mismatched -> die.
+        """
         secret = os.environ.get("VM2KVM_CONFIG_SECRET", "")
         if not secret:
             logger.debug("No config verification secret set (VM2KVM_CONFIG_SECRET)")
             return True
+
         sig_path = config_path.with_suffix(config_path.suffix + ".sig")
         if not sig_path.exists():
             logger.warning(f"No signature file found for config: {config_path}")
             return True
+
         try:
             config_content = config_path.read_bytes()
-            expected_sig = hmac.new(
-                secret.encode(),
-                config_content,
-                hashlib.sha256
-            ).hexdigest()
-            actual_sig = sig_path.read_text().strip()
+            expected_sig = hmac.new(secret.encode(), config_content, hashlib.sha256).hexdigest()
+            actual_sig = sig_path.read_text(encoding="utf-8").strip()
             if not hmac.compare_digest(expected_sig, actual_sig):
                 U.die(logger, f"Config signature verification failed for {config_path}", 1)
             logger.debug(f"Config signature verified: {config_path}")
@@ -73,79 +99,295 @@ class Config:
         except Exception as e:
             logger.warning(f"Config signature verification error: {e}")
             return False
+
     @staticmethod
-    def merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    def merge_dicts(
+        base: Dict[str, Any],
+        override: Dict[str, Any],
+        *,
+        list_mode: str = "replace",  # "replace" | "append" | "extend_unique"
+    ) -> Dict[str, Any]:
         """
-        Deep-ish merge:
-        - dict + dict => recurse
-        - list => override replaces (not concatenated)
-        - scalar => override replaces
+        Deep merge:
+          - dict + dict => recurse
+          - list => strategy by list_mode
+          - scalar => override replaces
+
+        list_mode:
+          - replace: override list replaces base list
+          - append:  base + override (concatenate)
+          - extend_unique: concatenate but keep first occurrence (hashable only)
         """
-        out = dict(base)
+        out: Dict[str, Any] = dict(base)
+
         for k, v in override.items():
             if k in out and isinstance(out[k], dict) and isinstance(v, dict):
-                out[k] = Config.merge_dicts(out[k], v)
-            else:
-                out[k] = v
+                out[k] = Config.merge_dicts(out[k], v, list_mode=list_mode)
+                continue
+
+            if isinstance(out.get(k), list) and isinstance(v, list):
+                if list_mode == "replace":
+                    out[k] = v
+                elif list_mode == "append":
+                    out[k] = list(out[k]) + list(v)
+                elif list_mode == "extend_unique":
+                    merged: List[Any] = []
+                    seen: set = set()
+                    for item in list(out[k]) + list(v):
+                        try:
+                            if item in seen:
+                                continue
+                            seen.add(item)
+                        except Exception:
+                            # unhashable -> just append (best effort)
+                            pass
+                        merged.append(item)
+                    out[k] = merged
+                else:
+                    out[k] = v
+                continue
+
+            out[k] = v
+
         return out
+
     @staticmethod
-    def load_many(logger: logging.Logger, paths: List[str]) -> Dict[str, Any]:
+    def load_many(
+        logger: logging.Logger,
+        paths: List[str],
+        *,
+        list_mode: str = "replace",
+    ) -> Dict[str, Any]:
+        paths = Config.expand_configs(logger, paths)
         conf: Dict[str, Any] = {}
-        with Progress(TextColumn("{task.description}"), BarColumn(), TextColumn("{task.percentage:>3.0f}%"), TimeElapsedColumn(), TimeRemainingColumn()) as progress:
-            task = progress.add_task("Loading configs", total=len(paths))
+
+        with Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TextColumn("{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task("Loading configs", total=max(1, len(paths)))
+            if not paths:
+                progress.update(task, completed=1)
+                return conf
+
             for p in paths:
-                conf = Config.merge_dicts(conf, Config.load_one(logger, p))
+                conf = Config.merge_dicts(conf, Config.load_one(logger, p), list_mode=list_mode)
                 progress.update(task, advance=1)
+
         return conf
+
     @staticmethod
-    def apply_as_defaults(logger: logging.Logger, parser: argparse.ArgumentParser, conf: Dict[str, Any]) -> None:
+    def apply_as_defaults(
+        logger: logging.Logger,
+        parser: argparse.ArgumentParser,
+        conf: Dict[str, Any],
+        *,
+        strict: bool = False,
+    ) -> None:
+        """
+        Apply config values as argparse defaults.
+
+        Enhancements:
+          - type coercion using argparse action.type when present
+          - turns off required if provided by config
+          - optionally strict: die if config contains keys not present in argparse dests
+        """
         if not conf:
             return
+
+        valid_dests = Config._collect_argparse_dests(parser)
+
+        if strict:
+            unknown = sorted(set(conf.keys()) - valid_dests)
+            if unknown:
+                U.die(logger, f"Unknown config keys (no argparse dest): {unknown}", 1)
+
         def apply_actions(actions: List[argparse.Action], scope: str) -> None:
             for act in actions:
                 dest = getattr(act, "dest", None)
                 if not dest or dest not in conf:
                     continue
-                val = conf[dest]
+
+                raw_val = conf[dest]
+                val = Config._coerce_argparse_value(logger, act, raw_val, scope=scope, dest=dest)
+
                 logger.debug(f"[Config:{scope}] default {dest}: {act.default!r} -> {val!r}")
                 act.default = val
+
                 if getattr(act, "required", False) and val is not None:
                     act.required = False
+
         apply_actions(parser._actions, "global")
+
         sp_action = next((a for a in parser._actions if isinstance(a, argparse._SubParsersAction)), None)
         if sp_action:
             for name, sp in sp_action.choices.items():
                 apply_actions(sp._actions, f"sub:{name}")
+
     @staticmethod
     def expand_configs(logger: logging.Logger, configs: List[str]) -> List[str]:
-        expanded = []
+        """
+        Expand list of config specs:
+          - directories: include **/*.yml, **/*.yaml, **/*.json
+          - glob patterns: expanded via glob.glob
+          - files: passed through
+        """
+        expanded: List[str] = []
+
         for c in configs:
-            p = Path(c).expanduser().resolve()
-            if p.is_dir():
-                for f in p.glob('**/*.[yaml|yml|json]'):
-                    if f.is_file():
-                        expanded.append(str(f))
-            elif '*' in c or '?' in c:
-                expanded.extend(glob.glob(c))
-            else:
-                expanded.append(c)
-        logger.debug(f"Expanded configs: {expanded}")
-        return expanded
+            p = Path(c).expanduser()
+
+            if p.exists() and p.is_dir():
+                # Correct suffix filtering (your original '*.[yaml|yml|json]' is a glob bug)
+                for f in p.rglob("*"):
+                    if f.is_file() and f.suffix.lower() in (".yaml", ".yml", ".json"):
+                        expanded.append(str(f.resolve()))
+                continue
+
+            if "*" in c or "?" in c or ("[" in c and "]" in c):
+                expanded.extend([str(Path(x).expanduser().resolve()) for x in glob.glob(c)])
+                continue
+
+            expanded.append(str(Path(c).expanduser().resolve()))
+
+        # De-dup while preserving order
+        seen = set()
+        uniq: List[str] = []
+        for x in expanded:
+            if x not in seen:
+                uniq.append(x)
+                seen.add(x)
+
+        logger.debug(f"Expanded configs: {uniq}")
+        return uniq
+
     @staticmethod
-    def load_vm_configs(logger: logging.Logger, paths: List[str]) -> List[Dict[str, Any]]:
-        vm_confs = []
+    def load_vm_configs(
+        logger: logging.Logger,
+        paths: List[str],
+        *,
+        list_mode: str = "replace",
+    ) -> List[Dict[str, Any]]:
+        """
+        Load configs; if a config has 'vms' list, fan-out into per-VM configs.
+        Each VM entry deep-merges over the base config (minus 'vms').
+        """
+        vm_confs: List[Dict[str, Any]] = []
         paths = Config.expand_configs(logger, paths)
-        with Progress(TextColumn("{task.description}"), BarColumn(), TextColumn("{task.percentage:>3.0f}%"), TimeElapsedColumn(), TimeRemainingColumn()) as progress:
-            task = progress.add_task("Loading VM configs", total=len(paths))
+
+        with Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TextColumn("{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task("Loading VM configs", total=max(1, len(paths)))
+            if not paths:
+                progress.update(task, completed=1)
+                return vm_confs
+
             for path in paths:
                 conf = Config.load_one(logger, path)
-                if 'vms' in conf:
-                    for vm in conf['vms']:
-                        vm_conf = conf.copy()
-                        del vm_conf['vms']
-                        vm_conf.update(vm)
+
+                vms = conf.get("vms")
+                if isinstance(vms, list):
+                    base = dict(conf)
+                    base.pop("vms", None)
+
+                    for idx, vm in enumerate(vms):
+                        if not isinstance(vm, dict):
+                            U.die(logger, f"'vms' entries must be mappings/dicts in {path} (index {idx})", 1)
+                        vm_conf = Config.merge_dicts(base, vm, list_mode=list_mode)
                         vm_confs.append(vm_conf)
                 else:
                     vm_confs.append(conf)
+
                 progress.update(task, advance=1)
+
         return vm_confs
+
+    # -----------------------------
+    # Internals
+    # -----------------------------
+
+    @staticmethod
+    def _normalize_keys(logger: logging.Logger, obj: Any, *, path: str, _prefix: str = "") -> Any:
+        """
+        Recursively normalize dict keys:
+          - replace '-' with '_' in keys
+        """
+        if isinstance(obj, dict):
+            out: Dict[str, Any] = {}
+            for k, v in obj.items():
+                nk = str(k).replace("-", "_")
+                if nk != k:
+                    logger.debug(f"Normalized config key: {_prefix}{k} -> {_prefix}{nk} (file={path})")
+                out[nk] = Config._normalize_keys(logger, v, path=path, _prefix=f"{_prefix}{nk}.")
+            return out
+        if isinstance(obj, list):
+            return [Config._normalize_keys(logger, x, path=path, _prefix=_prefix) for x in obj]
+        return obj
+
+    @staticmethod
+    def _collect_argparse_dests(parser: argparse.ArgumentParser) -> set:
+        dests = set()
+        for a in parser._actions:
+            d = getattr(a, "dest", None)
+            if d:
+                dests.add(d)
+        sp_action = next((a for a in parser._actions if isinstance(a, argparse._SubParsersAction)), None)
+        if sp_action:
+            for _, sp in sp_action.choices.items():
+                for a in sp._actions:
+                    d = getattr(a, "dest", None)
+                    if d:
+                        dests.add(d)
+        return dests
+
+    @staticmethod
+    def _coerce_argparse_value(
+        logger: logging.Logger,
+        act: argparse.Action,
+        raw_val: Any,
+        *,
+        scope: str,
+        dest: str,
+    ) -> Any:
+        """
+        Best-effort type coercion consistent with argparse.
+        """
+        # If action expects multiple values, allow list/tuple
+        nargs = getattr(act, "nargs", None)
+        act_type = getattr(act, "type", None)
+
+        # StoreTrue/False flags: allow booleans or truthy strings
+        if isinstance(act, (argparse._StoreTrueAction, argparse._StoreFalseAction)):
+            if isinstance(raw_val, bool):
+                return raw_val
+            if isinstance(raw_val, str):
+                s = raw_val.strip().lower()
+                return s in ("1", "true", "yes", "y", "on")
+            return bool(raw_val)
+
+        # If no explicit type, return as-is
+        if act_type is None:
+            return raw_val
+
+        def coerce_one(x: Any) -> Any:
+            try:
+                return act_type(x)
+            except Exception:
+                logger.debug(f"[Config:{scope}] could not coerce {dest} value {x!r} using {act_type}")
+                return x
+
+        if nargs in ("+", "*") or isinstance(raw_val, (list, tuple)):
+            if isinstance(raw_val, (list, tuple)):
+                return [coerce_one(x) for x in raw_val]
+            # single scalar but nargs expects many -> wrap
+            return [coerce_one(raw_val)]
+
+        return coerce_one(raw_val)
