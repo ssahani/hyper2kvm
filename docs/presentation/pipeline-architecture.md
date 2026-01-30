@@ -278,18 +278,18 @@ Disk2: FETCH → FLATTEN → INSPECT → FIX → CONVERT → VALIDATE
 
 ```mermaid
 graph TD
-    START[rhel9.vmdk] --> FETCH[FETCH]
-    FETCH --> F1[/tmp/rhel9.vmdk]
+    START[Source VMDK] --> FETCH[FETCH]
+    FETCH --> F1[Downloaded]
     F1 --> FLATTEN[FLATTEN]
-    FLATTEN --> F2[/tmp/flat.vmdk]
+    FLATTEN --> F2[Flattened]
     F2 --> INSPECT[INSPECT]
-    INSPECT --> F3[GuestIdentity]
+    INSPECT --> F3[OS Detected]
     F3 --> PLAN[PLAN]
     PLAN --> F4[Fix Plan]
     F4 --> FIX[FIX]
-    FIX --> F5[Fixed Disk]
+    FIX --> F5[Patched]
     F5 --> CONVERT[CONVERT]
-    CONVERT --> F6[/kvm/rhel9.qcow2]
+    CONVERT --> F6[qcow2 Output]
     F6 --> VALIDATE[VALIDATE]
     VALIDATE --> END[Boot Success]
 
