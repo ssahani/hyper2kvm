@@ -9,7 +9,7 @@ That sequence prevents **INACCESSIBLE_BOOT_DEVICE** when the VirtIO storage driv
 
 ## Table of Contents
 
-- [Step-by-step: first boot validation with SATA + UEFI (libvirt)](#step-by-step-first-boot-validation-with-sata-uefi-libvirt)
+- [Prerequisites](#prerequisites)
   - [0) Host prerequisites (Fedora/RHEL family)](#0-host-prerequisites-fedorarhel-family)
   - [1) Put the qcow2 where libvirt/qemu can read it](#1-put-the-qcow2-where-libvirtqemu-can-read-it)
   - [2) Create a per-VM OVMF VARS file](#2-create-a-per-vm-ovmf-vars-file)
@@ -32,6 +32,8 @@ That sequence prevents **INACCESSIBLE_BOOT_DEVICE** when the VirtIO storage driv
   - [What we do](#what-we-do)
   - [What we do NOT do](#what-we-do-not-do)
 - [Common failure prevented](#common-failure-prevented)
+- [Next Steps](#next-steps)
+- [Getting Help](#getting-help)
 
 ---
 

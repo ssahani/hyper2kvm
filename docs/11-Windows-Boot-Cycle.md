@@ -4,6 +4,7 @@
 
 ## Table of Contents
 
+- [Prerequisites](#prerequisites)
 - [Why Windows fails after hypervisor migration](#why-windows-fails-after-hypervisor-migration)
 - [The Windows Boot Cycle (2-Phase)](#the-windows-boot-cycle-2-phase)
 - [Phase A: Offline Fix + Bootstrap Boot (SATA)](#phase-a-offline-fix-bootstrap-boot-sata)
@@ -20,6 +21,13 @@
 - [Phase B: Finalize Boot (VirtIO)](#phase-b-finalize-boot-virtio)
   - [Mermaid: Bootstrap → Final switch](#mermaid-bootstrap-final-switch)
 - [Appendix: Minimal “Decision Rules”](#appendix-minimal-decision-rules)
+- [Debugging Examples](#debugging-examples)
+  - [Example 1: Check Boot Configuration](#example-1-check-boot-configuration)
+  - [Example 2: Verify VirtIO Drivers](#example-2-verify-virtio-drivers)
+  - [Example 3: Test Boot with QEMU](#example-3-test-boot-with-qemu)
+  - [Example 4: Check Registry for VirtIO](#example-4-check-registry-for-virtio)
+- [Next Steps](#next-steps)
+- [Getting Help](#getting-help)
 
 ---
 

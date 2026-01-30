@@ -19,7 +19,6 @@ Before using hyper2kvm commands, ensure you have:
 
 ## Table of Contents
 
-  - [Comprehensive CLI Reference ](#comprehensive-cli-reference-)
 - [Design Principles](#design-principles)
   - [Config-first, automation-friendly](#config-first-automation-friendly)
   - [Safety is a feature](#safety-is-a-feature)
@@ -67,6 +66,12 @@ Before using hyper2kvm commands, ensure you have:
   - [Example: list VM names (config-driven)](#example-list-vm-names-config-driven)
   - [Example: download a VM disk](#example-download-a-vm-disk)
 - [Dependency Notes (practical)](#dependency-notes-practical)
+- [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+    - [Issue: Command fails with permission denied](#issue-command-fails-with-permission-denied)
+    - [Issue: libguestfs fails to mount disk](#issue-libguestfs-fails-to-mount-disk)
+- [Next Steps](#next-steps)
+- [Getting Help](#getting-help)
 
 ---
 ## Design Principles

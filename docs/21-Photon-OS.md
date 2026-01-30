@@ -36,6 +36,8 @@ Before migrating this platform, ensure:
   - [“No bootable device”](#no-bootable-device)
   - [Boots but no GUI](#boots-but-no-gui)
 - [Notes](#notes)
+- [Next Steps](#next-steps)
+- [Related Documentation](#related-documentation)
 
 ---
 ## Host Requirements (Fedora)

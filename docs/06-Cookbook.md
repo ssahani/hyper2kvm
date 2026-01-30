@@ -22,7 +22,6 @@ Before following this guide, you should have:
 
 ## Table of Contents
 
-- [Usage cookbook (CLI ↔ YAML side by side)](#usage-cookbook-cli-yaml-side-by-side)
 - [1. Local mode — Linux VMDK → qcow2](#1-local-mode-linux-vmdk-qcow2)
   - [CLI](#cli)
   - [YAML](#yaml)
@@ -56,6 +55,12 @@ Before following this guide, you should have:
 - [11. vSphere — CBT delta sync](#11-vsphere-cbt-delta-sync)
   - [CLI](#cli)
   - [YAML](#yaml)
+- [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+    - [Issue: Command fails with permission denied](#issue-command-fails-with-permission-denied)
+    - [Issue: libguestfs fails to mount disk](#issue-libguestfs-fails-to-mount-disk)
+- [Next Steps](#next-steps)
+- [Getting Help](#getting-help)
 
 ---
 ## 1. Local mode — Linux VMDK → qcow2

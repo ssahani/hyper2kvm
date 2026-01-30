@@ -111,6 +111,7 @@
   - [Advanced Recovery](#advanced-recovery)
   - [Metrics and Telemetry](#metrics-and-telemetry)
 - [Glossary](#glossary)
+- [Code Examples](#code-examples)
 - [Contributing](#contributing)
 - [Summary](#summary)
 
@@ -871,69 +872,6 @@ The foundational layer providing infrastructure for all other modules.
 
 ---
 
-## Code Examples
-
-### Example 1: Basic Pipeline Usage
-
-```python
-from hyper2kvm.orchestrator.disk_processor import DiskProcessor
-from hyper2kvm.core.guest_identity import GuestIdentity
-
-# Initialize processor
-processor = DiskProcessor()
-
-# Process a VMDK
-result = processor.process_disk(
-    source_path='/data/vm.vmdk',
-    output_path='/data/vm.qcow2',
-    flatten=True,
-    compress=True
-)
-
-# Inspect guest OS
-identity = GuestIdentity.from_disk('/data/vm.qcow2')
-print(f"OS: {identity.os_family}")
-print(f"Firmware: {identity.firmware_type}")
-```
-
-### Example 2: Custom Fixer
-
-```python
-from hyper2kvm.fixers.offline_fixer import OfflineFixer
-
-# Create fixer instance
-fixer = OfflineFixer('/data/vm.qcow2')
-
-# Apply specific fixes
-fixer.fix_fstab(use_uuid=True)
-fixer.fix_grub(regenerate=True)
-fixer.fix_network(clean_mac=True)
-
-# Verify fixes
-fixer.validate()
-```
-
-### Example 3: vSphere Integration
-
-```python
-from hyper2kvm.vmware.clients.client import VMwareClient
-
-# Connect to vCenter
-client = VMwareClient(
-    host='vcenter.example.com',
-    username='administrator@vsphere.local',
-    password='password'
-)
-
-# Export VM
-await client.async_export_vm(
-    vm_name='production-web',
-    output_dir='/data/exports',
-    export_mode='v2v'
-)
-```
-
-
 ## Key Architectural Invariants
 
 These principles are **non-negotiable**. Violating them leads to unreliable migrations.
@@ -1252,6 +1190,70 @@ Real-time progress tracking and performance metrics.
 **NFC:** Network File Copy - VMware protocol for efficient VM export.
 
 ---
+
+
+## Code Examples
+
+### Example 1: Basic Pipeline Usage
+
+```python
+from hyper2kvm.orchestrator.disk_processor import DiskProcessor
+from hyper2kvm.core.guest_identity import GuestIdentity
+
+# Initialize processor
+processor = DiskProcessor()
+
+# Process a VMDK
+result = processor.process_disk(
+    source_path='/data/vm.vmdk',
+    output_path='/data/vm.qcow2',
+    flatten=True,
+    compress=True
+)
+
+# Inspect guest OS
+identity = GuestIdentity.from_disk('/data/vm.qcow2')
+print(f"OS: {identity.os_family}")
+print(f"Firmware: {identity.firmware_type}")
+```
+
+### Example 2: Custom Fixer
+
+```python
+from hyper2kvm.fixers.offline_fixer import OfflineFixer
+
+# Create fixer instance
+fixer = OfflineFixer('/data/vm.qcow2')
+
+# Apply specific fixes
+fixer.fix_fstab(use_uuid=True)
+fixer.fix_grub(regenerate=True)
+fixer.fix_network(clean_mac=True)
+
+# Verify fixes
+fixer.validate()
+```
+
+### Example 3: vSphere Integration
+
+```python
+from hyper2kvm.vmware.clients.client import VMwareClient
+
+# Connect to vCenter
+client = VMwareClient(
+    host='vcenter.example.com',
+    username='administrator@vsphere.local',
+    password='password'
+)
+
+# Export VM
+await client.async_export_vm(
+    vm_name='production-web',
+    output_dir='/data/exports',
+    export_mode='v2v'
+)
+```
+
 
 ## Contributing
 
