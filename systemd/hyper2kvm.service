@@ -1,0 +1,46 @@
+[Unit]
+Description=hyper2kvm migration daemon
+Documentation=man:hyper2kvm(1) man:hyper2kvm.conf(5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hyper2kvm
+Group=hyper2kvm
+
+# Main configuration file
+Environment="CONFIG_FILE=/etc/hyper2kvm/hyper2kvm.conf"
+
+# Working directory for temporary files
+WorkingDirectory=/var/lib/hyper2kvm
+
+# Command to run hyper2kvm in daemon/watch mode
+# This watches for migration jobs and processes them
+ExecStart=/usr/bin/hyper2kvm --config ${CONFIG_FILE} --daemon
+
+# Restart policy
+Restart=on-failure
+RestartSec=30s
+TimeoutStartSec=5min
+TimeoutStopSec=30s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/hyper2kvm /var/log/hyper2kvm
+
+# Resource limits (adjust based on your workload)
+MemoryMax=8G
+CPUQuota=400%
+TasksMax=200
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hyper2kvm
+
+[Install]
+WantedBy=multi-user.target
