@@ -59,12 +59,22 @@ class LVMActivator:
                 # Scan only NBD partitions to avoid affecting host LVM
                 import glob
                 nbd_parts = glob.glob(f"{nbd_device}p*")
+                logger.debug(f"Found NBD partitions to scan: {nbd_parts}")
+
                 for part in nbd_parts:
-                    run_sudo(logger, ["pvscan", "--cache", part], check=False, capture=True)
+                    logger.debug(f"Scanning PV: {part}")
+                    result = run_sudo(logger, ["pvscan", "--cache", part], check=False, capture=True)
+                    logger.debug(f"pvscan output for {part}: {result.stdout.strip()}")
+
+                # Also try a general pvscan to pick up any missed devices
+                logger.debug("Running general pvscan --cache")
+                result = run_sudo(logger, ["pvscan", "--cache"], check=False, capture=True)
+                logger.debug(f"General pvscan output: {result.stdout.strip()}")
             elif _has_command("pvscan"):
                 run_sudo(logger, ["pvscan", "--cache"], check=True, capture=True)
 
             # Scan for volume groups
+            logger.debug("Running vgscan --cache")
             run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
 
             # Find VGs that use NBD device PVs
@@ -77,11 +87,17 @@ class LVMActivator:
                         check=True,
                         capture=True
                     )
+                    logger.debug(f"pvs output:\n{result.stdout}")
+
                     for line in result.stdout.strip().split('\n'):
+                        logger.debug(f"Parsing line: '{line}'")
                         parts = line.strip().split()
                         if len(parts) >= 2:
                             vg_name, pv_name = parts[0], parts[1]
+                            logger.debug(f"  vg_name={vg_name}, pv_name={pv_name}")
+                            logger.debug(f"  Checking if '{nbd_device}' in '{pv_name}': {nbd_device in pv_name}")
                             if nbd_device in pv_name:
+                                logger.debug(f"  -> Match! Adding VG {vg_name}")
                                 vgs_to_activate.append(vg_name)
                     vgs_to_activate = list(set(vgs_to_activate))  # Remove duplicates
                     logger.info(f"Found VGs on {nbd_device}: {vgs_to_activate}")
