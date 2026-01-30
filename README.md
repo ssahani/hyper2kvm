@@ -20,15 +20,15 @@ Transform virtual machines from VMware, Hyper-V, AWS, Azure, and other hyperviso
 
 ✨ **Production-Ready Features**
 - ✅ **480+ VMCraft APIs** - Native Python VM manipulation engine
-- ✅ **Live Migration** - <5 seconds downtime with HyperSDK
-- ✅ **Automated Fixes** - Bootloader, network, storage, fstab automatically configured
-- ✅ **Database-Aware** - PostgreSQL, MySQL/MariaDB automatic preparation
-- ✅ **Validation Framework** - Comprehensive post-migration health checks
-- ✅ **Rollback Capability** - Full and partial rollback with snapshots
-- ✅ **Compliance Reporting** - SOC 2, HIPAA, ISO 27001, PCI DSS audit trails
-- ✅ **Container Extraction** - VM → Kubernetes migration with auto-generated manifests
-- ✅ **Backup Integration** - DR testing from Veeam, Proxmox PBS
-- ✅ **Batch Processing** - Parallel multi-VM migrations with monitoring
+- ✅ **Multiple Input Formats** - VMDK, OVA, OVF, VHD, AMI, Azure VHD
+- ✅ **Automated Fixes** - Bootloader (GRUB), fstab stabilization, initramfs regeneration
+- ✅ **Remote Operations** - SSH-based fetch from ESXi, live-fix without VM downtime
+- ✅ **Windows Support** - VirtIO driver injection, registry modification, network config
+- ✅ **Post-Migration Testing** - Automatic libvirt/QEMU smoke tests
+- ✅ **Batch Processing** - Parallel multi-VM migrations with JSON manifests
+- ✅ **Flexible Output** - qcow2, raw, VDI formats with compression
+- ✅ **Cloud Integration** - Cloud-init injection, vSphere operations
+- ✅ **Enterprise Features** - LUKS encryption, daemon mode, systemd generation
 
 🎯 **Key Differentiator**
 Unlike traditional migration tools that "boot and hope," hyper2kvm applies **deterministic offline fixes** to ensure **first-boot success** through deep inspection, bootloader repair, driver injection, and network stabilization.
@@ -64,16 +64,40 @@ sudo apt-get install -y ntfs-3g libhivex-bin  # Ubuntu/Debian
 
 ## Your First Migration (5 Minutes)
 
+### Option 1: Using YAML Config (Recommended)
+
+Create `migration.yaml`:
+```yaml
+command: local
+vmdk: /vmware/windows-server.vmdk
+output_dir: /kvm
+to_output: windows-server.qcow2
+out_format: qcow2
+fstab_mode: stabilize-all
+regen_initramfs: true
+compress: true
+```
+
+Run migration:
 ```bash
-# Migrate a Windows Server from VMware to KVM
-hyper2kvm migrate /vmware/windows-server.vmdk \
-    --target /kvm/windows-server.qcow2 \
-    --fix-all \
-    --validate
+hyper2kvm --config migration.yaml
 
 # Import to libvirt
-virsh define windows-server.xml
+virsh define /kvm/windows-server.xml
 virsh start windows-server
+```
+
+### Option 2: Using Command Line Flags
+
+```bash
+hyper2kvm --cmd local \
+    --vmdk /vmware/windows-server.vmdk \
+    --output-dir /kvm \
+    --to-output windows-server.qcow2 \
+    --out-format qcow2 \
+    --fstab-mode stabilize-all \
+    --regen-initramfs \
+    --compress
 ```
 
 **See:** [Beginner Tutorial](docs/tutorials/01-beginner-migration.md) for detailed walkthrough
@@ -112,72 +136,97 @@ with VMCraft() as g:
 
 ---
 
-### ⚡ Live Migration (Minimal Downtime)
+### ⚡ Live Fix (SSH-Based)
 
-Migrate running VMs with **<5 seconds downtime** using HyperSDK:
+Fix running VMs remotely via SSH without downtime:
 
-```bash
-# Analyze migration feasibility
-hyper2kvm live analyze /vms/prod-db.vmdk
-# Output: Estimated Downtime: 3.2s (EXCELLENT)
-
-# Execute live migration
-hyper2kvm live migrate /vms/prod-db.vmdk \
-    --target /kvm/prod-db.qcow2 \
-    --provider vmware \
-    --max-downtime 5
-
-# Result: 2.8s actual downtime
+```yaml
+# live-fix.yaml
+command: live-fix
+host: 192.168.1.100
+user: root
+port: 22
+identity: ~/.ssh/id_rsa
+output_dir: ./out
+fstab_mode: stabilize-all
+regen_initramfs: true
 ```
 
-**See:** [Live Migration Guide](docs/features/live-migration.md)
+Run:
+```bash
+hyper2kvm --config live-fix.yaml
+```
+
+**See:** [Live Fix Guide](docs/features/live-fix.md)
 
 ---
 
-### 🗄️ Database-Aware Migration
+### 🗄️ Database Server Migration
 
-Automatic database preparation for PostgreSQL, MySQL/MariaDB, MongoDB, Redis:
+Migrate database servers with automatic fstab and boot configuration:
 
+```yaml
+# db-migration.yaml
+command: local
+vmdk: /vms/db-server.vmdk
+output_dir: /kvm
+to_output: db-server.qcow2
+out_format: qcow2
+fstab_mode: stabilize-all
+regen_initramfs: true
+compress: true
+```
+
+Run:
 ```bash
-hyper2kvm migrate /vms/db-server.vmdk \
-    --target /kvm/db-server.qcow2 \
-    --fix-all \
-    --prepare-databases \
-    --database-type postgresql
+hyper2kvm --config db-migration.yaml
 ```
 
 **Features**:
-- Configuration updates (listen addresses, paths)
-- Service validation
-- Data integrity checks
-- Connection testing
+- Automatic fstab stabilization (UUID/PARTUUID/LABEL)
+- Bootloader configuration (GRUB)
+- Initramfs regeneration with virtio drivers
+- Compressed qcow2 output
 
 **See:** [Database Migration Guide](docs/features/database-aware.md)
 
 ---
 
-### ✅ Migration Validation Suite
+### ✅ Post-Migration Testing
 
-Comprehensive post-migration validation with automated health checks:
+Test migrated VMs automatically with libvirt or QEMU:
 
-```bash
-hyper2kvm validate /kvm/server.qcow2 \
-    --check-boot \
-    --check-services \
-    --check-network \
-    --check-databases \
-    --report /reports/validation.json
+```yaml
+# migration-with-test.yaml
+command: local
+vmdk: /vms/server.vmdk
+output_dir: /kvm
+to_output: server.qcow2
+out_format: qcow2
+fstab_mode: stabilize-all
+regen_initramfs: true
+
+# Enable testing
+libvirt_test: true
+vm_name: test-server
+memory: 2048
+vcpus: 2
+timeout: 300
 ```
 
-**Validation Checks**:
-- ✓ Boot configuration valid
-- ✓ Kernel modules available (virtio_net, virtio_blk)
-- ✓ Critical services enabled (sshd, NetworkManager)
-- ✓ Network interfaces configured
-- ✓ DNS resolution working
-- ✓ Database servers operational
+Run with automatic testing:
+```bash
+hyper2kvm --config migration-with-test.yaml
+```
 
-**See:** [Validation API](docs/api/validation-api.md)
+**Validation Features**:
+- ✓ Automatic libvirt domain creation and boot test
+- ✓ QEMU smoke test (headless mode available)
+- ✓ Configurable timeout and resources
+- ✓ UEFI and BIOS boot modes
+- ✓ Optional keep-domain for manual testing
+
+**See:** [Testing Guide](docs/guides/testing.md)
 
 ---
 
@@ -210,87 +259,45 @@ report = orchestrator.execute_full_rollback(
 
 ---
 
-### 📦 Container Extraction (VM → Kubernetes)
-
-Extract Docker containers from VMs and deploy to Kubernetes:
-
-```bash
-hyper2kvm container extract /vms/docker-host.qcow2 \
-    --output-dir /k8s/manifests \
-    --generate-manifests \
-    --namespace production
-
-# Auto-generates:
-# - deployments/*.yaml
-# - services/*.yaml
-# - configmaps/*.yaml
-# - secrets/*.yaml
-```
-
-**See:** [Container Extraction Guide](docs/features/container-extraction.md)
-
----
-
-### 🛡️ Compliance & Audit
-
-Complete audit trails and compliance reporting:
-
-```bash
-hyper2kvm migrate /vms/server.vmdk \
-    --target /kvm/server.qcow2 \
-    --fix-all \
-    --compliance-report \
-    --audit-trail
-```
-
-**Standards Supported**: SOC 2, HIPAA, ISO 27001, PCI DSS
-
-**See:** [Compliance Guide](docs/features/compliance-audit.md)
-
----
-
-### 💾 Backup Integration & DR Testing
-
-Restore from Veeam and Proxmox backups:
-
-```bash
-# Monthly DR test from Veeam backup
-hyper2kvm backup restore \
-    --source veeam:///backups/veeam-repo \
-    --vm prod-app-01 \
-    --target /dr-test/prod-app-01.qcow2 \
-    --validate
-```
-
-**See:** [Backup Integration Guide](docs/features/backup-integration.md)
-
----
-
 ### 🚚 Batch Migration
 
-Parallel multi-VM migrations with monitoring:
+Process multiple VMs with a batch manifest:
 
 ```yaml
-# batch-config.yaml
-batch:
-  name: "Datacenter Migration Q1 2026"
-  parallel_workers: 5
-  snapshot_before_migration: true
-
-migrations:
-  - name: "web-01"
-    source: "/vmware/web-01.vmdk"
-    target: "/kvm/web-01.qcow2"
-    priority: high
-    # ... 49 more VMs
+# batch.yaml
+command: local
+batch_manifest: migrations.json
+batch_parallel: 3
+batch_continue_on_error: true
+output_dir: /kvm/batch
 ```
 
+Create `migrations.json`:
+```json
+{
+  "migrations": [
+    {
+      "vmdk": "/vmware/web-01.vmdk",
+      "to_output": "web-01.qcow2"
+    },
+    {
+      "vmdk": "/vmware/web-02.vmdk",
+      "to_output": "web-02.qcow2"
+    }
+  ]
+}
+```
+
+Run batch:
 ```bash
-hyper2kvm batch execute batch-config.yaml \
-    --parallel 5 \
-    --validate-all \
-    --compliance-report
+hyper2kvm --config batch.yaml
 ```
+
+**Features**:
+- Parallel processing (configurable workers)
+- Continue on error mode
+- Individual VM configuration in manifest
+- Progress tracking
 
 **See:** [Batch Migration Guide](docs/guides/migration/batch-features.md)
 
@@ -440,74 +447,84 @@ ruff check hyper2kvm/
 
 ## Quick Examples
 
-### Example 1: Standard Migration
+### Example 1: Local VMDK Migration
 ```bash
-hyper2kvm migrate /vmware/server.vmdk \
-    --target /kvm/server.qcow2 \
-    --fix-all \
-    --validate
+hyper2kvm --cmd local \
+    --vmdk /vmware/server.vmdk \
+    --output-dir /kvm \
+    --to-output server.qcow2 \
+    --out-format qcow2 \
+    --fstab-mode stabilize-all \
+    --regen-initramfs \
+    --compress
 ```
 
-### Example 2: Live Migration
+### Example 2: Remote Fetch from ESXi
 ```bash
-hyper2kvm live migrate /vmware/prod-db.vmdk \
-    --target /kvm/prod-db.qcow2 \
-    --provider vmware \
-    --max-downtime 5
+hyper2kvm --cmd fetch-and-fix \
+    --host 192.168.1.100 \
+    --user root \
+    --remote /vmfs/volumes/datastore1/vm/vm.vmdk \
+    --output-dir /kvm \
+    --to-output vm.qcow2 \
+    --fstab-mode stabilize-all
 ```
 
-### Example 3: Batch Migration
+### Example 3: OVA Extraction
 ```bash
-hyper2kvm batch execute batch-config.yaml \
-    --parallel 5 \
-    --validate-all
+hyper2kvm --cmd ova \
+    --ova /downloads/appliance.ova \
+    --output-dir /kvm \
+    --to-output appliance.qcow2 \
+    --compress
 ```
 
-### Example 4: DR Testing
+### Example 4: Live SSH Fix
 ```bash
-hyper2kvm backup restore \
-    --source veeam:///backups/veeam-repo \
-    --vm prod-app-01 \
-    --validate
+hyper2kvm --cmd live-fix \
+    --host 192.168.1.50 \
+    --user root \
+    --fstab-mode stabilize-all \
+    --regen-initramfs
 ```
 
 **More Examples:** [Migration Recipes](docs/recipes/01-common-scenarios.md)
 
 ---
 
-## Success Stories
+## Use Cases
 
-### Datacenter Migration
-- **Challenge**: Migrate 100 VMs from VMware to KVM in 48 hours
-- **Solution**: Batch migration with 5 parallel workers
-- **Result**: 100 VMs migrated in 36 hours, 98% success rate
+### VMware to KVM Migration
+- **Challenge**: Migrate production VMs from VMware ESXi to KVM/libvirt
+- **Solution**: Batch processing with automated fstab and bootloader fixes
+- **Result**: First-boot success, virtio drivers automatically configured
 
-### Live Database Migration
-- **Challenge**: Migrate production PostgreSQL with minimal downtime
-- **Solution**: Live migration with HyperSDK
-- **Result**: 2.8s downtime, zero transactions lost
+### Remote ESXi Fetch
+- **Challenge**: Fetch VMs from remote ESXi without local disk space
+- **Solution**: SSH-based fetch-and-fix with direct conversion
+- **Result**: Seamless migration over network, no intermediate storage needed
 
-### DR Testing Automation
-- **Challenge**: Monthly DR test from Veeam backups
-- **Solution**: Automated backup restore with validation
-- **Result**: DR test completes in 45 minutes, fully automated
+### OVA/OVF Import
+- **Challenge**: Import appliances distributed as OVA/OVF format
+- **Solution**: Extract, convert, and fix in single workflow
+- **Result**: Ready-to-use qcow2 images with proper configurations
 
-**See:** [Use Cases](docs/HOW_HYPER2KVM_WORKS.md#use-cases)
+**See:** [Migration Recipes](docs/recipes/01-common-scenarios.md)
 
 ---
 
 ## What's New in v1.0
 
-### Recently Added (2026 Q1)
-- ✅ **Live Migration** - <5s downtime with HyperSDK
-- ✅ **Database-Aware Migration** - PostgreSQL, MySQL/MariaDB support
-- ✅ **Compliance & Audit** - SOC 2, HIPAA, ISO 27001 reporting
-- ✅ **Container Extraction** - VM → Kubernetes migration
-- ✅ **Backup Integration** - Veeam, Proxmox PBS restore
-- ✅ **Migration Validation Suite** - Comprehensive health checks
-- ✅ **Rollback Framework** - Full and partial rollback
-- ✅ **CLI Enhancement** - Interactive wizard, progress tracking
-- ✅ **Documentation Overhaul** - Tutorials, recipes, API reference
+### Core Features (2025-2026)
+- ✅ **VMCraft Native Engine** - 480+ API methods, pure Python implementation
+- ✅ **Multiple Input Formats** - VMDK, OVA, OVF, VHD, AMI support
+- ✅ **Automated Fixes** - fstab, GRUB, initramfs, virtio injection
+- ✅ **Remote Operations** - SSH fetch, live-fix capabilities
+- ✅ **Windows Support** - Driver injection, registry modifications
+- ✅ **Batch Processing** - Parallel migrations with manifests
+- ✅ **Testing Integration** - Libvirt/QEMU smoke tests
+- ✅ **Cloud Features** - Cloud-init, vSphere, Azure support
+- ✅ **Documentation** - Comprehensive guides, tutorials, API reference
 
 **See:** [CHANGELOG.md](CHANGELOG.md)
 
