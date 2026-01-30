@@ -22,8 +22,10 @@ class FakeGuestFS:
         self.realpath_map = {}
 
     def realpath(self, path: str) -> str:
-        """Map by-path to real device."""
-        return self.realpath_map.get(path, path)
+        """Map by-path to real device. Raise if path not found (like real guestfs)."""
+        if path not in self.realpath_map:
+            raise Exception(f"realpath: {path}: No such file or directory")
+        return self.realpath_map[path]
 
     def blkid(self, dev: str) -> dict:
         """Return blkid data for device."""
@@ -54,6 +56,30 @@ class TestSpecConverter(unittest.TestCase):
                 "TYPE": "swap",
             },
         }
+
+    def test_bypath_uses_inference_when_realpath_fails(self):
+        """
+        CRITICAL: Test that by-path inference works when g.realpath() fails.
+
+        This simulates the real-world scenario where /dev/disk/by-path/ symlinks
+        don't exist in the offline libguestfs mount (they're created by udev at boot).
+        """
+        # Remove realpath mapping to simulate g.realpath() failure
+        self.fake_g.realpath_map = {}
+
+        converter = SpecConverter(
+            fstab_mode=FstabMode.STABILIZE_ALL,
+            root_dev="/dev/sda2"  # CRITICAL: Must be set for inference to work
+        )
+
+        spec = "/dev/disk/by-path/pci-0000:00:10.0-scsi-0:0:0:0-part2"
+
+        # Convert the spec using inference
+        new_spec, reason = converter.convert_spec(self.fake_g, spec)
+
+        # Should still convert to UUID using inference
+        self.assertEqual(new_spec, "UUID=12345678-1234-1234-1234-123456789abc")
+        self.assertIn("mapped", reason)
 
     def test_bypath_converted_to_uuid_in_stabilize_all_mode(self):
         """

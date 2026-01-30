@@ -1167,6 +1167,10 @@ class OfflineFSFix:
                 )
 
             # fixes
+            # Update spec_converter with detected root_dev before fstab conversion
+            if self.root_dev and self._spec_converter.root_dev != self.root_dev:
+                self._spec_converter.root_dev = self.root_dev
+
             c_fstab, fstab_changes, fstab_audit = self._run_stage(
                 "rewrite_fstab", lambda: self.rewrite_fstab(g), default=(0, [], {})
             )
