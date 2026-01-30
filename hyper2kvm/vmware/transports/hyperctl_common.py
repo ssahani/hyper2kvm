@@ -132,9 +132,37 @@ class HyperCtlRunner:
         """Query job status."""
         result = self._run_command(["query", "-id", job_id])
 
-        # TODO: Parse the table output or add -json flag to hyperctl
-        # For now, return raw output
-        return {"job_id": job_id, "output": result.stdout}
+        # Parse the table output from hyperctl
+        # Expected format:
+        # JOB_ID    STATUS    PROGRESS    MESSAGE
+        # abc123    running   50%         Exporting disk...
+        job_data = {"job_id": job_id, "output": result.stdout}
+
+        try:
+            lines = result.stdout.strip().split('\n')
+            if len(lines) >= 2:
+                # Skip header line, parse data line
+                header = lines[0].split()
+                data = lines[1].split(None, len(header) - 1)  # Split into header count fields
+
+                # Build dict from header and data
+                for i, field in enumerate(header):
+                    if i < len(data):
+                        job_data[field.lower()] = data[i]
+
+                # Extract common fields
+                if 'STATUS' in header and len(data) > 1:
+                    job_data['status'] = data[1]
+                if 'PROGRESS' in header and len(data) > 2:
+                    progress_str = data[2].rstrip('%')
+                    try:
+                        job_data['progress_percent'] = float(progress_str)
+                    except ValueError:
+                        pass
+        except Exception as e:
+            logger.debug(f"Failed to parse hyperctl query output: {e}")
+
+        return job_data
 
     def wait_for_job_completion(
         self,

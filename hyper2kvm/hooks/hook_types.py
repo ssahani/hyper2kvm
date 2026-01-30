@@ -247,14 +247,24 @@ class PythonHook(BaseHook):
 
             Log.trace(
                 self.logger,
-                "Python hook: func=%s.%s args=%s",
+                "Python hook: func=%s.%s args=%s timeout=%d",
                 module_name,
                 function_name,
                 args_substituted,
+                self.timeout,
             )
 
-            # Execute function (TODO: Add timeout support)
-            result = func(**args_substituted)
+            # Execute function with timeout support
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(func, **args_substituted)
+                try:
+                    result = future.result(timeout=self.timeout)
+                except FuturesTimeoutError:
+                    raise HookTimeoutError(
+                        f"Python hook timed out after {self.timeout}s"
+                    )
 
             duration = time.time() - start_time
 

@@ -150,6 +150,7 @@ class MigrationDashboard(App):
         self._metrics: Dict[str, Any] = {}
         self._migration_widgets: Dict[str, MigrationStatusWidget] = {}
         self._lock = threading.RLock()  # Thread-safe access to data
+        self._error_timestamps: List[float] = []  # Track error times for rate calculation
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -251,9 +252,12 @@ class MigrationDashboard(App):
 
     def _compute_metrics(self) -> Dict[str, Any]:
         """Compute current metrics from migration data."""
-        # Thread-safe copy of migrations
+        import time
+
+        # Thread-safe copy of migrations and error timestamps
         with self._lock:
             migrations = list(self._migrations.values())
+            error_timestamps = list(self._error_timestamps)
 
         active = len([m for m in migrations if m.status == "in_progress"])
         total = len(migrations)
@@ -278,6 +282,17 @@ class MigrationDashboard(App):
             avg_duration = 0
             total_bytes = 0
 
+        # Calculate error rate per minute (errors in last minute)
+        current_time = time.time()
+        one_minute_ago = current_time - 60
+        recent_errors = [t for t in error_timestamps if t >= one_minute_ago]
+        error_rate = len(recent_errors)
+
+        # Clean up old error timestamps (keep last hour only)
+        with self._lock:
+            one_hour_ago = current_time - 3600
+            self._error_timestamps = [t for t in self._error_timestamps if t >= one_hour_ago]
+
         return {
             "active_migrations": active,
             "total_migrations": total,
@@ -286,7 +301,7 @@ class MigrationDashboard(App):
             "avg_throughput_mbps": avg_throughput,
             "avg_duration_seconds": avg_duration,
             "total_bytes_processed": total_bytes,
-            "error_rate_per_minute": 0,  # TODO: Calculate from error log
+            "error_rate_per_minute": error_rate,
         }
 
     def add_migration(self, migration: MigrationStatus) -> None:
@@ -303,6 +318,13 @@ class MigrationDashboard(App):
         # Phase 1: Update data structures (hold lock briefly)
         # This prevents TOCTOU race by checking and updating atomically
         with self._lock:
+            # Track error timestamps for rate calculation
+            old_migration = self._migrations.get(vm_name)
+            if (old_migration is None or old_migration.status != "failed") and migration.status == "failed":
+                # New failure detected
+                import time
+                self._error_timestamps.append(time.time())
+
             self._migrations[vm_name] = migration
 
             if vm_name in self._migration_widgets:

@@ -439,9 +439,8 @@ class BatchOrchestrator:
         """
         Apply shared config and VM-specific overrides to manifest.
 
-        For simplicity, we'll just pass the original manifest path
-        and let the orchestrator handle it. In a full implementation,
-        you would merge configs and write a temporary manifest.
+        Merges shared_config and vm_overrides into the manifest and
+        writes a temporary manifest file if overrides exist.
 
         Args:
             manifest_path: Original VM manifest path
@@ -449,10 +448,12 @@ class BatchOrchestrator:
             vm_overrides: VM-specific overrides
 
         Returns:
-            Path to effective manifest (for now, just the original)
+            Path to effective manifest (temp file if overrides, else original)
         """
-        # TODO: In future, merge shared_config and vm_overrides with manifest
-        # For Phase 1, we'll just use the original manifest as-is
+        # If no overrides, return original manifest
+        if not shared_config and not vm_overrides:
+            return manifest_path
+
         Log.trace(
             self.logger,
             "📝 Config override: shared_keys=%s override_keys=%s",
@@ -460,7 +461,52 @@ class BatchOrchestrator:
             list(vm_overrides.keys()) if vm_overrides else [],
         )
 
-        return manifest_path
+        try:
+            import json
+            import tempfile
+
+            # Load original manifest
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+
+            # Deep merge helper function
+            def deep_merge(base: dict, overlay: dict) -> dict:
+                """Recursively merge overlay into base."""
+                result = base.copy()
+                for key, value in overlay.items():
+                    if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                        result[key] = deep_merge(result[key], value)
+                    else:
+                        result[key] = value
+                return result
+
+            # Apply shared config first, then VM-specific overrides
+            if shared_config:
+                manifest = deep_merge(manifest, shared_config)
+            if vm_overrides:
+                manifest = deep_merge(manifest, vm_overrides)
+
+            # Write merged manifest to temporary file
+            with tempfile.NamedTemporaryFile(
+                mode='w',
+                suffix='.json',
+                prefix='manifest_override_',
+                delete=False,
+                dir=manifest_path.parent,
+            ) as tmp_file:
+                json.dump(manifest, tmp_file, indent=2)
+                tmp_path = Path(tmp_file.name)
+
+            Log.trace(self.logger, "📝 Created merged manifest: %s", tmp_path)
+            return tmp_path
+
+        except Exception as e:
+            Log.warn(
+                self.logger,
+                "Failed to merge config overrides: %s, using original manifest",
+                e,
+            )
+            return manifest_path
 
     def _generate_report(self, start_time: float, end_time: float) -> dict[str, Any]:
         """Generate aggregate batch report using BatchReporter."""

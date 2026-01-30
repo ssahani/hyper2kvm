@@ -89,8 +89,10 @@ class AsyncVMwareOperations:
 
         logger.info(f"Starting batch export of {len(vm_names)} VMs")
 
-        # Track progress for each VM
+        # Track progress and start time for each VM
+        import time
         progress_trackers = {vm_name: 0.0 for vm_name in vm_names}
+        start_times = {vm_name: time.time() for vm_name in vm_names}
 
         def make_progress_callback(vm_name: str):
             """Create progress callback for specific VM."""
@@ -99,12 +101,21 @@ class AsyncVMwareOperations:
                 progress_trackers[vm_name] = progress
 
                 if on_progress:
+                    # Calculate elapsed time since export started
+                    elapsed = time.time() - start_times[vm_name]
+
+                    # Calculate ETA if we have progress
+                    eta = None
+                    if progress > 0.0 and progress < 1.0:
+                        eta = (elapsed / progress) * (1.0 - progress)
+
                     prog = MigrationProgress(
                         vm_name=vm_name,
                         progress=progress,
                         stage=stage,
                         throughput_mbps=throughput,
-                        elapsed_seconds=0.0,  # TODO: Track actual time
+                        elapsed_seconds=elapsed,
+                        eta_seconds=eta,
                     )
                     on_progress(prog)
 
