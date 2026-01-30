@@ -736,3 +736,84 @@ def _add_azure_knobs(p: argparse.ArgumentParser) -> None:
     p.add_argument("--azure-retries", dest="azure_retries", type=int, default=3, help="Download retry attempts (default: 3)")
     p.add_argument("--azure-backoff-base", dest="azure_backoff_base", type=float, default=1.0, help="Retry backoff base in seconds (default: 1.0)")
     p.add_argument("--azure-backoff-cap", dest="azure_backoff_cap", type=float, default=60.0, help="Retry backoff cap in seconds (default: 60.0)")
+
+
+def _add_kubernetes_deployment(p: argparse.ArgumentParser) -> None:
+    """Kubernetes/k3s deployment options."""
+    # Enable deployment
+    p.add_argument(
+        "--deploy-k8s",
+        dest="deploy_k8s",
+        action="store_true",
+        help="Deploy migrated VM to Kubernetes/k3s cluster with KubeVirt. "
+             "Automatically creates namespace, PVC, uploads image, and creates VirtualMachine resource.",
+    )
+
+    # Target cluster configuration
+    p.add_argument(
+        "--k8s-namespace",
+        dest="k8s_namespace",
+        default="default",
+        help="Kubernetes namespace for VM deployment (default: default). Created if doesn't exist.",
+    )
+    p.add_argument(
+        "--k8s-vm-name",
+        dest="k8s_vm_name",
+        default=None,
+        help="VirtualMachine resource name (default: derived from image filename).",
+    )
+    p.add_argument(
+        "--k8s-pvc-name",
+        dest="k8s_pvc_name",
+        default=None,
+        help="PersistentVolumeClaim name for VM disk (default: <vm-name>-disk).",
+    )
+
+    # Storage configuration
+    p.add_argument(
+        "--k8s-storage-class",
+        dest="k8s_storage_class",
+        default="local-path",
+        help="StorageClass for PVC (default: local-path for k3s).",
+    )
+    p.add_argument(
+        "--k8s-pvc-size",
+        dest="k8s_pvc_size",
+        default="10Gi",
+        help="PVC size (default: 10Gi). Should be larger than QCOW2 image.",
+    )
+
+    # VM resource configuration
+    p.add_argument(
+        "--k8s-cpu",
+        dest="k8s_cpu",
+        default="2",
+        help="CPU cores for VM (default: 2).",
+    )
+    p.add_argument(
+        "--k8s-memory",
+        dest="k8s_memory",
+        default="2Gi",
+        help="Memory for VM (default: 2Gi).",
+    )
+
+    # VM lifecycle
+    p.add_argument(
+        "--k8s-auto-start",
+        dest="k8s_auto_start",
+        action="store_true",
+        help="Automatically start VM after creation (default: false).",
+    )
+    p.add_argument(
+        "--k8s-wait-ready",
+        dest="k8s_wait_ready",
+        action="store_true",
+        default=True,
+        help="Wait for VM to be ready after start (default: true).",
+    )
+    p.add_argument(
+        "--no-k8s-wait-ready",
+        dest="k8s_wait_ready",
+        action="store_false",
+        help="Don't wait for VM ready status.",
+    )

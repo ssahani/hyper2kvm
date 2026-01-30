@@ -1,7 +1,18 @@
-# CentOS 9 - Test Migration to K3s Cluster
-# This configuration tests migrating a CentOS 9 VM into a k3s cluster
+# CentOS 9 - Test Migration to K3s Cluster with Automated Deployment
+# This configuration tests end-to-end migration: VMDK → QCOW2 → K3s deployment
 
 cmd: local
+
+# Automated Kubernetes/k3s deployment
+deploy_k8s: true
+k8s_namespace: hyper2kvm-auto
+k8s_vm_name: centos9-automated
+k8s_storage_class: local-path
+k8s_pvc_size: 10Gi
+k8s_cpu: "2"
+k8s_memory: 2Gi
+k8s_auto_start: false  # Don't auto-start, let user start manually
+k8s_wait_ready: false
 
 # Source VMDK
 vmdk: /home/ssahani/Downloads/VM-Images/centos/centos9.vmdk

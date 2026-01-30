@@ -22,6 +22,7 @@ from .groups import (
     _add_global_operation_flags,
     _add_govc_knobs,
     _add_input_paths,
+    _add_kubernetes_deployment,
     _add_libvirt_xml_knobs,
     _add_luks_knobs,
     _add_ovf_ova_knobs,
@@ -80,6 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_vsphere_export_and_download_knobs(p)
 
     _add_azure_knobs(p)
+
+    # Kubernetes/k3s deployment
+    _add_kubernetes_deployment(p)
 
     return p
 

@@ -259,6 +259,45 @@ class Orchestrator:
             )
             Log.ok(self.logger, "QEMU test complete")
 
+    def _deploy_to_kubernetes(self, out_images: list[Path]) -> None:
+        """Deploy migrated VMs to Kubernetes/k3s cluster."""
+        try:
+            from ..deployers.kubernetes import deploy_to_kubernetes
+
+            self.logger.info("")
+            self.logger.info("=" * 80)
+            self.logger.info("Kubernetes/k3s Deployment")
+            self.logger.info("=" * 80)
+
+            # Deploy each image
+            for img in out_images:
+                if str(img).endswith('.qcow2'):
+                    try:
+                        result = deploy_to_kubernetes(self.logger, self.args, str(img))
+                        self.logger.info("")
+                        self.logger.info(f"✅ Deployed: {result['vm_name']}")
+                        self.logger.info(f"   Namespace: {result['namespace']}")
+                        self.logger.info(f"   PVC: {result['pvc_name']}")
+                        if result.get('vm_started'):
+                            self.logger.info(f"   Status: Running")
+                        else:
+                            self.logger.info(f"   Status: Created (not started)")
+                            self.logger.info(f"   To start: kubectl patch vm {result['vm_name']} -n {result['namespace']} --type merge -p '{{\"spec\":{{\"running\":true}}}}'")
+                    except Exception as e:
+                        self.logger.error(f"Failed to deploy {img}: {e}")
+                        if not getattr(self.args, 'k8s_continue_on_error', True):
+                            raise
+                else:
+                    self.logger.warning(f"Skipping non-QCOW2 image: {img}")
+
+            self.logger.info("")
+            self.logger.info("=" * 80)
+
+        except ImportError as e:
+            self.logger.error(f"Kubernetes deployment failed: {e}")
+            self.logger.error("Install kubernetes Python package: pip install kubernetes")
+            raise
+
     def _emit_domain_xml(self, out_root: Path, out_images: list[Path]) -> None:
         """Emit libvirt domain XML if requested."""
         if not out_images:
@@ -389,6 +428,10 @@ class Orchestrator:
 
         # Emit domain XML
         self._emit_domain_xml(out_root, out_images)
+
+        # Kubernetes deployment (optional)
+        if getattr(self.args, "deploy_k8s", False) and out_images:
+            self._deploy_to_kubernetes(out_images)
 
         # Final summary
         U.banner(self.logger, "Done")
