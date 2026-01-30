@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "pipeline": {
+    "load": {
+      "source_type": "vmdk",
+      "source_path": "/data/vms/my-vm.vmdk"
+    },
+    "inspect": {
+      "enabled": true,
+      "detect_os": true
+    },
+    "fix": {
+      "fstab": {
+        "enabled": true,
+        "mode": "stabilize-all"
+      },
+      "grub": {
+        "enabled": true
+      },
+      "initramfs": {
+        "enabled": true,
+        "regenerate": true
+      }
+    },
+    "convert": {
+      "output_format": "qcow2",
+      "compress": true,
+      "output_path": "my-vm-converted.qcow2"
+    },
+    "validate": {
+      "enabled": true,
+      "boot_test": false
+    }
+  }
+}

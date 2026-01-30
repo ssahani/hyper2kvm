@@ -1,0 +1,69 @@
+{
+  "version": "1.0",
+  "batch": true,
+  "vms": [
+    {
+      "name": "web-server",
+      "pipeline": {
+        "load": {
+          "source_type": "vmdk",
+          "source_path": "/data/vms/web-server.vmdk"
+        },
+        "inspect": {
+          "enabled": true
+        },
+        "fix": {
+          "fstab": {
+            "enabled": true,
+            "mode": "stabilize-all"
+          },
+          "grub": {
+            "enabled": true
+          },
+          "initramfs": {
+            "enabled": true,
+            "regenerate": true
+          },
+          "network": {
+            "enabled": true,
+            "fix_level": "full"
+          }
+        },
+        "convert": {
+          "output_format": "qcow2",
+          "compress": true,
+          "output_path": "web-server.qcow2"
+        },
+        "validate": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "database",
+      "pipeline": {
+        "load": {
+          "source_type": "vhd",
+          "source_path": "/data/vms/database.vhd"
+        },
+        "inspect": {
+          "enabled": true
+        },
+        "fix": {
+          "fstab": {
+            "enabled": true,
+            "mode": "stabilize-all"
+          }
+        },
+        "convert": {
+          "output_format": "raw",
+          "compress": false,
+          "output_path": "database.img"
+        },
+        "validate": {
+          "enabled": false
+        }
+      }
+    }
+  ]
+}

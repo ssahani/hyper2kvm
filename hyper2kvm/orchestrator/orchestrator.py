@@ -305,14 +305,38 @@ class Orchestrator:
 
         # Handle daemon mode
         if self.args.cmd == "daemon":
-            if not getattr(self.args, "watch_dir", None):
-                from ..core.exceptions import Fatal
-                raise Fatal(2, "Daemon mode requires --watch-dir or config: watch_dir")
+            # Check for manifest workflow mode
+            if getattr(self.args, "manifest_workflow_mode", False):
+                # Manifest workflow daemon mode
+                if not getattr(self.args, "manifest_workflow_dir", None):
+                    from ..core.exceptions import Fatal
+                    raise Fatal(2, "Manifest workflow mode requires --manifest-workflow-dir")
 
-            from ..daemon.daemon_watcher import DaemonWatcher
-            watcher = DaemonWatcher(self.logger, self.args)
-            watcher.run()
-            return  # Daemon runs until stopped
+                from ..daemon.manifest_workflow_daemon import ManifestWorkflowDaemon
+                watcher = ManifestWorkflowDaemon(self.logger, self.args)
+                watcher.run()
+                return  # Daemon runs until stopped
+            # Check for workflow mode (3-directory) vs standard daemon mode
+            elif getattr(self.args, "workflow_mode", False):
+                # Workflow daemon mode
+                if not getattr(self.args, "workflow_dir", None):
+                    from ..core.exceptions import Fatal
+                    raise Fatal(2, "Workflow mode requires --workflow-dir or config: workflow_dir")
+
+                from ..daemon.workflow_daemon import WorkflowDaemon
+                watcher = WorkflowDaemon(self.logger, self.args)
+                watcher.run()
+                return  # Daemon runs until stopped
+            else:
+                # Standard daemon mode
+                if not getattr(self.args, "watch_dir", None):
+                    from ..core.exceptions import Fatal
+                    raise Fatal(2, "Daemon mode requires --watch-dir or config: watch_dir")
+
+                from ..daemon.daemon_watcher import DaemonWatcher
+                watcher = DaemonWatcher(self.logger, self.args)
+                watcher.run()
+                return  # Daemon runs until stopped
 
         # Check if write operations needed
         write_actions = (

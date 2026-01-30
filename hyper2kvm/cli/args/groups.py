@@ -339,6 +339,37 @@ def _add_daemon_flags(p: argparse.ArgumentParser) -> None:
     # Daemon flags
     p.add_argument("--daemon", action="store_true", help="Run in daemon mode (for systemd service).")
     p.add_argument("--watch-dir", dest="watch_dir", default=None, help="Directory to watch for new VMDK files in daemon mode.")
+    p.add_argument(
+        "--workflow-mode",
+        dest="workflow_mode",
+        action="store_true",
+        help="Enable 3-directory workflow (to_be_processed → processing → processed).",
+    )
+    p.add_argument(
+        "--workflow-dir",
+        dest="workflow_dir",
+        default=None,
+        help="Base directory for workflow mode (creates subdirs: to_be_processed/, processing/, processed/, failed/).",
+    )
+    p.add_argument(
+        "--max-concurrent-jobs",
+        dest="max_concurrent_jobs",
+        type=int,
+        default=3,
+        help="Maximum concurrent conversion jobs in daemon mode (default: 3).",
+    )
+    p.add_argument(
+        "--manifest-workflow-mode",
+        dest="manifest_workflow_mode",
+        action="store_true",
+        help="Enable manifest workflow mode (to_be_processed → processing → processed).",
+    )
+    p.add_argument(
+        "--manifest-workflow-dir",
+        dest="manifest_workflow_dir",
+        default=None,
+        help="Base directory for manifest workflow (creates subdirs: to_be_processed/, processing/, processed/, failed/).",
+    )
 
 
 def _add_ovf_ova_knobs(p: argparse.ArgumentParser) -> None:
