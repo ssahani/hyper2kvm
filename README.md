@@ -19,7 +19,7 @@ Transform virtual machines from VMware, Hyper-V, AWS, Azure, and other hyperviso
 ## Why hyper2kvm?
 
 ✨ **Production-Ready Features**
-- ✅ **480+ VMCraft APIs** - Native Python VM manipulation (no libguestfs required!)
+- ✅ **480+ VMCraft APIs** - Native Python VM manipulation engine
 - ✅ **Live Migration** - <5 seconds downtime with HyperSDK
 - ✅ **Automated Fixes** - Bootloader, network, storage, fstab automatically configured
 - ✅ **Database-Aware** - PostgreSQL, MySQL/MariaDB automatic preparation
@@ -44,7 +44,7 @@ Unlike traditional migration tools that "boot and hope," hyper2kvm applies **det
 pip install "hyper2kvm[full]"
 ```
 
-That's it! **No libguestfs required** - hyper2kvm includes VMCraft, a native Python VM manipulation engine.
+That's it! hyper2kvm includes VMCraft, a native Python VM manipulation engine with zero C library dependencies.
 
 ### System Dependencies (Optional for Advanced Features)
 
@@ -59,8 +59,6 @@ sudo apt-get install -y qemu-utils qemu-system-x86
 sudo dnf install -y ntfs-3g libhivex-bin  # Fedora/RHEL
 sudo apt-get install -y ntfs-3g libhivex-bin  # Ubuntu/Debian
 ```
-
-**No libguestfs needed!** VMCraft handles all VM operations natively.
 
 ---
 
@@ -86,9 +84,9 @@ virsh start windows-server
 
 ### 🚀 VMCraft - Native VM Manipulation Engine
 
-**480+ API methods** providing comprehensive VM inspection and modification **without libguestfs**:
+**480+ API methods** providing comprehensive VM inspection and modification:
 
-- **Lightning Fast**: ~1.9s launch time (vs libguestfs ~10-13s)
+- **Lightning Fast**: ~1.9s launch time (5-7x faster than traditional tools)
 - **Pure Python**: No C library dependencies
 - **Cross-Platform**: Linux (15+ distros), Windows (20+ versions)
 - **Enterprise Features**: Partition management, LVM, Augeas config editing
@@ -398,7 +396,7 @@ hyper2kvm batch execute batch-config.yaml \
 | Metric | Value | Comparison |
 |--------|-------|------------|
 | **Migration Speed** | 178 MB/s avg | Industry: 120 MB/s |
-| **VMCraft Launch** | ~1.9s | libguestfs: ~10-13s |
+| **VMCraft Launch** | ~1.9s | Traditional: ~10-13s |
 | **Parallel Speedup** | 2.8x (4 workers) | Sequential: 1x |
 | **Live Migration Downtime** | <5 seconds | Industry: 30-60s |
 | **Success Rate** | 96.8% | - |
@@ -520,7 +518,7 @@ hyper2kvm backup restore \
 **Current Version**: 1.0.0
 **Status**: Production-Ready ✅
 
-- **API Coverage**: 480+ VMCraft methods (74% libguestfs parity)
+- **API Coverage**: 480+ VMCraft methods
 - **Test Coverage**: 90%+ for core features
 - **Success Rate**: 96.8% overall
 - **Performance**: 2-3x faster than traditional tools
