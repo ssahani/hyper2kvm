@@ -42,7 +42,14 @@ By the end of this tutorial, you will:
 pip install hyper2kvm
 
 # Verify installation
-hyper2kvm --version
+
+> **Note**: After installation, you have two command names:
+> - `h2kvmctl` (primary, kubectl-style, recommended)
+> - `hyper2kvm` (legacy, backwards compatible)
+>
+> Both commands are identical. This tutorial uses `h2kvmctl`.
+
+h2kvmctl --version
 ```
 
 Expected output:
@@ -147,13 +154,13 @@ verbose: 1
 > **Tip:** Use `command: migrate` instead of `local` - both work identically!
 
 ```bash
-hyper2kvm --config migration.yaml
+h2kvmctl --config migration.yaml
 ```
 
 ### Alternative: CLI Flags
 
 ```bash
-hyper2kvm --cmd local \
+h2kvmctl --cmd local \
     --vmdk /vms/source/windows-server.vhdx \
     --output-dir /vms/migrated \
     --to-output windows-server.qcow2 \
@@ -298,7 +305,7 @@ After migration, verify the converted disk image:
 qemu-img info /vms/migrated/windows-server.qcow2
 
 # Boot test (optional - requires libvirt)
-hyper2kvm --cmd local \
+h2kvmctl --cmd local \
     --vmdk /vms/migrated/windows-server.qcow2 \
     --libvirt-test
 
@@ -489,7 +496,7 @@ Get-Service WinRM
 **Solution**:
 ```bash
 # Re-run migration with bootloader and initramfs fixes
-hyper2kvm --cmd local \
+h2kvmctl --cmd local \
     --vmdk /vms/source/windows-server.vhdx \
     --output-dir /vms/migrated \
     --to-output windows-server.qcow2 \
@@ -505,7 +512,7 @@ hyper2kvm --cmd local \
 **Solution**:
 ```bash
 # Re-run with network configuration fixes
-hyper2kvm --cmd local \
+h2kvmctl --cmd local \
     --vmdk /vms/source/windows-server.vhdx \
     --output-dir /vms/migrated \
     --to-output windows-server.qcow2 \
@@ -525,7 +532,7 @@ hyper2kvm --cmd local \
 
 ```bash
 # Re-run with Windows VirtIO driver injection
-hyper2kvm --cmd local \
+h2kvmctl --cmd local \
     --vmdk /vms/source/windows-server.vhdx \
     --output-dir /vms/migrated \
     --to-output windows-server.qcow2 \
