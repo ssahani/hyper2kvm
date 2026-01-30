@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 import time
 import os
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
@@ -38,6 +39,7 @@ class CLIDashboard:
         self._logs: List[str] = []
         self._running = False
         self._last_line_count = 0
+        self._lock = threading.RLock()  # Thread-safe access to data
 
     def run(self) -> None:
         """Run the dashboard."""
@@ -85,12 +87,11 @@ class CLIDashboard:
         print("=" * 80)
 
     def _clear_screen(self) -> None:
-        """Clear the terminal screen."""
-        # Try to use proper clear command
-        if os.name == 'nt':  # Windows
-            os.system('cls')
-        else:  # Unix/Linux/Mac
-            os.system('clear')
+        """Clear the terminal screen using ANSI escape codes."""
+        # Use ANSI escape codes - works on all modern terminals, no shell execution
+        # \033[2J clears entire screen, \033[H moves cursor to home position
+        print('\033[2J\033[H', end='')
+        sys.stdout.flush()
 
     def _print_metrics(self) -> None:
         """Print metrics section."""
@@ -123,11 +124,15 @@ class CLIDashboard:
         print("\n[ACTIVE MIGRATIONS]")
         print("-" * 80)
 
-        if not self._migrations:
+        # Thread-safe copy of migrations
+        with self._lock:
+            migrations_copy = dict(self._migrations)
+
+        if not migrations_copy:
             print("  No active migrations")
             return
 
-        for vm_name, migration in self._migrations.items():
+        for vm_name, migration in migrations_copy.items():
             # Status symbol
             status_symbol = {
                 "pending": "⏳ PENDING",
@@ -160,12 +165,16 @@ class CLIDashboard:
         print("\n[RECENT LOGS]")
         print("-" * 80)
 
-        if not self._logs:
+        # Thread-safe copy of logs
+        with self._lock:
+            recent_logs = list(self._logs[-10:])
+
+        if not recent_logs:
             print("  No logs available")
             return
 
         # Show last 10 logs
-        for log_line in self._logs[-10:]:
+        for log_line in recent_logs:
             print(f"  {log_line}")
 
     def _render_progress_bar(self, progress: float, width: int = 30) -> str:
@@ -189,7 +198,9 @@ class CLIDashboard:
 
     def _compute_metrics(self) -> Dict[str, Any]:
         """Compute current metrics from migration data."""
-        migrations = list(self._migrations.values())
+        # Thread-safe copy of migrations
+        with self._lock:
+            migrations = list(self._migrations.values())
 
         active = len([m for m in migrations if m.status == "in_progress"])
         total = len(migrations)
@@ -224,7 +235,8 @@ class CLIDashboard:
         Args:
             migration: Migration status to add/update
         """
-        self._migrations[migration.vm_name] = migration
+        with self._lock:
+            self._migrations[migration.vm_name] = migration
         self.log_message(f"{migration.vm_name}: {migration.status} - {migration.current_stage}", "INFO")
 
     def remove_migration(self, vm_name: str) -> None:
@@ -234,8 +246,8 @@ class CLIDashboard:
         Args:
             vm_name: Name of VM to remove
         """
-        if vm_name in self._migrations:
-            del self._migrations[vm_name]
+        with self._lock:
+            self._migrations.pop(vm_name, None)
 
     def update_migration_progress(
         self,
@@ -253,13 +265,14 @@ class CLIDashboard:
             stage: Current stage name
             throughput_mbps: Current throughput in MB/s
         """
-        if vm_name in self._migrations:
-            migration = self._migrations[vm_name]
-            migration.progress = progress
-            if stage:
-                migration.current_stage = stage
-            if throughput_mbps > 0:
-                migration.throughput_mbps = throughput_mbps
+        with self._lock:
+            if vm_name in self._migrations:
+                migration = self._migrations[vm_name]
+                migration.progress = progress
+                if stage:
+                    migration.current_stage = stage
+                if throughput_mbps > 0:
+                    migration.throughput_mbps = throughput_mbps
 
     def log_message(self, message: str, level: str = "INFO") -> None:
         """
@@ -271,11 +284,12 @@ class CLIDashboard:
         """
         now = datetime.now().strftime("%H:%M:%S")
         log_entry = f"[{now}] [{level}] {message}"
-        self._logs.append(log_entry)
 
-        # Keep only last MAX_LOG_ENTRIES_CLI logs
-        if len(self._logs) > MAX_LOG_ENTRIES_CLI:
-            self._logs = self._logs[-MAX_LOG_ENTRIES_CLI:]
+        with self._lock:
+            self._logs.append(log_entry)
+            # Keep only last MAX_LOG_ENTRIES_CLI logs
+            if len(self._logs) > MAX_LOG_ENTRIES_CLI:
+                self._logs = self._logs[-MAX_LOG_ENTRIES_CLI:]
 
 
 def run_cli_dashboard(refresh_interval: float = 2.0) -> None:

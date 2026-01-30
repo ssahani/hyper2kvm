@@ -102,11 +102,13 @@ class SimpleProgressBar:
             config: Progress bar configuration
             file: Output file (default: stdout)
 
-        Raises:
-            ValueError: If total <= 0
+        Note:
+            If total <= 0, it will be reset to 100.0 with a warning
         """
         if total <= 0:
-            raise ValueError(f"Total must be > 0, got {total}")
+            import logging
+            logging.warning(f"Invalid total value {total}, defaulting to 100.0")
+            total = 100.0
         self.total = total
         self.current = 0.0
         self.description = description

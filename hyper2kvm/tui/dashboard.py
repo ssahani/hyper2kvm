@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
@@ -147,6 +148,7 @@ class MigrationDashboard(App):
         self._migrations: Dict[str, MigrationStatus] = {}
         self._metrics: Dict[str, Any] = {}
         self._migration_widgets: Dict[str, MigrationStatusWidget] = {}
+        self._lock = threading.RLock()  # Thread-safe access to data
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -186,17 +188,21 @@ class MigrationDashboard(App):
     @work(exclusive=True)
     async def refresh_worker(self) -> None:
         """Background worker to refresh dashboard periodically."""
-        while not self.is_exiting:
-            try:
-                await asyncio.sleep(self.refresh_interval)
-                if not self.is_exiting:
-                    self.refresh_display()
-            except asyncio.CancelledError:
-                # Normal shutdown
-                break
-            except Exception as e:
-                logger.error(f"Error in refresh worker: {e}")
-                # Don't re-raise, just log and continue
+        try:
+            while not self.is_exiting:
+                try:
+                    await asyncio.sleep(self.refresh_interval)
+                    if not self.is_exiting:
+                        self.refresh_display()
+                except Exception as e:
+                    if self.is_exiting:
+                        break
+                    logger.error(f"Error in refresh worker: {e}")
+        except asyncio.CancelledError:
+            logger.debug("Refresh worker cancelled")
+            raise  # Re-raise to ensure proper cleanup
+        finally:
+            logger.debug("Refresh worker terminated")
 
     def refresh_display(self) -> None:
         """Refresh all widgets with latest data."""
@@ -207,12 +213,15 @@ class MigrationDashboard(App):
         # Update status bar
         status_bar = self.query_one("#status_bar", Static)
         now = datetime.now().strftime("%H:%M:%S")
-        active = len([m for m in self._migrations.values() if m.status == "in_progress"])
+        with self._lock:
+            active = len([m for m in self._migrations.values() if m.status == "in_progress"])
         status_bar.update(f"Last update: {now} | Active migrations: {active} | Press 'q' to quit")
 
     def _compute_metrics(self) -> Dict[str, Any]:
         """Compute current metrics from migration data."""
-        migrations = list(self._migrations.values())
+        # Thread-safe copy of migrations
+        with self._lock:
+            migrations = list(self._migrations.values())
 
         active = len([m for m in migrations if m.status == "in_progress"])
         total = len(migrations)
@@ -258,7 +267,8 @@ class MigrationDashboard(App):
         vm_name = migration.vm_name
 
         # Update internal tracking
-        self._migrations[vm_name] = migration
+        with self._lock:
+            self._migrations[vm_name] = migration
 
         # Get migrations container
         container = self.query_one("#migrations_container", ScrollableContainer)
@@ -271,7 +281,8 @@ class MigrationDashboard(App):
         else:
             # Create new widget
             widget = MigrationStatusWidget(migration)
-            self._migration_widgets[vm_name] = widget
+            with self._lock:
+                self._migration_widgets[vm_name] = widget
             container.mount(widget)
 
         # Log the update
@@ -289,18 +300,20 @@ class MigrationDashboard(App):
         Args:
             vm_name: Name of VM to remove
         """
-        if vm_name in self._migrations:
-            del self._migrations[vm_name]
-
+        # Remove widget first to prevent orphaned widgets
         if vm_name in self._migration_widgets:
-            widget = self._migration_widgets[vm_name]
-            try:
-                widget.remove()
-            except Exception as e:
-                logger.error(f"Error removing widget for {vm_name}: {e}")
-            finally:
-                # Always remove from dict to prevent memory leak
-                del self._migration_widgets[vm_name]
+            with self._lock:
+                widget = self._migration_widgets.pop(vm_name, None)
+            if widget:
+                try:
+                    widget.remove()
+                except Exception as e:
+                    logger.error(f"Error removing widget for {vm_name}: {e}")
+                    # Widget already removed from dict, no leak
+
+        # Then remove from migrations
+        with self._lock:
+            self._migrations.pop(vm_name, None)
 
         self.refresh_display()
 
@@ -320,17 +333,18 @@ class MigrationDashboard(App):
             stage: Current stage name
             throughput_mbps: Current throughput in MB/s
         """
-        if vm_name in self._migrations:
-            migration = self._migrations[vm_name]
-            migration.progress = progress
-            if stage:
-                migration.current_stage = stage
-            if throughput_mbps > 0:
-                migration.throughput_mbps = throughput_mbps
+        with self._lock:
+            if vm_name in self._migrations:
+                migration = self._migrations[vm_name]
+                migration.progress = progress
+                if stage:
+                    migration.current_stage = stage
+                if throughput_mbps > 0:
+                    migration.throughput_mbps = throughput_mbps
 
-            # Update widget
-            if vm_name in self._migration_widgets:
-                self._migration_widgets[vm_name].migration = migration
+                # Update widget
+                if vm_name in self._migration_widgets:
+                    self._migration_widgets[vm_name].migration = migration
 
     def log_message(self, message: str, level: str = "INFO") -> None:
         """

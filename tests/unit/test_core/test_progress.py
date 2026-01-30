@@ -137,6 +137,22 @@ class TestSimpleProgressBar:
         progress.update(-10)
         assert progress.current == 0.0  # Should be clamped to 0
 
+    def test_invalid_total_graceful_fallback(self):
+        """Test that invalid total values fall back gracefully."""
+        output = io.StringIO()
+
+        # Test negative total
+        progress = SimpleProgressBar(total=-10, file=output)
+        assert progress.total == 100.0  # Should default to 100.0
+
+        # Test zero total
+        progress = SimpleProgressBar(total=0, file=output)
+        assert progress.total == 100.0  # Should default to 100.0
+
+        # Should still work normally
+        progress.update(50)
+        assert progress.current == 50
+
     def test_spinner_frames(self):
         """Test spinner animation frames."""
         output = io.StringIO()
