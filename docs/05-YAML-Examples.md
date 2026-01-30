@@ -30,6 +30,11 @@ Before following this guide, you should have:
 - [5. OVF mode](#5-ovf-mode-parse-ovf-and-convert)
 - [6. Daemon mode](#6-daemon-mode-watch-a-directory-and-auto-convert)
 - [7. vSphere / pyvmomi mode](#7-vsphere--pyvmomi-mode-discovery-download-cbt)
+- [8. Batch migration mode](#8-batch-migration-mode-multi-vm-parallel-conversions)
+- [9. Migration profiles](#9-migration-profiles-reusable-configuration-templates)
+- [10. Pre/Post hooks](#10-prepost-hooks-automation-and-integration)
+- [11. Libvirt XML import](#11-libvirt-xml-import-convert-existing-vms)
+- [12. Network and storage mapping](#12-network-and-storage-mapping-infrastructure-transformation)
 - [Base + overrides pattern](#base--overrides-pattern)
 - [Troubleshooting patterns](#troubleshooting-patterns)
 
@@ -713,6 +718,356 @@ Common causes:
 
 Usually key mismatch vs argparse destination name.
 Prefer the exact names your CLI expects (`to_output`, `out_format`, `vm_name`, `vs_action`, etc.).
+
+---
+
+## 8. Batch migration mode (multi-VM parallel conversions)
+
+**Use case**: Convert multiple VMs in parallel with centralized orchestration
+
+**Batch manifest** (`batch-migration.json`):
+```json
+{
+  "batch_version": "1.0",
+  "batch_metadata": {
+    "batch_id": "datacenter-migration-2026",
+    "parallel_limit": 4,
+    "continue_on_error": true
+  },
+  "shared_config": {
+    "output_directory": "/mnt/converted-vms",
+    "profile": "production"
+  },
+  "vms": [
+    {
+      "manifest": "/manifests/web-server-01.json",
+      "priority": 0,
+      "overrides": {
+        "output": {
+          "vm_name": "web-server-01-kvm"
+        }
+      }
+    },
+    {
+      "manifest": "/manifests/database-01.json",
+      "priority": 1
+    },
+    {
+      "manifest": "/manifests/app-server-01.json",
+      "priority": 2
+    }
+  ]
+}
+```
+
+**Run batch conversion**:
+```bash
+sudo hyper2kvm --batch-manifest batch-migration.json --batch-parallel 4
+```
+
+**With checkpoint/resume** (crash recovery):
+```bash
+# First run (may crash/fail midway)
+sudo hyper2kvm --batch-manifest batch-migration.json --batch-parallel 4
+
+# Resume from checkpoint after crash
+sudo hyper2kvm --batch-manifest batch-migration.json --batch-resume
+```
+
+**Key features**:
+- Parallel execution (configurable worker limit)
+- Priority-based VM ordering
+- Per-VM error isolation with `continue_on_error`
+- Aggregate progress reporting
+- Checkpoint/resume for crash recovery
+- Real-time progress persistence to JSON
+
+---
+
+## 9. Migration profiles (reusable configuration templates)
+
+**Use case**: Standardize conversion settings across environments
+
+**Individual VM manifest with profile** (`vm-manifest.json`):
+```json
+{
+  "manifest_version": "1.0",
+  "profile": "production",
+  "profile_overrides": {
+    "pipeline": {
+      "convert": {
+        "compress_level": 9
+      }
+    }
+  },
+  "source": {
+    "type": "local",
+    "path": "/vmdk/rhel9-server.vmdk"
+  },
+  "output": {
+    "vm_name": "rhel9-production"
+  }
+}
+```
+
+**Custom profile** (`custom-profile.yaml`):
+```yaml
+# Extends built-in production profile
+extends: production
+
+pipeline:
+  fix:
+    enabled: true
+    backup: true
+    update_grub: true
+    regen_initramfs: true
+    inject_drivers:
+      - virtio_net
+      - virtio_blk
+      - virtio_scsi
+  convert:
+    enabled: true
+    compress: true
+    compress_level: 6
+  validate:
+    enabled: true
+
+output:
+  format: "qcow2"
+
+libvirt_integration:
+  enabled: true
+  define_domain: true
+  import_to_pool: "production-vms"
+  create_snapshot: true
+  snapshot_name: "pre-first-boot"
+```
+
+**Built-in profiles**:
+- `production` - Full conversion with validation and compression
+- `testing` - Fast conversion, skip validation
+- `minimal` - Extract and fix only, no conversion
+- `fast` - Minimal fixes, no compression
+- `windows` - Windows-specific optimizations
+- `archive` - Maximum compression for archival
+- `debug` - Verbose logging, keep all intermediates
+
+**Run with custom profile**:
+```bash
+sudo hyper2kvm --config vm-manifest.json \
+  --custom-profile-dir /path/to/profiles local
+```
+
+---
+
+## 10. Pre/Post hooks (automation and integration)
+
+**Use case**: Integrate custom scripts, validation, and notifications into the conversion pipeline
+
+**Manifest with hooks** (`vm-with-hooks.json`):
+```json
+{
+  "manifest_version": "1.0",
+  "source": {
+    "type": "local",
+    "path": "/vmdk/rhel9.vmdk"
+  },
+  "hooks": {
+    "pre_extraction": [
+      {
+        "type": "script",
+        "path": "/scripts/backup-source.sh",
+        "env": {
+          "SOURCE_PATH": "{{ source_path }}",
+          "VM_NAME": "{{ vm_name }}"
+        },
+        "timeout": 600,
+        "continue_on_error": false
+      }
+    ],
+    "post_fix": [
+      {
+        "type": "python",
+        "module": "custom_validators",
+        "function": "check_boot_config",
+        "args": {
+          "disk_path": "{{ extracted_disk_path }}"
+        },
+        "timeout": 300
+      }
+    ],
+    "post_convert": [
+      {
+        "type": "http",
+        "url": "https://monitoring.example.com/webhook",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "vm_name": "{{ vm_name }}",
+          "status": "converted",
+          "output_path": "{{ output_path }}"
+        },
+        "timeout": 30,
+        "continue_on_error": true
+      }
+    ]
+  }
+}
+```
+
+**With retry logic** (exponential backoff):
+```json
+{
+  "hooks": {
+    "post_convert": [
+      {
+        "type": "http",
+        "url": "https://api.example.com/notify",
+        "method": "POST",
+        "body": {"vm": "{{ vm_name }}"},
+        "retry": {
+          "max_retries": 3,
+          "retry_delay": 5,
+          "retry_strategy": "exponential",
+          "max_delay": 60
+        },
+        "continue_on_error": true
+      }
+    ]
+  }
+}
+```
+
+**Available hook stages**:
+- `pre_extraction` - Before disk extraction
+- `post_extraction` - After extraction, before fixes
+- `pre_fix` - Before offline fixes
+- `post_fix` - After fixes, before conversion
+- `pre_convert` - Before format conversion
+- `post_convert` - After conversion, before validation
+- `post_validate` - After validation complete
+
+**Template variables** (15+ available):
+- `{{ vm_name }}`, `{{ source_path }}`, `{{ output_path }}`
+- `{{ output_format }}`, `{{ extracted_disk_path }}`
+- `{{ work_dir }}`, `{{ timestamp }}`, `{{ batch_id }}`
+
+---
+
+## 11. Libvirt XML import (convert existing VMs)
+
+**Use case**: Import and convert VMs defined in libvirt XML format
+
+**Libvirt XML import**:
+```bash
+# Parse libvirt domain XML and convert
+sudo hyper2kvm libvirt-xml \
+  --xml-path /etc/libvirt/qemu/myvm.xml \
+  --output-dir /converted
+```
+
+**With automatic libvirt integration**:
+```json
+{
+  "manifest_version": "1.0",
+  "source": {
+    "type": "libvirt-xml",
+    "xml_path": "/etc/libvirt/qemu/myvm.xml"
+  },
+  "libvirt_integration": {
+    "enabled": true,
+    "define_domain": true,
+    "import_to_pool": "converted-vms",
+    "auto_start": false,
+    "autostart_on_boot": false,
+    "create_snapshot": true,
+    "snapshot_name": "pre-first-boot"
+  },
+  "output": {
+    "vm_name": "myvm-converted",
+    "format": "qcow2"
+  }
+}
+```
+
+**Features**:
+- Parses disk paths and formats from XML
+- Detects firmware type (BIOS/UEFI)
+- Extracts network configuration
+- Reads memory/CPU settings
+- Optional SHA256 checksum computation
+- Auto-imports to libvirt storage pools
+- Creates pre-boot snapshots
+
+---
+
+## 12. Network and storage mapping (infrastructure transformation)
+
+**Use case**: Transform source network/storage configurations to target infrastructure
+
+**Network mapping** (`vm-with-mapping.yaml`):
+```yaml
+manifest_version: "1.0"
+
+source:
+  type: local
+  path: /vmdk/rhel9.vmdk
+
+# Network mapping configuration
+network_mapping:
+  source_networks:
+    "VM Network": "br0"
+    "DMZ Network": "br-dmz"
+    "Internal": "br-internal"
+  mac_address_policy: preserve  # preserve|regenerate|custom
+  mac_address_overrides:
+    "00:50:56:ab:cd:ef": "52:54:00:12:34:56"
+
+# Storage mapping configuration
+storage_mapping:
+  default_pool: "production-vms"
+  disk_mappings:
+    boot: "/mnt/nvme/boot-disks"
+    data: "/mnt/storage/data-disks"
+  format_override: "qcow2"
+
+output:
+  vm_name: rhel9-mapped
+```
+
+**Batch with shared mappings**:
+```json
+{
+  "batch_version": "1.0",
+  "shared_config": {
+    "network_mapping": {
+      "source_networks": {
+        "VM Network": "br0"
+      },
+      "mac_address_policy": "preserve"
+    },
+    "storage_mapping": {
+      "default_pool": "vms",
+      "format_override": "qcow2"
+    }
+  },
+  "vms": [
+    {"manifest": "/manifests/vm1.json"},
+    {"manifest": "/manifests/vm2.json"}
+  ]
+}
+```
+
+**Features**:
+- Source network to target bridge mapping
+- MAC address policies (preserve/regenerate/custom)
+- Per-disk storage mappings
+- Format override per disk or globally
+- Applied during libvirt XML generation
+
+---
 
 ## Next Steps
 
