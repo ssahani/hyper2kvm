@@ -35,6 +35,11 @@ from .activedirectory.rejoin import (
     get_rejoin_command,
     DomainRejoinMethod,
 )
+from .activedirectory.cleanup import (
+    stage_cleanup_script,
+    get_cleanup_command,
+    CleanupMethod,
+)
 from .appcompat.detector import (
     detect_hardware_dependent_apps,
     detect_license_services,
@@ -120,6 +125,32 @@ class WindowsFixer:
         """Stage domain rejoin script for first boot."""
         return stage_domain_rejoin_script(
             g, root, domain_info, method, domain_override, ou_path, unattended_join_file
+        )
+
+    def stage_ad_cleanup(
+        self,
+        g: guestfs.GuestFS,
+        root: str,
+        old_computer_name: str,
+        domain: str,
+        method=CleanupMethod.POWERSHELL_SCRIPT,
+        ou_path=None,
+    ):
+        """Stage Active Directory computer object cleanup script.
+
+        Args:
+            g: GuestFS instance
+            root: Windows root path
+            old_computer_name: Old computer name to remove from AD
+            domain: Domain name
+            method: Cleanup method (default: PowerShell)
+            ou_path: Organizational Unit path (optional)
+
+        Returns:
+            Dict with staging results
+        """
+        return stage_cleanup_script(
+            g, root, old_computer_name, domain, method, ou_path
         )
 
     def detect_application_compatibility(
@@ -344,6 +375,8 @@ __all__ = [
     "extract_domain_info",
     "stage_domain_rejoin_script",
     "DomainRejoinMethod",
+    "stage_cleanup_script",
+    "CleanupMethod",
     "detect_hardware_dependent_apps",
     "detect_license_services",
     "detect_dongle_drivers",
