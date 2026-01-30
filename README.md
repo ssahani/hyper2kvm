@@ -813,12 +813,18 @@ If you separate them, you get repeatable ones.
 flowchart TB
   subgraph CP["CONTROL PLANE (decide)"]
     GOVC["govc (primary)"]
-    HYPERCTL["hyperctl → hypervisord<br/>high-performance daemon"]
-    PYVM["pyvmomi / pyVim<br/>fallback / deep inspection"]
-    INV["Inventory: VM, disks,<br/>firmware, snapshots"]
-    PLAN["Plans: snapshot flatten,<br/>disk map, export intent"]
-    DS["Datastore browsing &<br/>artifact resolution"]
-    CBT["CBT discovery +<br/>changed ranges planning"]
+    HYPERCTL["hyperctl → hypervisord
+high-performance daemon"]
+    PYVM["pyvmomi / pyVim
+fallback / deep inspection"]
+    INV["Inventory: VM, disks,
+firmware, snapshots"]
+    PLAN["Plans: snapshot flatten,
+disk map, export intent"]
+    DS["Datastore browsing &
+artifact resolution"]
+    CBT["CBT discovery +
+changed ranges planning"]
 
     GOVC --> INV
     HYPERCTL --> INV
@@ -832,16 +838,25 @@ flowchart TB
     CBT --> PLAN
   end
 
-  META["plans + metadata<br/>explicit, auditable"]
+  META["plans + metadata
+explicit, auditable"]
 
   subgraph DP["DATA PLANE (move bytes)"]
-    GOVCEXP["govc export.ovf /<br/>export.ova"]
-    HYPEREXP["hypervisord export<br/>parallel downloads<br/>3-5x faster, resumable"]
-    OVFTOOL["ovftool<br/>OVF/OVA export/import"]
-    HTTP["HTTP /folder +<br/>Range requests"]
-    VDDK["VDDK<br/>high-throughput disk reads"]
-    SSH["SSH / SCP<br/>fallback"]
-    RESUME["resume + verify +<br/>atomic publish"]
+    GOVCEXP["govc export.ovf /
+export.ova"]
+    HYPEREXP["hypervisord export
+parallel downloads
+3-5x faster, resumable"]
+    OVFTOOL["ovftool
+OVF/OVA export/import"]
+    HTTP["HTTP /folder +
+Range requests"]
+    VDDK["VDDK
+high-throughput disk reads"]
+    SSH["SSH / SCP
+fallback"]
+    RESUME["resume + verify +
+atomic publish"]
   end
 
   CP --> META --> DP
