@@ -9,6 +9,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Strategic Feature Planning (January 2026)
+
+**Comprehensive Roadmap and Implementation Plans** (3 documents, 11,000+ words):
+
+1. **Feature Suggestions** (feature-suggestions.md):
+   - 16 feature proposals with detailed analysis
+   - Priority matrix (P0/P1/P2/Research categories)
+   - Complexity and business value assessments
+   - 3-phase roadmap (2026-2027)
+   - Quick wins identification (1-2 week implementations)
+   - Killer feature candidates (AI-Powered Migration Assistant)
+
+   **Top P0 Features**:
+   - Multi-Cloud Sources (AWS, Azure, GCP) - 4-6 months
+   - Advanced Windows Support (license, AD, SQL Server) - 4-6 months
+   - Live Migration (<5s downtime) - 6-8 months
+
+   **Quick Wins** (1-2 weeks each):
+   - Migration templates for common scenarios
+   - Slack/Teams notification integrations
+   - Migration cost calculator
+   - Pre-migration readiness checks
+   - Performance benchmarking tools
+
+2. **Advanced Windows Support Implementation Plan** (windows-support-implementation-plan.md - P0 Priority):
+   - **Duration**: 4-6 months
+   - **Components**:
+     - Automated License Reactivation (KMS/MAK/OEM) - 4-5 weeks
+     - Active Directory Integration (domain rejoin, SID regen) - 3-4 weeks
+     - SQL Server Migration Support (instance config, database validation) - 4-5 weeks
+     - Windows Update Integration (VirtIO driver staging) - 2-3 weeks
+   - **Features**:
+     - License detection and automatic reactivation scripts
+     - Domain membership detection and rejoin automation
+     - SQL Server configuration migration
+     - Application compatibility detection
+     - Performance optimization (VirtIO-balloon, TRIM/discard, MSI interrupts)
+   - **Testing Strategy**: Unit tests, integration tests, real-world migration scenarios
+   - **Success Metrics**: 95%+ license reactivation, 90%+ domain rejoin, 100% SQL instance migration
+
+3. **Live Migration Implementation Plan** (live-migration-implementation-plan.md - P0 Priority):
+   - **Duration**: 4-6 months (leveraging HyperSDK for provider layer)
+   - **Architecture**:
+     - hyper2kvm: Orchestration layer (decision engine, workflow management)
+     - HyperSDK: Provider abstraction (VMware, Hyper-V, KVM, AWS, Azure, GCP)
+   - **Components**:
+     - Live Migration Decision Engine (feasibility analysis, downtime estimation) - 2 weeks
+     - HyperSDK Integration Layer (provider API, progress monitoring) - 3-4 weeks
+     - Hybrid Migration Mode (live + scheduled offline fixes) - 2-3 weeks
+     - CLI Integration (new commands, YAML config) - 1-2 weeks
+   - **Features**:
+     - Automatic feasibility detection (state transfer support, memory usage, disk I/O)
+     - Pre-migration optimization (memory cleanup, disk pre-sync)
+     - Real-time progress monitoring
+     - Automatic fallback to offline migration
+     - Hybrid mode (live migrate + apply fixes during maintenance window)
+   - **Target**: <5s downtime for production VMs
+
+**Documentation Organization**:
+- All plans stored in `docs/development/` for strategic planning
+- Updated development README with Strategic Planning section
+- Linked to feature suggestions and implementation plans
+
 #### VMCraft v9.1+ Specialized Documentation (January 2026)
 
 **Comprehensive VMCraft Documentation Suite** (2,400+ lines across 4 guides):
