@@ -13,7 +13,6 @@ from ...config.systemd_template import SYSTEMD_UNIT_TEMPLATE
 class HelpFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
     """Combines raw description formatting with default value display in help."""
 
-    pass
 
 
 def _build_epilog() -> str:

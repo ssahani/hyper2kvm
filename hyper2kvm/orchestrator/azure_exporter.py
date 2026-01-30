@@ -11,11 +11,10 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from ..core.exceptions import Fatal
 from ..core.logger import Log
-from ..core.utils import U
 
 # Conditional imports
 try:

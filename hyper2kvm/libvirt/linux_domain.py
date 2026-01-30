@@ -6,12 +6,11 @@
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Literal, Optional
+from typing import Literal, Optional
 
 from ..core.xml_utils import xml_escape as _xml
 from .libvirt_utils import sanitize_name as _sanitize_name

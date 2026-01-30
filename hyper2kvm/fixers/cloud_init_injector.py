@@ -3,7 +3,7 @@
 # hyper2kvm/fixers/cloud_init_injector.py
 from __future__ import annotations
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import json
 import os
 

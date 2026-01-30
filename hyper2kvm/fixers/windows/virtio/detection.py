@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 import re
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -18,7 +17,6 @@ from .config import WindowsRelease
 from .paths import WindowsSystemPaths, _resolve_windows_system_paths
 from .utils import (
     _log,
-    _log_mountpoints_best_effort,
     _normalize_product_name,
     _safe_logger,
     _to_int,
