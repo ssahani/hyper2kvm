@@ -131,10 +131,12 @@ class NBDDeviceManager:
 
     def _needs_conversion(self, image_path: Path) -> bool:
         """
-        Check if VMDK needs conversion to qcow2 (streamOptimized, compressed, etc.).
+        Check if VMDK needs conversion to qcow2 (streamOptimized, compressed, sparse, etc.).
 
-        streamOptimized VMDKs cause "can't read superblock" errors when accessed
-        via qemu-nbd due to random-access read issues with decompression.
+        Problematic VMDK types that cause "can't read superblock" errors via qemu-nbd:
+        - streamOptimized: Random-access read issues with decompression
+        - monolithicSparse: Sparse regions cause I/O errors when accessing unallocated blocks
+        - compressed: Similar decompression issues
 
         Args:
             image_path: Path to image file
@@ -162,11 +164,29 @@ class NBDDeviceManager:
             create_type = vmdk_info.get("create-type", "").lower()
             compressed = vmdk_info.get("compressed", False)
 
-            # streamOptimized and compressed VMDKs need conversion
-            if "streamoptimized" in create_type or compressed:
+            # Problematic types that need conversion:
+            # - streamOptimized: decompression issues
+            # - monolithicSparse: sparse region I/O errors
+            # - compressed: similar to streamOptimized
+            needs_conversion = False
+            reason = []
+
+            if "streamoptimized" in create_type:
+                needs_conversion = True
+                reason.append(f"streamOptimized format")
+            elif "sparse" in create_type:
+                # monolithicSparse, twoGbMaxExtentSparse, etc.
+                needs_conversion = True
+                reason.append(f"sparse format ({create_type})")
+
+            if compressed:
+                needs_conversion = True
+                reason.append("compressed")
+
+            if needs_conversion:
                 self.logger.warning(
-                    f"Detected problematic VMDK format: create_type={create_type}, "
-                    f"compressed={compressed}. Will convert to qcow2 for reliability."
+                    f"Detected problematic VMDK: {', '.join(reason)}. "
+                    f"Will convert to qcow2 for reliability."
                 )
                 return True
 
