@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vmware/transports/h2kvmctl_common.py
+# hyper2kvm/vmware/transports/hyperctl_common.py
 from __future__ import annotations
 
 """
-h2kvmctl / hyper2kvm-providers common helpers for hyper2kvm.
+hyperctl / hypersdk common helpers for hyper2kvm.
 
 Design goals:
-  - Integrate with hyper2kvmd daemon for high-performance VM exports
-  - Fallback to pyvmomi if h2kvmctl/daemon not available
-  - Provide both CLI (h2kvmctl) and API (direct REST) interfaces
+  - Integrate with hypervisord daemon for high-performance VM exports
+  - Fallback to pyvmomi if hyperctl/daemon not available
+  - Provide both CLI (hyperctl) and API (direct REST) interfaces
   - Match the govc_common.py pattern for consistency
 """
 
@@ -28,16 +28,16 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class H2KVMCtlConfig:
-    """Configuration for h2kvmctl CLI tool."""
+class HyperCtlConfig:
+    """Configuration for hyperctl CLI tool."""
     daemon_url: str = "http://localhost:8080"
-    h2kvmctl_path: str = "h2kvmctl"
+    hyperctl_path: str = "hyperctl"
     timeout: int = 3600
 
 
-class H2KVMCtlRunner:
+class HyperCtlRunner:
     """
-    Wrapper for h2kvmctl CLI tool (hyper2kvm-providers).
+    Wrapper for hyperctl CLI tool (hypersdk).
 
     Similar to GovcRunner but for the Go-based provider daemon.
     """
@@ -45,22 +45,22 @@ class H2KVMCtlRunner:
     def __init__(
         self,
         daemon_url: str = "http://localhost:8080",
-        h2kvmctl_path: str = "h2kvmctl",
+        hyperctl_path: str = "hyperctl",
         timeout: int = 3600,
     ):
         self.daemon_url = daemon_url
-        self.h2kvmctl_path = h2kvmctl_path
+        self.hyperctl_path = hyperctl_path
         self.timeout = timeout
         self.logger = logging.getLogger(__name__)
 
     def _run_command(self, args: List[str], check: bool = True) -> subprocess.CompletedProcess:
-        """Run h2kvmctl command."""
+        """Run hyperctl command."""
         # Build command - only add -daemon if not using default
-        # Note: The installed h2kvmctl binary may not support -daemon flag,
+        # Note: The installed hyperctl binary may not support -daemon flag,
         # so we rely on default http://localhost:8080
-        cmd = [self.h2kvmctl_path] + args
+        cmd = [self.hyperctl_path] + args
 
-        self.logger.debug(f"Running h2kvmctl: {' '.join(cmd)}")
+        self.logger.debug(f"Running hyperctl: {' '.join(cmd)}")
 
         try:
             result = subprocess.run(
@@ -72,26 +72,26 @@ class H2KVMCtlRunner:
             )
             return result
         except subprocess.TimeoutExpired:
-            raise VMwareError(msg=f"h2kvmctl command timed out after {self.timeout}s")
+            raise VMwareError(msg=f"hyperctl command timed out after {self.timeout}s")
         except subprocess.CalledProcessError as e:
-            raise VMwareError(msg=f"h2kvmctl failed: {e.stderr}")
+            raise VMwareError(msg=f"hyperctl failed: {e.stderr}")
         except FileNotFoundError:
             raise VMwareError(
-                msg=f"h2kvmctl not found at {self.h2kvmctl_path}. "
-                "Install hyper2kvm-providers or set H2KVMCTL_PATH environment variable."
+                msg=f"hyperctl not found at {self.hyperctl_path}. "
+                "Install hypersdk or set HYPERCTL_PATH environment variable."
             )
 
     def check_daemon_status(self) -> Dict[str, Any]:
-        """Check if hyper2kvmd daemon is running and get status."""
+        """Check if hypervisord daemon is running and get status."""
         result = self._run_command(["status"])
 
-        # h2kvmctl status outputs a table, but we want JSON for parsing
+        # hyperctl status outputs a table, but we want JSON for parsing
         # For now, just check if it succeeded
         if result.returncode == 0:
-            self.logger.info("hyper2kvmd daemon is running")
+            self.logger.info("hypervisord daemon is running")
             return {"status": "running", "output": result.stdout}
         else:
-            raise VMwareError(msg="hyper2kvmd daemon not responding")
+            raise VMwareError(msg="hypervisord daemon not responding")
 
     def submit_export_job(
         self,
@@ -101,9 +101,9 @@ class H2KVMCtlRunner:
         remove_cdrom: bool = True,
     ) -> str:
         """
-        Submit VM export job to hyper2kvmd daemon.
+        Submit VM export job to hypervisord daemon.
 
-        Note: The installed h2kvmctl binary only supports basic submit flags.
+        Note: The installed hyperctl binary only supports basic submit flags.
         Options like parallel_downloads and remove_cdrom are configured on the daemon side.
 
         Returns:
@@ -128,13 +128,13 @@ class H2KVMCtlRunner:
                 self.logger.info(f"Export job submitted: {job_id}")
                 return job_id
 
-        raise VMwareError(msg="Failed to parse job ID from h2kvmctl output")
+        raise VMwareError(msg="Failed to parse job ID from hyperctl output")
 
     def query_job(self, job_id: str) -> Dict[str, Any]:
         """Query job status."""
         result = self._run_command(["query", "-id", job_id])
 
-        # TODO: Parse the table output or add -json flag to h2kvmctl
+        # TODO: Parse the table output or add -json flag to hyperctl
         # For now, return raw output
         return {"job_id": job_id, "output": result.stdout}
 
@@ -193,7 +193,7 @@ class H2KVMCtlRunner:
         progress_callback: Optional[callable] = None,
     ) -> Dict[str, Any]:
         """
-        Export VM using hyper2kvmd daemon (high-level wrapper).
+        Export VM using hypervisord daemon (high-level wrapper).
 
         Args:
             vm_path: vSphere VM path (e.g., "/datacenter/vm/my-vm")
@@ -229,29 +229,29 @@ class H2KVMCtlRunner:
 
 # Factory function for easy instantiation
 
-def create_h2kvmctl_runner(
+def create_hyperctl_runner(
     daemon_url: Optional[str] = None,
-    h2kvmctl_path: Optional[str] = None,
-) -> H2KVMCtlRunner:
+    hyperctl_path: Optional[str] = None,
+) -> HyperCtlRunner:
     """
-    Create H2KVMCtlRunner with environment variable defaults.
+    Create HyperCtlRunner with environment variable defaults.
 
     Environment variables:
         H2KVMD_URL: Daemon URL (default: http://localhost:8080)
-        H2KVMCTL_PATH: Path to h2kvmctl binary (default: h2kvmctl)
+        HYPERCTL_PATH: Path to hyperctl binary (default: hyperctl)
     """
     daemon_url = daemon_url or os.getenv("H2KVMD_URL", "http://localhost:8080")
-    h2kvmctl_path = h2kvmctl_path or os.getenv("H2KVMCTL_PATH", "h2kvmctl")
+    hyperctl_path = hyperctl_path or os.getenv("HYPERCTL_PATH", "hyperctl")
 
-    return H2KVMCtlRunner(
+    return HyperCtlRunner(
         daemon_url=daemon_url,
-        h2kvmctl_path=h2kvmctl_path,
+        hyperctl_path=hyperctl_path,
     )
 
 
 # Convenience function for export
 
-def export_vm_h2kvmctl(
+def export_vm_hyperctl(
     vm_path: str,
     output_path: str,
     parallel_downloads: int = 4,
@@ -260,20 +260,20 @@ def export_vm_h2kvmctl(
     progress_callback: Optional[callable] = None,
 ) -> Dict[str, Any]:
     """
-    Export VM using h2kvmctl (convenience function).
+    Export VM using hyperctl (convenience function).
 
-    This is the equivalent of export_vm_govc() but using hyper2kvm-providers.
+    This is the equivalent of export_vm_govc() but using hypersdk.
 
     Example:
-        >>> from hyper2kvm.vmware.transports.h2kvmctl_common import export_vm_h2kvmctl
-        >>> result = export_vm_h2kvmctl(
+        >>> from hyper2kvm.vmware.transports.hyperctl_common import export_vm_hyperctl
+        >>> result = export_vm_hyperctl(
         ...     vm_path="/datacenter/vm/my-vm",
         ...     output_path="/tmp/export",
         ...     parallel_downloads=4,
         ... )
         >>> print(result["job_id"])
     """
-    runner = create_h2kvmctl_runner(daemon_url=daemon_url)
+    runner = create_hyperctl_runner(daemon_url=daemon_url)
 
     return runner.export_vm(
         vm_path=vm_path,

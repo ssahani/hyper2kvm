@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# tests/test_h2kvmctl_common.py
-"""Unit tests for h2kvmctl integration."""
+# tests/test_hyperctl_common.py
+"""Unit tests for hyperctl integration."""
 
 import unittest
 from unittest.mock import Mock, patch, MagicMock
@@ -13,42 +13,42 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from hyper2kvm.vmware.transports.h2kvmctl_common import (
-    H2KVMCtlRunner,
-    create_h2kvmctl_runner,
-    export_vm_h2kvmctl,
-    H2KVMCtlConfig,
+from hyper2kvm.vmware.transports.hyperctl_common import (
+    HyperCtlRunner,
+    create_hyperctl_runner,
+    export_vm_hyperctl,
+    HyperCtlConfig,
 )
 from hyper2kvm.core.exceptions import VMwareError
 
 
-class TestH2KVMCtlConfig(unittest.TestCase):
-    """Test H2KVMCtlConfig dataclass."""
+class TestHyperCtlConfig(unittest.TestCase):
+    """Test HyperCtlConfig dataclass."""
 
     def test_default_values(self):
         """Test default configuration values."""
-        config = H2KVMCtlConfig()
+        config = HyperCtlConfig()
 
         self.assertEqual(config.daemon_url, "http://localhost:8080")
-        self.assertEqual(config.h2kvmctl_path, "h2kvmctl")
+        self.assertEqual(config.hyperctl_path, "hyperctl")
         self.assertEqual(config.timeout, 3600)
 
 
-class TestH2KVMCtlRunner(unittest.TestCase):
-    """Test H2KVMCtlRunner class."""
+class TestHyperCtlRunner(unittest.TestCase):
+    """Test HyperCtlRunner class."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.runner = H2KVMCtlRunner(
+        self.runner = HyperCtlRunner(
             daemon_url="http://test:9999",
-            h2kvmctl_path="/usr/bin/h2kvmctl",
+            hyperctl_path="/usr/bin/hyperctl",
             timeout=300,
         )
 
     def test_init(self):
         """Test runner initialization."""
         self.assertEqual(self.runner.daemon_url, "http://test:9999")
-        self.assertEqual(self.runner.h2kvmctl_path, "/usr/bin/h2kvmctl")
+        self.assertEqual(self.runner.hyperctl_path, "/usr/bin/hyperctl")
         self.assertEqual(self.runner.timeout, 300)
 
     @patch('subprocess.run')
@@ -98,7 +98,7 @@ class TestH2KVMCtlRunner(unittest.TestCase):
 
         # Verify command was called with correct args
         call_args = mock_run.call_args[0][0]
-        self.assertEqual(call_args[0], "/usr/bin/h2kvmctl")
+        self.assertEqual(call_args[0], "/usr/bin/hyperctl")
         self.assertIn("--daemon", call_args)
         self.assertIn("http://test:9999", call_args)
         self.assertIn("submit", call_args)
@@ -139,7 +139,7 @@ class TestH2KVMCtlRunner(unittest.TestCase):
     def test_command_timeout(self, mock_run):
         """Test command timeout."""
         mock_run.side_effect = subprocess.TimeoutExpired(
-            cmd=["h2kvmctl"], timeout=300
+            cmd=["hyperctl"], timeout=300
         )
 
         with self.assertRaises(VMwareError) as ctx:
@@ -149,7 +149,7 @@ class TestH2KVMCtlRunner(unittest.TestCase):
 
     @patch('subprocess.run')
     def test_command_not_found(self, mock_run):
-        """Test h2kvmctl not found."""
+        """Test hyperctl not found."""
         mock_run.side_effect = FileNotFoundError()
 
         with self.assertRaises(VMwareError) as ctx:
@@ -162,7 +162,7 @@ class TestH2KVMCtlRunner(unittest.TestCase):
         """Test command execution failure."""
         exc = subprocess.CalledProcessError(
             returncode=1,
-            cmd=["h2kvmctl"]
+            cmd=["hyperctl"]
         )
         exc.stderr = "Connection refused"
         mock_run.side_effect = exc
@@ -256,8 +256,8 @@ class TestH2KVMCtlRunner(unittest.TestCase):
         self.assertGreaterEqual(len(progress_calls), 1)
         self.assertIn("running", progress_calls[0]["output"].lower())
 
-    @patch.object(H2KVMCtlRunner, 'submit_export_job')
-    @patch.object(H2KVMCtlRunner, 'wait_for_job_completion')
+    @patch.object(HyperCtlRunner, 'submit_export_job')
+    @patch.object(HyperCtlRunner, 'wait_for_job_completion')
     @patch('pathlib.Path.mkdir')
     def test_export_vm_wait(self, mock_mkdir, mock_wait, mock_submit):
         """Test full export with wait."""
@@ -275,7 +275,7 @@ class TestH2KVMCtlRunner(unittest.TestCase):
         mock_wait.assert_called_once()
         self.assertEqual(result["job_id"], "job123")
 
-    @patch.object(H2KVMCtlRunner, 'submit_export_job')
+    @patch.object(HyperCtlRunner, 'submit_export_job')
     @patch('pathlib.Path.mkdir')
     def test_export_vm_no_wait(self, mock_mkdir, mock_submit):
         """Test export without waiting."""
@@ -297,32 +297,32 @@ class TestFactoryFunctions(unittest.TestCase):
     """Test factory functions."""
 
     @patch.dict(os.environ, {
-        "H2KVMD_URL": "http://custom:7777",
-        "H2KVMCTL_PATH": "/custom/h2kvmctl",
+        "HYPERVISORD_URL": "http://custom:7777",
+        "H2KVMCTL_PATH": "/custom/hyperctl",
     })
     def test_create_runner_from_env(self):
         """Test creating runner from environment variables."""
-        runner = create_h2kvmctl_runner()
+        runner = create_hyperctl_runner()
 
         self.assertEqual(runner.daemon_url, "http://custom:7777")
-        self.assertEqual(runner.h2kvmctl_path, "/custom/h2kvmctl")
+        self.assertEqual(runner.hyperctl_path, "/custom/hyperctl")
 
     def test_create_runner_with_args(self):
         """Test creating runner with explicit args."""
-        runner = create_h2kvmctl_runner(
+        runner = create_hyperctl_runner(
             daemon_url="http://explicit:8888",
-            h2kvmctl_path="/explicit/bin",
+            hyperctl_path="/explicit/bin",
         )
 
         self.assertEqual(runner.daemon_url, "http://explicit:8888")
-        self.assertEqual(runner.h2kvmctl_path, "/explicit/bin")
+        self.assertEqual(runner.hyperctl_path, "/explicit/bin")
 
-    @patch.object(H2KVMCtlRunner, 'export_vm')
+    @patch.object(HyperCtlRunner, 'export_vm')
     def test_export_vm_convenience_function(self, mock_export):
         """Test convenience export function."""
         mock_export.return_value = {"job_id": "test123"}
 
-        result = export_vm_h2kvmctl(
+        result = export_vm_hyperctl(
             vm_path="/dc/vm/test",
             output_path="/tmp/test",
             parallel_downloads=8,
@@ -352,7 +352,7 @@ class TestIntegrationScenarios(unittest.TestCase):
             Mock(returncode=0, stdout="Status: completed | Files: 4", stderr=""),
         ]
 
-        runner = H2KVMCtlRunner()
+        runner = HyperCtlRunner()
 
         # Submit job
         job_id = runner.submit_export_job("/dc/vm/test", "/tmp/out")
@@ -374,7 +374,7 @@ class TestIntegrationScenarios(unittest.TestCase):
             Mock(returncode=0, stdout="Job submitted: batch3", stderr=""),
         ]
 
-        runner = H2KVMCtlRunner()
+        runner = HyperCtlRunner()
 
         vms = ["/dc/vm/vm1", "/dc/vm/vm2", "/dc/vm/vm3"]
         job_ids = []
