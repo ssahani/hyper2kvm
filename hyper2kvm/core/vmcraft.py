@@ -1706,6 +1706,576 @@ class VMCraft:
 
         return template_info
 
+    # Backup and restore operations
+
+    def backup_files(self, paths: list[str], dest_archive: str, compression: str = "gzip") -> dict[str, Any]:
+        """
+        Backup files from guest to host archive.
+
+        Args:
+            paths: List of file paths in guest to backup
+            dest_archive: Destination archive path on host
+            compression: Compression type (gzip, bzip2, xz, none)
+
+        Returns:
+            Dict with backup metadata
+        """
+        import tarfile
+
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        backup_info = {
+            "paths": paths,
+            "archive": dest_archive,
+            "compression": compression,
+            "files_backed_up": 0,
+            "total_size": 0,
+            "error": None,
+        }
+
+        try:
+            # Map compression to tarfile mode
+            mode_map = {
+                "gzip": "w:gz",
+                "bzip2": "w:bz2",
+                "xz": "w:xz",
+                "none": "w",
+            }
+            mode = mode_map.get(compression, "w:gz")
+
+            with tarfile.open(dest_archive, mode) as tar:
+                for path in paths:
+                    guest_path = self._guest_path(path)
+                    if guest_path.exists():
+                        # Add to archive with relative path
+                        arcname = path.lstrip('/')
+                        tar.add(guest_path, arcname=arcname, recursive=True)
+                        backup_info["files_backed_up"] += 1
+                        if guest_path.is_file():
+                            backup_info["total_size"] += guest_path.stat().st_size
+
+            self.logger.info(f"💾 Backed up {backup_info['files_backed_up']} items to {dest_archive}")
+
+        except Exception as e:
+            backup_info["error"] = str(e)
+            self.logger.error(f"Backup failed: {e}")
+
+        return backup_info
+
+    def restore_files(self, src_archive: str, dest_path: str = "/") -> dict[str, Any]:
+        """
+        Restore files from host archive to guest.
+
+        Args:
+            src_archive: Source archive path on host
+            dest_path: Destination path in guest (default: /)
+
+        Returns:
+            Dict with restore metadata
+        """
+        import tarfile
+
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        restore_info = {
+            "archive": src_archive,
+            "destination": dest_path,
+            "files_restored": 0,
+            "error": None,
+        }
+
+        try:
+            dest_guest = self._guest_path(dest_path)
+            dest_guest.mkdir(parents=True, exist_ok=True)
+
+            with tarfile.open(src_archive, 'r:*') as tar:
+                tar.extractall(path=dest_guest)
+                restore_info["files_restored"] = len(tar.getmembers())
+
+            self.logger.info(f"♻️  Restored {restore_info['files_restored']} items to {dest_path}")
+
+        except Exception as e:
+            restore_info["error"] = str(e)
+            self.logger.error(f"Restore failed: {e}")
+
+        return restore_info
+
+    # Security and auditing
+
+    def audit_permissions(self, path: str = "/") -> dict[str, Any]:
+        """
+        Audit file permissions for security issues.
+
+        Returns:
+            Dict with security findings
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        findings = {
+            "world_writable": [],
+            "setuid_files": [],
+            "setgid_files": [],
+            "no_owner": [],
+            "suspicious_permissions": [],
+        }
+
+        search_path = self._guest_path(path)
+
+        def check_path(p: Path):
+            try:
+                st = p.stat()
+                mode = st.st_mode
+
+                # World writable
+                if mode & 0o002:
+                    findings["world_writable"].append(str(p.relative_to(self._mount_root)))
+
+                # Setuid
+                if mode & stat.S_ISUID:
+                    findings["setuid_files"].append(str(p.relative_to(self._mount_root)))
+
+                # Setgid
+                if mode & stat.S_ISGID:
+                    findings["setgid_files"].append(str(p.relative_to(self._mount_root)))
+
+                # No owner (uid 0 but suspicious)
+                if st.st_uid == 0 and p.is_file() and (mode & 0o777) == 0o777:
+                    findings["suspicious_permissions"].append(str(p.relative_to(self._mount_root)))
+
+            except (PermissionError, OSError):
+                pass
+
+        # Scan directory tree
+        try:
+            for item in search_path.rglob('*'):
+                check_path(item)
+        except Exception as e:
+            self.logger.warning(f"Audit scan error: {e}")
+
+        total_issues = sum(len(v) for v in findings.values())
+        self.logger.info(f"🔒 Security audit found {total_issues} potential issues")
+
+        return findings
+
+    def find_large_files(self, min_size_mb: int = 100, path: str = "/") -> list[dict[str, Any]]:
+        """
+        Find large files in guest filesystem.
+
+        Args:
+            min_size_mb: Minimum file size in MB
+            path: Starting path to search
+
+        Returns:
+            List of dicts with file info (path, size, mtime)
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        min_bytes = min_size_mb * 1024 * 1024
+        large_files = []
+
+        search_path = self._guest_path(path)
+
+        try:
+            for item in search_path.rglob('*'):
+                if item.is_file():
+                    try:
+                        size = item.stat().st_size
+                        if size >= min_bytes:
+                            large_files.append({
+                                "path": str(item.relative_to(self._mount_root)),
+                                "size": size,
+                                "size_mb": size / (1024 * 1024),
+                                "mtime": item.stat().st_mtime,
+                            })
+                    except (PermissionError, OSError):
+                        pass
+        except Exception as e:
+            self.logger.warning(f"Large file scan error: {e}")
+
+        # Sort by size descending
+        large_files.sort(key=lambda x: x["size"], reverse=True)
+
+        self.logger.info(f"📊 Found {len(large_files)} files larger than {min_size_mb}MB")
+
+        return large_files
+
+    def find_duplicates(self, path: str = "/", min_size_mb: int = 1) -> dict[str, list[str]]:
+        """
+        Find duplicate files by content hash.
+
+        Args:
+            path: Starting path to search
+            min_size_mb: Minimum file size to check (skip small files)
+
+        Returns:
+            Dict mapping hash to list of file paths with that hash
+        """
+        import hashlib
+
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        min_bytes = min_size_mb * 1024 * 1024
+        hash_map: dict[str, list[str]] = {}
+
+        search_path = self._guest_path(path)
+
+        try:
+            for item in search_path.rglob('*'):
+                if item.is_file():
+                    try:
+                        size = item.stat().st_size
+                        if size >= min_bytes:
+                            # Calculate hash
+                            hasher = hashlib.sha256()
+                            with item.open('rb') as f:
+                                while chunk := f.read(8192):
+                                    hasher.update(chunk)
+                            file_hash = hasher.hexdigest()
+
+                            rel_path = str(item.relative_to(self._mount_root))
+                            if file_hash not in hash_map:
+                                hash_map[file_hash] = []
+                            hash_map[file_hash].append(rel_path)
+
+                    except (PermissionError, OSError):
+                        pass
+        except Exception as e:
+            self.logger.warning(f"Duplicate scan error: {e}")
+
+        # Filter to only duplicates (hash appears > 1 time)
+        duplicates = {h: paths for h, paths in hash_map.items() if len(paths) > 1}
+
+        total_dups = sum(len(paths) - 1 for paths in duplicates.values())
+        self.logger.info(f"🔍 Found {len(duplicates)} sets of duplicates ({total_dups} duplicate files)")
+
+        return duplicates
+
+    # Package management detection
+
+    def detect_packages(self) -> dict[str, Any]:
+        """
+        Detect installed packages from various package managers.
+
+        Returns:
+            Dict with package information by package manager
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        packages = {
+            "rpm": [],
+            "deb": [],
+            "apk": [],
+            "pacman": [],
+        }
+
+        # RPM (Red Hat, Fedora, CentOS)
+        rpm_db = self._mount_root / "var/lib/rpm"
+        if rpm_db.exists():
+            packages["rpm"] = "detected (database found)"
+
+        # DEB (Debian, Ubuntu)
+        dpkg_status = self._mount_root / "var/lib/dpkg/status"
+        if dpkg_status.exists():
+            try:
+                # Count packages in dpkg status
+                content = dpkg_status.read_text()
+                count = content.count('\nPackage: ')
+                packages["deb"] = f"{count} packages"
+            except Exception:
+                packages["deb"] = "detected"
+
+        # APK (Alpine)
+        apk_db = self._mount_root / "lib/apk/db/installed"
+        if apk_db.exists():
+            packages["apk"] = "detected"
+
+        # Pacman (Arch)
+        pacman_db = self._mount_root / "var/lib/pacman/local"
+        if pacman_db.exists():
+            try:
+                count = sum(1 for _ in pacman_db.iterdir() if _.is_dir())
+                packages["pacman"] = f"{count} packages"
+            except Exception:
+                packages["pacman"] = "detected"
+
+        return packages
+
+    # Windows service management
+
+    def win_list_services(self) -> list[dict[str, Any]]:
+        """
+        List Windows services from registry.
+
+        Returns:
+            List of dicts with service information
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        services = []
+
+        # Services are in SYSTEM\CurrentControlSet\Services
+        try:
+            service_keys = self.win_registry_list_keys('SYSTEM', r'ControlSet001\Services')
+
+            for service_name in service_keys[:50]:  # Limit to first 50
+                service_path = f r'ControlSet001\Services\{service_name}'
+
+                # Get service type and start type
+                values = self.win_registry_list_values('SYSTEM', service_path)
+
+                services.append({
+                    "name": service_name,
+                    "values": values,
+                })
+
+        except Exception as e:
+            self.logger.debug(f"Failed to list services: {e}")
+
+        return services
+
+    def win_set_service_start(self, service_name: str, start_type: int) -> bool:
+        """
+        Set Windows service start type.
+
+        Args:
+            service_name: Service name
+            start_type: Start type (0=boot, 1=system, 2=auto, 3=manual, 4=disabled)
+
+        Returns:
+            True if successful
+        """
+        service_path = fr'ControlSet001\Services\{service_name}'
+
+        success = self.win_registry_write(
+            'SYSTEM',
+            service_path,
+            'Start',
+            str(start_type),
+            value_type='dword'
+        )
+
+        if success:
+            start_names = {0: "boot", 1: "system", 2: "automatic", 3: "manual", 4: "disabled"}
+            self.logger.info(f"🔧 Set service '{service_name}' to {start_names.get(start_type, start_type)}")
+
+        return success
+
+    # Forensics and analysis
+
+    def analyze_disk_usage(self, path: str = "/", top_n: int = 20) -> dict[str, Any]:
+        """
+        Analyze disk usage by directory.
+
+        Args:
+            path: Starting path
+            top_n: Number of top directories to return
+
+        Returns:
+            Dict with disk usage analysis
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        search_path = self._guest_path(path)
+        dir_sizes: dict[str, int] = {}
+
+        def get_size(p: Path) -> int:
+            total = 0
+            try:
+                if p.is_file():
+                    total = p.stat().st_size
+                elif p.is_dir():
+                    for item in p.iterdir():
+                        total += get_size(item)
+            except (PermissionError, OSError):
+                pass
+            return total
+
+        # Calculate sizes for top-level directories
+        try:
+            for item in search_path.iterdir():
+                if item.is_dir():
+                    size = get_size(item)
+                    rel_path = str(item.relative_to(self._mount_root))
+                    dir_sizes[rel_path] = size
+        except Exception as e:
+            self.logger.warning(f"Disk analysis error: {e}")
+
+        # Sort and get top N
+        sorted_dirs = sorted(dir_sizes.items(), key=lambda x: x[1], reverse=True)[:top_n]
+
+        total_size = sum(dir_sizes.values())
+
+        analysis = {
+            "total_size": total_size,
+            "total_size_mb": total_size / (1024 * 1024),
+            "top_directories": [
+                {
+                    "path": path,
+                    "size": size,
+                    "size_mb": size / (1024 * 1024),
+                    "percentage": (size / total_size * 100) if total_size > 0 else 0,
+                }
+                for path, size in sorted_dirs
+            ],
+        }
+
+        self.logger.info(f"📈 Disk usage: {total_size / (1024**3):.2f} GB total")
+
+        return analysis
+
+    def find_recently_modified(self, path: str = "/", days: int = 7, limit: int = 100) -> list[dict[str, Any]]:
+        """
+        Find recently modified files.
+
+        Args:
+            path: Starting path
+            days: Number of days to look back
+            limit: Maximum number of results
+
+        Returns:
+            List of recently modified files
+        """
+        import time
+
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        cutoff_time = time.time() - (days * 86400)
+        recent_files = []
+
+        search_path = self._guest_path(path)
+
+        try:
+            for item in search_path.rglob('*'):
+                if item.is_file():
+                    try:
+                        mtime = item.stat().st_mtime
+                        if mtime >= cutoff_time:
+                            recent_files.append({
+                                "path": str(item.relative_to(self._mount_root)),
+                                "mtime": mtime,
+                                "size": item.stat().st_size,
+                            })
+                    except (PermissionError, OSError):
+                        pass
+
+                if len(recent_files) >= limit:
+                    break
+
+        except Exception as e:
+            self.logger.warning(f"Recent files scan error: {e}")
+
+        # Sort by modification time descending
+        recent_files.sort(key=lambda x: x["mtime"], reverse=True)
+
+        self.logger.info(f"🕒 Found {len(recent_files)} files modified in last {days} days")
+
+        return recent_files[:limit]
+
+    # Disk optimization
+
+    def find_empty_directories(self, path: str = "/") -> list[str]:
+        """
+        Find empty directories that can be removed.
+
+        Args:
+            path: Starting path
+
+        Returns:
+            List of empty directory paths
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        empty_dirs = []
+        search_path = self._guest_path(path)
+
+        try:
+            for item in search_path.rglob('*'):
+                if item.is_dir():
+                    try:
+                        # Check if directory is empty
+                        if not any(item.iterdir()):
+                            empty_dirs.append(str(item.relative_to(self._mount_root)))
+                    except (PermissionError, OSError):
+                        pass
+        except Exception as e:
+            self.logger.warning(f"Empty directory scan error: {e}")
+
+        self.logger.info(f"📂 Found {len(empty_dirs)} empty directories")
+
+        return empty_dirs
+
+    def cleanup_temp_files(self, dry_run: bool = True) -> dict[str, Any]:
+        """
+        Clean up temporary files.
+
+        Args:
+            dry_run: If True, only report what would be deleted
+
+        Returns:
+            Dict with cleanup results
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        temp_patterns = [
+            "/tmp/*",
+            "/var/tmp/*",
+            "/var/cache/apt/archives/*.deb",
+            "/var/cache/yum/*",
+            "*.tmp",
+            "*.bak",
+            "*~",
+        ]
+
+        cleanup_info = {
+            "files_found": 0,
+            "files_deleted": 0,
+            "space_freed": 0,
+            "dry_run": dry_run,
+        }
+
+        for pattern in temp_patterns:
+            try:
+                # Use find_files to locate temp files
+                if '*' in pattern:
+                    base_path = pattern.split('*')[0].rstrip('/')
+                    if not base_path:
+                        base_path = "/"
+                    pattern_name = pattern.split('/')[-1]
+
+                    files = self.find_files(base_path, pattern=pattern_name, file_type='f')
+
+                    for file_path in files:
+                        cleanup_info["files_found"] += 1
+                        guest_file = self._guest_path(file_path)
+
+                        if guest_file.is_file():
+                            size = guest_file.stat().st_size
+
+                            if not dry_run:
+                                guest_file.unlink()
+                                cleanup_info["files_deleted"] += 1
+
+                            cleanup_info["space_freed"] += size
+
+            except Exception as e:
+                self.logger.debug(f"Cleanup pattern {pattern} error: {e}")
+
+        action = "would free" if dry_run else "freed"
+        self.logger.info(f"🧹 Cleanup {action} {cleanup_info['space_freed'] / (1024**2):.2f} MB")
+
+        return cleanup_info
+
     # Context manager support
 
     def __enter__(self):
