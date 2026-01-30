@@ -76,6 +76,7 @@ from .disaster_recovery import DisasterRecovery
 from .audit_trail import AuditTrail
 from .resource_orchestrator import ResourceOrchestrator
 from .systemd import SystemctlManager, JournalctlManager, SystemdAnalyzer, SystemConfigManager
+from .systemd_mgr import SystemdManager
 from .enhanced_inspection import EnhancedInspector
 
 
@@ -175,6 +176,7 @@ class VMCraft:
         self._journalctl: JournalctlManager | None = None
         self._systemd_analyze: SystemdAnalyzer | None = None
         self._sysconfig: SystemConfigManager | None = None
+        self._systemd_mgr: SystemdManager | None = None
 
         # Enhanced inspection (initialized after launch)
         self._enhanced_inspector: EnhancedInspector | None = None
@@ -334,6 +336,7 @@ class VMCraft:
         self._journalctl = JournalctlManager(self.command_quiet, self.logger)
         self._systemd_analyze = SystemdAnalyzer(self.command_quiet, self.logger)
         self._sysconfig = SystemConfigManager(self.command_quiet, self.logger)
+        self._systemd_mgr = SystemdManager(self.logger, str(self._mount_root))
 
         # Initialize enhanced inspector
         self._enhanced_inspector = EnhancedInspector(
@@ -6574,7 +6577,120 @@ class VMCraft:
         except Exception as e:
             raise RuntimeError(f"dd copy failed: {e}") from e
 
+    # ==================================================================================
+    # Systemd Management APIs (Phase 1 - Core Service Management)
+    # ==================================================================================
+
+    def systemd_is_available(self) -> bool:
+        """
+        Check if systemd is available in guest.
+
+        Returns:
+            True if systemd is present, False otherwise
+        """
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.is_systemd_available()
+
+    def systemd_service_start(self, service: str) -> dict[str, Any]:
+        """Start systemd service."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.service_start(service)
+
+    def systemd_service_stop(self, service: str) -> dict[str, Any]:
+        """Stop systemd service."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.service_stop(service)
+
+    def systemd_service_restart(self, service: str) -> dict[str, Any]:
+        """Restart systemd service."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.service_restart(service)
+
+    def systemd_service_enable(self, service: str) -> dict[str, Any]:
+        """Enable service to start at boot."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.service_enable(service)
+
+    def systemd_service_disable(self, service: str) -> dict[str, Any]:
+        """Disable service from starting at boot."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.service_disable(service)
+
+    def systemd_service_status(self, service: str) -> dict[str, Any]:
+        """Get detailed service status."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.service_status(service)
+
+    def systemd_services_enable_multiple(self, services: list[str]) -> dict[str, bool]:
+        """Enable multiple services at once."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.services_enable_multiple(services)
+
+    def systemd_services_disable_multiple(self, services: list[str]) -> dict[str, bool]:
+        """Disable multiple services at once."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.services_disable_multiple(services)
+
+    def systemd_services_mask(self, services: list[str]) -> dict[str, bool]:
+        """Mask services to prevent activation."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.services_mask(services)
+
+    def systemd_list_services(self, state: str | None = None) -> list[dict[str, Any]]:
+        """List all systemd services with optional state filter."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.list_services(state)
+
+    def systemd_list_failed_services(self) -> list[str]:
+        """List services in failed state."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.list_failed_services()
+
+    def systemd_get_service_dependencies(self, service: str) -> dict[str, list[str]]:
+        """Get service dependencies."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.get_service_dependencies(service)
+
+    def systemd_daemon_reload(self) -> dict[str, Any]:
+        """Reload systemd manager configuration."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.daemon_reload()
+
+    def systemd_systemctl_preset(self, service: str) -> dict[str, Any]:
+        """Apply distribution preset for service."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.systemctl_preset(service)
+
+    def systemd_is_service_active(self, service: str) -> bool:
+        """Check if service is currently active."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.is_service_active(service)
+
+    def systemd_is_service_enabled(self, service: str) -> bool:
+        """Check if service is enabled to start at boot."""
+        if not self._systemd_mgr:
+            raise RuntimeError("Not launched")
+        return self._systemd_mgr.is_service_enabled(service)
+
+    # ==================================================================================
     # Context manager support
+    # ==================================================================================
 
     def __enter__(self):
         """Context manager entry."""
