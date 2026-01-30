@@ -316,23 +316,206 @@ Complete reference for all 46 systemd APIs with code examples.
 
 Interactive demonstration of systemd APIs with real VM analysis.
 
-### 9. Filesystem APIs (`vmcraft_filesystem_apis.py`)
+### 9. Filesystem API Reference (`vmcraft_filesystem_apis.py`)
 
-All 37+ filesystem detection and manipulation APIs.
+Comprehensive demonstration of all 37+ filesystem detection and manipulation APIs.
+
+**API Categories covered:**
+- OS Inspection (8 methods): `inspect_os()`, `inspect_get_type()`, etc.
+- Filesystem Detection (4 methods): `list_filesystems()`, `vfs_type()`, etc.
+- Partition Operations (2 methods): `part_to_partnum()`, `part_to_dev()`
+- Block Device Operations (9 methods): `blockdev_getsize64()`, `blockdev_getss()`, etc.
+- Inspection Wrappers (2 methods): `inspect_filesystems()`, etc.
+- Extended Attributes (2 methods): `get_e2attrs()`, `set_e2attrs()`
+- Filesystem-Specific (13+ methods): Btrfs, ZFS, XFS, NTFS operations
+- Filesystem Statistics: `statvfs()`
+
+**Usage:**
+```bash
+python3 vmcraft_filesystem_apis.py /path/to/disk.vmdk
+
+# Demonstrates:
+# - OS detection and version information
+# - Filesystem type detection for all partitions
+# - Partition number extraction
+# - Block device geometry (size, sector size, etc.)
+# - Btrfs subvolume listing
+# - ZFS pool and dataset listing
+# - Extended attribute operations
+# - Filesystem usage statistics
+```
+
+**Example output:**
+```
+PARTITION OPERATIONS:
+  part_to_partnum('/dev/nbd0p2') → 2
+  part_to_dev('/dev/nbd0p2') → /dev/nbd0
+
+BLOCK DEVICE OPERATIONS:
+  Size: 512.00 GiB
+  Sector size: 512 bytes
+  Block size: 4096 bytes
+
+FILESYSTEM-SPECIFIC:
+  Btrfs: 2 filesystems detected
+  UUID: 3235f585-e2d1-441f-8ba4-569d4f0ad34d
+  Subvolumes: 3 found
+```
+
+---
 
 ## Migration Workflow Examples
 
 ### 10. Complete Migration Workflow (`complete_migration_workflow.py`)
 
-End-to-end VMware to KVM migration with pre/post validation.
+End-to-end VMware to KVM migration with comprehensive pre/post validation.
+
+**Workflow phases:**
+1. **Pre-migration inspection**: OS detection, filesystem analysis, service inventory
+2. **Migration execution**: VMDK to QCOW2 conversion with all fixers
+3. **Post-migration validation**: Boot config, network config, service health
+4. **Report generation**: JSON and Markdown migration reports
+5. **Libvirt XML creation**: Ready-to-use KVM domain configuration
+
+**Usage:**
+```bash
+python3 complete_migration_workflow.py /vmware/vm.vmdk /output/kvm-vms
+
+# Generates:
+# - /output/kvm-vms/vm-name/vm-name.qcow2 (converted disk)
+# - /output/kvm-vms/vm-name/migration-report.json (detailed report)
+# - /output/kvm-vms/vm-name/migration-report.md (human-readable)
+# - /output/kvm-vms/vm-name/vm-name.xml (libvirt domain XML)
+```
+
+**Features:**
+- Comprehensive pre-migration OS and service inspection
+- Automatic fixer application (bootloader, fstab, network)
+- Post-migration validation and comparison
+- Detailed migration metrics (time, size, compression ratio)
+- libvirt XML with proper hardware mapping
+- Success/failure reporting with actionable recommendations
+
+---
 
 ### 11. Multi-VM Comparison (`compare_vms.py`)
 
-Compare multiple VMs for migration planning.
+Compare multiple VM disk images side-by-side for migration planning.
+
+**Comparison categories:**
+- Operating system versions and distributions
+- Filesystem types and disk layouts
+- Disk space usage and capacity
+- systemd service configurations
+- Package inventories
+- Network interface configurations
+- Migration complexity scoring (0-100)
+
+**Usage:**
+```bash
+# Compare 3 VMs
+python3 compare_vms.py /vms/web-*.vmdk
+
+# Compare specific VMs with table output
+python3 compare_vms.py vm1.vmdk vm2.vmdk vm3.vmdk --format table
+
+# Generate HTML comparison report
+python3 compare_vms.py vm*.vmdk --output comparison.html
+```
+
+**Features:**
+- Side-by-side comparison tables
+- Migration complexity scoring based on:
+  - OS compatibility with KVM
+  - Filesystem complexity (LVM, Btrfs, ZFS)
+  - Service count and configuration
+  - Disk size and fragmentation
+- Priority recommendations (migrate simplest first)
+- Configuration drift detection
+- Package version comparison
+
+**Example output:**
+```
+VM COMPARISON SUMMARY
+====================
+
+VM Name       OS                    Disk   Services  Complexity  Priority
+-------       --                    ----   --------  ----------  --------
+web-01        Ubuntu 22.04 LTS      50GB   85        Low (25)    High
+web-02        openSUSE Leap 15.4    80GB   102       Medium (55) Medium
+web-03        CentOS 7 (EOL)        120GB  156       High (78)   Review
+
+Recommendations:
+  1. Migrate web-01 first (lowest complexity, newest OS)
+  2. Review web-03 for EOL migration strategy
+  3. Consider updating web-02 to Leap 15.5 before migration
+```
+
+---
 
 ### 12. Migration Benchmark (`benchmark_migration.py`)
 
-Performance benchmarking for migration operations.
+Performance benchmarking tool for VM migration operations.
+
+**Metrics measured:**
+- Throughput (MB/s) for each migration phase
+- Memory usage during migration
+- CPU utilization
+- Disk I/O (read/write MB)
+- Compression ratios
+- Time breakdown by phase
+
+**Benchmark categories:**
+- Disk format comparison (VMDK vs VHD vs RAW)
+- Compression level impact (none, fast, best)
+- Filesystem type performance (ext4 vs xfs vs btrfs)
+- VM size impact (small/medium/large)
+
+**Usage:**
+```bash
+# Benchmark single VM (3 iterations)
+python3 benchmark_migration.py /vmware/vm.vmdk --iterations 3
+
+# Benchmark with output file
+python3 benchmark_migration.py vm.vmdk --output benchmark_results.json
+
+# Compare disk formats
+python3 benchmark_migration.py vm.vmdk --format-comparison
+```
+
+**Features:**
+- Multi-iteration averaging for accurate results
+- Per-phase timing (inspection, conversion, validation)
+- Memory profiling to detect leaks
+- I/O throughput analysis
+- Compression ratio vs time trade-offs
+- Baseline comparison for regression testing
+- JSON and HTML report generation
+
+**Example output:**
+```
+MIGRATION BENCHMARK RESULTS
+===========================
+
+Disk Image: /vmware/production-db.vmdk
+Size: 120 GB
+Iterations: 3
+
+Phase                    Avg Time    Throughput    Memory    CPU
+-----                    --------    ----------    ------    ---
+Pre-inspection           4.2s        28.6 GB/s     145 MB    25%
+VMDK → QCOW2 conversion  180.5s      0.66 GB/s     512 MB    85%
+Fixer application        12.8s       9.4 GB/s      230 MB    40%
+Post-validation          5.1s        23.5 GB/s     180 MB    30%
+-------------------------------------------------------------------------
+Total                    202.6s      0.59 GB/s     Peak: 512 MB
+
+Compression ratio: 2.1:1 (120 GB → 57 GB)
+Recommendations:
+  ✓ Throughput is good for this VM size
+  ⚠ Consider compressing source VMDK for faster transfer
+  ✓ Memory usage within acceptable limits
+```
 
 ## Usage Tips
 
