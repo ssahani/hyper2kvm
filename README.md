@@ -201,11 +201,17 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
 
 ### VMCraft - Advanced VM Manipulation Platform 🚀
 
-**VMCraft v9.1** is hyper2kvm's modular disk image manipulation library - a pure Python platform for comprehensive VM analysis and automation.
+**VMCraft v9.2** is hyper2kvm's modular disk image manipulation library - a pure Python platform for comprehensive VM analysis and automation.
 
-- **343+ Methods** across 58 specialized modules (26,500+ lines of code)
+- **395+ Methods** across 62 specialized modules (30,000+ lines of code)
 - **Lightning-Fast Performance:** Native Python with ~1.9s launch, 2-3x faster parallel mounts, 30-40% fewer system calls
-- **🆕 New in v9.1 (36 APIs):**
+- **🆕 New in v9.2 (52 Systemd APIs):**
+  - ⚙️ **Core Service Management:** Enable/disable services, bulk operations, dependency analysis (17 methods)
+  - 🌐 **systemd-networkd:** Network config creation, ifcfg/NetworkManager migration, bridge setup (12 methods)
+  - 📋 **Journal Access:** Log querying, boot analysis, disk management, verification (10 methods)
+  - 🔧 **Unit File Management:** Create services/timers/mounts, boot performance analysis (13 methods)
+  - 🎯 **Enterprise Linux:** Complete systemd lifecycle management for RHEL/Fedora migrations
+- **🔄 Previous (v9.1 - 36 APIs):**
   - 🔧 **Partition Management:** Create/delete partitions, GPT/MBR support (7 methods)
   - 💾 **LVM Creation:** Full PV/VG/LV lifecycle management (6 methods)
   - 📝 **Augeas Configuration:** Structured config file editing (10 methods)

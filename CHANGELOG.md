@@ -9,6 +9,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### VMCraft v9.2 - Enterprise Systemd Integration (January 2026)
+
+**Complete Systemd Integration** across 4 specialized modules (52 new APIs):
+
+**Phase 1: Core Service Management** (17 APIs, systemd_mgr.py - 586 lines):
+- `systemd_service_enable()` - Enable service to start at boot
+- `systemd_service_disable()` - Disable service from starting at boot
+- `systemd_service_start()` - Start systemd service
+- `systemd_service_stop()` - Stop systemd service
+- `systemd_service_restart()` - Restart systemd service
+- `systemd_service_status()` - Get detailed service status (active, sub, loaded, description)
+- `systemd_services_enable_multiple()` - Enable multiple services at once
+- `systemd_services_disable_multiple()` - Disable multiple services at once
+- `systemd_services_mask()` - Mask services to prevent activation
+- `systemd_list_services()` - List all services with optional state filter (active, failed, etc.)
+- `systemd_list_failed_services()` - List services in failed state
+- `systemd_get_service_dependencies()` - Get service dependencies (requires, wants, after, before)
+- `systemd_daemon_reload()` - Reload systemd manager configuration
+- `systemd_systemctl_preset()` - Apply distribution preset for service
+- `systemd_is_service_active()` - Check if service is currently active
+- `systemd_is_service_enabled()` - Check if service is enabled at boot
+- `systemd_is_available()` - Check if systemd is available in guest
+- **Features:** systemd-nspawn/chroot fallback, intelligent execution context, audit dict pattern
+
+**Phase 2: systemd-networkd Configuration** (12 APIs, systemd_networkd.py - 752 lines):
+- `networkd_create_network_file()` - Create .network files (DHCP, static, multi-DNS)
+- `networkd_create_netdev_file()` - Create virtual device files (bridge, bond, VLAN)
+- `networkd_create_link_file()` - Create link files for persistent naming
+- `networkd_remove_network_file()` - Remove network configuration file
+- `networkd_list_network_files()` - List all networkd configuration files
+- `networkd_parse_network_file()` - Parse existing .network files to structured dict
+- `networkd_migrate_from_ifcfg()` - Migrate from RHEL/Fedora ifcfg to networkd
+- `networkd_migrate_from_networkmanager()` - Migrate from NetworkManager to networkd
+- `networkd_create_dhcp_network()` - Quick DHCP network setup (convenience)
+- `networkd_create_static_network()` - Quick static IP setup (convenience)
+- `networkd_create_bridge_network()` - Create bridge for KVM networking
+- `networkd_enable_networkd()` - Enable systemd-networkd service
+- **Features:** INI-style config generation, netmask→CIDR conversion, ifcfg/NM migration
+
+**Phase 3: Journal Log Access & Analysis** (10 APIs, systemd_journal.py - 574 lines):
+- `journal_get()` - Get journal entries with filtering (unit, priority, time, grep)
+- `journal_get_service()` - Get service-specific log entries
+- `journal_get_since_boot()` - Get logs from specific boot (current/previous)
+- `journal_get_priority()` - Get logs by priority level (emerg, alert, crit, err, warning...)
+- `journal_get_tail()` - Get last N journal entries
+- `journal_list_boots()` - List available boot sessions
+- `journal_get_boot_id()` - Get current boot ID
+- `journal_get_disk_usage()` - Get journal disk usage statistics
+- `journal_vacuum()` - Clean up old journal entries (by size/time/files)
+- `journal_verify()` - Verify journal file consistency
+- **Features:** JSON-based parsing, time/priority filtering, boot analysis, disk management
+
+**Phase 4: Unit File Management & Analysis** (13 APIs, systemd_units.py - 822 lines):
+- `units_create_service_unit()` - Create .service files (Type, Restart, User, dependencies)
+- `units_create_timer_unit()` - Create .timer files (OnCalendar, OnBootSec, OnUnitActiveSec)
+- `units_create_mount_unit()` - Create .mount files (What, Where, Type, Options)
+- `units_create_target_unit()` - Create .target files (Requires, Wants, After)
+- `units_create_path_unit()` - Create .path files (PathExists, PathChanged, PathModified)
+- `units_read_unit_file()` - Parse unit file to structured dict (sections)
+- `units_modify_unit_file()` - Modify specific key in unit file
+- `units_delete_unit_file()` - Delete unit file
+- `units_validate_unit_file()` - Validate unit file syntax
+- `units_analyze_boot_performance()` - Analyze boot timing with systemd-analyze
+- `units_analyze_critical_chain()` - Get critical boot path chain
+- `units_analyze_blame()` - Get services ordered by initialization time
+- `units_list_timers()` - List active or all systemd timers
+- **Features:** INI-style unit generation, boot performance analysis, systemd-analyze integration
+
+**VMCraft v9.2 Statistics:**
+- **395+ methods** across 62 modules (+52 systemd methods from v9.1)
+- **30,000+ lines of code** (+3,500 from v9.1)
+- **114 new systemd tests** (all passing, 100% coverage)
+- **4 new modules:** systemd_mgr.py, systemd_networkd.py, systemd_journal.py, systemd_units.py
+- **Complete systemd lifecycle management** for enterprise Linux migrations
+
+**Use Cases:**
+- Disable VMware services (vmtoolsd, open-vm-tools) during migration
+- Enable KVM guest agent (qemu-guest-agent) for cloud integration
+- Migrate network configs from ifcfg/NetworkManager to systemd-networkd
+- Create KVM bridge networking configurations
+- Debug boot issues with journal log analysis
+- Analyze boot performance and identify slow services
+- Create custom services for migrated applications
+- Set up scheduled tasks with systemd timers
+
 #### VMCraft v9.1 - Performance & Enterprise Features Enhancement (January 2026)
 
 **Performance Enhancements:**

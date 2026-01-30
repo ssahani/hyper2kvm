@@ -1,6 +1,6 @@
 # VMCraft - Advanced VM Manipulation Platform
 
-> **VMCraft v9.0** - Pure Python VM disk image manipulation library with AI/ML intelligence
+> **VMCraft v9.2** - Pure Python VM disk image manipulation library with AI/ML intelligence and enterprise systemd support
 
 ---
 
@@ -8,15 +8,16 @@
 
 VMCraft is hyper2kvm's advanced disk image manipulation platform, providing comprehensive VM inspection, modification, and intelligence capabilities through a pure Python implementation.
 
-**Current Version:** v9.1 (January 2026)
+**Current Version:** v9.2 (January 2026)
 
 **Statistics:**
-- **343+ methods** across 58 specialized modules
-- **26,500+ lines of code**
-- **100% test coverage**
+- **395+ methods** across 62 specialized modules
+- **30,000+ lines of code**
+- **100% test coverage** (114 new systemd tests)
 - **~1.9s launch time** (NBD connection + storage activation)
 - **2-3x faster** parallel mount operations
 - **30-40% fewer** redundant system calls via intelligent caching
+- **52 new systemd APIs** for enterprise Linux management
 
 ---
 
@@ -50,7 +51,11 @@ hyper2kvm/core/vmcraft/
 │   └── scheduled_tasks.py     # Task Scheduler automation
 │
 ├── Linux Support
-│   └── linux_services.py      # Systemd/init service management
+│   ├── linux_services.py      # Systemd/init service management (legacy)
+│   ├── systemd_mgr.py         # Core systemd service management (17 APIs)
+│   ├── systemd_networkd.py    # systemd-networkd configuration (12 APIs)
+│   ├── systemd_journal.py     # Journal log access & analysis (10 APIs)
+│   └── systemd_units.py       # Unit file management & analysis (13 APIs)
 │
 ├── Enterprise Intelligence (v9.0)
 │   ├── ml_analyzer.py         # AI/ML analytics (7 methods)
@@ -69,9 +74,126 @@ hyper2kvm/core/vmcraft/
 
 ---
 
+## What's New in v9.2
+
+VMCraft v9.2 delivers comprehensive systemd integration for enterprise Linux management, completing the transformation into a full-featured VM manipulation platform.
+
+### Enterprise Systemd Integration (52 new APIs)
+
+VMCraft now provides complete systemd integration across 4 specialized modules, enabling comprehensive Linux system management during VM migrations.
+
+#### Phase 1: Core Service Management (17 APIs)
+```python
+# Service control
+g.systemd_service_enable("qemu-guest-agent")
+g.systemd_service_start("sshd")
+g.systemd_service_restart("network")
+
+# Bulk operations
+vmware_services = ["vmtoolsd", "vmware-tools", "open-vm-tools"]
+g.systemd_services_disable_multiple(vmware_services)
+g.systemd_services_mask(vmware_services)
+
+# Query and analysis
+failed = g.systemd_list_failed_services()
+deps = g.systemd_get_service_dependencies("network.service")
+active_services = g.systemd_list_services(state="active")
+
+# Daemon management
+g.systemd_daemon_reload()
+```
+
+#### Phase 2: systemd-networkd Configuration (12 APIs)
+```python
+# Create network configuration files
+g.networkd_create_network_file(
+    name="10-eth0",
+    match={"Name": "eth0"},
+    network={"Address": "192.168.1.100/24", "Gateway": "192.168.1.1"},
+)
+
+# Migrate from legacy formats
+g.networkd_migrate_from_ifcfg("eth0")  # RHEL/Fedora ifcfg
+g.networkd_migrate_from_networkmanager()
+
+# Create bridge for KVM
+g.networkd_create_bridge_network("br0", ["eth0"])
+
+# Quick helpers
+g.networkd_create_dhcp_network("eth1")
+g.networkd_create_static_network("eth2", "192.168.1.50/24", "192.168.1.1")
+g.networkd_enable_networkd()
+```
+
+#### Phase 3: Journal Log Access (10 APIs)
+```python
+# Query journal logs
+logs = g.journal_get(lines=100, priority="err", since="-1h")
+service_logs = g.journal_get_service("sshd", lines=50)
+boot_logs = g.journal_get_since_boot(boot_offset=-1)
+
+# Boot analysis
+boots = g.journal_list_boots()
+boot_id = g.journal_get_boot_id()
+
+# Journal management
+usage = g.journal_get_disk_usage()
+g.journal_vacuum(size="100M")  # Clean up old logs
+g.journal_verify()  # Check consistency
+```
+
+#### Phase 4: Unit File Management (13 APIs)
+```python
+# Create custom service
+g.units_create_service_unit(
+    name="myapp",
+    description="My Application",
+    exec_start="/usr/bin/myapp",
+    after=["network.target"],
+    restart="always"
+)
+
+# Create scheduled tasks with timers
+g.units_create_timer_unit(
+    name="backup",
+    description="Daily Backup",
+    on_calendar="daily",
+    service="backup.service"
+)
+
+# Create mount units
+g.units_create_mount_unit(
+    name="data",
+    what="/dev/sdb1",
+    where="/mnt/data",
+    type="ext4"
+)
+
+# Unit file management
+config = g.units_read_unit_file("sshd.service")
+g.units_modify_unit_file("myapp.service", "Service", "Restart", "always")
+g.units_validate_unit_file("myapp.service")
+
+# Boot performance analysis
+perf = g.units_analyze_boot_performance()
+chain = g.units_analyze_critical_chain()
+blame = g.units_analyze_blame()
+timers = g.units_list_timers()
+```
+
+**Benefits:**
+- **Complete systemd lifecycle management** during VM migrations
+- **Automated network configuration migration** from ifcfg/NetworkManager
+- **Boot issue debugging** with journal log analysis
+- **Performance optimization** with systemd-analyze integration
+- **Custom service creation** for migrated applications
+- **Scheduled task management** with systemd timers
+
+---
+
 ## What's New in v9.1
 
-VMCraft v9.1 delivers major performance improvements, enterprise features, and enhanced libguestfs API parity.
+VMCraft v9.1 delivered major performance improvements, enterprise features, and enhanced libguestfs API parity.
 
 ### Performance Enhancements
 
