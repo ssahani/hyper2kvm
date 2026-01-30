@@ -338,7 +338,7 @@ Complete OpenShift operator release:
 - [../examples/](../examples/) - Usage examples and demos
 - [../docs/guides/](../docs/guides/) - User guides
 - [../docs/development/](../docs/development/) - Developer documentation
-- [../docs/helm-repository.md](../docs/helm-repository.md) - Helm repository guide
+- [../docs/deployment/helm-repository.md](../docs/deployment/helm-repository.md) - Helm repository guide
 - [../docs/deployment/openshift-deployment-guide.md](../docs/deployment/openshift-deployment-guide.md) - OpenShift deployment
 - [../olm/README.md](../olm/README.md) - OLM bundle guide
 - [../OPENSHIFT_QUICKSTART.md](../OPENSHIFT_QUICKSTART.md) - 5-minute OpenShift quickstart

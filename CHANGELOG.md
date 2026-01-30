@@ -435,7 +435,7 @@ Check 3: Partition devices created (/dev/nbd0p1)?
   - `scripts/package-charts.sh` - Package charts and generate repository index (300 lines)
   - `scripts/bump-chart-version.sh` - Semantic version bumping for charts (350 lines)
   - `.github/workflows/helm-release.yml` - Automated release workflow (150 lines)
-  - `docs/helm-repository.md` - Complete repository usage guide (500+ lines)
+  - `docs/deployment/helm-repository.md` - Complete repository usage guide (500+ lines)
   - GitHub Pages Helm repository at `https://ssahani.github.io/hyper2kvm`
 
 - **Release Automation**
