@@ -47,8 +47,8 @@ class TemplateEngine:
 
             if var_name in variables:
                 value = variables[var_name]
-                # Convert to string
-                return str(value) if value is not None else ""
+                # Convert to string (including None -> "None")
+                return str(value)
 
             # Variable not found
             if strict:
@@ -103,6 +103,41 @@ class TemplateEngine:
 
         return result
 
+    def substitute_list(
+        self,
+        template_list: list[Any],
+        variables: dict[str, Any],
+        strict: bool = False,
+    ) -> list[Any]:
+        """
+        Substitute variables in all strings in a list.
+
+        Args:
+            template_list: List with template strings
+            variables: Variable name -> value mappings
+            strict: Strict mode flag
+
+        Returns:
+            List with all string values substituted
+        """
+        result = []
+
+        for item in template_list:
+            if isinstance(item, str):
+                # Substitute string values
+                result.append(self.substitute(item, variables, strict))
+            elif isinstance(item, dict):
+                # Recursively process nested dicts
+                result.append(self.substitute_dict(item, variables, strict))
+            elif isinstance(item, list):
+                # Recursively process nested lists
+                result.append(self.substitute_list(item, variables, strict))
+            else:
+                # Keep non-string values as-is
+                result.append(item)
+
+        return result
+
     def extract_variables(self, template: str) -> list[str]:
         """
         Extract all variable names from a template.
@@ -139,7 +174,7 @@ class TemplateEngine:
 
 
 def create_hook_context(
-    stage: str,
+    manifest_or_stage: dict[str, Any] | str,
     vm_name: str | None = None,
     source_path: str | None = None,
     output_path: str | None = None,
@@ -148,11 +183,15 @@ def create_hook_context(
     """
     Create a standard context dictionary for hook variable substitution.
 
+    Can be called in two ways:
+    1. With manifest dict: create_hook_context(manifest, **extra)
+    2. Legacy style: create_hook_context(stage, vm_name, source_path, output_path, **extra)
+
     Args:
-        stage: Pipeline stage name
-        vm_name: VM name
-        source_path: Source disk path
-        output_path: Output disk path
+        manifest_or_stage: Either a manifest dictionary or a stage name string
+        vm_name: VM name (used in legacy mode)
+        source_path: Source disk path (used in legacy mode)
+        output_path: Output disk path (can be passed in both modes)
         **extra: Additional context variables
 
     Returns:
@@ -161,6 +200,44 @@ def create_hook_context(
     import os
     import time
     from pathlib import Path
+
+    # Determine if we're in manifest mode or legacy mode
+    if isinstance(manifest_or_stage, dict):
+        # Manifest mode - extract information from manifest
+        manifest = manifest_or_stage
+
+        # Extract VM information from manifest
+        source = manifest.get("source", {})
+        vm_name_from_manifest = source.get("vm_name", "unknown")
+        vm_id = source.get("vm_id", "")
+
+        # Extract output information
+        output = manifest.get("output", {})
+        output_directory = output.get("directory", "")
+        output_format = output.get("format", "")
+
+        # Extract source_path from first disk if available
+        disks = manifest.get("disks", [])
+        source_path_from_manifest = ""
+        if disks:
+            source_path_from_manifest = disks[0].get("local_path", "")
+
+        # Use manifest values, but allow override from parameters
+        stage = extra.pop("stage", "unknown")
+        vm_name = vm_name or vm_name_from_manifest
+        source_path = source_path or source_path_from_manifest
+
+        # Add manifest-specific fields to extra
+        if vm_id:
+            extra["vm_id"] = vm_id
+        if output_directory:
+            extra["output_directory"] = output_directory
+        if output_format:
+            extra["output_format"] = output_format
+
+    else:
+        # Legacy mode - manifest_or_stage is actually the stage name
+        stage = manifest_or_stage
 
     context = {
         # Stage information

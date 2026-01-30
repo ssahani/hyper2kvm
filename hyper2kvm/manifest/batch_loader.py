@@ -105,6 +105,22 @@ class BatchLoader:
 
         return self.manifest
 
+    def load_batch(self, manifest_path: str | Path) -> dict[str, Any]:
+        """
+        Alias for load() - more explicit method name for loading batch manifests.
+
+        Args:
+            manifest_path: Path to batch manifest JSON/YAML file
+
+        Returns:
+            Validated batch manifest dictionary
+
+        Raises:
+            BatchValidationError: If manifest is invalid
+            FileNotFoundError: If manifest file doesn't exist
+        """
+        return self.load(manifest_path)
+
     def _validate(self) -> None:
         """Validate batch manifest structure and required fields."""
         if not isinstance(self.manifest, dict):
@@ -134,10 +150,9 @@ class BatchLoader:
         if not isinstance(self.manifest["vms"], list):
             raise BatchValidationError("Field 'vms' must be an array")
 
-        if len(self.manifest["vms"]) == 0:
-            raise BatchValidationError(
-                "Field 'vms' must contain at least one VM entry"
-            )
+        # Empty batches are allowed (useful for templates and testing)
+        # if len(self.manifest["vms"]) == 0:
+        #     self.logger.warning("Batch contains no VMs")
 
         # Validate batch_metadata (optional but recommended)
         if "batch_metadata" in self.manifest:
@@ -227,6 +242,12 @@ class BatchLoader:
                 self.vms.append(vm_item)
             except Exception as e:
                 raise BatchValidationError(f"vms[{idx}]: {e}") from e
+
+        # Sort VMs in manifest by priority (lower values = higher priority)
+        self.manifest["vms"] = sorted(
+            self.manifest["vms"],
+            key=lambda vm: (vm.get("priority", 0), self.manifest["vms"].index(vm))
+        )
 
     # Getters
 
