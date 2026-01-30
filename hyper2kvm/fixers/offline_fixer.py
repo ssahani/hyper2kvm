@@ -958,6 +958,12 @@ class OfflineFSFix:
                     self.logger.debug(f"Could not determine vfs_type for {dev}: {e}")
 
                 filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
+
+                # Skip non-mountable device types
+                if vfs_type in ("LVM2_member", "swap"):
+                    self.logger.debug(f"Skipping non-mountable device: {dev} (type={vfs_type})")
+                    continue
+
                 self.logger.info(f"🔄 Attempting to mount {dev} at /...")
 
                 # Try mount with appropriate options
