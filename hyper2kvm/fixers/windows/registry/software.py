@@ -46,9 +46,7 @@ def _safe_logger(self) -> logging.Logger:
     """Get logger from self or create default logger."""
     return _safe_logger_base(self, "hyper2kvm.windows_registry")
 
-# ---------------------------------------------------------------------------
 # Public: SOFTWARE hive DevicePath append
-# ---------------------------------------------------------------------------
 
 
 def _normalize_devicepath_part(p: str) -> str:
@@ -187,9 +185,7 @@ def append_devicepath_software_hive(
             _close_best_effort(h)
 
 
-# ---------------------------------------------------------------------------
 # Public: SOFTWARE hive RunOnce helper (kept, but SERVICE is preferred)
-# ---------------------------------------------------------------------------
 
 
 def _ensure_software_cv_path(h: hivex.Hivex, root: int) -> int:

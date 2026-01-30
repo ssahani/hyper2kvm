@@ -149,9 +149,7 @@ __all__ = [
 ]
 
 
-# ---------------------------
 # VirtIO source materialization (dir OR ISO)
-# ---------------------------
 
 
 @contextmanager
@@ -252,9 +250,7 @@ def _materialize_virtio_source(self, virtio_path: Path):
             pass
 
 
-# ---------------------------
 # Public: BCD backup + hints (offline-safe)
-# ---------------------------
 
 
 def windows_bcd_actual_fix(self, g: guestfs.GuestFS) -> Dict[str, Any]:
@@ -342,9 +338,7 @@ def windows_bcd_actual_fix(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     return {"windows": True, "bcd": "found", "stores": found, "backups": backups, "notes": notes}
 
 
-# ---------------------------
 # Finalization + reporting
-# ---------------------------
 
 
 def _virtio_finalize(self, result: Dict[str, Any], drivers: List[DriverFile], *, plan: WindowsVirtioPlan, cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -422,9 +416,7 @@ def _virtio_finalize(self, result: Dict[str, Any], drivers: List[DriverFile], *,
     return result
 
 
-# ---------------------------
 # Public: VirtIO injection orchestration
-# ---------------------------
 
 
 def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
@@ -538,9 +530,7 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     return _virtio_finalize(self, result, drivers, plan=plan, cfg=cfg)
 
 
-# ---------------------------
 # Public API wrapper class
-# ---------------------------
 
 
 class WindowsFixer:

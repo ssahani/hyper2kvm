@@ -13,9 +13,7 @@ from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, Ti
 
 from ..core.utils import U
 
-# ----------------------------
 # Types / Config
-# ----------------------------
 
 GraphicsMode = Literal["none", "vnc", "spice"]
 MachineType = Literal["pc", "q35"]
@@ -114,9 +112,7 @@ class GuestProfile:
     driver_iso: Optional[Path] = None
 
 
-# ----------------------------
 # Implementation
-# ----------------------------
 
 class LibvirtTest:
     """

@@ -1,29 +1,29 @@
-# 🚀 Installation Guide (Fedora)
+#  Installation Guide (Fedora)
 
 This document describes a **clean, RPM-first installation** on Fedora for VMware → KVM workflows, covering both:
 
-🧠 **Control plane**
+ **Control plane**
 
 * vSphere APIs, inventory, orchestration
 * `pyvmomi`, `govc`, optional `ovftool`
 
-💾 **Data plane**
+ **Data plane**
 
 * High-performance disk access via **VMware VDDK**
 * `libvixDiskLib.so`
 
 ---
 
-### 🎯 Philosophy
+###  Philosophy
 
 This project is intentionally **not** “click migrate and pray”.
 
 The goals:
 
-* 🧊 keep Python **boring and deterministic** (Fedora RPMs)
-* 🧱 install **system compatibility libraries first**
-* 📦 isolate **proprietary VMware tooling** under `/opt`
-* 🔍 avoid runtime surprises, ABI mismatches, and loader errors
+*  keep Python **boring and deterministic** (Fedora RPMs)
+*  install **system compatibility libraries first**
+*  isolate **proprietary VMware tooling** under `/opt`
+*  avoid runtime surprises, ABI mismatches, and loader errors
 
 If something *can* fail at runtime, we make it impossible to reach that state.
 
@@ -38,7 +38,7 @@ If something *can* fail at runtime, we make it impossible to reach that state.
 
 ---
 
-## 🧱 2. Required System Compatibility Libraries (Install First)
+##  2. Required System Compatibility Libraries (Install First)
 
 Modern Fedora intentionally removes legacy libraries that
 ⚠️ **VMware-provided binaries still depend on**.
@@ -79,7 +79,7 @@ ldconfig -p | grep libcrypt.so.1
 All required Python libraries are available as **official Fedora RPMs**
 and should be installed system-wide.
 
-### 📦 Install
+###  Install
 
 ```bash
 sudo dnf install -y \
@@ -91,7 +91,7 @@ sudo dnf install -y \
   python3-pyvmomi
 ```
 
-### 🧠 What gets installed
+###  What gets installed
 
 * `python3-rich` – structured logging, progress bars, TUI output
 * `python3-termcolor` – ANSI color helpers
@@ -159,7 +159,7 @@ tar -xzf govc_Linux_x86_64.tar.gz
 sudo install -m 0755 govc /usr/local/bin/govc
 ```
 
-### 🔍 Verify
+###  Verify
 
 ```bash
 which govc
@@ -175,7 +175,7 @@ They are complementary, not redundant.
 
 ---
 
-## 📦 6. Optional Tool: VMware OVF Tool (`ovftool`)
+##  6. Optional Tool: VMware OVF Tool (`ovftool`)
 
 VMware **OVF Tool** is an **optional**, proprietary utility used for:
 
@@ -253,7 +253,7 @@ Because compatibility libraries were installed first,
 
 ---
 
-## 💾 7. Data Plane: VMware VDDK (libvixDiskLib)
+##  7. Data Plane: VMware VDDK (libvixDiskLib)
 
 For **high-performance VMDK access** (snapshots, block-level reads),
 install **VMware VDDK**.
@@ -323,13 +323,13 @@ EOF
 
 ---
 
-## 🧠 9. Design Rationale
+##  9. Design Rationale
 
-* 🧊 **RPMs for Python** – ABI-safe, reproducible, SELinux-friendly
+*  **RPMs for Python** – ABI-safe, reproducible, SELinux-friendly
 * 🧭 **govc** – open-source, fast, default control plane
-* 📦 **ovftool** – optional, proprietary, isolated under `/opt`
-* 💾 **VDDK** – explicit data-plane dependency
-* 🧱 **compat libs first** – no runtime failures, no guesswork
+*  **ovftool** – optional, proprietary, isolated under `/opt`
+*  **VDDK** – explicit data-plane dependency
+*  **compat libs first** – no runtime failures, no guesswork
 
 This mirrors **real production VMware tooling layouts**.
 

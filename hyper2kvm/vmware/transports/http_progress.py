@@ -49,9 +49,7 @@ except Exception:
     RICH_AVAILABLE = False
 
 
-# --------------------------------------------------------------------------------------
 # Helper Functions
-# --------------------------------------------------------------------------------------
 def _rich_construct(cls: Any, *args: Any, **kwargs: Any) -> Any:
     """
     Construct a Rich column in a way that is compatible across Rich versions.
@@ -71,9 +69,7 @@ def _rich_construct(cls: Any, *args: Any, **kwargs: Any) -> Any:
         return cls(*args, **kwargs)
 
 
-# --------------------------------------------------------------------------------------
 # Progress Reporter Interface (Strategy Pattern)
-# --------------------------------------------------------------------------------------
 class ProgressReporter(ABC):
     """Abstract base class for progress reporters."""
 
@@ -235,9 +231,7 @@ class NoopProgressReporter(ProgressReporter):
         pass
 
 
-# --------------------------------------------------------------------------------------
 # Progress Reporter Factory
-# --------------------------------------------------------------------------------------
 def create_progress_reporter(
     options: Any,  # HTTPDownloadOptions from main module
     file_name: str,

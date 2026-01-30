@@ -92,9 +92,7 @@ class GovcExportError(VMwareError):
     pass
 
 
-# -----------------------------------------------------------------------------
 # UI helpers (Rich if possible, otherwise plain prints)
-# -----------------------------------------------------------------------------
 def _console(logger: Any) -> Optional[Any]:
     """Create Rich Console if available and running in TTY. Logger param kept for API compat."""
     if not (RICH_AVAILABLE and _is_tty()):
@@ -148,9 +146,7 @@ def _ok_line(logger: Any, msg: str) -> None:
     _info(logger, f"  ✓ {msg}")
 
 
-# -----------------------------------------------------------------------------
 # govc runners
-# -----------------------------------------------------------------------------
 def _run_govc_simple(
     cmd: List[str],
     env: Dict[str, str],
@@ -316,9 +312,7 @@ def _run_govc_export(
     _run_govc_simple(cmd, env, logger, capture_output=True)
 
 
-# -----------------------------------------------------------------------------
 # VM prep helpers
-# -----------------------------------------------------------------------------
 def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> List[str]:
     """Remove CD/DVD devices from VM before export. Returns removed device names."""
     removed: List[str] = []
@@ -460,9 +454,7 @@ def _prepare_vm_power_state(spec: GovcExportSpec, logger: Any) -> None:
             _warn(logger, f"Power off failed: {e}")
 
 
-# -----------------------------------------------------------------------------
 # Output helpers
-# -----------------------------------------------------------------------------
 def _clean_output_directory(outdir: Path, logger: Any) -> None:
     if outdir.exists():
         _info(logger, f"Cleaning output directory: {outdir}")
@@ -557,9 +549,7 @@ def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
     return minutes, seconds
 
 
-# -----------------------------------------------------------------------------
 # Public entrypoint
-# -----------------------------------------------------------------------------
 def export_vm_govc(logger: Any, spec: GovcExportSpec) -> None:
     """
     Main export workflow.

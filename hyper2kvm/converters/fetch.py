@@ -18,9 +18,7 @@ from ..ssh.ssh_client import SSHClient
 from ..vmware.utils.vmdk_parser import VMDK
 
 
-# -----------------------------
 # Path + naming helpers
-# -----------------------------
 
 # allow subdirs; sanitize other chars
 _REL_SAFE_RE = re.compile(r"[^A-Za-z0-9._/-]+")
@@ -98,9 +96,7 @@ def _safe_local_rel_from_remote(remote_abs_or_norm: str) -> str:
     return f"{base}__{h}"
 
 
-# -----------------------------
 # SSH subprocess helpers (no threads)
-# -----------------------------
 
 def _ssh_params_from_client(sshc: SSHClient) -> Tuple[str, str, int, Optional[Path], List[str]]:
     """
@@ -300,9 +296,7 @@ async def _ssh_stream_fetch_with_progress(
         raise
 
 
-# -----------------------------
 # Fetch logic
-# -----------------------------
 
 class Fetch:
     @staticmethod

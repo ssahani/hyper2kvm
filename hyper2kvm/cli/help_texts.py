@@ -20,9 +20,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # Phase 1: loads+merges YAML and applies defaults to argparse
 # Phase 2: parses full args (so required args can be satisfied by config)
 #
-# --------------------------------------------------------------------------------------
 # Common keys (apply to ALL modes)
-# --------------------------------------------------------------------------------------
 # output_dir: ./out
 # workdir: ./out/work
 # dry_run: false # preview changes, don't modify guest/outputs
@@ -54,7 +52,6 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # virtio_drivers_dir: /path/to/virtio-win
 #
 # Windows driver mapping + PNP IDs (YAML-driven; recommended)
-# ------------------------------------------------------------------
 # Motivation:
 #   - Different vendors may use different PNP IDs for VirtIO devices.
 #   - New Windows versions appear; mapping should be data, not code.
@@ -102,7 +99,6 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 #             - "PCI\\VEN_1AF4&DEV_0001&SUBSYS_12345678"
 #
 # Windows network configuration (YAML-driven; recommended)
-# ------------------------------------------------------------------
 # You already support:
 #   - win_net_override: path to JSON file on host
 #   - win_net_json: inline JSON string
@@ -136,9 +132,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # keep_domain: false
 # headless: true
 #
-# --------------------------------------------------------------------------------------
 # Libvirt: emit domain XML / deploy into libvirt (define/start)
-# --------------------------------------------------------------------------------------
 # This section is additive. If the orchestrator doesn't recognize these keys yet,
 # it will ignore them.
 #
@@ -200,9 +194,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # virsh_start: true
 # copy_to_libvirt_images: true
 #
-# --------------------------------------------------------------------------------------
 # 1) LOCAL (offline local VMDK conversion)
-# --------------------------------------------------------------------------------------
 # Basic local mode config: fix + flatten + convert to qcow2 (Linux guest)
 # command: local
 # vmdk: /path/to/vm.vmdk
@@ -284,9 +276,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # Run:
 # sudo ./hyper2kvm.py --config batch.yaml local
 #
-# --------------------------------------------------------------------------------------
 # 1b) VHD (Azure/Hyper-V style disks: plain .vhd OR .vhd.tar.gz)
-# --------------------------------------------------------------------------------------
 # command: vhd
 # vhd: ./fedora-azure-43.0.x86_64.vhd
 # output_dir: ./out
@@ -325,9 +315,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # headless: true
 # uefi: true
 #
-# --------------------------------------------------------------------------------------
 # 1c) AMI / Generic Cloud Image Tarball (tar/tar.gz/tgz/tar.xz)
-# --------------------------------------------------------------------------------------
 # command: ami
 # ami: ./some-linux-cloud-image.tar.gz
 # output_dir: ./out
@@ -351,9 +339,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # convert_payload_to_qcow2: true
 # verbose: 2
 #
-# --------------------------------------------------------------------------------------
 # 2) LIVE-FIX (apply fixes to a running VM via SSH)
-# --------------------------------------------------------------------------------------
 # command: live-fix
 # host: 192.168.1.100
 # user: root
@@ -380,9 +366,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # dry_run: true
 # log_file: live-fix.log
 #
-# --------------------------------------------------------------------------------------
 # 3) FETCH-AND-FIX (fetch from ESXi over SSH/SCP and fix offline)
-# --------------------------------------------------------------------------------------
 # command: fetch-and-fix
 # host: esxi.example.com
 # user: root
@@ -410,9 +394,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # timeout: 90
 # report: esxi-report.md
 #
-# --------------------------------------------------------------------------------------
 # 4) OVA / OVF (offline extract/parse)
-# --------------------------------------------------------------------------------------
 # command: ova
 # ova: /path/to/appliance.ova
 # flatten: true
@@ -423,17 +405,13 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # flatten: true
 # to_output: appliance.qcow2
 #
-# --------------------------------------------------------------------------------------
 # 5) DAEMON (watch directory)
-# --------------------------------------------------------------------------------------
 # command: daemon
 # daemon: true
 # watch_dir: /incoming
 # output_dir: /out
 #
-# --------------------------------------------------------------------------------------
 # 6) vSphere/vCenter – discovery, downloads, export
-# --------------------------------------------------------------------------------------
 # vSphere has multiple pathways:
 #
 #   (A) pyvmomi control-plane + /folder HTTP downloads
@@ -447,9 +425,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 #
 #   (D) virt-v2v vSphere hook (experimental)
 #
-# --------------------------------------------------------------------------------------
 # 6a) pyvmomi mode (list/download/CBT)
-# --------------------------------------------------------------------------------------
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
@@ -494,9 +470,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # exclude_glob: ["*.lck", "*.log", "*.vswp", "*.vmem", "*.vmsn"]
 # concurrency: 4
 #
-# --------------------------------------------------------------------------------------
 # 6b) govc export (recommended “just export it” path)
-# --------------------------------------------------------------------------------------
 # govc is open source (govmomi). It manages HttpNfcLease + keepalive internally,
 # and produces OVF or OVA packages.
 #
@@ -557,9 +531,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # compress: true
 # verbose: 1
 #
-# --------------------------------------------------------------------------------------
 # 6c) OVF Tool (ovftool) export/deploy (optional)
-# --------------------------------------------------------------------------------------
 # ovftool is proprietary VMware/Broadcom tooling.
 # Install:
 #   https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest
@@ -619,9 +591,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # ovftool_vm_name: "appliance-restored"
 # ovftool_datastore: "datastore1"
 #
-# --------------------------------------------------------------------------------------
 # 6d) virt-v2v vSphere hook (EXPERIMENTAL scaffold)
-# --------------------------------------------------------------------------------------
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
@@ -637,9 +607,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # vs_download_only: true
 # vs_v2v_concurrency: 1
 #
-# --------------------------------------------------------------------------------------
 # 7) CLI examples (copy/paste)
-# --------------------------------------------------------------------------------------
 #
 # Local conversion (offline):
 # sudo ./hyper2kvm.py --output-dir ./out local --vmdk /path/to/vm.vmdk --flatten --to-output vm.qcow2 --compress --regen-initramfs --print-fstab --fstab-mode stabilize-all --libvirt-test
@@ -656,7 +624,6 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # ovftool export:
 # sudo ./hyper2kvm.py --cmd vsphere --vs-action ovftool_export --vm_name myVM --ovftool-path /usr/bin/ovftool --vc-password-env VC_PASSWORD --vc-insecure
 #
-# --------------------------------------------------------------------------------------
 """
 
 FEATURE_SUMMARY = """ • Inputs: local VMDK/VHD, remote ESXi fetch, OVA/OVF extract, AMI/cloud tarball extract, live SSH fix, vSphere\n

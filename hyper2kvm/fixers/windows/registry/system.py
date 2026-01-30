@@ -62,9 +62,7 @@ def _safe_logger(self) -> logging.Logger:
     return _safe_logger_base(self, "hyper2kvm.registry_system")
 
 
-# ---------------------------------------------------------------------------
 # Public: SYSTEM hive edit (Services + CDD + StartOverride)
-# ---------------------------------------------------------------------------
 
 
 def _hive_backup_best_effort(
@@ -444,9 +442,7 @@ def edit_system_hive(
             _close_best_effort(h)
 
 
-# ---------------------------------------------------------------------------
 # Public: SYSTEM hive generic DWORD setter (for CrashControl etc.)
-# ---------------------------------------------------------------------------
 
 
 def _resolve_controlset_for_path(h: hivex.Hivex, root: int) -> Dict[str, Any]:

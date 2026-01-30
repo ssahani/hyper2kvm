@@ -17,9 +17,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 
-# ---------------------------
 # Enums / dataclasses
-# ---------------------------
 
 
 class NetworkConfigType(Enum):
@@ -73,9 +71,7 @@ class FixResult:
     warnings: List[str] = field(default_factory=list)
 
 
-# ---------------------------
 # Topology model (best-effort)
-# ---------------------------
 
 
 class DeviceKind(Enum):
@@ -226,9 +222,7 @@ class TopologyGraph:
         return {"devices": by_kind, "edges": edges, "warnings": self.warnings}
 
 
-# ---------------------------
 # ifcfg parser (key=value preserving unknown lines/comments)
-# ---------------------------
 
 
 @dataclass

@@ -1,14 +1,121 @@
-# hyper2kvm 🚀🔥
+# hyper2kvm
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![GitHub stars](https://img.shields.io/github/stars/hyper2kvm/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/hyper2kvm/hyper2kvm/stargazers/)
+[![CI](https://github.com/hyper2kvm/hyper2kvm/workflows/tests/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions)
+[![Security](https://github.com/hyper2kvm/hyper2kvm/workflows/security/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions)
 
-**Hypervisor → KVM/QEMU Conversion, Repair, and Automation Toolkit**
+**Production-Grade Hypervisor to KVM/QEMU Migration Toolkit**
 
-`hyper2kvm` is a production-oriented toolkit for migrating virtual machines  
-from **multiple hypervisors and disk ecosystems**  
-(VMware, Hyper-V, cloud images, raw artifacts, physical exports)  
-into **KVM/QEMU-bootable systems** — **without relying on boot-time luck**.
+`hyper2kvm` is a comprehensive toolkit for migrating virtual machines from multiple hypervisors and disk ecosystems (VMware, Hyper-V, cloud images, raw artifacts, physical exports) into reliable, bootable KVM/QEMU systems.
+
+**Key Differentiator:** Unlike traditional migration tools that rely on "boot and hope," hyper2kvm applies deterministic offline fixes to ensure first-boot success through deep inspection, bootloader repair, driver injection, and network stabilization.
+
+---
+
+## Quick Start
+
+### Installation
+
+```bash
+# Install system dependencies (Ubuntu/Debian)
+sudo apt-get install -y python3-guestfs libguestfs-tools qemu-utils qemu-system-x86
+
+# Install hyper2kvm
+git clone https://github.com/hyper2kvm/hyper2kvm.git
+cd hyper2kvm
+pip install -r requirements.txt
+pip install -e .
+```
+
+See [docs/INSTALL.md](docs/INSTALL.md) for other Linux distributions, macOS, and Windows (WSL).
+
+### Basic Usage
+
+```bash
+# Convert local VMDK to qcow2 with automatic fixes
+sudo python -m hyper2kvm local \
+  --vmdk /path/to/disk.vmdk \
+  --to-output /output/disk.qcow2 \
+  --flatten --compress
+
+# Migrate from vSphere with full inspection and fixes
+sudo python -m hyper2kvm vsphere \
+  --vcenter vcenter.example.com \
+  --username admin@vsphere.local \
+  --vm-name "Production-VM" \
+  --vs-action export \
+  --to-output /output/
+
+# Live fix a running Linux VM via SSH
+sudo python -m hyper2kvm live-fix \
+  --host 192.168.1.100 \
+  --user root \
+  --fix-fstab --fix-grub --fix-network
+```
+
+For more examples, see [docs/QUICKSTART.md](docs/QUICKSTART.md) and [examples/README.md](examples/README.md).
+
+---
+
+## Features
+
+### Core Capabilities
+
+- **Multi-Hypervisor Support:** VMware (vSphere, ESXi, Workstation), Hyper-V, AWS AMI, cloud images, raw disks
+- **Offline Fixing:** Deterministic repairs using libguestfs without booting the VM
+- **Windows VirtIO Injection:** Automated driver injection with two-phase boot strategy
+- **Linux Bootloader Repair:** GRUB/GRUB2 regeneration for BIOS and UEFI systems
+- **Network Stabilization:** Remove MAC pinning, clean VMware artifacts, support multiple network managers
+- **Snapshot Handling:** Intelligent flattening of VMware snapshot chains
+- **Format Conversion:** VMDK, VHD/VHDX, QCOW2, RAW, VDI with compression support
+- **Validation:** Boot smoke tests via libvirt or direct QEMU
+
+### Production-Ready Features
+
+- **YAML Configuration:** Version-controlled, mergeable configuration files
+- **Batch Processing:** Parallel multi-VM migrations
+- **Resume Support:** Crash recovery with checkpointing
+- **Dry-Run Mode:** Preview changes without applying them
+- **Detailed Reporting:** Comprehensive migration reports and logs
+- **vSphere Integration:** Native API support via govc and pyvmomi
+
+### Safety Mechanisms
+
+- Automatic backups (unless explicitly disabled)
+- Atomic file operations
+- Validation at every pipeline stage
+- Rollback capability for critical operations
+- Security scanning (Bandit, pip-audit) via GitHub Actions
+
+---
+
+## Documentation
+
+### Getting Started
+
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get migrating in 5 minutes
+- **[Installation Guide](docs/INSTALL.md)** - Comprehensive installation for all platforms
+- **[CLI Reference](docs/CLI_REFERENCE.md)** - Complete command-line documentation
+- **[YAML Examples](docs/YAML-EXAMPLES.md)** - Configuration file templates
+
+### Deep Dive
+
+- **[Architecture](docs/ARCHITECTURE.md)** - System design and internal structure
+- **[Cookbook](docs/cookbook.md)** - Common migration scenarios and solutions
+- **[Failure Modes](docs/FAILURE_MODES.md)** - Troubleshooting guide
+
+### Platform-Specific
+
+- **[Windows Migrations](docs/WINDOWS.md)** - Windows-specific guide and VirtIO driver injection
+- **[vSphere Integration](docs/VSPEHERE-V2V-EXPORT.md)** - vSphere export strategies
+- **[PhotonOS](docs/PHOTONOS.md)** - VMware PhotonOS specific notes
+- **[RHEL 10](docs/RHEL10.md)** - RHEL 10 migration guide
+
+### Examples
+
+- **[Example Configurations](examples/README.md)** - 30+ working examples
 
 ---
 
@@ -676,7 +783,123 @@ YAML is treated as **code**:
 
 ## 21. Documentation Index and References
 
-All detailed documentation lives here:
+Complete documentation is available in the [`docs/`](docs/) directory:
 
-👉 `docs/`
-Direct link: [https://github.com/hyper2kvm/hyper2kvm/tree/main/docs](https://github.com/hyper2kvm/hyper2kvm/tree/main/docs)
+- **Getting Started:** [QUICKSTART.md](docs/QUICKSTART.md), [INSTALL.md](docs/INSTALL.md)
+- **Reference:** [CLI_REFERENCE.md](docs/CLI_REFERENCE.md), [YAML-EXAMPLES.md](docs/YAML-EXAMPLES.md)
+- **Architecture:** [ARCHITECTURE.md](docs/ARCHITECTURE.md), [orchestrator/README.md](hyper2kvm/orchestrator/README.md)
+- **Platform Guides:** [WINDOWS.md](docs/WINDOWS.md), [PHOTONOS.md](docs/PHOTONOS.md), [RHEL10.md](docs/RHEL10.md)
+- **Troubleshooting:** [FAILURE_MODES.md](docs/FAILURE_MODES.md), [cookbook.md](docs/cookbook.md)
+
+---
+
+## Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/hyper2kvm/hyper2kvm.git
+cd hyper2kvm
+
+# Install development dependencies
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pip install -e .
+
+# Run tests
+pytest tests/unit/ -v
+
+# Run linting and security checks
+ruff check hyper2kvm/
+mypy hyper2kvm/ --ignore-missing-imports
+bandit -r hyper2kvm/
+```
+
+### Contribution Guidelines
+
+1. **Fork and Branch:** Create a feature branch from `main`
+2. **Code Standards:**
+   - Follow PEP 8 style guidelines
+   - Add type annotations for all new code
+   - Write comprehensive docstrings
+   - Keep modules under 1,000 lines when possible
+3. **Testing:**
+   - Add unit tests for new features
+   - Ensure all tests pass (`pytest tests/`)
+   - Run security scans (`bandit -r hyper2kvm/`)
+4. **Documentation:**
+   - Update relevant documentation in `docs/`
+   - Add examples to `examples/README.md` if applicable
+   - Update `ARCHITECTURE.md` for structural changes
+5. **Pull Requests:**
+   - Write clear commit messages
+   - Reference related issues
+   - Ensure CI passes (tests, linting, security)
+
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture guidelines.
+
+### Reporting Issues
+
+- **Bugs:** Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
+- **Features:** Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
+- **Security:** Email security issues privately (see [SECURITY.md](SECURITY.md) if available)
+
+---
+
+## License
+
+This project is licensed under the **GNU Lesser General Public License v3.0 (LGPL-3.0)**.
+
+See [LICENSE](LICENSE) for full license text.
+
+**Key Points:**
+- You can use hyper2kvm in proprietary software without making your code open source
+- Modifications to hyper2kvm itself must be released under LGPL-3.0
+- No warranty provided (see license for details)
+
+---
+
+## Support
+
+### Community Support
+
+- **GitHub Discussions:** Ask questions and share experiences
+- **Issue Tracker:** Report bugs and request features
+- **Documentation:** Comprehensive guides in [`docs/`](docs/)
+
+### Professional Support
+
+For enterprise support, consulting, or custom development:
+- Open a [support request issue](https://github.com/hyper2kvm/hyper2kvm/issues/new?template=support.md)
+- Contact the maintainers directly
+
+---
+
+## Acknowledgments
+
+hyper2kvm builds on excellent open-source projects:
+
+- **[libguestfs](https://libguestfs.org/)** - Offline disk inspection and modification
+- **[QEMU](https://www.qemu.org/)** - Disk format conversion and virtualization
+- **[govc](https://github.com/vmware/govmomi/tree/master/govc)** - vSphere CLI
+- **[pyvmomi](https://github.com/vmware/pyvmomi)** - VMware vSphere API Python SDK
+- **[libvirt](https://libvirt.org/)** - Virtualization management
+
+Special thanks to all [contributors](https://github.com/hyper2kvm/hyper2kvm/graphs/contributors).
+
+---
+
+## Project Status
+
+**Current Status:** Active development
+
+- **Latest Release:** Check [releases](https://github.com/hyper2kvm/hyper2kvm/releases)
+- **Build Status:** [![CI](https://github.com/hyper2kvm/hyper2kvm/workflows/tests/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions)
+- **Security:** [![Security](https://github.com/hyper2kvm/hyper2kvm/workflows/security/badge.svg)](https://github.com/hyper2kvm/hyper2kvm/actions)
+
+---
+
+**Made with ❤️ for reliable VM migrations**

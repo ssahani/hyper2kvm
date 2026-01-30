@@ -32,9 +32,7 @@ from ..core.utils import U
 from ..vmware.utils.vmdk_parser import VMDK
 
 
-# -----------------------------
 # Helpers
-# -----------------------------
 
 
 @dataclass(frozen=True)
@@ -145,9 +143,7 @@ def _quote_remote(path: str) -> str:
     return shlex.quote(path)
 
 
-# -----------------------------
 # Flatten
-# -----------------------------
 
 
 class Flatten:
@@ -730,9 +726,7 @@ class Flatten:
                     progress.update(task, advance=len(b))
 
 
-# -----------------------------
 # Fetch (remote ESXi fetch helper)
-# -----------------------------
 
 
 class Fetch:

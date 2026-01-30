@@ -20,9 +20,7 @@ try:
 except Exception:  # pragma: no cover
     _colored = None
 
-# ---------------------------------------------------------------------------
 # TRACE level (additive)
-# ---------------------------------------------------------------------------
 
 TRACE = 5
 if not hasattr(logging, "TRACE"):
@@ -89,9 +87,7 @@ def c(
         return text
 
 
-# ---------------------------------------------------------------------------
 # Context helpers
-# ---------------------------------------------------------------------------
 
 Ctx = Mapping[str, Any]
 
@@ -157,9 +153,7 @@ class ContextLoggerAdapter(logging.LoggerAdapter):
         return ContextLoggerAdapter(self.logger, merged)
 
 
-# ---------------------------------------------------------------------------
 # Style (process-first; no thread support)
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class LogStyle:
@@ -339,9 +333,7 @@ class JsonFormatter(logging.Formatter):
             return json.dumps(safe_obj, ensure_ascii=False, sort_keys=False)
 
 
-# ---------------------------------------------------------------------------
 # Once / rate-limited warnings (per-process, by design)
-# ---------------------------------------------------------------------------
 
 _warn_once_keys: set[str] = set()
 _warn_last: Dict[str, float] = {}
@@ -356,9 +348,7 @@ def _warn_key(key: Union[str, Tuple[Any, ...]]) -> str:
         return _safe_str(key, max_len=240)
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 class Log:
     @staticmethod

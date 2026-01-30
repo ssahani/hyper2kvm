@@ -28,9 +28,7 @@ from .libvirt_utils import sanitize_name as _sanitize_name
 WinStage = Literal["bootstrap", "final"]
 
 
-# -----------------------------------------------------------------------------
 # Models
-# -----------------------------------------------------------------------------
 
 @dataclass(frozen=True, slots=True)
 class WinDomainSpec:
@@ -85,9 +83,7 @@ class WinDomainPaths:
     disk_path: Optional[Path] = None
 
 
-# -----------------------------------------------------------------------------
 # Small utilities
-# -----------------------------------------------------------------------------
 
 def _default_libvirt_images_dir() -> Path:
     return Path("/var/lib/libvirt/images")
@@ -118,9 +114,7 @@ def _require_file(path: str | Path, *, label: str) -> Path:
     return p
 
 
-# -----------------------------------------------------------------------------
 # XML rendering
-# -----------------------------------------------------------------------------
 
 def render_windows_domain_xml(spec: WinDomainSpec, *, stage: WinStage) -> str:
     """
@@ -237,9 +231,7 @@ def render_windows_domain_xml(spec: WinDomainSpec, *, stage: WinStage) -> str:
 """
 
 
-# -----------------------------------------------------------------------------
 # Storage helpers
-# -----------------------------------------------------------------------------
 
 def copy_disk_for_libvirt(
     *,
@@ -278,9 +270,7 @@ def copy_disk_for_libvirt(
     return dst
 
 
-# -----------------------------------------------------------------------------
 # Output helpers
-# -----------------------------------------------------------------------------
 
 def write_windows_domain_xml(
     *,

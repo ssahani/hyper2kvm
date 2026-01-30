@@ -156,7 +156,7 @@ A successful boot typically shows:
 3. Photon kernel + initramfs
 4. Login prompt (console or GUI, depending on image)
 
-⚠️ **Important:**  
+ **Important:**  
 Photon OS is commonly **console-only**.  
 A **login prompt is a successful boot**.
 
@@ -213,6 +213,6 @@ If it reports `multi-user.target`, this is **expected behavior**.
 
 ---
 
-**Status:** ✅ Verified boot for Photon OS (BIOS, KVM/libvirt)
+**Status:**  Verified boot for Photon OS (BIOS, KVM/libvirt)
 
 

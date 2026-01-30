@@ -12,9 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, Tuple
 
 
-# ---------------------------
 # Types
-# ---------------------------
 
 CheckFunc = Callable[[Dict[str, Any]], Any]
 SkipIfFunc = Callable[[Dict[str, Any]], bool]
@@ -26,9 +24,7 @@ class SupportsRichConsole(Protocol):
     def print(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
-# ---------------------------
 # Exit codes (CLI-friendly)
-# ---------------------------
 
 class ExitCodes:
     """
@@ -61,9 +57,7 @@ class ExitCodes:
         return ExitCodes.OK if ok else ExitCodes.FAIL
 
 
-# ---------------------------
 # Spec + result
-# ---------------------------
 
 @dataclass
 class CheckSpec:
@@ -154,9 +148,7 @@ class CheckResult:
     result_truncated: bool = False
 
 
-# ---------------------------
 # Small helpers: redaction + structured shrinking + caps
-# ---------------------------
 
 def _is_mapping(x: Any) -> bool:
     return isinstance(x, dict)
@@ -297,9 +289,7 @@ def _sleep_with_backoff(base_delay: float, backoff: float, attempt_idx: int) -> 
     time.sleep(base_delay * mult)
 
 
-# ---------------------------
 # Multiprocessing child plumbing (top-level for spawn)
-# ---------------------------
 
 def _child_run_check(func: CheckFunc, context: Dict[str, Any], conn: Any) -> None:
     """
@@ -335,9 +325,7 @@ def _can_pickle(obj: Any) -> Tuple[bool, Optional[str]]:
         return False, str(e)
 
 
-# ---------------------------
 # Main suite
-# ---------------------------
 
 class ValidationSuite:
     """

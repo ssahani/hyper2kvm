@@ -49,9 +49,7 @@ from .utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
 
 
-# ---------------------------
 # Datacenters / Hosts
-# ---------------------------
 
 
 def _refresh_datacenter_cache(client: Any) -> None:
@@ -116,9 +114,7 @@ def list_host_names(client: Any, *, refresh: bool = False) -> List[str]:
     return list(client._host_name_cache or [])
 
 
-# ---------------------------
 # VM lookup
-# ---------------------------
 
 
 def get_vm_by_name(client: Any, name: str) -> Any:
@@ -246,9 +242,7 @@ def resolve_compute_for_vm(client: Any, vm_name: str, preferred: Optional[str]) 
     return p
 
 
-# ---------------------------
 # Datastore parsing + HTTPS /folder download
-# ---------------------------
 
 
 def parse_backing_filename(file_name: str) -> Tuple[str, str]:
@@ -335,9 +329,7 @@ def download_datastore_file(
     )
 
 
-# ---------------------------
 # Download-only (list via DatastoreBrowser, download via govc/https)
-# ---------------------------
 
 
 def wait_for_task(client: Any, task: Any) -> None:
@@ -573,9 +565,7 @@ def _download_only_vm_force_https(client: Any, opt: Any) -> Path:
     return out_dir
 
 
-# ---------------------------
 # Helper functions (client dependencies)
-# ---------------------------
 
 
 def _require_pyvmomi(client: Any) -> None:

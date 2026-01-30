@@ -123,9 +123,7 @@ class GovcExportSpec:
     preflight_vm_info: bool = True  # if True, verify VM is resolvable before export
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _env_apply(session: GovcSessionSpec, base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     env = dict(base or os.environ)
@@ -215,9 +213,7 @@ def _should_append_ova_ext(name: str) -> bool:
     return not (n.endswith(".ova") or n.endswith(".ovf"))
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 class GovcNfcExporter:
     """
