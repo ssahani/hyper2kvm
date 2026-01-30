@@ -127,3 +127,165 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
+
+# Hatch configuration
+[tool.hatch.envs.default]
+dependencies = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.3.0",
+    "pytest-mock>=3.11.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "bandit>=1.7.5",
+    "safety>=2.3.0",
+]
+
+[tool.hatch.envs.default.scripts]
+# Testing
+test = "pytest tests/unit/ -v --tb=short"
+test-unit = "pytest tests/unit/ -v"
+test-integration = "pytest tests/integration/ -v --tb=short"
+test-all = "pytest tests/ -v"
+test-cov = "pytest tests/unit/ --cov=hyper2kvm --cov-report=html --cov-report=term-missing"
+test-cov-all = "pytest tests/ --cov=hyper2kvm --cov-report=html --cov-report=term-missing"
+
+# Code quality
+lint = [
+    "ruff check hyper2kvm/",
+    "mypy hyper2kvm/ --ignore-missing-imports",
+]
+fmt = [
+    "ruff format hyper2kvm/",
+    "ruff check --fix hyper2kvm/",
+]
+fmt-check = "ruff format --check hyper2kvm/"
+
+# Security
+security = [
+    "bandit -r hyper2kvm/ -ll",
+    "safety check --json",
+]
+security-audit = "bandit -r hyper2kvm/ -ll -f json -o security-report.json"
+
+# All checks (CI pipeline)
+check = [
+    "test",
+    "lint",
+    "security",
+]
+ci = [
+    "test-cov",
+    "lint",
+    "security",
+]
+
+# Development environment with all optional dependencies
+[tool.hatch.envs.dev]
+template = "default"
+dependencies = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.3.0",
+    "pytest-mock>=3.11.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "bandit>=1.7.5",
+    "safety>=2.3.0",
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+    "myst-parser>=2.0.0",
+]
+
+[tool.hatch.envs.dev.scripts]
+docs-build = "cd man && make html"
+docs-serve = "python -m http.server -d man/build/html 8000"
+
+# Matrix testing across Python versions
+[tool.hatch.envs.test]
+template = "default"
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11", "3.12"]
+
+[tool.hatch.envs.test.scripts]
+run = "pytest tests/unit/ -v --tb=short"
+cov = "pytest tests/unit/ --cov=hyper2kvm --cov-report=term-missing"
+
+# Ruff configuration
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# Semantic Release configuration
+[tool.semantic_release]
+version_variables = [
+    "hyper2kvm/__init__.py:__version__",
+    "pyproject.toml:version",
+]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+upload_to_repository = true
+upload_to_release = true
+build_command = "pip install hatch && hatch build"
+commit_message = "chore(release): {version}\n\n[skip ci]"
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = [
+    "build",
+    "chore",
+    "ci",
+    "docs",
+    "feat",
+    "fix",
+    "perf",
+    "style",
+    "refactor",
+    "test",
+]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+
+[tool.semantic_release.changelog]
+template_dir = "templates"
+changelog_file = "CHANGELOG.md"
+exclude_commit_patterns = []
+
+[tool.semantic_release.changelog.environment]
+block_start_string = "{%"
+block_end_string = "%}"
+variable_start_string = "{{"
+variable_end_string = "}}"
+comment_start_string = "{#"
+comment_end_string = "#}"
+trim_blocks = false
+lstrip_blocks = false
+newline_sequence = "\n"
+keep_trailing_newline = false
+extensions = []
+autoescape = true
+
+[tool.semantic_release.branches.main]
+match = "(main|master)"
+prerelease_token = "rc"
+prerelease = false

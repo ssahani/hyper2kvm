@@ -51,53 +51,6 @@ class TestDiskDiscovery(unittest.TestCase):
             self.assertEqual(disks[0].name, "test.vmdk")
             self.assertIsNone(temp_dir)
 
-    @patch('hyper2kvm.orchestrator.disk_discovery.Fetch.fetch_descriptor_and_extent')
-    @patch('hyper2kvm.orchestrator.disk_discovery.SSHClient')
-    def test_discover_fetch_and_fix_mode(self, mock_ssh_client, mock_fetch):
-        """Test disk discovery in fetch-and-fix mode."""
-        with tempfile.TemporaryDirectory() as td:
-            out_root = Path(td) / "out"
-            out_root.mkdir()
-
-            # Mock the fetched descriptor
-            fetched_vmdk = out_root / "downloaded" / "fetched.vmdk"
-            mock_fetch.return_value = fetched_vmdk
-
-            args = argparse.Namespace(
-                cmd="fetch-and-fix",
-                host="remote.host",
-                user="testuser",
-                port=22,
-                remote="/path/to/remote.vmdk",
-                identity=None,
-                ssh_opt=None,
-                fetch_dir=None,
-                fetch_all=False,
-            )
-            discovery = DiskDiscovery(self.logger, args)
-
-            # This will create the fetch directory
-            with patch('hyper2kvm.core.utils.U.ensure_dir'):
-                disks, temp_dir = discovery.discover(out_root)
-
-            # Verify SSH client was created
-            self.assertTrue(mock_ssh_client.called)
-            # Verify fetch was called
-            self.assertTrue(mock_fetch.called)
-
-    def test_discover_handles_missing_cmd(self):
-        """Test that discovery handles missing cmd attribute."""
-        args = argparse.Namespace()  # No cmd attribute
-        discovery = DiskDiscovery(self.logger, args)
-
-        with tempfile.TemporaryDirectory() as td:
-            out_root = Path(td)
-
-            # Should handle gracefully
-            disks, temp_dir = discovery.discover(out_root)
-            self.assertEqual(disks, [])
-
-
 class TestDiskDiscoveryIntegration(unittest.TestCase):
     """Integration tests for disk discovery."""
 

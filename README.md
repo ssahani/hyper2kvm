@@ -7,6 +7,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/ssahani/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/ssahani/hyper2kvm/stargazers/)
 [![CI](https://github.com/ssahani/hyper2kvm/workflows/tests/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
 [![Security](https://github.com/ssahani/hyper2kvm/workflows/security/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
+[![codecov](https://codecov.io/gh/ssahani/hyper2kvm/branch/main/graph/badge.svg)](https://codecov.io/gh/ssahani/hyper2kvm)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
 **Production-Grade Hypervisor to KVM/QEMU Migration Toolkit** ⚡
 
@@ -902,6 +905,7 @@ Complete documentation is available in the [`docs/`](docs/) directory:
 - **Architecture:** [ARCHITECTURE.md](docs/01-Architecture.md), [orchestrator/README.md](hyper2kvm/orchestrator/README.md)
 - **Platform Guides:** [WINDOWS.md](docs/10-Windows-Guide.md), [PHOTONOS.md](docs/21-Photon-OS.md), [RHEL10.md](docs/20-RHEL-10.md)
 - **Troubleshooting:** [FAILURE_MODES.md](docs/90-Failure-Modes.md), [cookbook.md](docs/06-Cookbook.md)
+- **Development:** [BUILDING.md](BUILDING.md) - Build, test, and development guide
 
 ---
 
@@ -916,19 +920,24 @@ We welcome contributions! Here's how to get started:
 git clone https://github.com/ssahani/hyper2kvm.git
 cd hyper2kvm
 
-# Install development dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-pip install -e .
+# Quick start (recommended)
+make quickstart
+
+# Or manually
+pip install hatch
+pip install -e .[dev,full]
 
 # Run tests
-pytest tests/unit/ -v
+make test          # Using Make
+hatch run test     # Using Hatch
 
 # Run linting and security checks
-ruff check hyper2kvm/
-mypy hyper2kvm/ --ignore-missing-imports
-bandit -r hyper2kvm/
+make lint          # Using Make
+make security      # Security scans
+hatch run ci       # Full CI pipeline using Hatch
 ```
+
+See [BUILDING.md](BUILDING.md) for complete build and testing documentation.
 
 ### Contribution Guidelines
 

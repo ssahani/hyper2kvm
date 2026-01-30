@@ -80,7 +80,7 @@ class DiskDiscovery:
                     user=self.args.user,
                     port=self.args.port,
                     identity=getattr(self.args, "identity", None),
-                    ssh_opt=self._normalize_ssh_opts(getattr(self.args, "ssh_opt", None)),
+                    ssh_opts=self._normalize_ssh_opts(getattr(self.args, "ssh_opt", None)),
                     sudo=False,
                 ),
             )
@@ -218,7 +218,7 @@ class DiskDiscovery:
                     user=self.args.user,
                     port=self.args.port,
                     identity=getattr(self.args, "identity", None),
-                    ssh_opt=self._normalize_ssh_opts(getattr(self.args, "ssh_opt", None)),
+                    ssh_opts=self._normalize_ssh_opts(getattr(self.args, "ssh_opt", None)),
                     sudo=getattr(self.args, "sudo", False),
                 ),
             )

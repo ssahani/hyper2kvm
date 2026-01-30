@@ -31,12 +31,12 @@ jobs:
     - name: Install security tools
       run: |
         python -m pip install --upgrade pip
-        pip install bandit safety pip-audit
+        pip install hatch pip-audit
 
-    - name: Run Bandit security scan
+    - name: Run security scans
       run: |
-        bandit -r hyper2kvm/ -f json -o bandit-report.json || true
-        bandit -r hyper2kvm/ -f screen
+        hatch run security-audit || true
+        hatch run security || true
       continue-on-error: true
 
     - name: Check for known vulnerabilities in dependencies
@@ -44,12 +44,12 @@ jobs:
         pip-audit --desc || true
       continue-on-error: true
 
-    - name: Upload Bandit results
+    - name: Upload security results
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: bandit-results
-        path: bandit-report.json
+        name: security-results
+        path: security-report.json
         retention-days: 30
 
   dependency-review:

@@ -10,3 +10,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 os.environ.setdefault("PYTHONPATH", str(_REPO_ROOT))
+
+# Import fixtures from the fixtures directory
+pytest_plugins = ["tests.fixtures.test_images"]

@@ -42,25 +42,18 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install hatch
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
 
     - name: Run unit tests
       run: |
-        python -m pytest tests/unit/ \
-          -v \
-          --tb=short \
-          --continue-on-collection-errors || true
+        hatch run test || true
 
     - name: Run unit tests with coverage
       if: matrix.python-version == '3.12'
       run: |
-        python -m pytest tests/unit/ \
-          --cov=hyper2kvm \
-          --cov-report=xml \
-          --cov-report=term-missing \
-          --tb=short \
-          --continue-on-collection-errors || true
+        hatch run test-cov || true
 
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.12'
@@ -88,15 +81,11 @@ jobs:
     - name: Install linting tools
       run: |
         python -m pip install --upgrade pip
-        pip install ruff mypy
+        pip install hatch
 
-    - name: Run ruff
+    - name: Run lint
       run: |
-        ruff check hyper2kvm/ --output-format=github || true
-
-    - name: Run mypy
-      run: |
-        mypy hyper2kvm/ --ignore-missing-imports || true
+        hatch run lint || true
       continue-on-error: true
 
   integration:
@@ -123,11 +112,11 @@ jobs:
           libvirt-daemon-system \
           libvirt-clients
         python -m pip install --upgrade pip
+        pip install hatch
         pip install -r requirements.txt
-        pip install pytest
 
     - name: Run integration tests
       if: hashFiles('tests/integration/**/*.py') != ''
       run: |
-        python -m pytest tests/integration/ -v --tb=short || true
+        hatch run test-integration || true
       continue-on-error: true

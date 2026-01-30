@@ -1,0 +1,84 @@
+# Docker Compose configuration for hyper2kvm development and testing
+version: '3.8'
+
+services:
+  # Development environment
+  dev:
+    build:
+      context: .
+      target: development
+      args:
+        - PYTHON_VERSION=3.12
+    image: hyper2kvm:dev
+    container_name: hyper2kvm-dev
+    volumes:
+      # Mount source code for live editing
+      - .:/app
+      # Persist Python packages
+      - pip-cache:/root/.cache/pip
+      # Persist pre-commit hooks
+      - pre-commit-cache:/root/.cache/pre-commit
+    working_dir: /app
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    environment:
+      - PYTHONPATH=/app
+      - TERM=xterm-256color
+    networks:
+      - hyper2kvm-net
+
+  # Testing environment
+  test:
+    build:
+      context: .
+      target: testing
+    image: hyper2kvm:test
+    container_name: hyper2kvm-test
+    volumes:
+      - .:/app
+      - pip-cache:/root/.cache/pip
+    working_dir: /app
+    command: hatch run ci
+    networks:
+      - hyper2kvm-net
+
+  # Production environment for testing
+  prod:
+    build:
+      context: .
+      target: production
+    image: hyper2kvm:prod
+    container_name: hyper2kvm-prod
+    volumes:
+      # Mount directories for VM disk operations
+      - ./test-data:/data:ro
+      - ./output:/output
+    working_dir: /data
+    user: hyper2kvm
+    networks:
+      - hyper2kvm-net
+
+  # Documentation server
+  docs:
+    build:
+      context: .
+      target: development
+    image: hyper2kvm:docs
+    container_name: hyper2kvm-docs
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: hatch run docs-serve
+    ports:
+      - "8000:8000"
+    networks:
+      - hyper2kvm-net
+
+networks:
+  hyper2kvm-net:
+    driver: bridge
+
+volumes:
+  pip-cache:
+  pre-commit-cache:

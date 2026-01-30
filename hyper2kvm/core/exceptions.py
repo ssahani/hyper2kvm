@@ -14,15 +14,13 @@ def _safe_int(x: Any, default: int = 1) -> int:
 
 
 def _clamp_exit_code(code: int) -> int:
-    # Exit codes are typically 0..255; keep it safe and predictable.
+    # Exit codes must be 0..255
     try:
-        if code < 0:
-            return 1
-        if code > 255:
-            return 255
+        if code < 0 or code > 255:
+            raise ValueError(f"Exit code must be in range 0-255, got {code}")
         return code
-    except Exception:
-        return 1
+    except TypeError:
+        raise ValueError(f"Exit code must be an integer, got {type(code).__name__}")
 
 
 def _one_line(s: str, limit: int = 600) -> str:
@@ -65,6 +63,22 @@ def _format_context_compact(ctx: Dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
+def _redact_secrets(obj: Any) -> Any:
+    """
+    Recursively redact secrets in dictionaries.
+    Returns a new object with secrets replaced by '***REDACTED***'.
+    """
+    if isinstance(obj, dict):
+        return {
+            k: "***REDACTED***" if _is_secret_key(str(k)) else _redact_secrets(v)
+            for k, v in obj.items()
+        }
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(_redact_secrets(item) for item in obj)
+    else:
+        return obj
+
+
 @dataclass(eq=False)
 class Hyper2KvmError(Exception):
     """
@@ -81,6 +95,8 @@ class Hyper2KvmError(Exception):
     def __post_init__(self) -> None:
         self.code = _clamp_exit_code(_safe_int(self.code, default=1))
         self.msg = _one_line(self.msg) or self.__class__.__name__
+        if self.context is None:
+            self.context = {}
         super().__init__(self.msg)
         # Some tooling inspects Exception.args directly.
         self.args = (self.msg,)
@@ -115,7 +131,7 @@ class Hyper2KvmError(Exception):
             "type": self.__class__.__name__,
             "code": self.code,
             "message": self.msg,
-            "context": self.context or {},
+            "context": _redact_secrets(self.context or {}),
         }
         if include_cause and self.cause is not None:
             d["cause"] = {"type": type(self.cause).__name__, "message": _one_line(str(self.cause))}

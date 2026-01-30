@@ -1,105 +1,206 @@
 # GitHub Actions Workflows
 
-This directory contains automated CI/CD workflows for the hyper2kvm project.
+This directory contains CI/CD workflows for hyper2kvm.
 
 ## Workflows
 
-### 🧪 tests.yml - Automated Testing
-**Triggers:** Push to main/develop, Pull Requests
+### 1. Tests (`tests.yml`)
+**Triggers**: Push to main/develop, Pull requests
+**Purpose**: Run tests, linting, and code coverage
 
-**Jobs:**
-- **test**: Runs unit tests on Python 3.10, 3.11, and 3.12
-  - Installs system dependencies (libguestfs, QEMU, libvirt)
-  - Runs pytest with coverage on Python 3.12
-  - Uploads coverage to Codecov
+```yaml
+Jobs:
+  - test: Run unit tests on Python 3.10, 3.11, 3.12
+  - lint: Run ruff + mypy
+  - integration: Run integration tests (main branch only)
+```
 
-- **lint**: Code quality checks
-  - Runs ruff for linting
-  - Runs mypy for type checking
+**Commands used**:
+- `hatch run test` - Unit tests
+- `hatch run test-cov` - Coverage report
+- `hatch run lint` - Code quality
 
-- **integration**: Integration tests (main branch only)
+**Artifacts**: Coverage reports uploaded to Codecov
 
-### 🔒 security.yml - Security Scanning
-**Triggers:** Push to main, Pull Requests, Weekly schedule (Mondays)
+### 2. Security (`security.yml`)
+**Triggers**: Push to main, PRs, weekly schedule, manual
+**Purpose**: Security scanning and vulnerability detection
 
-**Jobs:**
-- **security**: Scans for security vulnerabilities
-  - Runs Bandit for Python security issues
-  - Runs pip-audit for known CVEs in dependencies
-  - Uploads results as artifacts
+```yaml
+Jobs:
+  - security: Bandit + pip-audit scanning
+  - dependency-review: Check for vulnerable dependencies (PRs only)
+```
 
-- **dependency-review**: Reviews dependency changes in PRs
+**Commands used**:
+- `hatch run security-audit` - Generate JSON report
+- `hatch run security` - Terminal output
+- `pip-audit --desc` - Dependency vulnerabilities
 
-### 📦 release.yml - Release Automation
-**Triggers:** Tags matching `v*.*.*`
+**Artifacts**: Security reports
 
-**Jobs:**
-- **release**: Creates GitHub releases and publishes to PyPI
-  - Builds Python packages
-  - Generates changelog from commits
-  - Creates GitHub release with assets
-  - Publishes to PyPI (if token configured)
+### 3. Semantic Release (`semantic-release.yml`)
+**Triggers**: Push to main, manual
+**Purpose**: Automated versioning and releases
 
-### 📚 docs.yml - Documentation
-**Triggers:** Push/PR to docs or markdown files
+```yaml
+Process:
+  1. Analyze commits (conventional commits)
+  2. Determine version bump
+  3. Update version in code
+  4. Update CHANGELOG.md
+  5. Create Git tag
+  6. Build package
+  7. Publish to PyPI
+  8. Create GitHub release
+```
 
-**Jobs:**
-- **build-docs**: Validates documentation
-  - Checks markdown links
-  - Builds Sphinx documentation
-  - Validates README sections
+**Environment variables**:
+- `GITHUB_TOKEN` - Automatic
+- `PYPI_TOKEN` - Secret (required for publishing)
 
-- **deploy-docs**: Deploys to GitHub Pages (main branch only)
+**Commit format**:
+```
+feat: add new feature        → Minor bump (0.1.0 → 0.2.0)
+fix: fix bug                 → Patch bump (0.1.0 → 0.1.1)
+perf: improve performance    → Patch bump
+BREAKING CHANGE: ...         → Major bump (0.1.0 → 1.0.0)
+```
 
-## Configuration Files
+### 4. RPM Packaging (`rpm-packaging.yml`)
+**Triggers**: Push to main/develop, PRs, manual
+**Purpose**: Build and test RPM packages for Fedora
 
-### dependabot.yml
-Automatically creates PRs to update:
-- GitHub Actions versions (weekly)
-- Python dependencies (weekly)
+```yaml
+Jobs:
+  - build-rpm: Build on Fedora 41, 42, 43
+  - test-installation-methods: Test install/upgrade/removal
+```
 
-### Issue Templates
-- **bug_report.md**: Structured bug reports
-- **feature_request.md**: Feature suggestions
+**Artifacts**: RPM packages (.rpm, .src.rpm)
 
-### Pull Request Template
-Standardized PR checklist ensuring:
-- Tests pass
-- Documentation updated
-- Security considered
-- Code reviewed
+### 5. Documentation (`docs.yml`)
+**Triggers**: Push to main, manual
+**Purpose**: Build and deploy documentation
+
+### 6. Pylint (`pylint.yml`)
+**Triggers**: Push, PRs
+**Purpose**: Additional code quality checks
 
 ## Badges
 
-Add these to your README.md:
+Add these to README.md:
 
 ```markdown
-[![Tests](https://github.com/ssahani/hyper2kvm/workflows/Tests/badge.svg)](https://github.com/ssahani/hyper2kvm/actions/workflows/tests.yml)
-[![Security](https://github.com/ssahani/hyper2kvm/workflows/Security%20Checks/badge.svg)](https://github.com/ssahani/hyper2kvm/actions/workflows/security.yml)
+[![Tests](https://github.com/ssahani/hyper2kvm/workflows/tests/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
+[![Security](https://github.com/ssahani/hyper2kvm/workflows/security/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
 [![codecov](https://codecov.io/gh/ssahani/hyper2kvm/branch/main/graph/badge.svg)](https://codecov.io/gh/ssahani/hyper2kvm)
 ```
 
 ## Secrets Required
 
-For full functionality, configure these GitHub secrets:
+For full automation, configure these secrets in GitHub Settings:
 
-- `PYPI_API_TOKEN`: For publishing to PyPI (releases)
-- `CODECOV_TOKEN`: For uploading coverage (optional, public repos work without)
+1. **PYPI_TOKEN** - PyPI API token
+   - Go to https://pypi.org/manage/account/token/
+   - Create token with scope: "Entire account"
+   - Add to GitHub: Settings → Secrets → Actions → New repository secret
+
+2. **CODECOV_TOKEN** (optional)
+   - Go to https://codecov.io/gh/ssahani/hyper2kvm
+   - Copy token
+   - Add to GitHub secrets
 
 ## Local Testing
 
-Run the same checks locally before pushing:
+Run workflows locally with [act](https://github.com/nektos/act):
 
 ```bash
-# Run tests
-python -m pytest tests/unit/ -v --cov=hyper2kvm
+# Install act
+brew install act  # macOS
+# or
+sudo dnf install act  # Fedora
 
-# Run linting
-ruff check hyper2kvm/
+# Run tests workflow
+act -j test
 
-# Run type checking
-mypy hyper2kvm/ --ignore-missing-imports
+# Run security workflow
+act -j security
 
-# Run security scan
-bandit -r hyper2kvm/
+# List all workflows
+act -l
 ```
+
+## Debugging Workflows
+
+### View logs
+```bash
+# Via GitHub CLI
+gh run list
+gh run view <run-id> --log
+
+# Or in browser
+https://github.com/ssahani/hyper2kvm/actions
+```
+
+### Common issues
+
+**1. Test failures**
+```bash
+# Run locally first
+make test
+hatch run test
+```
+
+**2. Security scan failures**
+```bash
+# Run locally
+make security
+```
+
+**3. Release failures**
+- Check commit message format
+- Verify PYPI_TOKEN is set
+- Ensure version in pyproject.toml is correct
+
+## Workflow Permissions
+
+Each workflow has specific permissions (GITHUB_TOKEN):
+
+- **tests.yml**: read (default)
+- **security.yml**: read, security-events write
+- **semantic-release.yml**: contents write, issues write, pull-requests write
+- **rpm-packaging.yml**: read (default)
+
+## Best Practices
+
+1. **Always test locally first**
+   ```bash
+   make ci  # Runs full CI pipeline locally
+   ```
+
+2. **Use conventional commits**
+   ```bash
+   git commit -m "feat: add feature"
+   git commit -m "fix: fix bug"
+   ```
+
+3. **Check workflow status before merging**
+   - All checks must pass
+   - Review coverage reports
+
+4. **Monitor automated releases**
+   - Verify version bump is correct
+   - Check CHANGELOG.md generation
+   - Confirm PyPI publication
+
+## Resources
+
+- [GitHub Actions Docs](https://docs.github.com/en/actions)
+- [Conventional Commits](https://www.conventionalcommits.org/)
+- [Semantic Versioning](https://semver.org/)
+- [Codecov](https://docs.codecov.com/)
+
+---
+
+**Last Updated**: 2026-01-18

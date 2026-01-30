@@ -36,11 +36,10 @@ ddb.adapterType = "lsilogic"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDK(self.logger)
-            info = parser.parse(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
 
             self.assertIsNotNone(info)
-            self.assertIn("createType", info or {})
+            self.assertIn("create_type", info or {})
 
     def test_extracts_extent_information(self):
         """Test extraction of extent information."""
@@ -60,9 +59,8 @@ ddb.virtualHWVersion = "14"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDK(self.logger)
-            info = parser.parse(vmdk)
-            extents = parser.get_extents(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
+            extents = info.get("extents", []) if info else []
 
             self.assertIsNotNone(extents)
             self.assertGreaterEqual(len(extents), 3)
@@ -78,10 +76,9 @@ RW 41943040 SPARSE "test.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDK(self.logger)
-            info = parser.parse(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
 
-            self.assertEqual(info.get("createType"), "monolithicSparse")
+            self.assertEqual(info.get("create_type"), "monolithicSparse")
 
     def test_identifies_flat_disks(self):
         """Test identification of flat disk type."""
@@ -94,10 +91,9 @@ RW 41943040 FLAT "test-flat.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDK(self.logger)
-            info = parser.parse(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
 
-            self.assertEqual(info.get("createType"), "monolithicFlat")
+            self.assertEqual(info.get("create_type"), "monolithicFlat")
 
     def test_extracts_adapter_type(self):
         """Test extraction of adapter type."""
@@ -110,10 +106,9 @@ ddb.adapterType = "lsilogic"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDK(self.logger)
-            info = parser.parse(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
 
-            self.assertEqual(info.get("adapterType"), "lsilogic")
+            self.assertEqual(info.get("adapter_type"), "lsilogic")
 
     def test_extracts_virtual_hw_version(self):
         """Test extraction of virtual hardware version."""
@@ -126,10 +121,10 @@ ddb.virtualHWVersion = "14"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDK(self.logger)
-            info = parser.parse(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
 
-            self.assertEqual(info.get("virtualHWVersion"), "14")
+            # Check in the kv dict since virtualHWVersion isn't a top-level field
+            self.assertEqual(info.get("kv", {}).get("ddb.virtualhwversion"), "14")
 
     def test_handles_comments_in_descriptor(self):
         """Test handling of comments in descriptor."""
@@ -146,8 +141,7 @@ RW 41943040 SPARSE "test.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDK(self.logger)
-            info = parser.parse(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
 
             # Should parse successfully despite comments
             self.assertIsNotNone(info)
@@ -160,11 +154,9 @@ RW 41943040 SPARSE "test.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(invalid_content)
 
-            parser = VMDK(self.logger)
-
             # Should handle gracefully
             try:
-                info = parser.parse(vmdk)
+                info = VMDK.parse_descriptor(self.logger, vmdk)
             except Exception:
                 pass  # Expected to fail or return None/empty
 
@@ -191,10 +183,10 @@ RW 4192256 SPARSE "test-s002.vmdk"
             (Path(td) / "test-s001.vmdk").write_bytes(b"extent1")
             (Path(td) / "test-s002.vmdk").write_bytes(b"extent2")
 
-            parser = VMDK(self.logger)
-            extents = parser.get_extents(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
+            extents = info.get("extents", []) if info else []
 
-            extent_names = [e.get("filename") for e in extents]
+            extent_names = [e.get("file") for e in extents]
             self.assertIn("test-s001.vmdk", extent_names)
             self.assertIn("test-s002.vmdk", extent_names)
 
@@ -209,12 +201,12 @@ RW 4192256 SPARSE "test-s002.vmdk"
             vmdk = Path(td) / "test.vmdk"
             vmdk.write_text(descriptor_content)
 
-            parser = VMDK(self.logger)
-            total_size = parser.get_total_size(vmdk)
+            info = VMDK.parse_descriptor(self.logger, vmdk)
+            total_sectors = info.get("size", 0) if info else 0
 
             # Total should be sum of extent sizes (in sectors)
             expected_sectors = 4192256 + 4192256
-            self.assertEqual(total_size, expected_sectors * 512)  # Convert to bytes
+            self.assertEqual(total_sectors, expected_sectors)
 
 
 if __name__ == "__main__":

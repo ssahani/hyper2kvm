@@ -207,19 +207,47 @@ class VMDK:
         # relative - try full relative path first
         rel = (base_dir / candidate).resolve()
 
-        # Validate containment for relative paths
+        # Check if the resolved path stays within base directory
+        is_safe = False
         try:
             rel.relative_to(base_resolved)
+            is_safe = True
         except ValueError:
+            # Path escapes base directory
+            pass
+
+        # If path is safe and exists, return it immediately
+        if is_safe and rel.exists():
+            return rel
+
+        # If path is safe but doesn't exist, return it (caller will handle missing file)
+        # This preserves the subdirectory structure for legitimate references
+        if is_safe:
+            return rel
+
+        # Path escapes base directory - this is a security concern
+        # Check if this looks like a malicious attempt vs a legitimate VMDK reference
+
+        # Check if basename looks like a VMDK-related file
+        basename = candidate.name.lower()
+        looks_like_vmdk = basename.endswith(('.vmdk', '.vmx', '.nvram', '.vmsd'))
+
+        # Count explicit traversal attempts in the original path
+        has_parent_ref = ".." in norm
+        traversal_count = norm.count("../") if has_parent_ref else 0
+
+        # Reject if:
+        # 1. Multiple explicit traversals (../../..) OR
+        # 2. Accessing non-VMDK files outside base (likely system files) OR
+        # 3. Path escapes via symlinks without being a VMDK file
+        if traversal_count > 1 or (not looks_like_vmdk):
             raise VMDKError(
                 f"Path traversal attempt detected: reference '{ref}' resolves to "
                 f"'{rel}' which is outside base directory '{base_dir}'"
             )
 
-        if rel.exists():
-            return rel
-
-        # fallback: basename in same directory
+        # For single-level traversal of VMDK-like files, use basename fallback
+        # This handles legitimate cases where directory structure is flattened
         base = (base_dir / candidate.name).resolve()
 
         # Validate containment for basename fallback
