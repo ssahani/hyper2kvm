@@ -79,6 +79,7 @@ from .systemd import SystemctlManager, JournalctlManager, SystemdAnalyzer, Syste
 from .systemd_mgr import SystemdManager
 from .systemd_networkd import SystemdNetworkdManager
 from .systemd_journal import SystemdJournalManager
+from .systemd_units import SystemdUnitsManager
 from .enhanced_inspection import EnhancedInspector
 
 
@@ -181,6 +182,7 @@ class VMCraft:
         self._systemd_mgr: SystemdManager | None = None
         self._systemd_networkd: SystemdNetworkdManager | None = None
         self._systemd_journal: SystemdJournalManager | None = None
+        self._systemd_units: SystemdUnitsManager | None = None
 
         # Enhanced inspection (initialized after launch)
         self._enhanced_inspector: EnhancedInspector | None = None
@@ -343,6 +345,7 @@ class VMCraft:
         self._systemd_mgr = SystemdManager(self.logger, str(self._mount_root))
         self._systemd_networkd = SystemdNetworkdManager(self.logger, str(self._mount_root))
         self._systemd_journal = SystemdJournalManager(self.logger, str(self._mount_root))
+        self._systemd_units = SystemdUnitsManager(self.logger, str(self._mount_root))
 
         # Initialize enhanced inspector
         self._enhanced_inspector = EnhancedInspector(
@@ -6872,6 +6875,142 @@ class VMCraft:
         if not self._systemd_journal:
             raise RuntimeError("Not launched")
         return self._systemd_journal.verify()
+
+    # ==================================================================================
+    # Systemd Unit File Management (Phase 4) - 13 methods
+    # ==================================================================================
+
+    def units_create_service_unit(
+        self,
+        name: str,
+        description: str,
+        exec_start: str,
+        exec_stop: str | None = None,
+        type: str = "simple",
+        restart: str = "on-failure",
+        user: str | None = None,
+        after: list[str] | None = None,
+        requires: list[str] | None = None,
+        wants: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Create systemd service unit file."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.create_service_unit(
+            name, description, exec_start, exec_stop, type, restart, user, after, requires, wants
+        )
+
+    def units_create_timer_unit(
+        self,
+        name: str,
+        description: str,
+        on_calendar: str | None = None,
+        on_boot_sec: str | None = None,
+        on_unit_active_sec: str | None = None,
+        service: str | None = None
+    ) -> dict[str, Any]:
+        """Create systemd timer unit file."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.create_timer_unit(
+            name, description, on_calendar, on_boot_sec, on_unit_active_sec, service
+        )
+
+    def units_create_mount_unit(
+        self,
+        name: str,
+        what: str,
+        where: str,
+        type: str = "auto",
+        options: str | None = None
+    ) -> dict[str, Any]:
+        """Create systemd mount unit file."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.create_mount_unit(name, what, where, type, options)
+
+    def units_create_target_unit(
+        self,
+        name: str,
+        description: str,
+        requires: list[str] | None = None,
+        wants: list[str] | None = None,
+        after: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Create systemd target unit file."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.create_target_unit(name, description, requires, wants, after)
+
+    def units_create_path_unit(
+        self,
+        name: str,
+        description: str,
+        path_exists: str | None = None,
+        path_changed: str | None = None,
+        path_modified: str | None = None,
+        unit: str | None = None
+    ) -> dict[str, Any]:
+        """Create systemd path unit."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.create_path_unit(
+            name, description, path_exists, path_changed, path_modified, unit
+        )
+
+    def units_read_unit_file(self, unit: str) -> dict[str, Any]:
+        """Parse systemd unit file into structured dict."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.read_unit_file(unit)
+
+    def units_modify_unit_file(
+        self,
+        unit: str,
+        section: str,
+        key: str,
+        value: str
+    ) -> dict[str, Any]:
+        """Modify specific key in unit file."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.modify_unit_file(unit, section, key, value)
+
+    def units_delete_unit_file(self, unit: str) -> dict[str, Any]:
+        """Delete unit file."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.delete_unit_file(unit)
+
+    def units_validate_unit_file(self, unit: str) -> dict[str, Any]:
+        """Validate unit file syntax."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.validate_unit_file(unit)
+
+    def units_analyze_boot_performance(self) -> dict[str, Any]:
+        """Analyze boot performance using systemd-analyze."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.analyze_boot_performance()
+
+    def units_analyze_critical_chain(self, unit: str | None = None) -> dict[str, Any]:
+        """Get critical boot path chain."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.analyze_critical_chain(unit)
+
+    def units_analyze_blame(self) -> dict[str, Any]:
+        """Get services ordered by initialization time."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.analyze_blame()
+
+    def units_list_timers(self, all: bool = False) -> dict[str, Any]:
+        """List active or all timers."""
+        if not self._systemd_units:
+            raise RuntimeError("Not launched")
+        return self._systemd_units.list_timers(all)
 
     # ==================================================================================
     # Context manager support
