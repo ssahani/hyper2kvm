@@ -138,17 +138,18 @@ class LVMActivator:
             nbd_device: If provided, only return LVs backed by this NBD device
 
         Returns:
-            List of LV device paths (e.g., ['/dev/mapper/vg-lv'])
+            List of LV device paths in /dev/mapper/ format (e.g., ['/dev/mapper/vg-lv'])
         """
         try:
-            # Use lvs with lv_path and devices columns
+            # Use lvs with vg_name, lv_name, and devices columns
             # Disable devices file to make filtering work
+            # Return /dev/mapper/ paths which are more reliable than /dev/vg/lv symlinks
             cmd = [
                 "lvs",
                 "--devicesfile", "",
                 "--reportformat", "json",
                 "--noheadings",
-                "-o", "lv_path,devices,vg_name"
+                "-o", "vg_name,lv_name,devices"
             ]
 
             result = run_sudo(logger, cmd, check=True, capture=True)
@@ -158,19 +159,26 @@ class LVMActivator:
 
             devices = []
             for lv in lvs_data:
-                lv_path = lv.get("lv_path", "")
-                lv_devices = lv.get("devices", "")
                 vg_name = lv.get("vg_name", "")
+                lv_name = lv.get("lv_name", "")
+                lv_devices = lv.get("devices", "")
 
                 # If NBD filtering is requested, check if this LV uses NBD partitions
                 if nbd_device:
                     if nbd_device in lv_devices or f"{nbd_device}p" in lv_devices:
-                        devices.append(lv_path)
-                        logger.debug(f"Found NBD-backed LV: {lv_path} (VG: {vg_name}, devices: {lv_devices})")
+                        # Construct /dev/mapper/ path (hyphens in vg_name/lv_name are escaped as --)
+                        mapper_vg = vg_name.replace("-", "--")
+                        mapper_lv = lv_name.replace("-", "--")
+                        mapper_path = f"/dev/mapper/{mapper_vg}-{mapper_lv}"
+                        devices.append(mapper_path)
+                        logger.debug(f"Found NBD-backed LV: {mapper_path} (VG: {vg_name}, LV: {lv_name}, devices: {lv_devices})")
                 else:
-                    # No filtering - return all LVs
-                    if lv_path:
-                        devices.append(lv_path)
+                    # No filtering - return all LVs in /dev/mapper/ format
+                    if vg_name and lv_name:
+                        mapper_vg = vg_name.replace("-", "--")
+                        mapper_lv = lv_name.replace("-", "--")
+                        mapper_path = f"/dev/mapper/{mapper_vg}-{mapper_lv}"
+                        devices.append(mapper_path)
 
             if nbd_device:
                 logger.info(f"Found {len(devices)} LVs on {nbd_device}: {devices}")
