@@ -57,7 +57,28 @@ If it can be reduced to **disks + metadata**, it can enter the pipeline.
 
 ---
 
-## 2. Design Principles
+## 2. Installation
+
+### Quick Install
+
+```bash
+# 1. Install system dependencies (Ubuntu/Debian)
+sudo apt-get install -y python3-guestfs libguestfs-tools qemu-utils
+
+# 2. Install Python dependencies
+pip install -r requirements.txt
+
+# 3. Install hyper2kvm
+pip install -e .
+```
+
+**Important:** `libguestfs` and `hivex` are system packages, NOT pip packages. They must be installed via your OS package manager (apt, dnf, zypper).
+
+See [DEPENDENCIES.md](DEPENDENCIES.md) for detailed installation instructions for all Linux distributions.
+
+---
+
+## 3. Design Principles
 
 `hyper2kvm` is built around a small set of non-negotiable principles:
 
