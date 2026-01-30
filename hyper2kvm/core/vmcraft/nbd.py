@@ -52,6 +52,7 @@ class NBDDeviceManager:
         readonly: bool = True,
         nbd_min: int = 0,
         nbd_max: int = 15,
+        conversion_dir: str | Path | None = None,
     ):
         """
         Initialize NBD manager.
@@ -61,11 +62,20 @@ class NBDDeviceManager:
             readonly: Mount NBD in read-only mode (default: True)
             nbd_min: Minimum NBD device number (default: 0)
             nbd_max: Maximum NBD device number (default: 15)
+            conversion_dir: Directory for VMDK conversion temp files.
+                           Defaults to ~/.cache/hyper2kvm/conversions
         """
         self.logger = logger
         self.readonly = bool(readonly)
         self.nbd_min = nbd_min
         self.nbd_max = nbd_max
+
+        # Set conversion directory with proper default
+        if conversion_dir:
+            self._conversion_dir = Path(conversion_dir).expanduser().resolve()
+        else:
+            # Default: ~/.cache/hyper2kvm/conversions
+            self._conversion_dir = Path.home() / ".cache" / "hyper2kvm" / "conversions"
 
         self._nbd_device: str | None = None
         self._nbd_process = None
@@ -235,11 +245,10 @@ class NBDDeviceManager:
             actual_disk_size = 0
             vmdk_createtype = ""
 
-        # Create temp qcow2 file
-        # Use /var/tmp instead of /tmp for large conversions (sparse VMDKs with -S 0 can be huge)
-        # /var/tmp is typically on the root filesystem with more space than tmpfs /tmp
-        temp_dir = Path("/var/tmp/vmcraft-conversions")
-        temp_dir.mkdir(exist_ok=True, mode=0o700)
+        # Create temp qcow2 file in configured conversion directory
+        # Defaults to ~/.cache/hyper2kvm/conversions for better space management
+        temp_dir = self._conversion_dir
+        temp_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
 
         temp_qcow2 = temp_dir / f"{vmdk_path.stem}.qcow2"
 

@@ -405,6 +405,7 @@ class DiskProcessor:
             luks_passphrase_env=getattr(self.args, "luks_passphrase_env", None),
             luks_keyfile=getattr(self.args, "luks_keyfile", None),
             luks_mapper_prefix=getattr(self.args, "luks_mapper_prefix", "hyper2kvm-crypt"),
+            conversion_dir=getattr(self.args, "conversion_dir", None),
         )
 
         # Pass initramfs_add_drivers to fixer if specified

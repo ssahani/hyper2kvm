@@ -62,6 +62,12 @@ def _add_global_operation_flags(p: argparse.ArgumentParser) -> None:
     p.add_argument("--no-backup", dest="no_backup", action="store_true", help="Skip backups inside guest (dangerous).")
     p.add_argument("--print-fstab", dest="print_fstab", action="store_true", help="Print /etc/fstab before+after.")
     p.add_argument("--workdir", default=None, help="Working directory for intermediate files (default: <output-dir>/work).")
+    p.add_argument(
+        "--conversion-dir",
+        dest="conversion_dir",
+        default=None,
+        help="Directory for VMDK conversion temporary files (default: ~/.cache/hyper2kvm/conversions)."
+    )
 
 
 def _add_flatten_convert(p: argparse.ArgumentParser) -> None:

@@ -96,14 +96,17 @@ class VMCraft:
     This is the main entry point that coordinates all specialized modules.
     """
 
-    def __init__(self, python_return_dict: bool = True):
+    def __init__(self, python_return_dict: bool = True, conversion_dir: str | Path | None = None):
         """
         Initialize VMCraft.
 
         Args:
             python_return_dict: Return dicts instead of tuples (default: True)
+            conversion_dir: Directory for VMDK conversion temp files.
+                           Defaults to ~/.cache/hyper2kvm/conversions
         """
         self._return_dict = python_return_dict
+        self._conversion_dir = conversion_dir  # Store for NBD manager creation
         self._drives: list[dict[str, Any]] = []
         self._nbd_manager: NBDDeviceManager | None = None
         self._nbd_device: str | None = None
@@ -256,7 +259,8 @@ class VMCraft:
         nbd_start = time.time()
         self._nbd_manager = NBDDeviceManager(
             self.logger,
-            readonly=drive['readonly']
+            readonly=drive['readonly'],
+            conversion_dir=self._conversion_dir
         )
         self._nbd_device = self._nbd_manager.connect(
             drive['path'],

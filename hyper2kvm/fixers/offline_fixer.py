@@ -153,6 +153,8 @@ class OfflineFSFix:
         luks_mapper_prefix: str = "hyper2kvm-crypt",
         # ---- filesystem fixer (delegated) ----
         filesystem_repair_enable: bool = False,
+        # ---- VMCraft conversion directory ----
+        conversion_dir: str | Path | None = None,
     ):
         self.logger = logger
         self.image = Path(image)
@@ -187,6 +189,9 @@ class OfflineFSFix:
 
         # Filesystem fixer flag (avoid shadowing method name)
         self.filesystem_repair_enable = bool(filesystem_repair_enable)
+
+        # VMCraft conversion directory
+        self.conversion_dir = conversion_dir
 
         self.inspect_root: str | None = None
         self.root_dev: str | None = None
@@ -294,7 +299,7 @@ class OfflineFSFix:
 
     # guestfs open/close helpers
     def open(self) -> guestfs.GuestFS:
-        g = create_guestfs(python_return_dict=True, backend='vmcraft')
+        g = create_guestfs(python_return_dict=True, backend='vmcraft', conversion_dir=self.conversion_dir)
         if self.logger.isEnabledFor(logging.DEBUG):
             try:
                 g.set_trace(1)

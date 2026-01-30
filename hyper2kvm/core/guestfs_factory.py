@@ -27,6 +27,7 @@ def create_guestfs(
     *,
     python_return_dict: bool = True,
     backend: str | None = None,
+    conversion_dir: str | None = None,
 ) -> Any:
     """
     Create a GuestFS instance with backend selection.
@@ -38,6 +39,8 @@ def create_guestfs(
             - 'libguestfs': Force libguestfs (raise if unavailable)
             - 'vmcraft': Force VMCraft implementation (default)
             - None: Defaults to 'vmcraft'
+        conversion_dir: Directory for VMDK conversion temp files (VMCraft only).
+                       Defaults to ~/.cache/hyper2kvm/conversions
 
     Returns:
         GuestFS instance (either guestfs.GuestFS or VMCraft)
@@ -92,12 +95,12 @@ def create_guestfs(
             return guestfs.GuestFS(python_return_dict=python_return_dict)
         # Fall back to VMCraft
         from .vmcraft import VMCraft
-        return VMCraft(python_return_dict=python_return_dict)
+        return VMCraft(python_return_dict=python_return_dict, conversion_dir=conversion_dir)
 
     # VMCraft backend
     if backend == 'vmcraft':
         from .vmcraft import VMCraft
-        return VMCraft(python_return_dict=python_return_dict)
+        return VMCraft(python_return_dict=python_return_dict, conversion_dir=conversion_dir)
 
     # Should not reach here
     raise RuntimeError(f"Unexpected backend: {backend}")
