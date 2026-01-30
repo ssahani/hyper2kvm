@@ -83,7 +83,7 @@ class TestHyperCtlRunner(unittest.TestCase):
         """Test successful job submission."""
         mock_run.return_value = Mock(
             returncode=0,
-            stdout="Job submitted: abc123-def456",
+            stdout="  - Job ID: abc123-def456",
             stderr=""
         )
 
@@ -99,10 +99,11 @@ class TestHyperCtlRunner(unittest.TestCase):
         # Verify command was called with correct args
         call_args = mock_run.call_args[0][0]
         self.assertEqual(call_args[0], "/usr/bin/hyperctl")
-        self.assertIn("--daemon", call_args)
-        self.assertIn("http://test:9999", call_args)
         self.assertIn("submit", call_args)
+        self.assertIn("-vm", call_args)
         self.assertIn("/dc/vm/test", call_args)
+        self.assertIn("-output", call_args)
+        self.assertIn("/tmp/export", call_args)
 
     @patch('subprocess.run')
     def test_submit_export_job_parse_error(self, mock_run):
@@ -298,7 +299,7 @@ class TestFactoryFunctions(unittest.TestCase):
 
     @patch.dict(os.environ, {
         "HYPERVISORD_URL": "http://custom:7777",
-        "H2KVMCTL_PATH": "/custom/hyperctl",
+        "HYPERCTL_PATH": "/custom/hyperctl",
     })
     def test_create_runner_from_env(self):
         """Test creating runner from environment variables."""
@@ -345,7 +346,7 @@ class TestIntegrationScenarios(unittest.TestCase):
         # Simulate complete workflow: submit -> poll -> complete
         mock_run.side_effect = [
             # submit_export_job
-            Mock(returncode=0, stdout="Job submitted: workflow123", stderr=""),
+            Mock(returncode=0, stdout="  - Job ID: workflow123", stderr=""),
             # wait: first poll (running)
             Mock(returncode=0, stdout="Status: running | Progress: 50%", stderr=""),
             # wait: second poll (completed)
@@ -369,9 +370,9 @@ class TestIntegrationScenarios(unittest.TestCase):
         """Test batch export scenario."""
         # Simulate submitting multiple jobs
         mock_run.side_effect = [
-            Mock(returncode=0, stdout="Job submitted: batch1", stderr=""),
-            Mock(returncode=0, stdout="Job submitted: batch2", stderr=""),
-            Mock(returncode=0, stdout="Job submitted: batch3", stderr=""),
+            Mock(returncode=0, stdout="  - Job ID: batch1", stderr=""),
+            Mock(returncode=0, stdout="  - Job ID: batch2", stderr=""),
+            Mock(returncode=0, stdout="  - Job ID: batch3", stderr=""),
         ]
 
         runner = HyperCtlRunner()

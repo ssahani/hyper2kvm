@@ -237,10 +237,10 @@ def create_hyperctl_runner(
     Create HyperCtlRunner with environment variable defaults.
 
     Environment variables:
-        H2KVMD_URL: Daemon URL (default: http://localhost:8080)
+        HYPERVISORD_URL: Daemon URL (default: http://localhost:8080)
         HYPERCTL_PATH: Path to hyperctl binary (default: hyperctl)
     """
-    daemon_url = daemon_url or os.getenv("H2KVMD_URL", "http://localhost:8080")
+    daemon_url = daemon_url or os.getenv("HYPERVISORD_URL", "http://localhost:8080")
     hyperctl_path = hyperctl_path or os.getenv("HYPERCTL_PATH", "hyperctl")
 
     return HyperCtlRunner(
