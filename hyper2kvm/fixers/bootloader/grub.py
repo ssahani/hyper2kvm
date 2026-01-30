@@ -831,19 +831,15 @@ def _ensure_var_tmp(g: guestfs.GuestFS) -> dict[str, Any]:
     result = {"existed": False, "created": False, "error": None}
 
     try:
-        # Check if /var/tmp exists using guestfs is_dir directly
-        try:
-            if g.is_dir("/var/tmp"):
-                result["existed"] = True
-                # Ensure proper permissions (1777 = sticky bit + rwx for all)
-                try:
-                    g.chmod(0o1777, "/var/tmp")
-                except Exception:
-                    pass  # Best effort
-                return result
-        except Exception:
-            # Directory doesn't exist or error checking
-            pass
+        # Check if /var/tmp exists - use helper to avoid type issues
+        if _dir_exists(g, "/var/tmp"):
+            result["existed"] = True
+            # Ensure proper permissions (1777 = sticky bit + rwx for all)
+            try:
+                g.chmod(0o1777, "/var/tmp")
+            except Exception:
+                pass  # Best effort
+            return result
 
         # Create /var/tmp with sticky bit
         g.mkdir_p("/var/tmp")

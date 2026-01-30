@@ -9,64 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### Automatic LVM Detection and Initramfs Fix (January 2026)
-
-**Problem Solved**:
-- Migrated VMs with LVM (Logical Volume Manager) failed to boot with error: "Timed out waiting for device mapper"
-- initramfs existed but lacked LVM activation modules (`lvm`, `dm`)
-- Manual guestfish intervention required to rebuild initramfs with LVM support
-- RHEL/CentOS/Fedora systems with LVM root volumes couldn't boot after migration
-
-**Solution**:
-- Added automatic LVM detection during migration pipeline
-- Created `/etc/dracut.conf.d/hyper2kvm-lvm.conf` for persistent LVM module inclusion
-- Enhanced all dracut commands with `--add 'lvm dm'` when LVM is detected
-- Automatic `/var/tmp` directory creation (required by dracut)
-- Comprehensive LVM structure logging (PVs, VGs, LVs)
-
-**Technical Implementation**:
-- New function: `_detect_lvm_in_guest()` - Scans for LVM physical volumes, volume groups, and logical volumes
-- New function: `_ensure_var_tmp()` - Creates `/var/tmp` with sticky bit permissions (0o1777)
-- New function: `_maybe_add_dracut_lvm()` - Adds `--add 'lvm dm'` to dracut commands
-- Modified: `regen()` in `grub.py` - Integrated LVM detection and config generation
-
-**Dracut Commands Generated** (when LVM detected):
-```bash
-# Before (missing LVM support)
-dracut -f --kver 4.18.0-432.el8.x86_64 --add-drivers "virtio_blk virtio_scsi dm_mod"
-
-# After (includes LVM activation)
-dracut -f --kver 4.18.0-432.el8.x86_64 --add-drivers "virtio_blk virtio_scsi dm_mod" --add "lvm dm"
-```
-
-**Migration Report Data**:
-```json
-{
-  "lvm_detected": {
-    "has_lvm": true,
-    "vgs": ["rhel"],
-    "lvs": ["/dev/rhel/root", "/dev/rhel/swap"],
-    "pvs": ["/dev/sda2"]
-  },
-  "var_tmp_prepared": {
-    "existed": false,
-    "created": true
-  }
-}
-```
-
-**Benefits**:
-- LVM-based systems boot successfully without manual intervention
-- Persistent configuration ensures kernel updates maintain LVM support
-- Automatic detection - no user configuration required
-- Comprehensive logging for debugging
-- Works with RHEL, CentOS, Fedora, and other RPM-based distributions
-
-**Tested With**:
-- RHEL 8.8 with LVM (VG: rhel, LVs: root, swap)
-- ESXi thin-provisioned VMDKs
-- Device mapper configurations
-
 #### Configurable VMDK Conversion Directory (January 2026)
 
 **Problem Solved**:
