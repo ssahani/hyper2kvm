@@ -174,8 +174,9 @@ class GuestDetector:
     def parse_issue_file(content: str) -> Optional[str]:
         if not content:
             return None
-        # Remove common \X escape sequences used in /etc/issue
-        content = re.sub(r"\\[a-zA-Z]", "", content)
+        # /etc/issue commonly includes backslash escapes like \S \n \l etc.
+        # We remove only "single-letter" escapes to reduce accidental clobbering.
+        content = re.sub(r"\\[A-Za-z]", "", content)
         content = content.replace("\\n", " ").replace("\\r", " ")
         content = content.strip()
         return content or None
@@ -216,6 +217,21 @@ class GuestDetector:
 
         return out
 
+    @staticmethod
+    def _path_depth(mp: str) -> int:
+        mp = (mp or "").strip()
+        if mp == "/":
+            return 0
+        return len([p for p in mp.split("/") if p])
+
+    @staticmethod
+    def _mounted_anything(g: guestfs.GuestFS) -> bool:
+        try:
+            mps = g.mountpoints()
+            return bool(mps)
+        except Exception:
+            return False
+
     @classmethod
     def mount_inspected_root(cls, g: guestfs.GuestFS, root: str) -> None:
         """
@@ -229,10 +245,11 @@ class GuestDetector:
 
         mps = cls._normalize_mountpoints(raw)
 
-        # Ensure "/" mounts first, then increasing mountpoint length
-        def _mp_sort_key(item: Tuple[str, str]) -> Tuple[int, int]:
+        # Ensure "/" mounts first, then shallower paths before deeper paths,
+        # then length as a tie-breaker.
+        def _mp_sort_key(item: Tuple[str, str]) -> Tuple[int, int, int]:
             _dev, mp = item
-            return (0 if mp == "/" else 1, len(mp))
+            return (0 if mp == "/" else 1, cls._path_depth(mp), len(mp))
 
         for dev, mp in sorted(mps, key=_mp_sort_key):
             try:
@@ -246,6 +263,16 @@ class GuestDetector:
 
     @classmethod
     def detect_by_indicators(cls, g: guestfs.GuestFS) -> Dict[GuestType, float]:
+        """
+        Path-based indicator detection.
+
+        IMPORTANT:
+          - This expects the inspected root to already be mounted.
+          - If nothing is mounted, we return all-zero scores.
+        """
+        if not cls._mounted_anything(g):
+            return {gt: 0.0 for gt in GuestType}
+
         scores: Dict[GuestType, float] = {gt: 0.0 for gt in GuestType}
 
         for os_type, indicators in cls.OS_INDICATORS.items():
@@ -291,36 +318,70 @@ class GuestDetector:
         return None
 
     @classmethod
-    def detect_by_canonical(cls, g: guestfs.GuestFS, root: str, logger) -> Optional[GuestType]:
+    def detect_by_canonical(cls, g: guestfs.GuestFS, root: str, logger) -> Tuple[Optional[GuestType], Optional[str]]:
         """
         Canonical helper answers ONLY: "is this Windows?"
         If it says "no", we return None (do NOT assume Linux).
+
+        Returns: (GuestType|None, error_str|None)
         """
         if not _WIN_VIRTIO_DETECT_OK or _wv_is_windows is None:
-            return None
+            return (None, None)
+
         shim = _WvShim(logger=logger, inspect_root=root)
         try:
-            return GuestType.WINDOWS if bool(_wv_is_windows(shim, g)) else None  # type: ignore[misc]
-        except Exception:
-            return None
+            ok = bool(_wv_is_windows(shim, g))  # type: ignore[misc]
+            return (GuestType.WINDOWS if ok else None, None)
+        except Exception as e:
+            return (None, f"{type(e).__name__}: {e}")
 
     # ---------------------------
     # Identity collection
     # ---------------------------
 
     @staticmethod
-    def best_effort_kernel(g: guestfs.GuestFS) -> Optional[str]:
+    def _versionish_key(s: str) -> List[Tuple[int, Any]]:
+        """
+        Comparable version-ish key.
+
+        We return a list of tagged tuples so Python never needs to compare int vs str:
+          - ints => (0, int_value)
+          - strings => (1, string_value)
+
+        Example: "6.12.10-200.fc41" becomes:
+          [(0,6),(1,'.'),(0,12),(1,'.'),(0,10),(1,'-'),(0,200),(1,'.'),(1,'fc'),(0,41)]
+        """
+        s = (s or "").strip()
+        out: List[Tuple[int, Any]] = []
+        for tok in re.split(r"(\d+)", s):
+            if tok == "":
+                continue
+            if tok.isdigit():
+                try:
+                    out.append((0, int(tok)))
+                except Exception:
+                    out.append((1, tok))
+            else:
+                out.append((1, tok))
+        return out
+
+    @classmethod
+    def best_effort_kernel(cls, g: guestfs.GuestFS) -> Optional[str]:
         try:
             if g.is_dir("/lib/modules"):
-                vers = sorted(g.ls("/lib/modules"))
+                vers = [U.to_text(x) or "" for x in g.ls("/lib/modules")]
+                vers = [v for v in vers if v.strip()]
+                vers.sort(key=cls._versionish_key)
                 return vers[-1] if vers else None
         except Exception:
             pass
         try:
             if g.is_dir("/boot"):
-                vml = sorted(x for x in g.ls("/boot") if x.startswith("vmlinuz-"))
+                entries = [U.to_text(x) or "" for x in g.ls("/boot")]
+                vml = [x for x in entries if x.startswith("vmlinuz-")]
                 if not vml:
                     return None
+                vml.sort(key=cls._versionish_key)
                 last = vml[-1]
                 return last[len("vmlinuz-") :] if last.startswith("vmlinuz-") else last
         except Exception:
@@ -329,9 +390,13 @@ class GuestDetector:
 
     @classmethod
     def collect_linux_identity(cls, g: guestfs.GuestFS, root: str) -> GuestIdentity:
-        ident = GuestIdentity(type=GuestType.LINUX)
+        """
+        Collect Linux identity.
 
-        cls.mount_inspected_root(g, root)
+        EXPECTATION:
+          - The caller has already mounted the inspected root.
+        """
+        ident = GuestIdentity(type=GuestType.LINUX)
 
         # arch
         try:
@@ -353,6 +418,7 @@ class GuestDetector:
         ident.os_name = osr.get("NAME")
         ident.os_version = osr.get("VERSION")
         ident.cpe_name = osr.get("CPE_NAME")
+        # Not standardized across distros; safe best-effort only
         ident.support_end = osr.get("SUPPORT_END") or osr.get("SUPPORT_END_DATE")
 
         # hostname
@@ -380,9 +446,13 @@ class GuestDetector:
 
     @classmethod
     def collect_windows_identity(cls, g: guestfs.GuestFS, root: str) -> GuestIdentity:
-        ident = GuestIdentity(type=GuestType.WINDOWS)
+        """
+        Collect Windows identity.
 
-        cls.mount_inspected_root(g, root)
+        EXPECTATION:
+          - The caller has already mounted the inspected root.
+        """
+        ident = GuestIdentity(type=GuestType.WINDOWS)
 
         try:
             ident.os_name = U.to_text(g.inspect_get_product_name(root))
@@ -477,11 +547,22 @@ class GuestDetector:
 
             root = cls.best_root(g) or roots[0]
 
-            # Strategy A: canonical Windows-only detection
+            # ---- CRITICAL FIX ----
+            # Mount early so indicator detection (and other path-based checks) operate on real FS paths.
+            cls.mount_inspected_root(g, root)
+
+            # Canonical Windows-only detection (capture error for debugging)
+            t_can, can_err = cls.detect_by_canonical(g, root, logger)
+
             identity: Optional[GuestIdentity] = None
-            t_can = cls.detect_by_canonical(g, root, logger)
+
+            # Strategy A: canonical Windows-only detection
             if t_can == GuestType.WINDOWS:
-                identity = GuestIdentity(type=GuestType.WINDOWS, confidence=0.90, detection_method="canonical_windows_virtio")
+                identity = GuestIdentity(
+                    type=GuestType.WINDOWS,
+                    confidence=0.90,
+                    detection_method="canonical_windows_virtio",
+                )
 
             # Strategy B: guestfs inspection
             if identity is None:
@@ -489,7 +570,7 @@ class GuestDetector:
                 if t_ins:
                     identity = GuestIdentity(type=t_ins, confidence=0.78, detection_method="guestfs_inspection")
 
-            # Strategy C: indicator scoring (fallback only)
+            # Strategy C: indicator scoring (fallback only; now works because we mounted)
             scores = cls.detect_by_indicators(g)
             candidates = [GuestType.LINUX, GuestType.WINDOWS, GuestType.BSD, GuestType.MACOS]
             best_type = max(candidates, key=lambda t: scores.get(t, 0.0))
@@ -506,6 +587,14 @@ class GuestDetector:
                 if best_score > 0.0 and best_type == identity.type:
                     identity.confidence = min(identity.confidence + 0.05, 1.0)
 
+            # Debug metadata (very useful when detection seems "weird")
+            try:
+                identity.metadata["indicator_scores"] = {k.value: float(v) for k, v in scores.items()}
+            except Exception:
+                pass
+            if can_err:
+                identity.metadata["canonical_error"] = can_err
+
             # Collect detailed identity
             if identity.type == GuestType.LINUX:
                 detailed = cls.collect_linux_identity(g, root)
@@ -519,8 +608,16 @@ class GuestDetector:
                 if f in ("confidence", "detection_method"):
                     continue
                 v = getattr(detailed, f)
-                if v:
-                    setattr(identity, f, v)
+
+                # Merge rules:
+                # - keep None as "missing"
+                # - skip empty strings (common for file parsing)
+                if v is None:
+                    continue
+                if isinstance(v, str) and v.strip() == "":
+                    continue
+
+                setattr(identity, f, v)
 
             # nudge confidence if we found good identity anchors
             if identity.hostname or identity.os_name or identity.os_pretty_name:
@@ -597,6 +694,9 @@ def emit_guest_identity_log(logger, identity: GuestIdentity) -> None:
             "      Windows Distro: %s\n"
             "      Version (maj): %s\n"
             "      Version (min): %s\n"
+            "            Build #: %s\n"
+            "   Display Version: %s\n"
+            "           Edition: %s\n"
             "   Registry hives #: %s\n"
             "   Windows dirs   #: %s",
             identity.detection_method,
@@ -606,6 +706,9 @@ def emit_guest_identity_log(logger, identity: GuestIdentity) -> None:
             identity.windows_distro or "?",
             identity.windows_major or "?",
             identity.windows_minor or "?",
+            identity.windows_build or "?",
+            identity.windows_display_version or "?",
+            identity.windows_edition or "?",
             str(len(reg_hives)) if isinstance(reg_hives, list) else "?",
             str(len(win_dirs)) if isinstance(win_dirs, list) else "?",
         )
