@@ -95,6 +95,7 @@ class U:
         input_text: str | None = None,
         stream: bool = False,
         fatal: bool = False,
+        failure_log_level: int | None = None,
     ) -> subprocess.CompletedProcess:
         """
         Run a command.
@@ -102,6 +103,7 @@ class U:
         - capture=True uses subprocess.run(capture_output=True, text=True)
         - stream=True streams stdout/stderr to logger in realtime (forces capture=False)
         - fatal=True wraps failures into Fatal (otherwise re-raises subprocess exceptions)
+        - failure_log_level=level controls log level for failures (default: ERROR, can be WARNING or DEBUG)
         """
         pretty = U._pretty_cmd(cmd)
         logger.debug("Running: %s", pretty)
@@ -147,15 +149,22 @@ class U:
         except subprocess.CalledProcessError as e:
             stdout = (e.stdout or e.output or "").strip()
             stderr = (e.stderr or "").strip()
-            if stdout or stderr:
-                logger.error(
-                    "Command failed: %s%s%s",
-                    pretty,
-                    f"\nstdout:\n{stdout}" if stdout else "",
-                    f"\nstderr:\n{stderr}" if stderr else "",
-                )
-            else:
-                logger.error("Command failed: %s (no output)", pretty)
+
+            # Determine log level: use failure_log_level if specified, otherwise ERROR
+            log_level = failure_log_level if failure_log_level is not None else logging.ERROR
+
+            # Only log if not DEBUG level or if logger is at DEBUG level
+            if log_level != logging.DEBUG or logger.isEnabledFor(logging.DEBUG):
+                if stdout or stderr:
+                    logger.log(
+                        log_level,
+                        "Command failed: %s%s%s",
+                        pretty,
+                        f"\nstdout:\n{stdout}" if stdout else "",
+                        f"\nstderr:\n{stderr}" if stderr else "",
+                    )
+                else:
+                    logger.log(log_level, "Command failed: %s (no output)", pretty)
 
             if fatal:
                 raise Fatal(e.returncode or 1, f"Command failed: {pretty}") from e
@@ -288,14 +297,25 @@ def guest_has_cmd(g: guestfs.GuestFS, cmd: str) -> bool:
     """
     Replacement for g.available() checks.
     Uses a shell inside the appliance in a way that avoids injection.
+
+    Note: Uses command_quiet() if available (VMCraft) to suppress error logging
+    since these checks often fail (e.g., checking for mdadm/zpool in minimal guests).
     """
     try:
         # Pass cmd as $1 so it isn't interpolated into the shell string.
-        out = g.command([
-            "sh", "-lc",
-            'command -v "$1" >/dev/null 2>&1 && echo YES || echo NO',
-            "sh", cmd,
-        ])
+        # Use command_quiet if available (VMCraft) to suppress error logging for expected failures
+        if hasattr(g, 'command_quiet'):
+            out = g.command_quiet([
+                "sh", "-lc",
+                'command -v "$1" >/dev/null 2>&1 && echo YES || echo NO',
+                "sh", cmd,
+            ])
+        else:
+            out = g.command([
+                "sh", "-lc",
+                'command -v "$1" >/dev/null 2>&1 && echo YES || echo NO',
+                "sh", cmd,
+            ])
         return U.to_text(out).strip() == "YES"
     except Exception:
         return False
@@ -322,7 +342,12 @@ for p in "$@"; do
   [ -e "$p" ] && printf '%s\n' "$p"
 done
 '''
-        out = g.command(["sh", "-lc", script, "sh", pattern])
+        # Use command_quiet if available (VMCraft) to suppress error logging for expected failures
+        if hasattr(g, 'command_quiet'):
+            out = g.command_quiet(["sh", "-lc", script, "sh", pattern])
+        else:
+            out = g.command(["sh", "-lc", script, "sh", pattern])
+
         lines = [ln.strip() for ln in U.to_text(out).splitlines() if ln.strip()]
         # extra paranoia: verify inside guestfs API
         res: list[str] = []

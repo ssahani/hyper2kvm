@@ -136,7 +136,8 @@ def run_sudo(
     check: bool = True,
     capture: bool = True,
     retry: bool = False,
-    max_retries: int = 3
+    max_retries: int = 3,
+    failure_log_level: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """
     Run command with sudo and enhanced error handling.
@@ -151,6 +152,7 @@ def run_sudo(
         capture: Capture stdout/stderr (default: True)
         retry: Enable retry on failure (default: False)
         max_retries: Maximum retry attempts if retry=True (default: 3)
+        failure_log_level: Log level for failures (default: ERROR, can be WARNING or DEBUG)
 
     Returns:
         CompletedProcess with command results
@@ -168,11 +170,11 @@ def run_sudo(
             # Use retry logic
             @retry_on_failure(max_attempts=max_retries)
             def _run_with_retry():
-                return U.run_cmd(logger, sudo_cmd, check=check, capture=capture)
+                return U.run_cmd(logger, sudo_cmd, check=check, capture=capture, failure_log_level=failure_log_level)
 
             return _run_with_retry()
         else:
-            return U.run_cmd(logger, sudo_cmd, check=check, capture=capture)
+            return U.run_cmd(logger, sudo_cmd, check=check, capture=capture, failure_log_level=failure_log_level)
 
     except subprocess.CalledProcessError as e:
         # Enhance error with context

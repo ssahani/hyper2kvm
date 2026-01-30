@@ -1000,7 +1000,9 @@ class OfflineFSFix:
 
                 self._safe_umount_all(g)
             except Exception as e:
-                self.logger.warning(f"Mount failed for {dev}: {e}")
+                # DEBUG level since mount failures are expected during root detection
+                # (swap partitions, wrong filesystems, etc.)
+                self.logger.debug(f"Mount failed for {dev}: {e}")
                 mount_failures.append({"device": dev, "error": str(e)})
                 continue
 

@@ -298,12 +298,13 @@ class MDRaidAssembler:
         audit["attempted"] = True
 
         try:
-            # Assemble all arrays
+            # Assemble all arrays (log failures as DEBUG since "no arrays" is common)
             run_sudo(
                 logger,
                 ["mdadm", "--assemble", "--scan", "--run"],
                 check=True,
-                capture=True
+                capture=True,
+                failure_log_level=logging.DEBUG
             )
 
             audit["ok"] = True
@@ -314,7 +315,7 @@ class MDRaidAssembler:
         except Exception as e:
             audit["error"] = str(e)
             audit["details"] = "mdadm_assemble_scan_failed"
-            logger.warning(f"mdraid assembly failed: {e}")
+            logger.debug(f"mdraid assembly failed (expected if no RAID): {e}")
             return audit
 
 

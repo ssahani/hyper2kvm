@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -74,6 +75,7 @@ from .cloud_optimizer import CloudOptimizer
 from .disaster_recovery import DisasterRecovery
 from .audit_trail import AuditTrail
 from .resource_orchestrator import ResourceOrchestrator
+from .systemd import SystemctlManager, JournalctlManager, SystemdAnalyzer, SystemConfigManager
 
 
 logger = logging.getLogger(__name__)
@@ -161,6 +163,12 @@ class VMCraft:
         self._disaster_recovery: DisasterRecovery | None = None
         self._audit_trail: AuditTrail | None = None
         self._resource_orchestrator: ResourceOrchestrator | None = None
+
+        # Systemd managers (initialized after launch)
+        self._systemctl: SystemctlManager | None = None
+        self._journalctl: JournalctlManager | None = None
+        self._systemd_analyze: SystemdAnalyzer | None = None
+        self._sysconfig: SystemConfigManager | None = None
 
         # Log backend selection
         self.logger.debug("Using VMCraft backend (qemu-nbd + Linux tools)")
@@ -308,6 +316,12 @@ class VMCraft:
         self._disaster_recovery = DisasterRecovery(self.logger, self._file_ops, self._mount_root)
         self._audit_trail = AuditTrail(self.logger, self._file_ops, self._mount_root)
         self._resource_orchestrator = ResourceOrchestrator(self.logger, self._file_ops, self._mount_root)
+
+        # Initialize systemd managers
+        self._systemctl = SystemctlManager(self.command_quiet, self.logger)
+        self._journalctl = JournalctlManager(self.command_quiet, self.logger)
+        self._systemd_analyze = SystemdAnalyzer(self.command_quiet, self.logger)
+        self._sysconfig = SystemConfigManager(self.command_quiet, self.logger)
 
         total_time = time.time() - start_time
         self._perf_metrics['total_launch'] = total_time
@@ -550,13 +564,15 @@ class VMCraft:
         """Mount device at mountpoint (read-write)."""
         if not self._mount_manager:
             raise RuntimeError("Not launched")
-        self._mount_manager.mount(device, mountpoint, readonly=False)
+        # Use DEBUG logging for mount failures since root detection tries multiple devices
+        self._mount_manager.mount(device, mountpoint, readonly=False, failure_log_level=logging.DEBUG)
 
     def mount_ro(self, device: str, mountpoint: str) -> None:
         """Mount device at mountpoint (read-only)."""
         if not self._mount_manager:
             raise RuntimeError("Not launched")
-        self._mount_manager.mount(device, mountpoint, readonly=True)
+        # Use DEBUG logging for mount failures since root detection tries multiple devices
+        self._mount_manager.mount(device, mountpoint, readonly=True, failure_log_level=logging.DEBUG)
 
     def mount_options(self, options: str, device: str, mountpoint: str) -> None:
         """Mount device with custom options."""
@@ -837,6 +853,1144 @@ class VMCraft:
             "flag": st.f_flag,
         }
 
+    # Partition operations
+
+    def part_to_partnum(self, partition: str) -> int:
+        """
+        Extract partition number from partition device path.
+
+        Examples:
+            /dev/sda1 -> 1
+            /dev/nvme0n1p2 -> 2
+            /dev/nbd0p3 -> 3
+
+        Raises:
+            RuntimeError: If partition number cannot be extracted
+        """
+        # Pattern 1: P-separator devices (nvme, mmcblk, nbd, loop)
+        m = re.match(r"^/dev/(?:nvme\d+n\d+|mmcblk\d+|nbd\d+|loop\d+)p(\d+)$", partition)
+        if m:
+            return int(m.group(1))
+
+        # Pattern 2: Traditional devices (sda, vda, hda, xvda)
+        m = re.match(r"^/dev/[a-zA-Z]+(\d+)$", partition)
+        if m:
+            return int(m.group(1))
+
+        # Pattern 3: by-path with -part suffix
+        m = re.search(r"-part(\d+)$", partition)
+        if m:
+            return int(m.group(1))
+
+        raise RuntimeError(f"Cannot extract partition number from {partition}")
+
+    def part_to_dev(self, partition: str) -> str:
+        """
+        Get parent device from partition path.
+
+        Examples:
+            /dev/sda1 -> /dev/sda
+            /dev/nvme0n1p2 -> /dev/nvme0n1
+            /dev/nbd0p3 -> /dev/nbd0
+
+        Raises:
+            RuntimeError: If parent device cannot be determined
+        """
+        # Pattern 1: P-separator devices
+        m = re.match(r"^(/dev/(?:nvme\d+n\d+|mmcblk\d+|nbd\d+|loop\d+))p\d+$", partition)
+        if m:
+            return m.group(1)
+
+        # Pattern 2: Traditional devices
+        m = re.match(r"^(/dev/[a-zA-Z]+)\d+$", partition)
+        if m:
+            return m.group(1)
+
+        raise RuntimeError(f"Cannot determine parent device from {partition}")
+
+    def blockdev_getss(self, device: str) -> int:
+        """
+        Get logical sector size in bytes.
+
+        Uses /sys/block/*/queue/logical_block_size for NBD devices.
+        Falls back to blockdev --getss command.
+
+        Returns:
+            Sector size in bytes (typically 512 or 4096)
+        """
+        try:
+            # Method 1: Read from /sys/block/
+            device_name = Path(device).name
+            sys_path = f"/sys/block/{device_name}/queue/logical_block_size"
+            if Path(sys_path).exists():
+                return int(Path(sys_path).read_text().strip())
+        except Exception:
+            pass
+
+        try:
+            # Method 2: Use blockdev command
+            result = run_sudo(self.logger, ["blockdev", "--getss", device],
+                             check=True, capture=True)
+            return int(result.stdout.strip())
+        except Exception:
+            return 512  # Default sector size
+
+    def blockdev_getsz(self, device: str) -> int:
+        """
+        Get device size in 512-byte sectors.
+
+        Returns:
+            Number of 512-byte sectors
+        """
+        try:
+            result = run_sudo(self.logger, ["blockdev", "--getsz", device],
+                             check=True, capture=True)
+            return int(result.stdout.strip())
+        except Exception:
+            return 0
+
+    def blockdev_getbsz(self, device: str) -> int:
+        """
+        Get block size in bytes.
+
+        Returns:
+            Block size in bytes (typically 4096)
+        """
+        try:
+            result = run_sudo(self.logger, ["blockdev", "--getbsz", device],
+                             check=True, capture=True)
+            return int(result.stdout.strip())
+        except Exception:
+            return 4096  # Default block size
+
+    def blockdev_setrw(self, device: str) -> None:
+        """
+        Set block device to read-write mode.
+
+        Args:
+            device: Device path
+        """
+        try:
+            run_sudo(self.logger, ["blockdev", "--setrw", device],
+                    check=True, capture=True)
+        except Exception as e:
+            raise RuntimeError(f"Failed to set {device} to read-write: {e}")
+
+    def blockdev_setro(self, device: str) -> None:
+        """
+        Set block device to read-only mode.
+
+        Args:
+            device: Device path
+        """
+        try:
+            run_sudo(self.logger, ["blockdev", "--setro", device],
+                    check=True, capture=True)
+        except Exception as e:
+            raise RuntimeError(f"Failed to set {device} to read-only: {e}")
+
+    def blockdev_getro(self, device: str) -> bool:
+        """
+        Check if block device is read-only.
+
+        Args:
+            device: Device path
+
+        Returns:
+            True if read-only, False if read-write
+        """
+        try:
+            result = run_sudo(self.logger, ["blockdev", "--getro", device],
+                             check=True, capture=True)
+            return result.stdout.strip() == "1"
+        except Exception:
+            return False
+
+    def blockdev_flushbufs(self, device: str) -> None:
+        """
+        Flush buffers for block device.
+
+        Args:
+            device: Device path
+        """
+        try:
+            run_sudo(self.logger, ["blockdev", "--flushbufs", device],
+                    check=True, capture=True)
+        except Exception as e:
+            raise RuntimeError(f"Failed to flush buffers for {device}: {e}")
+
+    def blockdev_rereadpt(self, device: str) -> None:
+        """
+        Re-read partition table (equivalent to partprobe).
+
+        Args:
+            device: Device path
+        """
+        try:
+            run_sudo(self.logger, ["blockdev", "--rereadpt", device],
+                    check=True, capture=True)
+        except Exception as e:
+            # Fallback to partprobe
+            try:
+                run_sudo(self.logger, ["partprobe", device],
+                        check=True, capture=True)
+            except Exception as e2:
+                raise RuntimeError(f"Failed to re-read partition table for {device}: {e2}")
+
+    # Inspection APIs
+
+    def inspect_filesystems(self) -> dict[str, list[str]]:
+        """
+        Inspect and return filesystems for each detected OS root.
+
+        This is a convenience wrapper over list_filesystems() that groups
+        filesystems by detected operating system roots.
+
+        Returns:
+            Dict mapping root device to list of filesystem devices
+            Example: {"/dev/nbd0p2": ["/dev/nbd0p1", "/dev/nbd0p2"]}
+        """
+        result = {}
+
+        # Get all filesystems
+        all_fs = self.list_filesystems()
+
+        # Try to detect OS roots using the OS inspector
+        if self._os_inspector:
+            try:
+                roots = self.inspect_os()
+                for root_dev in roots:
+                    # Find all filesystems on the same disk as root
+                    try:
+                        root_base = self.part_to_dev(root_dev) if "/" in root_dev else root_dev
+                    except Exception:
+                        root_base = root_dev
+
+                    filesystems = []
+                    for fs_dev in all_fs.keys():
+                        try:
+                            fs_base = self.part_to_dev(fs_dev) if "/" in fs_dev else fs_dev
+                            if fs_base == root_base:
+                                filesystems.append(fs_dev)
+                        except Exception:
+                            pass
+                    result[root_dev] = filesystems
+            except Exception:
+                pass
+
+        # If no inspection data, return all filesystems grouped by disk
+        if not result:
+            disks = {}
+            for fs_dev in all_fs.keys():
+                try:
+                    base = self.part_to_dev(fs_dev) if "/" in fs_dev else fs_dev
+                    if base not in disks:
+                        disks[base] = []
+                    disks[base].append(fs_dev)
+                except Exception:
+                    pass
+            # Use first device as "root" for grouping
+            for base, devices in disks.items():
+                if devices:
+                    result[devices[0]] = devices
+
+        return result
+
+    def inspect_get_filesystems(self, root: str) -> list[str]:
+        """
+        Get list of filesystems for specified OS root.
+
+        Args:
+            root: Root device path (e.g., /dev/nbd0p2)
+
+        Returns:
+            List of filesystem device paths on same disk
+        """
+        all_inspections = self.inspect_filesystems()
+        return all_inspections.get(root, [])
+
+    # Extended attributes (ext2/3/4)
+
+    def get_e2attrs(self, file: str) -> str:
+        """
+        Get ext2/3/4 file attributes.
+
+        Returns attribute string like "-------------e--"
+        Common flags: i (immutable), a (append-only), e (extent format)
+
+        Args:
+            file: Guest filesystem path
+
+        Returns:
+            Attribute string (empty if not ext filesystem or error)
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            # Use lsattr command via chroot
+            result = self.command_quiet(["lsattr", "-d", file])
+            # lsattr output format: "-------------e-- /path/to/file"
+            output = result.strip()
+            if output:
+                # Extract attributes (first field before space)
+                parts = output.split(None, 1)
+                if parts:
+                    return parts[0]
+        except Exception as e:
+            self.logger.debug(f"get_e2attrs failed for {file}: {e}")
+
+        return ""
+
+    def set_e2attrs(self, file: str, attrs: str, clear: bool = False) -> None:
+        """
+        Set ext2/3/4 file attributes.
+
+        Args:
+            file: Guest filesystem path
+            attrs: Attribute string (e.g., "i" for immutable, "a" for append-only)
+            clear: If True, remove attributes instead of adding them
+
+        Common attributes:
+            i - immutable (file cannot be modified)
+            a - append-only (file can only be appended)
+            d - no dump (file not backed up by dump)
+            e - extent format (file uses extents)
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        # Build chattr command
+        if clear:
+            cmd = ["chattr", f"-{attrs}", file]
+        else:
+            cmd = ["chattr", f"+{attrs}", file]
+
+        try:
+            self.command(cmd)
+        except Exception as e:
+            raise RuntimeError(f"Failed to set attributes on {file}: {e}")
+
+    # Filesystem-specific operations
+
+    def ntfs_3g_probe(self, device: str, rw: bool = False) -> int:
+        """
+        Probe NTFS filesystem with ntfs-3g.probe tool.
+
+        Args:
+            device: Device path
+            rw: If True, test for read-write capability
+
+        Returns:
+            0 if mountable, non-zero otherwise
+        """
+        try:
+            cmd = ["ntfs-3g.probe"]
+            if rw:
+                cmd.append("--readwrite")
+            cmd.append(device)
+
+            result = run_sudo(self.logger, cmd, check=False, capture=True,
+                             failure_log_level=logging.DEBUG)
+            return result.returncode
+        except Exception as e:
+            self.logger.debug(f"ntfs_3g_probe failed: {e}")
+            return 1  # Non-zero = not mountable
+
+    def btrfs_filesystem_show(self, device: str | None = None) -> list[dict[str, str]]:
+        """
+        Show Btrfs filesystem information.
+
+        Args:
+            device: Optional device path to query specific filesystem
+
+        Returns:
+            List of dicts with Btrfs filesystem info
+            Keys: label, uuid, total_devices, used_devices
+        """
+        try:
+            cmd = ["btrfs", "filesystem", "show"]
+            if device:
+                cmd.append(device)
+
+            result = run_sudo(self.logger, cmd, check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+
+            # Parse btrfs filesystem show output
+            filesystems = []
+            current_fs = None
+
+            for line in result.stdout.splitlines():
+                line = line.strip()
+
+                # Label line: "Label: 'mylabel'  uuid: xxx-xxx"
+                if line.startswith("Label:"):
+                    if current_fs:
+                        filesystems.append(current_fs)
+                    current_fs = {}
+
+                    # Extract label
+                    if "'" in line:
+                        label_match = re.search(r"Label: '([^']*)'", line)
+                        current_fs["label"] = label_match.group(1) if label_match else ""
+                    else:
+                        current_fs["label"] = ""
+
+                    # Extract UUID
+                    uuid_match = re.search(r"uuid: ([a-f0-9-]+)", line)
+                    current_fs["uuid"] = uuid_match.group(1) if uuid_match else ""
+
+                # Total devices line: "Total devices 2 FS bytes used 1.5GiB"
+                elif "Total devices" in line and current_fs is not None:
+                    match = re.search(r"Total devices (\d+)", line)
+                    if match:
+                        current_fs["total_devices"] = match.group(1)
+
+            if current_fs:
+                filesystems.append(current_fs)
+
+            return filesystems
+
+        except Exception as e:
+            self.logger.debug(f"btrfs_filesystem_show failed: {e}")
+            return []
+
+    def btrfs_subvolume_list(self, device: str) -> list[dict[str, str]]:
+        """
+        List Btrfs subvolumes on a device.
+
+        Note: Device must be mounted first.
+
+        Args:
+            device: Mounted Btrfs device or mount point
+
+        Returns:
+            List of dicts with subvolume info
+            Keys: id, path, parent_id (if available)
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            # Use mount point if device is mounted
+            mount_point = str(self._mount_root)
+
+            result = run_sudo(self.logger,
+                             ["btrfs", "subvolume", "list", mount_point],
+                             check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+
+            subvolumes = []
+            for line in result.stdout.splitlines():
+                # Format: "ID 256 gen 8 top level 5 path @"
+                match = re.match(r"ID (\d+).*path (.+)$", line.strip())
+                if match:
+                    subvolumes.append({
+                        "id": match.group(1),
+                        "path": match.group(2),
+                    })
+
+            return subvolumes
+
+        except Exception as e:
+            self.logger.debug(f"btrfs_subvolume_list failed: {e}")
+            return []
+
+    def zfs_pool_list(self) -> list[str]:
+        """
+        List imported ZFS pools.
+
+        Returns:
+            List of pool names
+        """
+        try:
+            result = run_sudo(self.logger,
+                             ["zpool", "list", "-H", "-o", "name"],
+                             check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+            return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        except Exception as e:
+            self.logger.debug(f"zfs_pool_list failed: {e}")
+            return []
+
+    def zfs_dataset_list(self, pool: str | None = None) -> list[dict[str, str]]:
+        """
+        List ZFS datasets.
+
+        Args:
+            pool: Optional pool name to filter datasets
+
+        Returns:
+            List of dicts with dataset info
+            Keys: name, used, avail, refer, mountpoint
+        """
+        try:
+            cmd = ["zfs", "list", "-H", "-o", "name,used,avail,refer,mountpoint"]
+            if pool:
+                cmd.append(pool)
+
+            result = run_sudo(self.logger, cmd, check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+
+            datasets = []
+            for line in result.stdout.splitlines():
+                parts = line.strip().split("\t")
+                if len(parts) >= 5:
+                    datasets.append({
+                        "name": parts[0],
+                        "used": parts[1],
+                        "avail": parts[2],
+                        "refer": parts[3],
+                        "mountpoint": parts[4],
+                    })
+
+            return datasets
+
+        except Exception as e:
+            self.logger.debug(f"zfs_dataset_list failed: {e}")
+            return []
+
+    def xfs_info(self, device: str) -> dict[str, Any]:
+        """
+        Get XFS filesystem information and geometry.
+
+        Args:
+            device: XFS device path or mount point
+
+        Returns:
+            Dict with XFS filesystem information:
+            - blocksize: Block size in bytes
+            - agcount: Number of allocation groups
+            - agsize: Allocation group size in blocks
+            - sectsize: Sector size in bytes
+            - inodesize: Inode size in bytes
+            - naming: Naming version
+            - log: Log information
+            - realtime: Realtime section information (if present)
+            - label: Filesystem label (if set)
+        """
+        try:
+            # Try device first, then mount point
+            result = run_sudo(self.logger, ["xfs_info", device],
+                             check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+
+            # Parse xfs_info output
+            info = {}
+            for line in result.stdout.splitlines():
+                line = line.strip()
+
+                # Meta-data line: "meta-data=/dev/nbd0p1  isize=512  agcount=4, agsize=65536 blks"
+                if line.startswith("meta-data="):
+                    # Extract isize (inode size)
+                    match = re.search(r"isize=(\d+)", line)
+                    if match:
+                        info["inodesize"] = int(match.group(1))
+
+                    # Extract agcount (allocation group count)
+                    match = re.search(r"agcount=(\d+)", line)
+                    if match:
+                        info["agcount"] = int(match.group(1))
+
+                    # Extract agsize (allocation group size)
+                    match = re.search(r"agsize=(\d+)", line)
+                    if match:
+                        info["agsize"] = int(match.group(1))
+
+                # Data line: "data     =  bsize=4096  blocks=262144, imaxpct=25"
+                elif line.startswith("data"):
+                    # Extract bsize (block size)
+                    match = re.search(r"bsize=(\d+)", line)
+                    if match:
+                        info["blocksize"] = int(match.group(1))
+
+                    # Extract blocks
+                    match = re.search(r"blocks=(\d+)", line)
+                    if match:
+                        info["blocks"] = int(match.group(1))
+
+                    # Extract imaxpct (max inode percentage)
+                    match = re.search(r"imaxpct=(\d+)", line)
+                    if match:
+                        info["imaxpct"] = int(match.group(1))
+
+                # Naming line: "naming   =version 2  bsize=4096  ascii-ci=0 ftype=1"
+                elif line.startswith("naming"):
+                    match = re.search(r"version\s+(\d+)", line)
+                    if match:
+                        info["naming_version"] = int(match.group(1))
+
+                    match = re.search(r"ftype=(\d+)", line)
+                    if match:
+                        info["ftype"] = int(match.group(1))
+
+                # Log line: "log      =internal  bsize=4096  blocks=2560, version=2"
+                elif line.startswith("log"):
+                    if "internal" in line:
+                        info["log_internal"] = True
+                    elif "external" in line:
+                        info["log_internal"] = False
+
+                    match = re.search(r"blocks=(\d+)", line)
+                    if match:
+                        info["log_blocks"] = int(match.group(1))
+
+                # Realtime line: "realtime =none  extsz=4096  blocks=0, rtextents=0"
+                elif line.startswith("realtime"):
+                    if "none" not in line:
+                        match = re.search(r"blocks=(\d+)", line)
+                        if match:
+                            info["realtime_blocks"] = int(match.group(1))
+
+                # Sector size line: "         =  sectsz=512  attr=2, projid32bit=1"
+                elif "sectsz=" in line:
+                    match = re.search(r"sectsz=(\d+)", line)
+                    if match:
+                        info["sectsize"] = int(match.group(1))
+
+            # Get label using xfs_admin
+            try:
+                label_result = run_sudo(self.logger, ["xfs_admin", "-l", device],
+                                       check=True, capture=True,
+                                       failure_log_level=logging.DEBUG)
+                # Output format: "label = "mylabel""
+                match = re.search(r'label\s*=\s*"([^"]*)"', label_result.stdout)
+                if match:
+                    info["label"] = match.group(1)
+            except Exception:
+                pass
+
+            # Get UUID using xfs_admin
+            try:
+                uuid_result = run_sudo(self.logger, ["xfs_admin", "-u", device],
+                                      check=True, capture=True,
+                                      failure_log_level=logging.DEBUG)
+                # Output format: "UUID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                match = re.search(r'UUID\s*=\s*([a-f0-9-]+)', uuid_result.stdout)
+                if match:
+                    info["uuid"] = match.group(1)
+            except Exception:
+                pass
+
+            return info
+
+        except Exception as e:
+            self.logger.debug(f"xfs_info failed for {device}: {e}")
+            return {}
+
+    def xfs_admin(self, device: str, label: str | None = None, uuid: str | None = None) -> dict[str, str]:
+        """
+        Get or set XFS filesystem label and UUID.
+
+        Args:
+            device: XFS device path
+            label: Optional new label to set (max 12 characters)
+            uuid: Optional new UUID to set (or "generate" for random UUID)
+
+        Returns:
+            Dict with current label and UUID (after any changes)
+            Keys: label, uuid
+
+        Raises:
+            RuntimeError: If setting label/UUID fails
+        """
+        info = {}
+
+        # Set label if requested
+        if label is not None:
+            if len(label) > 12:
+                raise RuntimeError("XFS label must be 12 characters or less")
+            try:
+                run_sudo(self.logger, ["xfs_admin", "-L", label, device],
+                        check=True, capture=True)
+                info["label"] = label
+            except Exception as e:
+                raise RuntimeError(f"Failed to set XFS label: {e}")
+
+        # Set UUID if requested
+        if uuid is not None:
+            try:
+                if uuid.lower() == "generate":
+                    run_sudo(self.logger, ["xfs_admin", "-U", "generate", device],
+                            check=True, capture=True)
+                else:
+                    run_sudo(self.logger, ["xfs_admin", "-U", uuid, device],
+                            check=True, capture=True)
+                info["uuid"] = uuid
+            except Exception as e:
+                raise RuntimeError(f"Failed to set XFS UUID: {e}")
+
+        # Get current label
+        try:
+            result = run_sudo(self.logger, ["xfs_admin", "-l", device],
+                             check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+            match = re.search(r'label\s*=\s*"([^"]*)"', result.stdout)
+            if match:
+                info["label"] = match.group(1)
+        except Exception:
+            info["label"] = ""
+
+        # Get current UUID
+        try:
+            result = run_sudo(self.logger, ["xfs_admin", "-u", device],
+                             check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+            match = re.search(r'UUID\s*=\s*([a-f0-9-]+)', result.stdout)
+            if match:
+                info["uuid"] = match.group(1)
+        except Exception:
+            info["uuid"] = ""
+
+        return info
+
+    def xfs_growfs(self, mountpoint: str, data_blocks: int | None = None) -> dict[str, Any]:
+        """
+        Grow (expand) an XFS filesystem.
+
+        Note: The filesystem must be mounted.
+
+        Args:
+            mountpoint: Mount point of the XFS filesystem
+            data_blocks: Optional target size in blocks (if None, grows to fill device)
+
+        Returns:
+            Dict with growth information:
+            - success: True if growth succeeded
+            - old_blocks: Original size in blocks
+            - new_blocks: New size in blocks
+
+        Raises:
+            RuntimeError: If filesystem is not mounted or growth fails
+        """
+        try:
+            # Get current size first
+            info_before = self.xfs_info(mountpoint)
+            old_blocks = info_before.get("blocks", 0)
+
+            # Build xfs_growfs command
+            cmd = ["xfs_growfs"]
+            if data_blocks is not None:
+                cmd.extend(["-D", str(data_blocks)])
+            cmd.append(mountpoint)
+
+            # Execute growth
+            result = run_sudo(self.logger, cmd, check=True, capture=True)
+
+            # Parse result to get new size
+            # Output format: "data blocks changed from X to Y"
+            new_blocks = old_blocks
+            match = re.search(r"data blocks changed from \d+ to (\d+)", result.stdout)
+            if match:
+                new_blocks = int(match.group(1))
+
+            return {
+                "success": True,
+                "old_blocks": old_blocks,
+                "new_blocks": new_blocks,
+            }
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to grow XFS filesystem: {e}")
+
+    def xfs_repair(self, device: str, check_only: bool = False) -> dict[str, Any]:
+        """
+        Repair or check an XFS filesystem.
+
+        IMPORTANT: Filesystem must NOT be mounted.
+
+        Args:
+            device: XFS device path
+            check_only: If True, only check for errors (don't repair)
+
+        Returns:
+            Dict with repair information:
+            - clean: True if filesystem is clean
+            - errors_found: True if errors were found
+            - errors_repaired: True if errors were repaired (check_only=False)
+            - output: Command output
+
+        Raises:
+            RuntimeError: If filesystem is mounted or repair fails critically
+        """
+        try:
+            # Build xfs_repair command
+            cmd = ["xfs_repair"]
+            if check_only:
+                cmd.append("-n")  # No modify mode (check only)
+            cmd.append(device)
+
+            # Execute repair
+            result = run_sudo(self.logger, cmd, check=False, capture=True,
+                             failure_log_level=logging.DEBUG)
+
+            # Parse output
+            output = result.stdout
+            clean = "no modifications needed" in output.lower() or result.returncode == 0
+            errors_found = "errors found" in output.lower() or "corruption" in output.lower()
+            errors_repaired = not check_only and errors_found and result.returncode == 0
+
+            return {
+                "clean": clean,
+                "errors_found": errors_found,
+                "errors_repaired": errors_repaired,
+                "output": output,
+                "returncode": result.returncode,
+            }
+
+        except Exception as e:
+            # Check if error is due to mounted filesystem
+            if "mounted" in str(e).lower():
+                raise RuntimeError(f"Cannot repair mounted XFS filesystem: {device}")
+            raise RuntimeError(f"XFS repair failed: {e}")
+
+    def xfs_db(self, device: str, commands: list[str]) -> str:
+        """
+        Execute XFS debug/inspection commands using xfs_db.
+
+        CAUTION: This is a low-level tool. Use with care.
+
+        Args:
+            device: XFS device path
+            commands: List of xfs_db commands to execute
+
+        Returns:
+            Command output as string
+
+        Example:
+            # Get superblock info
+            output = g.xfs_db("/dev/nbd0p1", ["sb 0", "p"])
+        """
+        try:
+            # Build command string
+            cmd_string = "\n".join(commands) + "\nquit\n"
+
+            # Execute xfs_db in read-only mode
+            result = run_sudo(
+                self.logger,
+                ["xfs_db", "-r", "-c", cmd_string, device],
+                check=True,
+                capture=True,
+                failure_log_level=logging.DEBUG
+            )
+
+            return result.stdout
+
+        except Exception as e:
+            self.logger.debug(f"xfs_db failed: {e}")
+            return ""
+
+    # Systemd integration operations
+
+    # === systemctl APIs ===
+
+    def systemctl_list_units(
+        self,
+        unit_type: str = "service",
+        state: str | None = None,
+        all_units: bool = True
+    ) -> list[dict[str, str]]:
+        """
+        List systemd units.
+
+        Args:
+            unit_type: Type of unit (service, timer, socket, target, mount, etc.)
+            state: Filter by state (active, inactive, failed, running, etc.)
+            all_units: Include inactive units
+
+        Returns:
+            List of dicts with keys: unit, load, active, sub, description
+        """
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.list_units(unit_type, state, all_units)
+
+    def systemctl_list_unit_files(self, unit_type: str = "service") -> list[dict[str, str]]:
+        """List installed unit files."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.list_unit_files(unit_type)
+
+    def systemctl_is_active(self, unit: str) -> bool:
+        """Check if a unit is active."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.is_active(unit)
+
+    def systemctl_is_enabled(self, unit: str) -> str:
+        """Check if a unit is enabled (returns: enabled, disabled, static, masked, etc.)."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.is_enabled(unit)
+
+    def systemctl_is_failed(self, unit: str) -> bool:
+        """Check if a unit is in failed state."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.is_failed(unit)
+
+    def systemctl_show(self, unit: str) -> dict[str, str]:
+        """Show properties of a unit."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.show(unit)
+
+    def systemctl_status(self, unit: str) -> dict[str, Any]:
+        """Get detailed status of a unit."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.status(unit)
+
+    def systemctl_cat(self, unit: str) -> str:
+        """Show unit file content."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.cat(unit)
+
+    def systemctl_list_dependencies(self, unit: str, reverse: bool = False, recursive: bool = True) -> list[str]:
+        """List unit dependencies."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.list_dependencies(unit, reverse, recursive)
+
+    def systemctl_list_failed(self) -> list[dict[str, str]]:
+        """List all failed units."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.list_failed()
+
+    def systemctl_get_default_target(self) -> str:
+        """Get the default boot target."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.get_default_target()
+
+    def systemctl_list_targets(self) -> list[str]:
+        """List all available targets."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.list_targets()
+
+    def systemctl_list_timers(self) -> list[dict[str, str]]:
+        """List systemd timers."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.list_timers()
+
+    def systemctl_list_sockets(self) -> list[dict[str, str]]:
+        """List systemd socket units."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.list_sockets()
+
+    def systemctl_list_mounts(self) -> list[dict[str, str]]:
+        """List systemd mount units."""
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.list_mounts()
+
+    # === journalctl APIs ===
+
+    def journalctl_query(
+        self,
+        unit: str | None = None,
+        priority: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        boot: int | str | None = None,
+        lines: int | None = None,
+        grep: str | None = None,
+        output_format: str = "short"
+    ) -> str:
+        """Query systemd journal logs."""
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.query(unit, priority, since, until, boot, lines, grep, output_format)
+
+    def journalctl_list_boots(self) -> list[dict[str, str]]:
+        """List available boot entries."""
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.list_boots()
+
+    def journalctl_get_boot_log(self, boot: int | str = 0, lines: int | None = None) -> str:
+        """Get log for a specific boot."""
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.get_boot_log(boot, lines)
+
+    def journalctl_get_errors(self, since: str | None = None, lines: int = 100) -> list[dict[str, str]]:
+        """Get error messages from journal."""
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.get_errors(since, lines)
+
+    def journalctl_get_warnings(self, since: str | None = None, lines: int = 100) -> list[dict[str, str]]:
+        """Get warning messages from journal."""
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.get_warnings(since, lines)
+
+    def journalctl_disk_usage(self) -> dict[str, Any]:
+        """Get journal disk usage information."""
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.disk_usage()
+
+    def journalctl_verify(self) -> dict[str, Any]:
+        """Verify journal file consistency."""
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.verify()
+
+    def journalctl_export(self, output_format: str = "json", since: str | None = None) -> str:
+        """Export journal logs."""
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.export(output_format, since)
+
+    # === systemd-analyze APIs ===
+
+    def systemd_analyze_time(self) -> dict[str, Any]:
+        """Analyze system boot time."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.time()
+
+    def systemd_analyze_blame(self, lines: int | None = None) -> list[dict[str, str]]:
+        """Show which services took the longest to initialize."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.blame(lines)
+
+    def systemd_analyze_critical_chain(self, unit: str | None = None) -> str:
+        """Show critical chain for boot or specific unit."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.critical_chain(unit)
+
+    def systemd_analyze_security(self, unit: str | None = None) -> list[dict[str, Any]]:
+        """Analyze security settings of services."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.security(unit)
+
+    def systemd_analyze_verify(self, unit: str) -> dict[str, Any]:
+        """Verify unit file syntax and configuration."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.verify(unit)
+
+    def systemd_analyze_dot(self, pattern: str | None = None, to_pattern: str | None = None) -> str:
+        """Generate dependency graph in GraphViz dot format."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.dot(pattern, to_pattern)
+
+    def systemd_analyze_calendar(self, expression: str) -> dict[str, str]:
+        """Validate and show next elapse times for calendar expressions."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.calendar(expression)
+
+    def systemd_analyze_dump(self) -> str:
+        """Dump server state in human-readable form."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.dump()
+
+    def systemd_analyze_plot(self) -> str:
+        """Generate SVG boot time plot."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.plot()
+
+    def systemd_analyze_syscall_filter(self, set_name: str | None = None) -> list[str]:
+        """List system calls in seccomp filter sets."""
+        if not self._systemd_analyze:
+            raise RuntimeError("Not launched")
+        return self._systemd_analyze.syscall_filter(set_name)
+
+    # === Configuration APIs (timedatectl, hostnamectl, localectl) ===
+
+    def timedatectl_status(self) -> dict[str, str]:
+        """Get time and date settings."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.timedatectl_status()
+
+    def timedatectl_list_timezones(self) -> list[str]:
+        """List available timezones."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.timedatectl_list_timezones()
+
+    def timedatectl_show(self) -> dict[str, str]:
+        """Show time/date properties in machine-readable format."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.timedatectl_show()
+
+    def hostnamectl_status(self) -> dict[str, str]:
+        """Get hostname and system information."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.hostnamectl_status()
+
+    def hostnamectl_hostname(self) -> str:
+        """Get current hostname."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.hostnamectl_hostname()
+
+    def localectl_status(self) -> dict[str, str]:
+        """Get locale and keyboard configuration."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.localectl_status()
+
+    def localectl_list_locales(self) -> list[str]:
+        """List available locales."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.localectl_list_locales()
+
+    def localectl_list_keymaps(self) -> list[str]:
+        """List available keyboard mappings."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.localectl_list_keymaps()
+
+    def localectl_list_x11_keymap_models(self) -> list[str]:
+        """List available X11 keymap models."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.localectl_list_x11_keymap_models()
+
+    def localectl_list_x11_keymap_layouts(self) -> list[str]:
+        """List available X11 keymap layouts."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.localectl_list_x11_keymap_layouts()
+
+    def loginctl_list_sessions(self) -> list[dict[str, str]]:
+        """List current login sessions."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.loginctl_list_sessions()
+
+    def loginctl_list_users(self) -> list[dict[str, str]]:
+        """List logged-in users."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.loginctl_list_users()
+
+    def loginctl_show_session(self, session: str) -> dict[str, str]:
+        """Show properties of a login session."""
+        if not self._sysconfig:
+            raise RuntimeError("Not launched")
+        return self._sysconfig.loginctl_show_session(session)
+
     # Storage stack operations
 
     def vgscan(self) -> None:
@@ -863,6 +2017,18 @@ class VMCraft:
 
         chroot_cmd = ["chroot", str(self._mount_root)] + cmd
         result = run_sudo(self.logger, chroot_cmd, check=True, capture=True)
+        return result.stdout
+
+    def command_quiet(self, cmd: list[str]) -> str:
+        """
+        Execute command in guest filesystem (via chroot), but log failures as DEBUG only.
+        Use this for commands that are expected to fail often (e.g., glob searches, bootloader commands).
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        chroot_cmd = ["chroot", str(self._mount_root)] + cmd
+        result = run_sudo(self.logger, chroot_cmd, check=True, capture=True, failure_log_level=logging.DEBUG)
         return result.stdout
 
     # Windows-specific operations (delegate to Windows modules)

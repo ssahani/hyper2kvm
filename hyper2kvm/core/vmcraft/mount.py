@@ -44,7 +44,8 @@ class MountManager:
         self.mount_root = mount_root
         self._mounted: dict[str, str] = {}  # mountpoint -> device
 
-    def mount(self, device: str, mountpoint: str, *, readonly: bool = False, options: str | None = None) -> None:
+    def mount(self, device: str, mountpoint: str, *, readonly: bool = False, options: str | None = None,
+              failure_log_level: int | None = None) -> None:
         """
         Mount device at mountpoint.
 
@@ -53,6 +54,7 @@ class MountManager:
             mountpoint: Mount point path (e.g., /)
             readonly: Mount read-only if True
             options: Custom mount options string
+            failure_log_level: Log level for mount failures (default: ERROR, use DEBUG for probing)
 
         Raises:
             RuntimeError: If mount fails
@@ -121,7 +123,7 @@ class MountManager:
 
         # Mount with retries for different filesystem states
         try:
-            run_sudo(self.logger, cmd, check=True, capture=True)
+            run_sudo(self.logger, cmd, check=True, capture=True, failure_log_level=failure_log_level)
             self._mounted[mountpoint] = device
             self.logger.debug(f"Mounted {device} at {mountpoint} (fstype={fstype})")
         except subprocess.CalledProcessError as e:
@@ -132,7 +134,7 @@ class MountManager:
                 cmd_ro = ["mount", "-t", fstype if fstype != "fat" else "vfat", "-o", "ro"]
                 cmd_ro.extend([device, str(target)])
                 try:
-                    run_sudo(self.logger, cmd_ro, check=True, capture=True)
+                    run_sudo(self.logger, cmd_ro, check=True, capture=True, failure_log_level=failure_log_level)
                     self._mounted[mountpoint] = device
                     self.logger.info(f"Mounted {device} at {mountpoint} in read-only mode")
                     return

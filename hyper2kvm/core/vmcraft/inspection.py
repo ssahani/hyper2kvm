@@ -98,12 +98,14 @@ class OSInspector:
             device: Device path to mount
         """
         try:
-            # Try read-only mount
-            run_sudo(self.logger, ["mount", "-o", "ro", device, str(self.mount_root)], check=True, capture=True)
+            # Try read-only mount (log failures as DEBUG since we'll retry with different options)
+            run_sudo(self.logger, ["mount", "-o", "ro", device, str(self.mount_root)],
+                    check=True, capture=True, failure_log_level=logging.DEBUG)
         except Exception:
             # Try with noload option for dirty filesystems
             try:
-                run_sudo(self.logger, ["mount", "-o", "ro,noload", device, str(self.mount_root)], check=True, capture=True)
+                run_sudo(self.logger, ["mount", "-o", "ro,noload", device, str(self.mount_root)],
+                        check=True, capture=True, failure_log_level=logging.DEBUG)
             except Exception:
                 raise
 

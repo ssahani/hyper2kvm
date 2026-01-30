@@ -133,12 +133,20 @@ def _run_guestfs_cmd(self, g: guestfs.GuestFS, cmd: list[str]) -> tuple[bool, st
     """
     Best-effort command execution via libguestfs appliance.
     Not a perfect chroot, but works for many boot tools.
+
+    Note: These commands often fail in offline/chroot environments (e.g., grub2-mkconfig
+    can't access /proc). Failures are logged at DEBUG level only via command_quiet.
     """
     try:
         _log_info(self, f"Running (guestfs): {' '.join(cmd)}")
-        out = g.command(cmd)
+        # Use command_quiet if available (VMCraft) to suppress error logging for expected failures
+        if hasattr(g, 'command_quiet'):
+            out = g.command_quiet(cmd)
+        else:
+            out = g.command(cmd)
         return True, U.to_text(out)
     except Exception as e:
+        # Failure is expected in offline mode; already logged at DEBUG level by command_quiet
         return False, str(e)
 
 

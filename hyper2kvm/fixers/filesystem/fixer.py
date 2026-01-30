@@ -217,7 +217,11 @@ class FilesystemFixer:
         # Method 3: file -s heuristic
         try:
             if self._has_command(g):
-                out_raw = g.command(["file", "-s", dev_text])
+                # Use command_quiet if available (VMCraft) to suppress error logging
+                if hasattr(g, 'command_quiet'):
+                    out_raw = g.command_quiet(["file", "-s", dev_text])
+                else:
+                    out_raw = g.command(["file", "-s", dev_text])
                 out = U.to_text(out_raw)
                 out_l = out.lower()
                 if out:
