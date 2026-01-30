@@ -383,19 +383,61 @@ kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.1.0/k
 kubectl patch vm <vm-name> -n <namespace> --type merge -p '{"spec":{"running":true}}'
 ```
 
+### Connection Refused (When Using sudo)
+
+**Symptom:** `Cannot access Kubernetes cluster: ... Connection refused`
+
+**Cause:** Root's kubeconfig differs from user's or doesn't exist
+
+**Solution:** Pass your kubeconfig explicitly:
+```bash
+sudo KUBECONFIG=/home/user/.kube/config ./h2kvmctl --config config.yaml
+```
+
+### Python Package Not Found
+
+**Symptom:** `kubernetes Python package not installed`
+
+**Cause:** Package not installed for root user
+
+**Solution:**
+```bash
+sudo pip install kubernetes
+```
+
 ## Requirements
 
 ### Python Packages
 
+The `kubernetes` Python package is required for K8s deployment:
+
 ```bash
+# User installation
 pip install kubernetes
+
+# For root (when using sudo)
+sudo pip install kubernetes
 ```
+
+**Important:** If running hyper2kvm with `sudo`, the kubernetes package must be installed for root.
 
 ### Kubernetes Access
 
 - Valid kubeconfig file
 - Admin permissions (namespace creation, PVC creation)
 - KubeVirt installed on cluster
+
+**Running with sudo:** When using `sudo`, you must explicitly pass your kubeconfig:
+
+```bash
+sudo KUBECONFIG=/home/user/.kube/config ./h2kvmctl --config config.yaml
+```
+
+Or for k3s:
+
+```bash
+sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml ./h2kvmctl --config config.yaml
+```
 
 ### Storage
 
