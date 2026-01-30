@@ -2,8 +2,8 @@ apiVersion: v2
 name: hyper2kvm-operator
 description: Kubernetes Operator for automated VM migration job orchestration
 type: application
-version: 1.6.0
-appVersion: "1.6.0"
+version: 2.1.0
+appVersion: "2.1.0"
 
 keywords:
   - vm-migration
@@ -25,4 +25,4 @@ icon: https://raw.githubusercontent.com/ssahani/hyper2kvm/main/docs/logo.png
 
 annotations:
   category: Infrastructure
-  operator.io/version: v1.6.0
+  operator.io/version: v2.1.0

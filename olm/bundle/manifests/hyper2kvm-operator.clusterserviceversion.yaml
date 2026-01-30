@@ -1,7 +1,7 @@
 apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 metadata:
-  name: hyper2kvm-operator.v2.0.0
+  name: hyper2kvm-operator.v2.1.0
   namespace: placeholder
   annotations:
     # Operator capabilities level
@@ -80,7 +80,7 @@ spec:
     - [Quick Start Guide](https://github.com/ssahani/hyper2kvm/blob/main/docs/worker/QUICKSTART.md)
     - [Operator Guide](https://github.com/ssahani/hyper2kvm/blob/main/docs/deployment/v2.0.0-comprehensive-features.md)
 
-  version: 2.0.0
+  version: 2.1.0
   maturity: stable
   minKubeVersion: 1.24.0
 
