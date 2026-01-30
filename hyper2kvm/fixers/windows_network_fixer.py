@@ -102,47 +102,43 @@ from typing import Any, Dict, List, Optional, Tuple
 import guestfs  # type: ignore
 
 from ..core.utils import U
+from ..core.logging_utils import (
+    safe_logger,
+    emoji_for_level,
+    log_with_emoji,
+    log_step,
+)
+from ..core.guest_utils import guest_mkdir_p, guest_write_text, deep_merge_dict
 from .windows_registry import (
     provision_firstboot_payload_and_service,
     _ensure_windows_root,  # internal helper in same package
 )
 
 # -----------------------------------------------------------------------------
-# Logging helpers (match windows_virtio.py vibe)
+# Logging helpers (wrappers for backward compatibility)
 # -----------------------------------------------------------------------------
 
 
 def _safe_logger(self) -> logging.Logger:
-    lg = getattr(self, "logger", None)
-    if isinstance(lg, logging.Logger):
-        return lg
-    return logging.getLogger("hyper2kvm.windows_network_fixer")
+    """Wrapper for backward compatibility - calls shared safe_logger."""
+    return safe_logger(self, "hyper2kvm.windows_network_fixer")
 
 
 def _emoji(level: int) -> str:
-    if level >= logging.ERROR:
-        return "❌"
-    if level >= logging.WARNING:
-        return "⚠️"
-    if level >= logging.INFO:
-        return "✅"
-    return "🔍"
+    """Wrapper for backward compatibility - calls shared emoji_for_level."""
+    return emoji_for_level(level)
 
 
 def _log(logger: logging.Logger, level: int, msg: str, *args: Any) -> None:
-    logger.log(level, f"{_emoji(level)} {msg}", *args)
+    """Wrapper for backward compatibility - calls shared log_with_emoji."""
+    log_with_emoji(logger, level, msg, *args)
 
 
 @contextmanager
 def _step(logger: logging.Logger, title: str):
-    t0 = time.time()
-    _log(logger, logging.INFO, "%s ...", title)
-    try:
+    """Wrapper for backward compatibility - calls shared log_step."""
+    with log_step(logger, title):
         yield
-        _log(logger, logging.INFO, "%s done (%.2fs)", title, time.time() - t0)
-    except Exception as e:
-        _log(logger, logging.ERROR, "%s failed (%.2fs): %s", title, time.time() - t0, e)
-        raise
 
 
 # -----------------------------------------------------------------------------
@@ -184,19 +180,13 @@ def _resolve_windows_system_paths(g: guestfs.GuestFS) -> WindowsSystemPaths:
 
 
 def _guest_mkdir_p(g: guestfs.GuestFS, path: str, *, dry_run: bool) -> None:
-    if dry_run:
-        return
-    try:
-        if not g.is_dir(path):
-            g.mkdir_p(path)
-    except Exception:
-        g.mkdir_p(path)
+    """Wrapper for backward compatibility - calls shared guest_mkdir_p."""
+    return guest_mkdir_p(g, path, dry_run=dry_run)
 
 
 def _guest_write_text(g: guestfs.GuestFS, path: str, content: str, *, dry_run: bool) -> None:
-    if dry_run:
-        return
-    g.write(path, content.encode("utf-8", errors="ignore"))
+    """Wrapper for backward compatibility - calls shared guest_write_text."""
+    return guest_write_text(g, path, content, dry_run=dry_run)
 
 
 def _guestfs_to_windows_path(p: str) -> str:
@@ -620,13 +610,8 @@ def _choose_best_network_payload(snapshot: Dict[str, Any]) -> Optional[Dict[str,
 
 
 def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    out: Dict[str, Any] = dict(base)
-    for k, v in override.items():
-        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
-            out[k] = _deep_merge_dict(out[k], v)
-        else:
-            out[k] = v
-    return out
+    """Wrapper for backward compatibility - calls shared deep_merge_dict."""
+    return deep_merge_dict(base, override)
 
 
 def _normalize_override(obj: Dict[str, Any]) -> Dict[str, Any]:

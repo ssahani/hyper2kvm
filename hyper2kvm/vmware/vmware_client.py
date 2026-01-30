@@ -151,11 +151,9 @@ except Exception:  # pragma: no cover
     VDDK_CLIENT_AVAILABLE = False
 
 
+from .vmware_utils import safe_vm_name as _safe_vm_name
+
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
-
-
-def _safe_vm_name(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", (name or "vm").strip()) or "vm"
 
 
 def _quote_inventory_path(path: str) -> str:

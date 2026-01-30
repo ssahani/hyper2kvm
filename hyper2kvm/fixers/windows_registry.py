@@ -98,13 +98,10 @@ __all__ = [
 ]
 
 
-# Logging helper used by internal functions
-import logging
+# Import shared logging utilities
+from ..core.logging_utils import safe_logger
 
 
 def _safe_logger(self) -> logging.Logger:
     """Get logger from self or create default logger."""
-    lg = getattr(self, "logger", None)
-    if isinstance(lg, logging.Logger):
-        return lg
-    return logging.getLogger("hyper2kvm.windows_registry")
+    return safe_logger(self, "hyper2kvm.windows_registry")
