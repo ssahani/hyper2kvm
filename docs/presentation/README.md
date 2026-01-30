@@ -11,13 +11,22 @@ Quick reference documents for presentations and demos.
 - Quick command examples
 - **Use for:** 5-minute presentations
 
+### 🏗️ [Pipeline Architecture](pipeline-architecture.md)
+**Complete pipeline explanation** - How hyper2kvm really works
+- 7-stage pipeline flow (FETCH → VALIDATE)
+- Detailed stage breakdowns with diagrams
+- Data flow examples (RHEL 9 migration)
+- Orchestrator coordination
+- Recovery and checkpointing
+- **Use for:** Architecture presentations, technical training
+
 ### 📈 [Daemon vs CLI Workflow](daemon-vs-cli-workflow.md)
-**Detailed architecture** - Complete technical overview
+**Mode comparison** - Complete operational overview
 - Architecture diagrams
 - Decision matrix
 - Production deployment examples
-- Pipeline comparisons
-- **Use for:** Technical deep-dives, architecture reviews
+- CLI vs Daemon execution
+- **Use for:** Operations teams, deployment planning
 
 ## Viewing Diagrams
 
@@ -47,7 +56,34 @@ cp *.vmdk /var/lib/hyper2kvm/queue/
 
 ## Presentation Tips
 
-1. **Start with** `quick-comparison.md` for non-technical audiences
-2. **Deep dive with** `daemon-vs-cli-workflow.md` for technical teams
-3. **Demo flow**: Show CLI first, then daemon automation
-4. **Key message**: One tool, two modes - flexibility for all use cases
+### For Different Audiences
+
+**Executive/Business (5 minutes)**
+→ Use `quick-comparison.md`
+- Focus on automation value
+- Show time savings (daemon mode)
+
+**Technical/Architects (15-30 minutes)**
+→ Use `pipeline-architecture.md`
+- Explain 7-stage pipeline
+- Show how fixes work offline
+- Emphasize deterministic, repeatable process
+
+**Operations/DevOps (10-15 minutes)**
+→ Use `daemon-vs-cli-workflow.md`
+- CLI for testing, daemon for production
+- systemd integration
+- Monitoring and troubleshooting
+
+### Suggested Flow
+
+1. **Start with** "What problem does it solve?" (Quick Comparison)
+2. **Explain how** "The 7-stage pipeline" (Pipeline Architecture)
+3. **Show deployment** "CLI and Daemon modes" (Daemon vs CLI)
+4. **Demo** Live conversion with CLI, then drop file in daemon queue
+
+### Key Messages
+
+- **Pipeline-based architecture** = Reliable, repeatable migrations
+- **Offline fixing** = Works on broken VMs, no runtime dependencies
+- **Two modes** = Flexibility for dev and production
