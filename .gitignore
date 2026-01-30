@@ -79,8 +79,9 @@ ipython_config.py
 *.raw
 *.img
 
-# VMware VM directories and files
-win*/
+# VMware VM directories and files (test VMs in root only)
+/win10/
+/win11/
 *.vmx
 *.vmxf
 *.nvram
