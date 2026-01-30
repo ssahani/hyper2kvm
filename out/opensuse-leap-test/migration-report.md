@@ -6,20 +6,20 @@
   "dry_run": false,
   "fstab_mode": "stabilize-all",
   "image": "/home/ssahani/vmware/Clone of openSUSE_Leap_15.4_VM_LinuxVMImages.COM/openSUSE_Leap_15.4_VM_LinuxVMImages.COM-cl1.vmdk",
-  "inspect_root": "/dev/nbd2p2",
+  "inspect_root": "/dev/nbd3p2",
   "no_backup": false,
   "print_fstab": false,
   "regen_initramfs": true,
   "remove_vmware_tools": false,
   "resize": null,
   "root_btrfs_subvol": null,
-  "root_dev": "/dev/nbd2p2",
+  "root_dev": "/dev/nbd3p2",
   "timestamps": {
-    "end": "2026-01-26T08:52:18.565589",
-    "start": "2026-01-26T08:51:48.022978"
+    "end": "2026-01-27T15:37:00.419911",
+    "start": "2026-01-27T15:36:21.562299"
   },
   "update_grub": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "virtio_drivers_dir": null
 }
 ```
@@ -61,7 +61,7 @@
 ## Summary
 
 - Image: `/home/ssahani/vmware/Clone of openSUSE_Leap_15.4_VM_LinuxVMImages.COM/openSUSE_Leap_15.4_VM_LinuxVMImages.COM-cl1.vmdk`
-- Root: `/dev/nbd2p2`
+- Root: `/dev/nbd3p2`
 - Dry-run: `False`
 - fstab changes: `0`
 - crypttab changes: `0`
@@ -128,7 +128,7 @@
         "initramfs_tools": {
           "attempts": 1,
           "critical": false,
-          "duration_s": 0.136,
+          "duration_s": 0.135,
           "mode": "inprocess",
           "passed": true,
           "result": true,
@@ -142,7 +142,7 @@
         "kernel_present": {
           "attempts": 1,
           "critical": true,
-          "duration_s": 0.488,
+          "duration_s": 0.795,
           "mode": "inprocess",
           "passed": true,
           "result": true,
@@ -168,17 +168,17 @@
             "total": 4
           }
         },
-        "duration_s": 0.625,
+        "duration_s": 0.93,
         "failed": 0,
         "skipped": 0,
         "slowest": [
           {
-            "duration_s": 0.488,
+            "duration_s": 0.795,
             "mode": "inprocess",
             "name": "kernel_present"
           },
           {
-            "duration_s": 0.136,
+            "duration_s": 0.135,
             "mode": "inprocess",
             "name": "initramfs_tools"
           },
@@ -280,11 +280,11 @@
 ```json
 {
   "analysis": "success",
-  "free_gb": 503.8830146789551,
+  "free_gb": 503.8827133178711,
   "recommend_cleanup": false,
   "recommend_resize": false,
   "total_gb": 509.990234375,
-  "used_gb": 6.107219696044922,
+  "used_gb": 6.107521057128906,
   "used_percent": 1.2
 }
 ```
@@ -329,8 +329,8 @@
           "-o",
           "/boot/grub2/grub.cfg"
         ],
-        "ok": false,
-        "out": "Command failed: sudo chroot /tmp/hyper2kvm-guestfs-qxk3ohiu grub2-mkconfig -o /boot/grub2/grub.cfg (command=sudo chroot /tmp/hyper2kvm-guestfs-qxk3ohiu grub2-mkconfig -o /boot/grub2/grub.cfg, returncode=1, stdout=None, stderr=awk: fatal: cannot open file `/proc/self/mountinfo' for reading (No such file or directory)\n/usr/sbin/grub2-probe: error: cannot find a device for / (is /dev mounted?).\n)"
+        "ok": true,
+        "out": ""
       },
       {
         "cmd": [
@@ -338,7 +338,7 @@
           "--recheck"
         ],
         "ok": false,
-        "out": "Command failed: sudo chroot /tmp/hyper2kvm-guestfs-qxk3ohiu grub2-install --recheck (command=sudo chroot /tmp/hyper2kvm-guestfs-qxk3ohiu grub2-install --recheck, returncode=1, stdout=None, stderr=Installing for i386-pc platform.\ngrub2-install: error: install device isn't specified.\n)"
+        "out": "Command failed: sudo chroot /tmp/hyper2kvm-guestfs-y11kl0mn grub2-install --recheck (command=sudo chroot /tmp/hyper2kvm-guestfs-y11kl0mn grub2-install --recheck, returncode=1, stdout=None, stderr=Installing for x86_64-efi platform.\ngrub2-install: error: cannot find EFI directory.\n)"
       },
       {
         "cmd": [

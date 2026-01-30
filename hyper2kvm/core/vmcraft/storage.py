@@ -35,14 +35,17 @@ class LVMActivator:
     """
 
     @staticmethod
-    def activate(logger: logging.Logger) -> dict[str, Any]:
+    def activate(logger: logging.Logger, nbd_device: str | None = None) -> dict[str, Any]:
         """
-        Activate LVM volumes.
+        Activate LVM volumes from NBD device.
+
+        Args:
+            nbd_device: Optional NBD device path (e.g., "/dev/nbd0") to scan only NBD-related PVs
 
         Returns:
-            Audit dict: {"attempted": bool, "ok": bool, "error": str | None}
+            Audit dict: {"attempted": bool, "ok": bool, "error": str | None, "vgs": list}
         """
-        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None}
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None, "vgs": []}
 
         if not _has_command("vgscan") or not _has_command("vgchange"):
             audit["error"] = "lvm_tools_not_available"
@@ -51,21 +54,90 @@ class LVMActivator:
         audit["attempted"] = True
 
         try:
-            # Deactivate any stale volume groups first
-            run_sudo(logger, ["vgchange", "-an"], check=False, capture=True)
+            # Gather NBD partitions for explicit device specification
+            nbd_partitions = []
+            if nbd_device and _has_command("pvscan"):
+                import glob
+                nbd_partitions = glob.glob(f"{nbd_device}p*")
+                logger.info(f"Scanning NBD partitions for LVM: {nbd_partitions}")
 
-            # Refresh physical volume cache (critical for NBD device changes)
-            if _has_command("pvscan"):
+                # Scan each NBD partition with devicesfile disabled
+                for part in nbd_partitions:
+                    run_sudo(logger, ["pvscan", "--devicesfile", "", "--cache", part], check=False, capture=True)
+                    logger.debug(f"  Scanned PV: {part}")
+
+                # General scan with devicesfile disabled
+                run_sudo(logger, ["vgscan", "--devicesfile", "", "--cache"], check=True, capture=True)
+            elif _has_command("pvscan"):
                 run_sudo(logger, ["pvscan", "--cache"], check=True, capture=True)
+                run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
 
-            # Scan for volume groups with cache refresh
-            run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
+            # Find VGs using explicit device list (only NBD partitions)
+            vgs_to_activate = []
+            if nbd_partitions and _has_command("pvs"):
+                try:
+                    # Query each NBD partition with devicesfile disabled
+                    vg_set = set()
+                    for part in nbd_partitions:
+                        try:
+                            result = run_sudo(
+                                logger,
+                                ["pvs", "--devicesfile", "", "--devices", part, "--noheadings", "-o", "vg_name"],
+                                check=True,
+                                capture=True,
+                                failure_log_level=logging.DEBUG
+                            )
+                            for line in result.stdout.strip().split('\n'):
+                                vg_name = line.strip()
+                                if vg_name:
+                                    vg_set.add(vg_name)
+                                    logger.info(f"  Found VG '{vg_name}' on {part}")
+                        except Exception as e:
+                            logger.debug(f"  No LVM PV on {part}: {e}")
+                            continue
 
-            # Activate all volume groups
-            run_sudo(logger, ["vgchange", "-ay"], check=True, capture=True)
+                    vgs_to_activate = list(vg_set)
+                    logger.info(f"Found VGs on {nbd_device}: {vgs_to_activate}")
+                except Exception as e:
+                    logger.warning(f"Could not determine VGs from NBD partitions: {e}")
+
+            # Activate only NBD-related VGs with devicesfile disabled
+            if vgs_to_activate:
+                for vg in vgs_to_activate:
+                    try:
+                        # Build device list for vgchange
+                        devices_arg = ["--devicesfile", ""]
+                        for part in nbd_partitions:
+                            devices_arg.extend(["--devices", part])
+
+                        cmd = ["vgchange"] + devices_arg + ["-ay", vg]
+                        run_sudo(logger, cmd, check=True, capture=True)
+                        logger.info(f"Activated VG: {vg} (from {nbd_device})")
+
+                        # Ensure device nodes are created and udev catches up
+                        # This prevents race conditions where blkid/lsblk can't see the LVs
+                        if _has_command("dmsetup"):
+                            run_sudo(logger, ["dmsetup", "mknodes"], check=False, capture=True)
+                        if _has_command("udevadm"):
+                            run_sudo(logger, ["udevadm", "settle"], check=False, capture=True)
+                            logger.debug("Waited for udev to settle after VG activation")
+
+                    except Exception as e:
+                        logger.warning(f"Failed to activate VG {vg}: {e}")
+                audit["vgs"] = vgs_to_activate
+            else:
+                # Fallback: activate all (original behavior for non-NBD contexts)
+                run_sudo(logger, ["vgchange", "-ay"], check=True, capture=True)
+
+                # Settle after activation
+                if _has_command("dmsetup"):
+                    run_sudo(logger, ["dmsetup", "mknodes"], check=False, capture=True)
+                if _has_command("udevadm"):
+                    run_sudo(logger, ["udevadm", "settle"], check=False, capture=True)
+
+                logger.info("Activated all volume groups")
 
             audit["ok"] = True
-            logger.info("LVM volumes activated successfully")
             return audit
 
         except Exception as e:
@@ -74,21 +146,29 @@ class LVMActivator:
             return audit
 
     @staticmethod
-    def list_logical_volumes(logger: logging.Logger) -> list[str]:
+    def list_logical_volumes(logger: logging.Logger, nbd_device: str | None = None) -> list[str]:
         """
-        List logical volumes.
+        List logical volumes, optionally filtered to only NBD-backed LVs.
+
+        Args:
+            nbd_device: If provided, only return LVs backed by this NBD device
 
         Returns:
-            List of LV device paths (e.g., ['/dev/mapper/vg-lv'])
+            List of LV device paths in /dev/mapper/ format (e.g., ['/dev/mapper/vg-lv'])
         """
         try:
-            # Use lvs with JSON output for structured parsing
-            result = run_sudo(
-                logger,
-                ["lvs", "--reportformat", "json", "--noheadings"],
-                check=True,
-                capture=True
-            )
+            # Use lvs with vg_name, lv_name, and devices columns
+            # Disable devices file to make filtering work
+            # Return /dev/mapper/ paths which are more reliable than /dev/vg/lv symlinks
+            cmd = [
+                "lvs",
+                "--devicesfile", "",
+                "--reportformat", "json",
+                "--noheadings",
+                "-o", "vg_name,lv_name,devices"
+            ]
+
+            result = run_sudo(logger, cmd, check=True, capture=True)
 
             data = json.loads(result.stdout)
             lvs_data = data.get("report", [{}])[0].get("lv", [])
@@ -97,8 +177,27 @@ class LVMActivator:
             for lv in lvs_data:
                 vg_name = lv.get("vg_name", "")
                 lv_name = lv.get("lv_name", "")
-                if vg_name and lv_name:
-                    devices.append(f"/dev/mapper/{vg_name}-{lv_name}")
+                lv_devices = lv.get("devices", "")
+
+                # If NBD filtering is requested, check if this LV uses NBD partitions
+                if nbd_device:
+                    if nbd_device in lv_devices or f"{nbd_device}p" in lv_devices:
+                        # Construct /dev/mapper/ path (hyphens in vg_name/lv_name are escaped as --)
+                        mapper_vg = vg_name.replace("-", "--")
+                        mapper_lv = lv_name.replace("-", "--")
+                        mapper_path = f"/dev/mapper/{mapper_vg}-{mapper_lv}"
+                        devices.append(mapper_path)
+                        logger.debug(f"Found NBD-backed LV: {mapper_path} (VG: {vg_name}, LV: {lv_name}, devices: {lv_devices})")
+                else:
+                    # No filtering - return all LVs in /dev/mapper/ format
+                    if vg_name and lv_name:
+                        mapper_vg = vg_name.replace("-", "--")
+                        mapper_lv = lv_name.replace("-", "--")
+                        mapper_path = f"/dev/mapper/{mapper_vg}-{mapper_lv}"
+                        devices.append(mapper_path)
+
+            if nbd_device:
+                logger.info(f"Found {len(devices)} LVs on {nbd_device}: {devices}")
 
             return devices
 
@@ -475,12 +574,12 @@ class LUKSUnlocker:
             self.logger.warning(f"Failed to detect LUKS devices: {e}")
             return []
 
-    def unlock(self, lvm_activator: LVMActivator | None = None) -> dict[str, Any]:
+    def unlock(self, nbd_device: str | None = None) -> dict[str, Any]:
         """
         Unlock LUKS devices.
 
         Args:
-            lvm_activator: LVM activator to re-run after unlocking (LUKS may contain LVM)
+            nbd_device: Optional NBD device for LVM re-activation after unlocking
 
         Returns:
             Audit dict with detailed unlock results
@@ -556,9 +655,9 @@ class LUKSUnlocker:
                 audit["errors"].append({"device": dev, "error": str(e)})
                 self.logger.warning(f"LUKS: failed to open {dev}: {e}")
 
-        # After opening LUKS, LVM may appear
-        if audit["opened"] and lvm_activator:
-            _ = lvm_activator.activate(self.logger)
+        # After opening LUKS, LVM may appear - re-activate
+        if audit["opened"]:
+            _ = LVMActivator.activate(self.logger, nbd_device=nbd_device)
 
         return audit
 
@@ -698,6 +797,7 @@ class StorageStackActivator:
             luks_mapper_prefix: Prefix for LUKS mapper device names
         """
         self.logger = logger
+        self.nbd_device: str | None = None  # Set by VMCraft when needed
         self.luks_unlocker = LUKSUnlocker(
             logger,
             luks_enable=luks_enable,
@@ -720,10 +820,10 @@ class StorageStackActivator:
         audit["mdraid"] = MDRaidAssembler.activate(self.logger)
         audit["zfs"] = ZFSImporter.activate(self.logger)
 
-        lvm_activator = LVMActivator()
-        audit["lvm"] = lvm_activator.activate(self.logger)
+        # Pass NBD device to LVM activator for device-specific scanning
+        audit["lvm"] = LVMActivator.activate(self.logger, nbd_device=self.nbd_device)
 
-        # LUKS last because it may contain LVM
-        audit["luks"] = self.luks_unlocker.unlock(lvm_activator=lvm_activator)
+        # LUKS last because it may contain LVM (pass nbd_device for re-activation)
+        audit["luks"] = self.luks_unlocker.unlock(nbd_device=self.nbd_device)
 
         return audit

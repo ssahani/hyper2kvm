@@ -182,6 +182,9 @@ class OfflineFSFix:
         self.luks_mapper_prefix = luks_mapper_prefix
         self._luks_opened: dict[str, str] = {}  # luks_dev -> /dev/mapper/name
 
+        # Storage stack activation tracking (prevent redundant activations)
+        self._lvm_activated: bool = False
+
         # Filesystem fixer flag (avoid shadowing method name)
         self.filesystem_repair_enable = bool(filesystem_repair_enable)
 
@@ -338,6 +341,11 @@ class OfflineFSFix:
         return None
 
     def _activate_lvm(self, g: guestfs.GuestFS) -> None:
+        # Skip if already activated (prevent redundant scans)
+        if self._lvm_activated:
+            self.logger.debug("LVM already activated, skipping redundant activation")
+            return
+
         if not hasattr(g, "vgscan") or not hasattr(g, "vgchange_activate_all"):
             return
         try:
@@ -346,9 +354,11 @@ class OfflineFSFix:
             return
         try:
             g.vgchange_activate_all(True)
+            self._lvm_activated = True  # Mark as activated on success
         except Exception:
             try:
                 g.vgchange_activate_all(1)
+                self._lvm_activated = True  # Mark as activated on success
             except Exception:
                 pass
 
@@ -778,8 +788,11 @@ class OfflineFSFix:
             for dev, fstype in fsmap.items():
                 d = U.to_text(dev)
                 t = U.to_text(fstype)
-                # Skip swap and LUKS containers (we want unlocked devices)
-                if t in ("swap", "crypto_LUKS"):
+                # Skip non-mountable filesystem types
+                # swap: cannot mount as root
+                # crypto_LUKS: need to unlock first, then mount the unlocked device
+                # LVM2_member: these are PVs, not filesystems - activate VG, then mount LVs
+                if t in ("swap", "crypto_LUKS", "LVM2_member"):
                     self.logger.debug(f"Skipping {d} (type={t})")
                     continue
                 if d.startswith("/dev/"):
@@ -796,6 +809,10 @@ class OfflineFSFix:
                 for lv in lvs_list:
                     d = U.to_text(lv)
                     if d.startswith("/dev/"):
+                        # Skip swap LVs - they can't be root filesystems
+                        if "swap" in d.lower():
+                            self.logger.debug(f"Skipping swap LV: {d}")
+                            continue
                         candidates.append(d)
                         self.logger.info(f"Added LV candidate: {d}")
         except Exception as e:
@@ -856,18 +873,18 @@ class OfflineFSFix:
             self.logger.warning(f"Failed to get current NBD device: {e}")
 
         # Get LVM devices that belong to the current disk
-        # by checking which volume groups use the current NBD partitions as PVs
+        # VMCraft's lvs() with nbd_device filtering returns only NBD-backed LVs
+        # in /dev/mapper/ format with proper hyphen escaping
         current_disk_lv = set()
         if current_nbd_parts:
             try:
-                # Get LVM volumes, but only those from the current disk
+                # Get LVM volumes from current disk (already filtered by VMCraft)
+                # VMCraft returns /dev/mapper/ format paths
                 lvs_list = g.lvs() or [] if hasattr(g, "lvs") else []
                 for lv in lvs_list:
                     lv_text = U.to_text(lv)
-                    # For VMCraft, we can't easily tell which disk an LV came from
-                    # So we'll include mapper devices that were explicitly in our LV list
-                    if lv_text.startswith("/dev/mapper/"):
-                        current_disk_lv.add(lv_text)
+                    current_disk_lv.add(lv_text)
+
                 self.logger.debug(f"LVM devices from current disk: {current_disk_lv}")
             except Exception as e:
                 self.logger.warning(f"Failed to filter LVM devices: {e}")
@@ -876,12 +893,13 @@ class OfflineFSFix:
         # This prevents trying devices from other NBD connections or the host system
         nbd_filtered = []
         for d in filtered:
-            # Include mapper devices ONLY if they're in our LVM list
-            if d.startswith("/dev/mapper/"):
+            # Include /dev/mapper/ LVM devices ONLY if they're in our LVM list
+            if d.startswith("/dev/mapper/") and "control" not in d.lower():
                 if d in current_disk_lv:
                     nbd_filtered.append(d)
+                    self.logger.debug(f"Including LVM device: {d}")
                 else:
-                    self.logger.debug(f"Filtering out mapper device not in LVM list: {d}")
+                    self.logger.debug(f"Filtering out LVM device not from current disk: {d}")
             # Include partitions from current NBD device
             elif current_nbd and d.startswith(current_nbd):
                 nbd_filtered.append(d)
@@ -894,11 +912,12 @@ class OfflineFSFix:
 
         self.logger.info(f"Filtered to current disk: {len(nbd_filtered)} of {len(filtered)} candidates")
 
-        # Prioritize LVM logical volumes and mapper devices
+        # Prioritize LVM logical volumes in /dev/mapper/ format
         # Try these first as they're most likely to be root filesystems
         priority = []
         standard = []
         for d in nbd_filtered:
+            # LVM device in /dev/mapper/ format
             if d.startswith("/dev/mapper/") and "control" not in d.lower():
                 priority.append(d)
             else:
@@ -949,6 +968,12 @@ class OfflineFSFix:
                     self.logger.debug(f"Could not determine vfs_type for {dev}: {e}")
 
                 filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
+
+                # Skip non-mountable device types
+                if vfs_type in ("LVM2_member", "swap"):
+                    self.logger.debug(f"Skipping non-mountable device: {dev} (type={vfs_type})")
+                    continue
+
                 self.logger.info(f"🔄 Attempting to mount {dev} at /...")
 
                 # Try mount with appropriate options
@@ -958,9 +983,22 @@ class OfflineFSFix:
                     else:
                         g.mount(dev, "/")
                 except Exception as mount_error:
-                    # If mount fails, try filesystem-specific repair
-                    if vfs_type == "ext4":
-                        self.logger.warning(f"Mount failed for ext4 partition {dev}, attempting fsck")
+                    # Log mount failures as WARNING so we can see them
+                    self.logger.warning(f"Mount failed for {dev} (type={vfs_type}): {mount_error}")
+
+                    # Try filesystem-specific recovery strategies
+                    if vfs_type == "xfs":
+                        # XFS: Try read-only with norecovery (skips dirty log replay)
+                        self.logger.info(f"XFS mount failed, retrying with ro,norecovery for {dev}")
+                        try:
+                            g.mount_options("ro,norecovery", dev, "/")
+                            self.logger.info(f"✓ Mount succeeded with ro,norecovery: {dev}")
+                            # Continue with read-only mode for detection
+                        except Exception as xfs_error:
+                            self.logger.warning(f"XFS recovery mount also failed: {xfs_error}")
+                            raise mount_error
+                    elif vfs_type == "ext4":
+                        self.logger.warning(f"Attempting fsck for ext4 partition {dev}")
                         try:
                             # Run fsck in non-interactive mode
                             run_sudo(self.logger, ["fsck.ext4", "-p", "-f", dev], check=False, capture=True)
@@ -969,8 +1007,9 @@ class OfflineFSFix:
                                 g.mount_ro(dev, "/")
                             else:
                                 g.mount(dev, "/")
+                            self.logger.info(f"✓ Mount succeeded after fsck: {dev}")
                         except Exception as repair_error:
-                            self.logger.debug(f"Filesystem repair failed: {repair_error}")
+                            self.logger.warning(f"Filesystem repair failed: {repair_error}")
                             raise mount_error
                     else:
                         raise

@@ -145,20 +145,48 @@ class MountManager:
 
     def _detect_fstype(self, device: str) -> str:
         """
-        Detect filesystem type using blkid.
+        Detect filesystem type using multiple probing methods.
+
+        Uses blkid -p (low-level probe) first, then falls back to lsblk.
+        This is more reliable after LVM activation.
 
         Args:
             device: Device path
 
         Returns:
-            Filesystem type string (e.g., "ext4", "ntfs", "xfs")
+            Filesystem type string (e.g., "ext4", "ntfs", "xfs", "unknown")
         """
+        # Try blkid with -p flag for fresh low-level probing (bypasses cache)
         try:
-            result = run_sudo(self.logger, ["blkid", "-o", "value", "-s", "TYPE", device], check=True, capture=True)
+            result = run_sudo(
+                self.logger,
+                ["blkid", "-p", "-o", "value", "-s", "TYPE", device],
+                check=True,
+                capture=True,
+                failure_log_level=logging.DEBUG
+            )
             fstype = result.stdout.strip()
-            return fstype if fstype else "unknown"
+            if fstype:
+                return fstype
         except Exception:
-            return "unknown"
+            pass
+
+        # Fallback to lsblk (often works when blkid doesn't after LVM activation)
+        try:
+            result = run_sudo(
+                self.logger,
+                ["lsblk", "-no", "FSTYPE", device],
+                check=True,
+                capture=True,
+                failure_log_level=logging.DEBUG
+            )
+            fstype = result.stdout.strip()
+            if fstype:
+                return fstype
+        except Exception:
+            pass
+
+        return "unknown"
 
     def _mount_single(self, device: str, mountpoint: str, readonly: bool) -> bool:
         """

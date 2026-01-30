@@ -127,13 +127,40 @@ cluster_size: 1048576
 
 ## Step 3: Your First Migration
 
-### Basic Migration Command
+### Basic Migration Command (Using YAML Config - Recommended)
+
+```yaml
+# migration.yaml
+command: local
+vmdk: /vms/source/windows-server.vhdx
+output_dir: /vms/migrated
+to_output: windows-server.qcow2
+out_format: qcow2
+fstab_mode: stabilize-all
+regen_initramfs: true
+update_grub: true
+win_virtio: true
+compress: true
+verbose: 1
+```
 
 ```bash
-hyper2kvm migrate /vms/source/windows-server.vhdx \
-    --target /vms/migrated/windows-server.qcow2 \
-    --format qcow2 \
-    --fix-all \
+hyper2kvm --config migration.yaml
+```
+
+### Alternative: CLI Flags
+
+```bash
+hyper2kvm --cmd local \
+    --vmdk /vms/source/windows-server.vhdx \
+    --output-dir /vms/migrated \
+    --to-output windows-server.qcow2 \
+    --out-format qcow2 \
+    --fstab-mode stabilize-all \
+    --regen-initramfs \
+    --update-grub \
+    --win-virtio \
+    --compress \
     --verbose
 ```
 
@@ -141,11 +168,16 @@ hyper2kvm migrate /vms/source/windows-server.vhdx \
 
 | Option | Description |
 |--------|-------------|
-| `migrate` | Migration command |
-| `/vms/source/windows-server.vhdx` | Source VM disk image |
-| `--target` | Output path for converted VM |
-| `--format qcow2` | Target format (qcow2, raw, vmdk, etc.) |
-| `--fix-all` | Apply all automatic fixes (bootloader, network, fstab) |
+| `--cmd local` | Process local disk file migration |
+| `--vmdk` | Source VM disk image (VMDK, VHDX, VHD, etc.) |
+| `--output-dir` | Output directory for converted VM |
+| `--to-output` | Output filename |
+| `--out-format qcow2` | Target format (qcow2, raw, vmdk, etc.) |
+| `--fstab-mode stabilize-all` | Stabilize fstab with UUIDs |
+| `--regen-initramfs` | Regenerate initramfs with virtio drivers |
+| `--update-grub` | Update GRUB bootloader |
+| `--win-virtio` | Inject VirtIO drivers for Windows |
+| `--compress` | Compress output (for qcow2) |
 | `--verbose` | Show detailed progress |
 
 ### Migration Progress
@@ -255,48 +287,48 @@ UUID=def456...  /      ext4  defaults  0  0
 
 ## Step 5: Validate the Migration
 
-### Run Validation Checks
+### Post-Migration Verification
+
+After migration, verify the converted disk image:
 
 ```bash
-hyper2kvm validate /vms/migrated/windows-server.qcow2 \
-    --check-boot \
-    --check-fstab \
-    --check-services \
-    --check-network \
-    --report /reports/validation-report.json
+# Check the output file
+qemu-img info /vms/migrated/windows-server.qcow2
+
+# Boot test (optional - requires libvirt)
+hyper2kvm --cmd local \
+    --vmdk /vms/migrated/windows-server.qcow2 \
+    --libvirt-test
+
+# Manual inspection
+virt-inspector /vms/migrated/windows-server.qcow2
 ```
 
-### Validation Output
+### Migration Success Indicators
+
+Look for these in the migration output:
 
 ```
-Validation Report
-=================
-
-System Health Checks:
-  ✓ PASS: Boot configuration valid
-  ✓ PASS: Kernel modules available
-  ✓ PASS: fstab entries valid (all UUIDs found)
-
-Service Checks:
-  ✓ PASS: sshd enabled and configured
-  ✓ PASS: NetworkManager enabled
-  ⚠ WARN: firewalld not found (may be expected)
-
-Network Checks:
-  ✓ PASS: Network interface eth0 configured
-  ✓ PASS: DNS nameservers configured (8.8.8.8, 8.8.4.4)
-  ✓ PASS: Default gateway configured
-
-Overall: ✅ PASS (2 checks passed, 1 warning)
+✓ Disk conversion successful
+✓ Bootloader configuration updated
+✓ Network configuration stabilized
+✓ fstab updated with UUIDs
+✓ initramfs regenerated with virtio drivers
+✓ Output saved to: /vms/migrated/windows-server.qcow2
 ```
 
-### Understanding Validation Results
+### Verify Output File
 
-| Status | Meaning | Action Required |
-|--------|---------|-----------------|
-| ✓ PASS | Check succeeded | None, proceed confidently |
-| ⚠ WARN | Potential issue, but not critical | Review warning, decide if action needed |
-| ✗ FAIL | Critical issue found | Fix before booting VM |
+```bash
+# Check the converted disk
+qemu-img info /vms/migrated/windows-server.qcow2
+
+# Expected output:
+# image: /vms/migrated/windows-server.qcow2
+# file format: qcow2
+# virtual size: 127 GiB
+# disk size: 38.1 GiB (compressed)
+```
 
 ---
 
@@ -454,14 +486,14 @@ Get-Service WinRM
 
 **Solution**:
 ```bash
-# Re-run migration with bootloader fix
-hyper2kvm migrate /vms/source/windows-server.vhdx \
-    --target /vms/migrated/windows-server.qcow2 \
-    --fix-bootloader \
-    --force
-
-# Check boot configuration
-hyper2kvm validate /vms/migrated/windows-server.qcow2 --check-boot
+# Re-run migration with bootloader and initramfs fixes
+hyper2kvm --cmd local \
+    --vmdk /vms/source/windows-server.vhdx \
+    --output-dir /vms/migrated \
+    --to-output windows-server.qcow2 \
+    --update-grub \
+    --regen-initramfs \
+    --verbose
 ```
 
 ### Issue 2: No Network Connectivity
@@ -470,31 +502,34 @@ hyper2kvm validate /vms/migrated/windows-server.qcow2 --check-boot
 
 **Solution**:
 ```bash
-# Re-run with network fix
-hyper2kvm migrate /vms/source/windows-server.vhdx \
-    --target /vms/migrated/windows-server.qcow2 \
-    --fix-network \
-    --force
-
-# Check network configuration
-hyper2kvm validate /vms/migrated/windows-server.qcow2 --check-network
+# Re-run with network configuration fixes
+hyper2kvm --cmd local \
+    --vmdk /vms/source/windows-server.vhdx \
+    --output-dir /vms/migrated \
+    --to-output windows-server.qcow2 \
+    --fstab-mode stabilize-all \
+    --regen-initramfs \
+    --verbose
 ```
 
-### Issue 3: Disk Not Detected
+### Issue 3: Disk Not Detected (Windows)
 
 **Symptom**: "No boot device found" or "Disk not detected"
 
 **Solution**:
-1. Ensure VirtIO drivers installed during migration
+1. Ensure VirtIO drivers are injected during migration
 2. Check libvirt XML uses `bus='virtio'`
-3. For Windows, may need to inject VirtIO drivers before migration
+3. For Windows, inject VirtIO drivers:
 
 ```bash
-# Re-run with storage driver fix
-hyper2kvm migrate /vms/source/windows-server.vhdx \
-    --target /vms/migrated/windows-server.qcow2 \
-    --fix-all \
-    --force
+# Re-run with Windows VirtIO driver injection
+hyper2kvm --cmd local \
+    --vmdk /vms/source/windows-server.vhdx \
+    --output-dir /vms/migrated \
+    --to-output windows-server.qcow2 \
+    --win-virtio \
+    --compress \
+    --verbose
 ```
 
 ---

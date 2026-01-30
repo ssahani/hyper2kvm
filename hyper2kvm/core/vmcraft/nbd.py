@@ -9,8 +9,10 @@ enabling native Linux tools to access and modify VM disk images.
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -127,6 +129,179 @@ class NBDDeviceManager:
             f"through /dev/nbd{self.nbd_max})"
         )
 
+    def _needs_conversion(self, image_path: Path) -> bool:
+        """
+        Check if VMDK needs conversion to qcow2 (streamOptimized, compressed, sparse, etc.).
+
+        Problematic VMDK types that cause "can't read superblock" errors via qemu-nbd:
+        - streamOptimized: Random-access read issues with decompression
+        - monolithicSparse: Sparse regions cause I/O errors when accessing unallocated blocks
+        - compressed: Similar decompression issues
+
+        Args:
+            image_path: Path to image file
+
+        Returns:
+            True if image should be converted before mounting
+        """
+        if image_path.suffix.lower() != ".vmdk":
+            return False
+
+        try:
+            result = subprocess.run(
+                ["qemu-img", "info", "--output=json", str(image_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30
+            )
+            info = json.loads(result.stdout)
+
+            # Check for problematic VMDK types
+            format_specific = info.get("format-specific", {})
+            vmdk_info = format_specific.get("data", {})
+
+            create_type = vmdk_info.get("create-type", "").lower()
+            compressed = vmdk_info.get("compressed", False)
+
+            # Problematic types that need conversion:
+            # - streamOptimized: decompression issues
+            # - monolithicSparse: sparse region I/O errors
+            # - compressed: similar to streamOptimized
+            needs_conversion = False
+            reason = []
+
+            if "streamoptimized" in create_type:
+                needs_conversion = True
+                reason.append(f"streamOptimized format")
+            elif "sparse" in create_type:
+                # monolithicSparse, twoGbMaxExtentSparse, etc.
+                needs_conversion = True
+                reason.append(f"sparse format ({create_type})")
+
+            if compressed:
+                needs_conversion = True
+                reason.append("compressed")
+
+            if needs_conversion:
+                self.logger.warning(
+                    f"Detected problematic VMDK: {', '.join(reason)}. "
+                    f"Will convert to qcow2 for reliability."
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"Could not check VMDK type: {e}, proceeding without conversion")
+            return False
+
+    def _convert_to_qcow2(self, vmdk_path: Path) -> Path:
+        """
+        Convert VMDK to qcow2 in temp directory.
+
+        Args:
+            vmdk_path: Path to VMDK file
+
+        Returns:
+            Path to converted qcow2 file
+        """
+        # Get original VMDK virtual size for verification
+        try:
+            result = subprocess.run(
+                ["qemu-img", "info", "--output=json", str(vmdk_path)],
+                capture_output=True, text=True, check=True, timeout=30
+            )
+            vmdk_info = json.loads(result.stdout)
+            original_virtual_size = vmdk_info.get("virtual-size", 0)
+        except Exception as e:
+            self.logger.warning(f"Could not get VMDK size: {e}")
+            original_virtual_size = 0
+
+        # Create temp qcow2 file
+        # Use /var/tmp instead of /tmp for large conversions (sparse VMDKs with -S 0 can be huge)
+        # /var/tmp is typically on the root filesystem with more space than tmpfs /tmp
+        temp_dir = Path("/var/tmp/vmcraft-conversions")
+        temp_dir.mkdir(exist_ok=True, mode=0o700)
+
+        temp_qcow2 = temp_dir / f"{vmdk_path.stem}.qcow2"
+
+        # Check available space before conversion
+        if original_virtual_size:
+            stat = subprocess.run(
+                ["df", "--output=avail", "-B1", str(temp_dir)],
+                capture_output=True, text=True, check=True
+            )
+            avail_bytes = int(stat.stdout.strip().split('\n')[-1])
+            # Estimate needed space: virtual_size * 0.3 (qcow2 compression estimate for -S 0)
+            needed_bytes = int(original_virtual_size * 0.4)  # 40% safety margin
+
+            if avail_bytes < needed_bytes:
+                self.logger.warning(
+                    f"Low disk space in {temp_dir}: {avail_bytes / (1024**3):.1f} GiB available, "
+                    f"~{needed_bytes / (1024**3):.1f} GiB needed for conversion"
+                )
+
+        self.logger.info(f"Converting {vmdk_path.name} to qcow2...")
+        self.logger.info(f"  Source: {vmdk_path}")
+        self.logger.info(f"  Destination: {temp_qcow2}")
+        if original_virtual_size:
+            self.logger.info(f"  Original virtual size: {original_virtual_size / (1024**3):.2f} GiB")
+
+        try:
+            # Convert with progress
+            # CRITICAL: Use -S 0 to disable sparse detection for sparse VMDKs
+            # Without this, unallocated sparse regions won't be written to qcow2,
+            # causing I/O errors when LVM volumes span those regions
+            subprocess.run(
+                [
+                    "qemu-img", "convert",
+                    "-p",  # Progress
+                    "-S", "0",  # Disable sparse detection - write all blocks
+                    "-f", "vmdk",
+                    "-O", "qcow2",
+                    str(vmdk_path),
+                    str(temp_qcow2)
+                ],
+                check=True,
+                timeout=3600  # 1 hour max for large disks
+            )
+
+            # Verify converted size matches original
+            if original_virtual_size:
+                try:
+                    result = subprocess.run(
+                        ["qemu-img", "info", "--output=json", str(temp_qcow2)],
+                        capture_output=True, text=True, check=True, timeout=30
+                    )
+                    qcow2_info = json.loads(result.stdout)
+                    qcow2_virtual_size = qcow2_info.get("virtual-size", 0)
+
+                    if qcow2_virtual_size != original_virtual_size:
+                        self.logger.warning(
+                            f"Virtual size mismatch after conversion: "
+                            f"original={original_virtual_size / (1024**3):.2f} GiB, "
+                            f"converted={qcow2_virtual_size / (1024**3):.2f} GiB"
+                        )
+                    else:
+                        self.logger.info(
+                            f"✓ Virtual size verified: {qcow2_virtual_size / (1024**3):.2f} GiB"
+                        )
+                except Exception as e:
+                    self.logger.debug(f"Could not verify qcow2 size: {e}")
+
+            self.logger.info(f"✓ Conversion completed: {temp_qcow2}")
+            return temp_qcow2
+
+        except subprocess.TimeoutExpired:
+            if temp_qcow2.exists():
+                temp_qcow2.unlink()
+            raise RuntimeError(f"VMDK conversion timed out after 1 hour")
+        except subprocess.CalledProcessError as e:
+            if temp_qcow2.exists():
+                temp_qcow2.unlink()
+            raise RuntimeError(f"VMDK conversion failed: {e}")
+
     @retry_with_backoff(
         max_attempts=3,
         base_backoff_s=2.0,
@@ -147,6 +322,8 @@ class NBDDeviceManager:
 
         Uses exponential backoff retry strategy (max 3 attempts, 2-10s backoff) to
         handle transient qemu-nbd command failures and OS-level errors.
+
+        Automatically converts streamOptimized VMDKs to qcow2 for reliability.
 
         Args:
             image_path: Path to disk image
@@ -170,6 +347,31 @@ class NBDDeviceManager:
 
         readonly = readonly if readonly is not None else self.readonly
 
+        # Check if VMDK needs conversion (streamOptimized, compressed)
+        if self._needs_conversion(image_path):
+            original_path = image_path
+            image_path = self._convert_to_qcow2(image_path)
+            format = "qcow2"  # Override format after conversion
+            self.logger.info(f"Using converted qcow2 instead of original {original_path.name}")
+
+        # Auto-detect format from extension if not specified
+        # This is critical for VMDKs, especially ESXi thin-provisioned ones
+        if not format:
+            suffix = image_path.suffix.lower()
+            format_map = {
+                ".vmdk": "vmdk",
+                ".qcow2": "qcow2",
+                ".qcow": "qcow2",
+                ".vdi": "vdi",
+                ".vhd": "vpc",
+                ".vhdx": "vhdx",
+                ".img": "raw",
+                ".raw": "raw",
+            }
+            format = format_map.get(suffix)
+            if format:
+                self.logger.info(f"Auto-detected format '{format}' from extension '{suffix}'")
+
         # Find free NBD device
         nbd_device = self.find_free_nbd()
 
@@ -178,9 +380,21 @@ class NBDDeviceManager:
 
         if format:
             cmd.extend(["--format", format])
+        else:
+            self.logger.warning(f"No format specified and couldn't auto-detect from '{image_path.suffix}' - qemu-nbd will try to auto-detect")
 
         if readonly:
             cmd.append("--read-only")
+
+        # Use cache=none for data integrity (prevents corruption from kernel cache issues)
+        # This is especially important for write operations
+        cmd.extend(["--cache", "none"])
+
+        # Use native AIO for better performance and stability
+        cmd.extend(["--aio", "native"])
+
+        # Enable discard for thin-provisioned images (VMware, qcow2)
+        cmd.extend(["--discard", "unmap"])
 
         cmd.append(str(image_path))
 

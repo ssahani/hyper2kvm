@@ -270,6 +270,7 @@ class VMCraft:
         # Activate storage stack
         storage_start = time.time()
         self._storage_activator = StorageStackActivator(self.logger)
+        self._storage_activator.nbd_device = self._nbd_device  # Set NBD device for LVM filtering
         self._storage_audit = self._storage_activator.activate_all()
         storage_time = time.time() - storage_start
         self._perf_metrics['storage_activation'] = storage_time
@@ -960,12 +961,43 @@ class VMCraft:
         return []
 
     def vfs_type(self, device: str) -> str:
-        """Get filesystem type."""
+        """
+        Get filesystem type using multiple probing methods.
+
+        Uses blkid -p (low-level probe) first, then falls back to lsblk.
+        This is more reliable after LVM activation.
+        """
+        # Try blkid with -p flag for fresh low-level probing (bypasses cache)
         try:
-            result = run_sudo(self.logger, ["blkid", "-s", "TYPE", "-o", "value", device], check=True, capture=True)
-            return result.stdout.strip()
+            result = run_sudo(
+                self.logger,
+                ["blkid", "-p", "-s", "TYPE", "-o", "value", device],
+                check=True,
+                capture=True,
+                failure_log_level=logging.DEBUG
+            )
+            fstype = result.stdout.strip()
+            if fstype:
+                return fstype
         except Exception:
-            return ""
+            pass
+
+        # Fallback to lsblk (often works when blkid doesn't after LVM activation)
+        try:
+            result = run_sudo(
+                self.logger,
+                ["lsblk", "-no", "FSTYPE", device],
+                check=True,
+                capture=True,
+                failure_log_level=logging.DEBUG
+            )
+            fstype = result.stdout.strip()
+            if fstype:
+                return fstype
+        except Exception:
+            pass
+
+        return ""
 
     def vfs_uuid(self, device: str) -> str:
         """Get filesystem UUID."""
@@ -3872,16 +3904,16 @@ class VMCraft:
 
     def vgscan(self) -> None:
         """Scan for LVM volume groups."""
-        LVMActivator.activate(self.logger)
+        LVMActivator.activate(self.logger, nbd_device=self._nbd_device)
 
     def vgchange_activate_all(self, enable: bool | int) -> None:
         """Activate all volume groups."""
         if enable:
-            LVMActivator.activate(self.logger)
+            LVMActivator.activate(self.logger, nbd_device=self._nbd_device)
 
     def lvs(self) -> list[str]:
-        """List logical volumes."""
-        return LVMActivator.list_logical_volumes(self.logger)
+        """List logical volumes (filtered to NBD device if available)."""
+        return LVMActivator.list_logical_volumes(self.logger, nbd_device=self._nbd_device)
 
     # LVM Creation APIs
 
