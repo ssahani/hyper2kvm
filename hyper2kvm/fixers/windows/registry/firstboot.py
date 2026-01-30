@@ -33,13 +33,7 @@ else:
         import guestfs  # type: ignore
     except ImportError:
         guestfs = None  # type: ignore
-if TYPE_CHECKING:
-    import hivex  # type: ignore
-else:
-    try:
-        import hivex  # type: ignore
-    except ImportError:
-        hivex = None  # type: ignore
+import hivex  # type: ignore
 
 from ....core.utils import U
 from ....core.logging_utils import safe_logger as _safe_logger_base

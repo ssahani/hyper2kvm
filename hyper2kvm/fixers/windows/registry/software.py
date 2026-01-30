@@ -27,13 +27,7 @@ else:
         import guestfs  # type: ignore
     except ImportError:
         guestfs = None  # type: ignore
-if TYPE_CHECKING:
-    import hivex  # type: ignore
-else:
-    try:
-        import hivex  # type: ignore
-    except ImportError:
-        hivex = None  # type: ignore
+import hivex  # type: ignore
 
 # Import helper functions from registry sub-modules
 from .io import _download_hive_local, _log_mountpoints_best_effort

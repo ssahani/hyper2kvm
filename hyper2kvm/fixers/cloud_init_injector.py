@@ -4,15 +4,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import guestfs  # type: ignore
-else:
-    try:
-        import guestfs  # type: ignore
-    except ImportError:
-        guestfs = None  # type: ignore
+import guestfs  # type: ignore
 
 try:
     import yaml  # type: ignore

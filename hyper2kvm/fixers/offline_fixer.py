@@ -17,15 +17,9 @@ import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import Any, TypeVar
 
-if TYPE_CHECKING:
-    import guestfs  # type: ignore
-else:
-    try:
-        import guestfs  # type: ignore
-    except ImportError:
-        guestfs = None  # type: ignore
+import guestfs  # type: ignore
 
 from .. import __version__
 from ..core.recovery_manager import RecoveryManager

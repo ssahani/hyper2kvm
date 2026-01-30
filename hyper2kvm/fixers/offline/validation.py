@@ -14,15 +14,9 @@ for validation logic.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import guestfs  # type: ignore
-else:
-    try:
-        import guestfs  # type: ignore
-    except ImportError:
-        guestfs = None  # type: ignore
+import guestfs  # type: ignore
 
 from ...core.utils import guest_has_cmd, guest_ls_glob
 from ...core.validation_suite import ValidationSuite
