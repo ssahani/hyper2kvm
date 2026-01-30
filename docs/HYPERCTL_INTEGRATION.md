@@ -1,12 +1,12 @@
-# h2kvmctl Integration Guide
+# hyperctl Integration Guide
 
 ## Overview
 
-hyper2kvm now supports **h2kvmctl** from the `hyper2kvm-providers` package as a high-performance alternative to `govc` for VMware vSphere exports.
+hyper2kvm now supports **hyperctl** from the `hypersdk` package as a high-performance alternative to `govc` for VMware vSphere exports.
 
-### Why h2kvmctl?
+### Why hyperctl?
 
-| Feature | govc | h2kvmctl (hyper2kvm-providers) |
+| Feature | govc | hyperctl (hypersdk) |
 |---------|------|-------------------------------|
 | **Language** | External Go binary | Go daemon + CLI |
 | **Performance** | Single-threaded | Parallel downloads (configurable) |
@@ -22,18 +22,18 @@ hyper2kvm now supports **h2kvmctl** from the `hyper2kvm-providers` package as a 
 ### Option 1: RPM Package (Fedora/RHEL/CentOS)
 
 ```bash
-sudo dnf install hyper2kvm-providers
-sudo systemctl start hyper2kvmd
-sudo systemctl enable hyper2kvmd
+sudo dnf install hypersdk
+sudo systemctl start hypervisord
+sudo systemctl enable hypervisord
 ```
 
 ### Option 2: From Source
 
 ```bash
-git clone https://github.com/hyper2kvm/hyper2kvm-providers
-cd hyper2kvm-providers
-go build -o hyper2kvmd ./cmd/hyper2kvmd
-go build -o h2kvmctl ./cmd/h2kvmctl
+git clone https://github.com/hyper2kvm/hypersdk
+cd hypersdk
+go build -o hypervisord ./cmd/hypervisord
+go build -o hyperctl ./cmd/hyperctl
 sudo ./install.sh
 ```
 
@@ -41,12 +41,12 @@ sudo ./install.sh
 
 ```bash
 # Download latest release
-wget https://github.com/hyper2kvm/hyper2kvm-providers/releases/latest/download/hyper2kvmd
-wget https://github.com/hyper2kvm/hyper2kvm-providers/releases/latest/download/h2kvmctl
+wget https://github.com/hyper2kvm/hypersdk/releases/latest/download/hypervisord
+wget https://github.com/hyper2kvm/hypersdk/releases/latest/download/hyperctl
 
 # Install
-chmod +x hyper2kvmd h2kvmctl
-sudo mv hyper2kvmd h2kvmctl /usr/local/bin/
+chmod +x hypervisord hyperctl
+sudo mv hypervisord hyperctl /usr/local/bin/
 ```
 
 ## Configuration
@@ -55,28 +55,28 @@ sudo mv hyper2kvmd h2kvmctl /usr/local/bin/
 
 ```bash
 # Method 1: Systemd
-sudo systemctl start hyper2kvmd
-sudo systemctl status hyper2kvmd
+sudo systemctl start hypervisord
+sudo systemctl status hypervisord
 
 # Method 2: Manual (with environment variables)
 export GOVC_URL='https://vcenter.example.com/sdk'
 export GOVC_USERNAME='administrator@vsphere.local'
 export GOVC_PASSWORD='your-password'
 export GOVC_INSECURE=1
-hyper2kvmd
+hypervisord
 
 # Method 3: With config file
-hyper2kvmd --config /etc/hyper2kvm/config.yaml
+hypervisord --config /etc/hyper2kvm/config.yaml
 ```
 
 ### Verify Installation
 
 ```bash
 # Check daemon status
-h2kvmctl status
+hyperctl status
 
 # Test CLI
-h2kvmctl --version
+hyperctl --version
 ```
 
 ## Python Usage
@@ -84,10 +84,10 @@ h2kvmctl --version
 ### Simple Example
 
 ```python
-from hyper2kvm.vmware.transports import export_vm_h2kvmctl
+from hyper2kvm.vmware.transports import export_vm_hyperctl
 
-# Export VM using h2kvmctl
-result = export_vm_h2kvmctl(
+# Export VM using hyperctl
+result = export_vm_hyperctl(
     vm_path="/datacenter/vm/my-vm",
     output_path="/tmp/export",
     parallel_downloads=4,
@@ -100,13 +100,13 @@ print(f"Export completed: {result['job_id']}")
 ### With Progress Callback
 
 ```python
-from hyper2kvm.vmware.transports import export_vm_h2kvmctl
+from hyper2kvm.vmware.transports import export_vm_hyperctl
 
 def show_progress(status):
     """Display progress updates."""
     print(f"Status: {status}")
 
-result = export_vm_h2kvmctl(
+result = export_vm_hyperctl(
     vm_path="/datacenter/vm/production-db",
     output_path="/exports/production-db",
     parallel_downloads=8,  # High-performance mode
@@ -114,13 +114,13 @@ result = export_vm_h2kvmctl(
 )
 ```
 
-### Advanced Usage with H2KVMCtlRunner
+### Advanced Usage with HyperCtlRunner
 
 ```python
-from hyper2kvm.vmware.transports import create_h2kvmctl_runner
+from hyper2kvm.vmware.transports import create_hyperctl_runner
 
 # Create runner
-runner = create_h2kvmctl_runner(
+runner = create_hyperctl_runner(
     daemon_url="http://localhost:8080",
 )
 
@@ -152,9 +152,9 @@ result = runner.wait_for_job_completion(
 ### Batch Processing Multiple VMs
 
 ```python
-from hyper2kvm.vmware.transports import create_h2kvmctl_runner
+from hyper2kvm.vmware.transports import create_hyperctl_runner
 
-runner = create_h2kvmctl_runner()
+runner = create_hyperctl_runner()
 
 # List of VMs to export
 vms = [
@@ -197,35 +197,35 @@ result = export_vm_govc(
 )
 ```
 
-**After (using h2kvmctl):**
+**After (using hyperctl):**
 ```python
-from hyper2kvm.vmware.transports import export_vm_h2kvmctl
+from hyper2kvm.vmware.transports import export_vm_hyperctl
 
-result = export_vm_h2kvmctl(
+result = export_vm_hyperctl(
     vm_path="/datacenter/vm/my-vm",
     output_path="/tmp/export",
     parallel_downloads=4,  # NEW: Parallel downloads
 )
 ```
 
-### Fallback Pattern (try h2kvmctl, fallback to govc)
+### Fallback Pattern (try hyperctl, fallback to govc)
 
 ```python
-from hyper2kvm.vmware.transports import H2KVMCTL_AVAILABLE, export_vm_h2kvmctl
+from hyper2kvm.vmware.transports import HYPERCTL_AVAILABLE, export_vm_hyperctl
 from hyper2kvm.vmware.transports.govc_export import export_vm_govc
 
 def export_vm_with_fallback(vm_path, output_path):
-    """Try h2kvmctl first, fallback to govc."""
+    """Try hyperctl first, fallback to govc."""
 
-    if H2KVMCTL_AVAILABLE:
+    if HYPERCTL_AVAILABLE:
         try:
-            return export_vm_h2kvmctl(
+            return export_vm_hyperctl(
                 vm_path=vm_path,
                 output_path=output_path,
                 parallel_downloads=4,
             )
         except Exception as e:
-            print(f"h2kvmctl failed, trying govc: {e}")
+            print(f"hyperctl failed, trying govc: {e}")
 
     # Fallback to govc
     return export_vm_govc(
@@ -238,8 +238,8 @@ def export_vm_with_fallback(vm_path, output_path):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `H2KVMD_URL` | `http://localhost:8080` | Daemon API URL |
-| `H2KVMCTL_PATH` | `h2kvmctl` | Path to h2kvmctl binary |
+| `HYPERVISORD_URL` | `http://localhost:8080` | Daemon API URL |
+| `HYPERCTL_PATH` | `hyperctl` | Path to hyperctl binary |
 | `GOVC_URL` | - | vCenter URL (for daemon config) |
 | `GOVC_USERNAME` | - | vCenter username |
 | `GOVC_PASSWORD` | - | vCenter password |
@@ -251,25 +251,25 @@ def export_vm_with_fallback(vm_path, output_path):
 
 ```bash
 # Check if daemon is running
-systemctl status hyper2kvmd
+systemctl status hypervisord
 
 # Or manually check
-h2kvmctl status
+hyperctl status
 
 # If not running, start it
-sudo systemctl start hyper2kvmd
+sudo systemctl start hypervisord
 
 # Check logs
-sudo journalctl -u hyper2kvmd -f
+sudo journalctl -u hypervisord -f
 ```
 
 ### Connection Refused
 
 ```python
-from hyper2kvm.vmware.transports import create_h2kvmctl_runner
+from hyper2kvm.vmware.transports import create_hyperctl_runner
 
 # Try with explicit URL
-runner = create_h2kvmctl_runner(
+runner = create_hyperctl_runner(
     daemon_url="http://localhost:8080",
 )
 
@@ -278,20 +278,20 @@ try:
     print("✅ Daemon is running")
 except Exception as e:
     print(f"❌ Daemon not accessible: {e}")
-    print("Start daemon: sudo systemctl start hyper2kvmd")
+    print("Start daemon: sudo systemctl start hypervisord")
 ```
 
-### h2kvmctl Command Not Found
+### hyperctl Command Not Found
 
 ```bash
 # Check if installed
-which h2kvmctl
+which hyperctl
 
 # If not found, set path
-export H2KVMCTL_PATH=/usr/local/bin/h2kvmctl
+export HYPERCTL_PATH=/usr/local/bin/hyperctl
 
 # Or install
-sudo dnf install hyper2kvm-providers
+sudo dnf install hypersdk
 ```
 
 ## Performance Comparison
@@ -301,21 +301,21 @@ sudo dnf install hyper2kvm-providers
 | Method | Time | CPU | Notes |
 |--------|------|-----|-------|
 | **govc** | ~45 min | 1 core | Single-threaded |
-| **h2kvmctl (4 workers)** | ~15 min | 4 cores | Parallel downloads |
-| **h2kvmctl (8 workers)** | ~10 min | 8 cores | Max throughput |
+| **hyperctl (4 workers)** | ~15 min | 4 cores | Parallel downloads |
+| **hyperctl (8 workers)** | ~10 min | 8 cores | Max throughput |
 
 ### Batch Export (10 VMs, 500 GB total)
 
 | Method | Time | Notes |
 |--------|------|-------|
 | **govc (sequential)** | ~7.5 hours | One at a time |
-| **h2kvmctl (concurrent)** | ~1.5 hours | All VMs in parallel |
+| **hyperctl (concurrent)** | ~1.5 hours | All VMs in parallel |
 
 ## See Also
 
-- [hyper2kvm-providers Repository](https://github.com/hyper2kvm/hyper2kvm-providers)
-- [Example: export_with_h2kvmctl.py](../examples/export_with_h2kvmctl.py)
-- [REST API Documentation](https://github.com/hyper2kvm/hyper2kvm-providers/blob/main/docs/API.md)
+- [hypersdk Repository](https://github.com/hyper2kvm/hypersdk)
+- [Example: export_with_hyperctl.py](../examples/export_with_hyperctl.py)
+- [REST API Documentation](https://github.com/hyper2kvm/hypersdk/blob/main/docs/API.md)
 
 ---
 
