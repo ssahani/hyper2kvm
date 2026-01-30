@@ -404,7 +404,7 @@ class DaemonWatcher:
             stat = os.statvfs(str(self.output_dir))
             return stat.f_bavail * stat.f_frsize
         except OSError as e:
-            logger.debug(f"Failed to get free space for {self.output_dir}: {e}")
+            self.logger.debug(f"Failed to get free space for {self.output_dir}: {e}")
             return 0
 
     def _process_file(self, file_path: Path, retry_count: int = 0) -> None:
@@ -762,7 +762,7 @@ class DaemonWatcher:
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as e:
-                logger.debug(f"Queue join interrupted: {e}")
+                self.logger.debug(f"Queue join interrupted: {e}")
 
         # Save final stats
         self.stats.save(force=True)

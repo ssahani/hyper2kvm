@@ -83,10 +83,12 @@ def test_raw_to_qcow2_with_compression(test_linux_raw_image, output_dir):
     assert result.returncode == 0
     assert output_qcow2.exists()
 
-    # Verify it's smaller than original (due to compression)
-    # Note: May not always be true for small test images
-    test_linux_raw_image.stat().st_size
-    output_qcow2.stat().st_size
+    # Verify file sizes are reasonable
+    # Note: QCOW2 may not always be smaller than raw for small test images
+    raw_size = test_linux_raw_image.stat().st_size
+    qcow2_size = output_qcow2.stat().st_size
+    assert raw_size > 0
+    assert qcow2_size > 0
 
     # At minimum, verify it's valid QCOW2
     info_result = subprocess.run([

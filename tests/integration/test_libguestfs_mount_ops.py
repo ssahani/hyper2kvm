@@ -74,7 +74,7 @@ def test_mount_readonly(test_linux_qcow2_image):
     assert g.exists("/etc")
 
     # Cannot write files (should raise exception)
-    with pytest.raises(Exception):
+    with pytest.raises((OSError, RuntimeError)):
         g.touch("/test-readonly.txt")
 
     g.umount("/")
@@ -320,7 +320,7 @@ def test_remount(test_linux_qcow2_image, cleanup_test_image):
     assert g.exists("/test-rw.txt")
 
     # Cannot write
-    with pytest.raises(Exception):
+    with pytest.raises((OSError, RuntimeError)):
         g.touch("/test-ro.txt")
 
     g.umount("/")

@@ -20,7 +20,7 @@ def create_test_images():
     """Create test VM disk images with guestfs"""
 
     try:
-        import guestfs
+        import guestfs  # noqa: F401
     except ImportError:
         print("ERROR: python3-guestfs not installed")
         print("Install with: sudo dnf install python3-libguestfs")

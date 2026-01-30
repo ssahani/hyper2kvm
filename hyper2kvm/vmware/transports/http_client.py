@@ -79,7 +79,7 @@ def _print_panel(
     title_style: str = "bold blue",
     panel_style: str = "cyan",
 ) -> None:
-    con = _console()
+    con = Console() if Console is not None else None
     if con and Panel:
         con.print(Panel(body or "", title=title, title_align="left", expand=True, style=panel_style))
         return
