@@ -78,6 +78,7 @@ from .resource_orchestrator import ResourceOrchestrator
 from .systemd import SystemctlManager, JournalctlManager, SystemdAnalyzer, SystemConfigManager
 from .systemd_mgr import SystemdManager
 from .systemd_networkd import SystemdNetworkdManager
+from .systemd_journal import SystemdJournalManager
 from .enhanced_inspection import EnhancedInspector
 
 
@@ -179,6 +180,7 @@ class VMCraft:
         self._sysconfig: SystemConfigManager | None = None
         self._systemd_mgr: SystemdManager | None = None
         self._systemd_networkd: SystemdNetworkdManager | None = None
+        self._systemd_journal: SystemdJournalManager | None = None
 
         # Enhanced inspection (initialized after launch)
         self._enhanced_inspector: EnhancedInspector | None = None
@@ -340,6 +342,7 @@ class VMCraft:
         self._sysconfig = SystemConfigManager(self.command_quiet, self.logger)
         self._systemd_mgr = SystemdManager(self.logger, str(self._mount_root))
         self._systemd_networkd = SystemdNetworkdManager(self.logger, str(self._mount_root))
+        self._systemd_journal = SystemdJournalManager(self.logger, str(self._mount_root))
 
         # Initialize enhanced inspector
         self._enhanced_inspector = EnhancedInspector(
@@ -6792,6 +6795,83 @@ class VMCraft:
         if not self._systemd_networkd:
             raise RuntimeError("Not launched")
         return self._systemd_networkd.enable_networkd()
+
+    # ==================================================================================
+    # Systemd Journal Integration (Phase 3) - 10 methods
+    # ==================================================================================
+
+    def journal_get(
+        self,
+        lines: int | None = None,
+        unit: str | None = None,
+        priority: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        grep: str | None = None
+    ) -> dict[str, Any]:
+        """Get journal entries with filtering."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.get(lines, unit, priority, since, until, grep)
+
+    def journal_get_service(self, service: str, lines: int = 100) -> dict[str, Any]:
+        """Get journal entries for specific service."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.get_service(service, lines)
+
+    def journal_get_since_boot(self, boot_offset: int = 0) -> dict[str, Any]:
+        """Get journal entries since specified boot."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.get_since_boot(boot_offset)
+
+    def journal_get_priority(self, priority: str, lines: int = 100) -> dict[str, Any]:
+        """Get journal entries by priority level."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.get_priority(priority, lines)
+
+    def journal_get_tail(self, lines: int = 100) -> dict[str, Any]:
+        """Get last N journal entries."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.get_tail(lines)
+
+    def journal_list_boots(self) -> dict[str, Any]:
+        """List available boot sessions."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.list_boots()
+
+    def journal_get_boot_id(self) -> str | None:
+        """Get current boot ID."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.get_boot_id()
+
+    def journal_get_disk_usage(self) -> dict[str, Any]:
+        """Get journal disk usage statistics."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.get_disk_usage()
+
+    def journal_vacuum(
+        self,
+        size: str | None = None,
+        time: str | None = None,
+        files: int | None = None
+    ) -> dict[str, Any]:
+        """Clean up old journal entries."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.vacuum(size, time, files)
+
+    def journal_verify(self) -> dict[str, Any]:
+        """Verify journal file consistency."""
+        if not self._systemd_journal:
+            raise RuntimeError("Not launched")
+        return self._systemd_journal.verify()
 
     # ==================================================================================
     # Context manager support
