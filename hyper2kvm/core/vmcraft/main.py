@@ -30,7 +30,17 @@ from .inspection import OSInspector
 from .windows_registry import WindowsRegistryManager
 from .windows_drivers import WindowsDriverInjector
 from .windows_users import WindowsUserManager
+from .windows_services import WindowsServiceManager
+from .windows_applications import WindowsApplicationManager
 from .linux_services import LinuxServiceManager
+from .network_config import NetworkConfigAnalyzer
+from .firewall_analyzer import FirewallAnalyzer
+from .advanced_analysis import AdvancedAnalyzer
+from .export import ExportManager
+from .scheduled_tasks import ScheduledTaskAnalyzer
+from .ssh_analyzer import SSHAnalyzer
+from .log_analyzer import LogAnalyzer
+from .hardware_detector import HardwareDetector
 from .backup import BackupManager
 from .security import SecurityAuditor
 from .optimization import DiskOptimizer
@@ -77,7 +87,17 @@ class VMCraft:
         self._win_registry: WindowsRegistryManager | None = None
         self._win_drivers: WindowsDriverInjector | None = None
         self._win_users: WindowsUserManager | None = None
+        self._win_services: WindowsServiceManager | None = None
+        self._win_apps: WindowsApplicationManager | None = None
         self._linux_services: LinuxServiceManager | None = None
+        self._network_config: NetworkConfigAnalyzer | None = None
+        self._firewall_analyzer: FirewallAnalyzer | None = None
+        self._advanced_analyzer: AdvancedAnalyzer | None = None
+        self._export_mgr: ExportManager | None = None
+        self._scheduled_tasks: ScheduledTaskAnalyzer | None = None
+        self._ssh_analyzer: SSHAnalyzer | None = None
+        self._log_analyzer: LogAnalyzer | None = None
+        self._hardware_detector: HardwareDetector | None = None
         self._backup_mgr: BackupManager | None = None
         self._security_auditor: SecurityAuditor | None = None
         self._disk_optimizer: DiskOptimizer | None = None
@@ -184,7 +204,17 @@ class VMCraft:
         self._win_registry = WindowsRegistryManager(self.logger, self._mount_root)
         self._win_drivers = WindowsDriverInjector(self.logger, self._mount_root)
         self._win_users = WindowsUserManager(self.logger, self._mount_root)
+        self._win_services = WindowsServiceManager(self.logger, self._file_ops, self._win_registry)
+        self._win_apps = WindowsApplicationManager(self.logger, self._file_ops, self._win_registry)
         self._linux_services = LinuxServiceManager(self.logger, self._mount_root)
+        self._network_config = NetworkConfigAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._firewall_analyzer = FirewallAnalyzer(self.logger, self._file_ops)
+        self._advanced_analyzer = AdvancedAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._export_mgr = ExportManager(self.logger)
+        self._scheduled_tasks = ScheduledTaskAnalyzer(self.logger, self._file_ops)
+        self._ssh_analyzer = SSHAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._log_analyzer = LogAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._hardware_detector = HardwareDetector(self.logger, self._file_ops, self._mount_root)
         self._backup_mgr = BackupManager(self.logger, self._mount_root)
         self._security_auditor = SecurityAuditor(self.logger, self._mount_root)
         self._disk_optimizer = DiskOptimizer(self.logger, self._mount_root)
@@ -974,6 +1004,360 @@ class VMCraft:
         if not self._file_ops:
             raise RuntimeError("Not launched")
         self._file_ops.clear_cache()
+
+    # Windows Service Management (windows_services.py)
+
+    def win_list_services(self) -> list[dict[str, Any]]:
+        """List all Windows services from SYSTEM registry."""
+        if not self._win_services:
+            raise RuntimeError("Not launched")
+        return self._win_services.list_services()
+
+    def win_get_service_count(self) -> dict[str, Any]:
+        """Get Windows service statistics by start type."""
+        if not self._win_services:
+            raise RuntimeError("Not launched")
+        return self._win_services.get_service_count()
+
+    def win_list_automatic_services(self) -> list[str]:
+        """List Windows services that start automatically."""
+        if not self._win_services:
+            raise RuntimeError("Not launched")
+        return self._win_services.list_automatic_services()
+
+    def win_list_disabled_services(self) -> list[str]:
+        """List disabled Windows services."""
+        if not self._win_services:
+            raise RuntimeError("Not launched")
+        return self._win_services.list_disabled_services()
+
+    # Windows Application Management (windows_applications.py)
+
+    def win_list_applications(self, limit: int = 100) -> list[dict[str, Any]]:
+        """List installed Windows applications from registry."""
+        if not self._win_apps:
+            raise RuntimeError("Not launched")
+        return self._win_apps.list_applications(limit=limit)
+
+    def win_get_application_count(self) -> dict[str, Any]:
+        """Get Windows application statistics."""
+        if not self._win_apps:
+            raise RuntimeError("Not launched")
+        return self._win_apps.get_application_count()
+
+    def win_search_applications(self, query: str) -> list[dict[str, Any]]:
+        """Search Windows applications by name or publisher."""
+        if not self._win_apps:
+            raise RuntimeError("Not launched")
+        return self._win_apps.search_applications(query)
+
+    def win_get_applications_by_publisher(self, publisher: str) -> list[dict[str, Any]]:
+        """Get Windows applications from a specific publisher."""
+        if not self._win_apps:
+            raise RuntimeError("Not launched")
+        return self._win_apps.get_applications_by_publisher(publisher)
+
+    # Network Configuration Analysis (network_config.py)
+
+    def analyze_network_config(self, os_type: str) -> dict[str, Any]:
+        """Analyze network configuration based on OS type."""
+        if not self._network_config:
+            raise RuntimeError("Not launched")
+        return self._network_config.analyze_network_config(os_type)
+
+    def find_static_ips(self, config: dict[str, Any]) -> list[str]:
+        """Find statically configured IP addresses."""
+        if not self._network_config:
+            raise RuntimeError("Not launched")
+        return self._network_config.find_static_ips(config)
+
+    def detect_network_bonds(self, config: dict[str, Any]) -> list[dict[str, Any]]:
+        """Detect network bonding/teaming configurations."""
+        if not self._network_config:
+            raise RuntimeError("Not launched")
+        return self._network_config.detect_network_bonds(config)
+
+    # Firewall Analysis (firewall_analyzer.py)
+
+    def analyze_firewall(self, os_type: str) -> dict[str, Any]:
+        """Analyze firewall configuration based on OS type."""
+        if not self._firewall_analyzer:
+            raise RuntimeError("Not launched")
+        return self._firewall_analyzer.analyze_firewall(os_type)
+
+    def get_open_ports(self, config: dict[str, Any]) -> list[int]:
+        """Extract list of open ports from firewall configuration."""
+        if not self._firewall_analyzer:
+            raise RuntimeError("Not launched")
+        return self._firewall_analyzer.get_open_ports(config)
+
+    def get_blocked_ports(self, config: dict[str, Any]) -> list[int]:
+        """Extract list of blocked ports from firewall configuration."""
+        if not self._firewall_analyzer:
+            raise RuntimeError("Not launched")
+        return self._firewall_analyzer.get_blocked_ports(config)
+
+    def get_firewall_stats(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Get firewall statistics."""
+        if not self._firewall_analyzer:
+            raise RuntimeError("Not launched")
+        return self._firewall_analyzer.get_firewall_stats(config)
+
+    # Advanced Filesystem Analysis (advanced_analysis.py)
+
+    def search_files(
+        self,
+        path: str = "/",
+        name_pattern: str | None = None,
+        content_pattern: str | None = None,
+        min_size_mb: float | None = None,
+        max_size_mb: float | None = None,
+        file_type: str | None = None,
+        limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Multi-criteria file search with flexible filters."""
+        if not self._advanced_analyzer:
+            raise RuntimeError("Not launched")
+        return self._advanced_analyzer.search_files(
+            path=path,
+            name_pattern=name_pattern,
+            content_pattern=content_pattern,
+            min_size_mb=min_size_mb,
+            max_size_mb=max_size_mb,
+            file_type=file_type,
+            limit=limit
+        )
+
+    def find_large_files(
+        self,
+        path: str = "/",
+        min_size_mb: float = 100,
+        limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Find large files above a size threshold."""
+        if not self._advanced_analyzer:
+            raise RuntimeError("Not launched")
+        return self._advanced_analyzer.find_large_files(
+            path=path,
+            min_size_mb=min_size_mb,
+            limit=limit
+        )
+
+    def find_duplicates(
+        self,
+        path: str = "/",
+        min_size_mb: float = 1,
+        limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Find duplicate files using SHA256 checksums."""
+        if not self._advanced_analyzer:
+            raise RuntimeError("Not launched")
+        return self._advanced_analyzer.find_duplicates(
+            path=path,
+            min_size_mb=min_size_mb,
+            limit=limit
+        )
+
+    def analyze_disk_space(
+        self,
+        path: str = "/",
+        top_n: int = 20
+    ) -> dict[str, Any]:
+        """Analyze disk space usage by directory."""
+        if not self._advanced_analyzer:
+            raise RuntimeError("Not launched")
+        return self._advanced_analyzer.analyze_disk_space(
+            path=path,
+            top_n=top_n
+        )
+
+    def find_certificates(self, path: str = "/") -> list[dict[str, Any]]:
+        """Find SSL/TLS certificate files."""
+        if not self._advanced_analyzer:
+            raise RuntimeError("Not launched")
+        return self._advanced_analyzer.find_certificates(path=path)
+
+    # Export and Reporting (export.py)
+
+    def export_json(self, data: dict[str, Any], output_path: str | Path) -> bool:
+        """Export data to JSON format."""
+        if not self._export_mgr:
+            raise RuntimeError("Not launched")
+        return self._export_mgr.export_json(data, output_path)
+
+    def export_yaml(self, data: dict[str, Any], output_path: str | Path) -> bool:
+        """Export data to YAML format."""
+        if not self._export_mgr:
+            raise RuntimeError("Not launched")
+        return self._export_mgr.export_yaml(data, output_path)
+
+    def export_markdown_report(
+        self,
+        data: dict[str, Any],
+        output_path: str | Path,
+        title: str = "VM Analysis Report"
+    ) -> bool:
+        """Generate Markdown report from analysis data."""
+        if not self._export_mgr:
+            raise RuntimeError("Not launched")
+        return self._export_mgr.export_markdown_report(data, output_path, title)
+
+    def create_vm_profile(
+        self,
+        os_info: dict[str, Any] | None = None,
+        containers: dict[str, Any] | None = None,
+        security: dict[str, Any] | None = None,
+        packages: dict[str, Any] | None = None,
+        performance: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Create comprehensive VM profile for analysis and comparison."""
+        if not self._export_mgr:
+            raise RuntimeError("Not launched")
+        return self._export_mgr.create_vm_profile(
+            os_info=os_info,
+            containers=containers,
+            security=security,
+            packages=packages,
+            performance=performance
+        )
+
+    def compare_vms(
+        self,
+        vm1_profile: dict[str, Any],
+        vm2_profile: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Compare two VM profiles and generate diff report."""
+        if not self._export_mgr:
+            raise RuntimeError("Not launched")
+        return self._export_mgr.compare_vms(vm1_profile, vm2_profile)
+
+    # Scheduled Task Analysis (scheduled_tasks.py)
+
+    def analyze_scheduled_tasks(self, os_type: str) -> dict[str, Any]:
+        """Analyze scheduled tasks based on OS type (cron, systemd timers, Windows Task Scheduler)."""
+        if not self._scheduled_tasks:
+            raise RuntimeError("Not launched")
+        return self._scheduled_tasks.analyze_scheduled_tasks(os_type)
+
+    def get_task_count(self, config: dict[str, Any]) -> int:
+        """Get total count of scheduled tasks."""
+        if not self._scheduled_tasks:
+            raise RuntimeError("Not launched")
+        return self._scheduled_tasks.get_task_count(config)
+
+    def find_daily_tasks(self, config: dict[str, Any]) -> list[dict[str, Any]]:
+        """Find tasks that run daily."""
+        if not self._scheduled_tasks:
+            raise RuntimeError("Not launched")
+        return self._scheduled_tasks.find_daily_tasks(config)
+
+    def find_tasks_by_user(self, config: dict[str, Any], user: str) -> list[dict[str, Any]]:
+        """Find tasks scheduled for a specific user."""
+        if not self._scheduled_tasks:
+            raise RuntimeError("Not launched")
+        return self._scheduled_tasks.find_tasks_by_user(config, user)
+
+    # SSH Configuration Analysis (ssh_analyzer.py)
+
+    def analyze_ssh_config(self) -> dict[str, Any]:
+        """Analyze SSH server and client configuration."""
+        if not self._ssh_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ssh_analyzer.analyze_ssh_config()
+
+    def get_ssh_port(self, config: dict[str, Any]) -> int:
+        """Get SSH server port."""
+        if not self._ssh_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ssh_analyzer.get_ssh_port(config)
+
+    def is_root_login_allowed(self, config: dict[str, Any]) -> bool:
+        """Check if root login is allowed via SSH."""
+        if not self._ssh_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ssh_analyzer.is_root_login_allowed(config)
+
+    def is_password_auth_enabled(self, config: dict[str, Any]) -> bool:
+        """Check if password authentication is enabled for SSH."""
+        if not self._ssh_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ssh_analyzer.is_password_auth_enabled(config)
+
+    def get_authorized_key_count(self, config: dict[str, Any]) -> int:
+        """Get total count of authorized SSH keys."""
+        if not self._ssh_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ssh_analyzer.get_authorized_key_count(config)
+
+    def get_security_score(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Calculate SSH security score."""
+        if not self._ssh_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ssh_analyzer.get_security_score(config)
+
+    # Log Analysis (log_analyzer.py)
+
+    def analyze_logs(self) -> dict[str, Any]:
+        """Analyze system logs comprehensively."""
+        if not self._log_analyzer:
+            raise RuntimeError("Not launched")
+        return self._log_analyzer.analyze_logs()
+
+    def get_recent_errors(self, hours: int = 24, limit: int = 20) -> list[dict[str, Any]]:
+        """Get errors from the last N hours."""
+        if not self._log_analyzer:
+            raise RuntimeError("Not launched")
+        return self._log_analyzer.get_recent_errors(hours=hours, limit=limit)
+
+    def get_critical_events(self) -> list[dict[str, Any]]:
+        """Get critical events (kernel panics, OOM, crashes)."""
+        if not self._log_analyzer:
+            raise RuntimeError("Not launched")
+        return self._log_analyzer.get_critical_events()
+
+    # Hardware Detection (hardware_detector.py)
+
+    def detect_hardware(self) -> dict[str, Any]:
+        """Detect hardware configuration comprehensively."""
+        if not self._hardware_detector:
+            raise RuntimeError("Not launched")
+        return self._hardware_detector.detect_hardware()
+
+    def is_virtual_machine(self, hardware: dict[str, Any]) -> bool:
+        """Check if the system is a virtual machine."""
+        if not self._hardware_detector:
+            raise RuntimeError("Not launched")
+        return self._hardware_detector.is_virtual_machine(hardware)
+
+    def get_hypervisor(self, hardware: dict[str, Any]) -> str | None:
+        """Get the hypervisor type."""
+        if not self._hardware_detector:
+            raise RuntimeError("Not launched")
+        return self._hardware_detector.get_hypervisor(hardware)
+
+    def get_total_memory_mb(self, hardware: dict[str, Any]) -> float | None:
+        """Get total memory in MB."""
+        if not self._hardware_detector:
+            raise RuntimeError("Not launched")
+        return self._hardware_detector.get_total_memory_mb(hardware)
+
+    def get_disk_count(self, hardware: dict[str, Any]) -> int:
+        """Get number of disk devices."""
+        if not self._hardware_detector:
+            raise RuntimeError("Not launched")
+        return self._hardware_detector.get_disk_count(hardware)
+
+    def get_network_interface_count(self, hardware: dict[str, Any]) -> int:
+        """Get number of network interfaces."""
+        if not self._hardware_detector:
+            raise RuntimeError("Not launched")
+        return self._hardware_detector.get_network_interface_count(hardware)
+
+    def get_hardware_summary(self, hardware: dict[str, Any]) -> dict[str, Any]:
+        """Get hardware summary."""
+        if not self._hardware_detector:
+            raise RuntimeError("Not launched")
+        return self._hardware_detector.get_hardware_summary(hardware)
 
     # Context manager support
 

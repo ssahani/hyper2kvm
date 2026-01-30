@@ -31,8 +31,14 @@ from .windows_users import WindowsUserManager
 from .linux_services import LinuxServiceManager
 from .windows_services import WindowsServiceManager
 from .windows_applications import WindowsApplicationManager
+from .network_config import NetworkConfigAnalyzer
+from .firewall_analyzer import FirewallAnalyzer
 from .advanced_analysis import AdvancedAnalyzer
 from .export import ExportManager
+from .scheduled_tasks import ScheduledTaskAnalyzer
+from .ssh_analyzer import SSHAnalyzer
+from .log_analyzer import LogAnalyzer
+from .hardware_detector import HardwareDetector
 
 __all__ = [
     # Main API
@@ -50,6 +56,12 @@ __all__ = [
     "LinuxServiceManager",
     "WindowsServiceManager",
     "WindowsApplicationManager",
+    "NetworkConfigAnalyzer",
+    "FirewallAnalyzer",
     "AdvancedAnalyzer",
     "ExportManager",
+    "ScheduledTaskAnalyzer",
+    "SSHAnalyzer",
+    "LogAnalyzer",
+    "HardwareDetector",
 ]

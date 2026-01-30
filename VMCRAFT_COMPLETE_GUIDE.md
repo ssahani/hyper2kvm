@@ -2,15 +2,15 @@
 
 ## 🚀 The Ultimate VM Disk Image Manipulation Library
 
-VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **130+ methods** across **22 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, and forensic analysis.
+VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **160+ methods** across **27 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, and forensic analysis.
 
 ## 📊 At a Glance
 
 | Metric | Value |
 |--------|-------|
-| **Total Methods** | 130+ |
-| **Modules** | 22 |
-| **Lines of Code** | ~8,755 |
+| **Total Methods** | 160+ |
+| **Modules** | 27 |
+| **Lines of Code** | ~10,546 |
 | **Performance** | **5-10x faster** than libguestfs |
 | **Supported OS** | Windows (NT-12), Linux (all major distros) |
 | **Launch Time** | ~1.9s (vs libguestfs: ~10-13s) |
@@ -245,7 +245,246 @@ comparison = g.compare_vms(profile1, profile2)
 # }
 ```
 
-### 9. File Operations (30+ methods)
+### 9. Network Configuration Analysis (3 methods) - NEW
+
+**Network Configuration Detection**:
+```python
+# Analyze network configuration
+network_config = g.analyze_network_config(os_type="linux")
+# Returns: {
+#   "interfaces": [...],
+#   "hostname": str,
+#   "dns_servers": [...],
+#   "default_gateway": str,
+#   "network_manager": str  # NetworkManager, systemd-networkd, ifcfg, netplan, etc.
+# }
+
+# Find static IPs
+static_ips = g.find_static_ips(network_config)
+# Returns: ["192.168.1.10", "10.0.0.5", ...]
+
+# Detect network bonding/teaming
+bonds = g.detect_network_bonds(network_config)
+# Returns: [{"name": "bond0", "type": "bond", ...}, ...]
+```
+
+**Supported Network Managers**:
+- NetworkManager (/etc/NetworkManager/system-connections/)
+- systemd-networkd (/etc/systemd/network/)
+- ifcfg files (/etc/sysconfig/network-scripts/)
+- Netplan (/etc/netplan/)
+- interfaces file (/etc/network/interfaces)
+
+### 10. Firewall Analysis (4 methods) - NEW
+
+**Firewall Configuration Detection**:
+```python
+# Analyze firewall configuration
+firewall_config = g.analyze_firewall(os_type="linux")
+# Returns: {
+#   "firewall_type": str,  # iptables, firewalld, ufw, nftables
+#   "enabled": bool,
+#   "rules": [...],
+#   "open_ports": [...],
+#   "blocked_ports": [...]
+# }
+
+# Get open ports
+open_ports = g.get_open_ports(firewall_config)
+# Returns: [22, 80, 443, 3306, ...]
+
+# Get blocked ports
+blocked_ports = g.get_blocked_ports(firewall_config)
+# Returns: [25, 445, ...]
+
+# Get firewall statistics
+stats = g.get_firewall_stats(firewall_config)
+# Returns: {
+#   "type": str,
+#   "total_rules": int,
+#   "open_ports_count": int,
+#   "blocked_ports_count": int,
+#   "zones_count": int,
+#   "services_count": int
+# }
+```
+
+**Supported Firewalls**:
+- iptables (/etc/sysconfig/iptables, /etc/iptables/rules.v4)
+- firewalld (/etc/firewalld/)
+- ufw (/etc/ufw/)
+- nftables (/etc/nftables.conf)
+
+### 11. Scheduled Task Analysis (4 methods) - NEW
+
+**Scheduled Tasks Detection**:
+```python
+# Analyze scheduled tasks
+tasks = g.analyze_scheduled_tasks(os_type="linux")
+# Returns: {
+#   "system_cron": [...],
+#   "user_cron": [...],
+#   "cron_d": [...],
+#   "systemd_timers": [...],
+#   "anacron": [...],
+#   "total_count": int
+# }
+
+# Get task count
+count = g.get_task_count(tasks)
+# Returns: 42
+
+# Find daily tasks
+daily = g.find_daily_tasks(tasks)
+# Returns: [{"minute": "0", "hour": "2", "command": "/usr/bin/backup.sh", ...}, ...]
+
+# Find tasks by user
+user_tasks = g.find_tasks_by_user(tasks, "root")
+# Returns: [{"command": "/usr/bin/maintenance.sh", ...}, ...]
+```
+
+**Supported Task Schedulers**:
+- cron (/etc/crontab, /etc/cron.d/*, /var/spool/cron/*)
+- systemd timers (/etc/systemd/system/*.timer)
+- anacron (/etc/anacrontab)
+- Windows Task Scheduler (C:\Windows\System32\Tasks\*)
+
+### 12. SSH Configuration Analysis (6 methods) - NEW
+
+**SSH Security Analysis**:
+```python
+# Analyze SSH configuration
+ssh_config = g.analyze_ssh_config()
+# Returns: {
+#   "server_config": {...},
+#   "authorized_keys": [...],
+#   "client_config": {...},
+#   "security_issues": [...]
+# }
+
+# Get SSH port
+port = g.get_ssh_port(ssh_config)
+# Returns: 22
+
+# Check if root login is allowed
+root_allowed = g.is_root_login_allowed(ssh_config)
+# Returns: False
+
+# Check if password auth is enabled
+password_auth = g.is_password_auth_enabled(ssh_config)
+# Returns: True
+
+# Get authorized key count
+key_count = g.get_authorized_key_count(ssh_config)
+# Returns: 15
+
+# Calculate security score
+score = g.get_security_score(ssh_config)
+# Returns: {
+#   "score": 85,
+#   "grade": "B",
+#   "critical_issues": 0,
+#   "high_issues": 1,
+#   "medium_issues": 2,
+#   "low_issues": 1
+# }
+```
+
+**Security Checks**:
+- PermitRootLogin (high severity)
+- PasswordAuthentication (medium severity)
+- Protocol version (critical if using v1)
+- PermitEmptyPasswords (critical)
+- X11Forwarding (low severity)
+
+### 13. Log Analysis (3 methods) - NEW
+
+**System Log Analysis**:
+```python
+# Comprehensive log analysis
+logs = g.analyze_logs()
+# Returns: {
+#   "system_logs": {...},
+#   "auth_logs": {...},
+#   "application_logs": {...},
+#   "errors": [...],
+#   "warnings": [...],
+#   "security_events": [...],
+#   "statistics": {...}
+# }
+
+# Get recent errors
+errors = g.get_recent_errors(hours=24, limit=20)
+# Returns: [{"timestamp": str, "process": str, "message": str}, ...]
+
+# Get critical events
+critical = g.get_critical_events()
+# Returns: [{"raw": "kernel panic - not syncing: VFS: Unable to mount root fs"}, ...]
+```
+
+**Analyzed Logs**:
+- System: /var/log/syslog, /var/log/messages, /var/log/dmesg
+- Authentication: /var/log/auth.log, /var/log/secure
+- Applications: Apache, Nginx, MySQL, PostgreSQL
+- Security: Failed logins, sudo usage, authentication failures
+
+### 14. Hardware Detection (7 methods) - NEW
+
+**Hardware Inventory**:
+```python
+# Detect hardware comprehensively
+hardware = g.detect_hardware()
+# Returns: {
+#   "cpu": {...},
+#   "memory": {...},
+#   "disks": [...],
+#   "network": [...],
+#   "virtualization": {...},
+#   "dmi": {...}
+# }
+
+# Check if virtual machine
+is_vm = g.is_virtual_machine(hardware)
+# Returns: True
+
+# Get hypervisor type
+hypervisor = g.get_hypervisor(hardware)
+# Returns: "vmware"
+
+# Get total memory
+memory_mb = g.get_total_memory_mb(hardware)
+# Returns: 8192
+
+# Get disk count
+disk_count = g.get_disk_count(hardware)
+# Returns: 2
+
+# Get network interface count
+nic_count = g.get_network_interface_count(hardware)
+# Returns: 3
+
+# Get hardware summary
+summary = g.get_hardware_summary(hardware)
+# Returns: {
+#   "is_virtual": True,
+#   "hypervisor": "vmware",
+#   "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v4",
+#   "cpu_cores": 4,
+#   "disk_count": 2,
+#   "network_interfaces": 3,
+#   "manufacturer": "VMware, Inc.",
+#   "product": "VMware Virtual Platform"
+# }
+```
+
+**Detected Hypervisors**:
+- VMware (ESXi, Workstation, Fusion)
+- KVM/QEMU
+- Microsoft Hyper-V
+- Oracle VirtualBox
+- Xen
+
+### 15. File Operations (30+ methods)
 
 **Basic Operations**:
 ```python
@@ -513,7 +752,8 @@ with VMCraft() as g:
 
 - **v1.0**: Initial release (70 methods, 15 modules)
 - **v2.0**: Enhanced features (98 methods, 17 modules, +28 methods)
-- **v2.5**: Advanced features (**130+ methods, 22 modules, +32 methods**)
+- **v2.5**: Advanced features (130+ methods, 22 modules, +32 methods)
+- **v3.0**: Enterprise-grade features (**160+ methods, 27 modules, +30 methods**)
 
 ## 🤝 Contributing
 
