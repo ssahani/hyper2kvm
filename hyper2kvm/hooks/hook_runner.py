@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from ..core.logger import Log
@@ -111,7 +112,7 @@ class HookRunner:
             try:
                 # Create and execute hook
                 hook = create_hook(hook_config, full_context, self.logger)
-                result = self._execute_single_hook(hook, hook_id)
+                result = self._execute_single_hook(hook, hook_id, hook_config)
 
                 # Store result
                 self.results[stage].append(result)
@@ -174,14 +175,15 @@ class HookRunner:
         return all_succeeded
 
     def _execute_single_hook(
-        self, hook: BaseHook, hook_id: str
+        self, hook: BaseHook, hook_id: str, hook_config: dict[str, Any] | None = None
     ) -> HookResult:
         """
-        Execute a single hook with logging.
+        Execute a single hook with logging and retry support.
 
         Args:
             hook: Hook instance to execute
             hook_id: Hook identifier for logging
+            hook_config: Original hook configuration (for retry settings)
 
         Returns:
             HookResult with execution details
@@ -189,27 +191,97 @@ class HookRunner:
         hook_type = hook.__class__.__name__.replace("Hook", "").lower()
         self.logger.info(f"  ⚡ Executing {hook_type} hook: {hook_id}")
 
+        # Get retry configuration
+        retry_config = (hook_config or {}).get("retry", {}) if hook_config else {}
+        max_retries = retry_config.get("max_retries", 0)
+        retry_delay = retry_config.get("initial_delay", 1.0)  # seconds
+        retry_strategy = retry_config.get("strategy", "exponential")  # exponential, linear, constant
+        max_delay = retry_config.get("max_delay", 60.0)  # maximum delay between retries
+        retry_on_timeout = retry_config.get("retry_on_timeout", True)
+
         Log.trace(
             self.logger,
-            "Hook %s: type=%s timeout=%d continue_on_error=%s",
+            "Hook %s: type=%s timeout=%d continue_on_error=%s max_retries=%d",
             hook_id,
             hook_type,
             hook.timeout,
             hook.continue_on_error,
+            max_retries,
         )
 
-        result = hook.execute()
+        # Execute hook with retries
+        last_result = None
+        last_error = None
 
-        if result.success:
-            self.logger.info(
-                f"  ✅ Hook {hook_id} succeeded in {result.duration:.2f}s"
-            )
-        else:
-            self.logger.error(f"  ❌ Hook {hook_id} failed in {result.duration:.2f}s")
-            if result.error:
-                Log.trace(self.logger, f"Hook {hook_id} error: {result.error}")
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                # Calculate delay for this retry
+                if retry_strategy == "exponential":
+                    delay = min(retry_delay * (2 ** (attempt - 1)), max_delay)
+                elif retry_strategy == "linear":
+                    delay = min(retry_delay * attempt, max_delay)
+                else:  # constant
+                    delay = retry_delay
 
-        return result
+                self.logger.info(
+                    f"  🔄 Retrying hook {hook_id} (attempt {attempt + 1}/{max_retries + 1}) "
+                    f"after {delay:.1f}s delay..."
+                )
+                time.sleep(delay)
+
+            try:
+                result = hook.execute()
+                last_result = result
+
+                if result.success:
+                    if attempt > 0:
+                        self.logger.info(
+                            f"  ✅ Hook {hook_id} succeeded on retry {attempt + 1} "
+                            f"in {result.duration:.2f}s"
+                        )
+                    else:
+                        self.logger.info(
+                            f"  ✅ Hook {hook_id} succeeded in {result.duration:.2f}s"
+                        )
+                    return result
+                else:
+                    # Hook failed, check if we should retry
+                    if attempt < max_retries:
+                        self.logger.warning(
+                            f"  ⚠️ Hook {hook_id} failed (attempt {attempt + 1}), "
+                            f"will retry: {result.error}"
+                        )
+                    else:
+                        self.logger.error(
+                            f"  ❌ Hook {hook_id} failed after {attempt + 1} attempts "
+                            f"in {result.duration:.2f}s"
+                        )
+                        if result.error:
+                            Log.trace(self.logger, f"Hook {hook_id} error: {result.error}")
+
+            except HookTimeoutError as e:
+                last_error = e
+                if not retry_on_timeout or attempt >= max_retries:
+                    self.logger.error(
+                        f"  ⏱️ Hook {hook_id} timed out after {attempt + 1} attempts"
+                    )
+                    raise
+                else:
+                    self.logger.warning(
+                        f"  ⏱️ Hook {hook_id} timed out (attempt {attempt + 1}), will retry"
+                    )
+
+            except Exception as e:
+                # For other exceptions, don't retry
+                last_error = e
+                raise
+
+        # All retries exhausted
+        return last_result if last_result else HookResult(
+            success=False,
+            duration=0.0,
+            error=str(last_error) if last_error else "All retries failed",
+        )
 
     def get_stage_results(self, stage: str) -> list[HookResult]:
         """Get results for a specific stage."""
