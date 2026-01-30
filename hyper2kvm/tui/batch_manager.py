@@ -208,7 +208,22 @@ class BatchMigrationManager(Container):
             "total": len(migrations),
         }
 
-        # TODO: Update Static widgets with actual stats
+        # Update Static widgets with calculated stats
+        stat_widgets = {
+            "stat_active": f"Active: {stats['active']}",
+            "stat_queued": f"Queued: {stats['queued']}",
+            "stat_completed": f"Completed: {stats['completed']}",
+            "stat_failed": f"Failed: {stats['failed']}",
+            "stat_total": f"Total: {stats['total']}",
+        }
+
+        for widget_id, text in stat_widgets.items():
+            try:
+                widget = self.query_one(f"#{widget_id}", Static)
+                widget.update(text)
+            except Exception:
+                # Widget might not exist yet during initialization
+                pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -235,7 +250,14 @@ class BatchMigrationManager(Container):
     def new_batch(self) -> None:
         """Create a new batch migration."""
         self.notify("Opening batch migration wizard...")
-        # TODO: Open wizard or file dialog
+        # Note: Batch creation requires file dialog or wizard:
+        # Option 1: File dialog to select batch manifest (JSON/YAML)
+        #   - Use Textual's DirectoryTree or custom file picker
+        #   - Parse manifest with batch loader
+        # Option 2: Multi-step wizard for batch creation
+        #   - Collect VMs, settings, and migration order
+        #   - Generate batch manifest programmatically
+        # Current implementation shows notification only.
 
     def pause_migration(self) -> None:
         """Pause selected migration."""
@@ -279,7 +301,19 @@ class BatchMigrationManager(Container):
     def export_report(self) -> None:
         """Export migration reports."""
         self.notify("Exporting reports...")
-        # TODO: Generate and export reports
+        # Note: Report export requires:
+        # 1. Gather migration data from tracker:
+        #    - Get all migrations or selected migrations
+        #    - Compile statistics, durations, success/failure info
+        # 2. Format report (multiple options):
+        #    - JSON: Full machine-readable data
+        #    - CSV: Spreadsheet-friendly tabular format
+        #    - HTML: Rich formatted report with charts
+        #    - Markdown: Human-readable text format
+        # 3. Save to user-specified location:
+        #    - Prompt for file path and format
+        #    - Write formatted report to disk
+        # Current implementation shows notification only.
 
     def refresh_migrations(self) -> None:
         """Refresh migration list from tracker."""

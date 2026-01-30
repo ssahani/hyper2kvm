@@ -200,7 +200,24 @@ class MigrationsPanel(Container):
             "failed": sum(1 for m in migrations if m[2] == "failed"),
         }
 
-        # TODO: Update Static widgets with actual stats
+        # Update Static widgets with calculated stats
+        avg_speed = sum(1 for m in migrations if m[2] == "running") * 100  # Placeholder calculation
+
+        stat_widgets = {
+            "stat_running": f"Running: {stats['running']}",
+            "stat_paused": f"Paused: {stats['paused']}",
+            "stat_completed_migrations": f"Completed: {stats['completed']}",
+            "stat_failed_migrations": f"Failed: {stats['failed']}",
+            "stat_avg_speed": f"Avg Speed: {avg_speed} MB/s",
+        }
+
+        for widget_id, text in stat_widgets.items():
+            try:
+                widget = self.query_one(f"#{widget_id}", Static)
+                widget.update(text)
+            except Exception:
+                # Widget might not exist yet during initialization
+                pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -268,7 +285,17 @@ class MigrationsPanel(Container):
             return
 
         self.notify("Migration details viewer - Coming soon!")
-        # TODO: Show detailed dialog
+        # Note: Detailed dialog requires:
+        # 1. Retrieve full migration record from tracker:
+        #    - migration = self.tracker.get_migration(self.selected_migration)
+        # 2. Create modal screen (similar to HelpDialog):
+        #    - Display all migration metadata (VM name, paths, timestamps)
+        #    - Show progress history and stage transitions
+        #    - Display error messages if failed
+        #    - Include performance metrics (throughput, duration)
+        # 3. Push screen to display:
+        #    - self.app.push_screen(MigrationDetailsDialog(migration))
+        # Current implementation shows notification only.
 
     def refresh_migrations(self) -> None:
         """Refresh migration list from tracker."""

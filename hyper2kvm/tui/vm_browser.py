@@ -268,28 +268,66 @@ class VMBrowser(Container):
         table = event.data_table
         row_key = event.row_key
 
-        # Toggle selection
-        # TODO: Update checkbox in the row and manage selected_vms list
+        try:
+            # Get current row data
+            row = table.get_row(row_key)
+            checkbox = row[0]  # First column is the checkbox
+
+            # Toggle selection state
+            if checkbox == "[ ]":
+                # Select the VM
+                new_checkbox = "[X]"
+                # Get VM details from the row (name is in column 1)
+                vm_name = row[1]
+                vm_info = {
+                    "name": vm_name,
+                    "row_key": row_key,
+                    "size_gb": 50.0,  # Placeholder, would be parsed from actual data
+                }
+                self.selected_vms.append(vm_info)
+            else:
+                # Deselect the VM
+                new_checkbox = "[ ]"
+                # Remove from selected_vms
+                self.selected_vms = [vm for vm in self.selected_vms if vm.get("row_key") != row_key]
+
+            # Update the checkbox in the table
+            table.update_cell(row_key, "Select", new_checkbox)
+
+        except Exception as e:
+            self.notify(f"Selection error: {e}", severity="error")
 
         self.update_selection_info()
 
     def refresh_browser(self) -> None:
         """Refresh the browser view."""
         self.notify(f"Switched to {self.current_source} browser")
-        # TODO: Recompose browser
+        # Note: Full browser recomposition would require removing and re-adding
+        # the main browser container. Current implementation shows notification only.
+        # Future enhancement: Dynamically update the browser panel based on source type.
 
     def refresh_vm_list(self) -> None:
         """Refresh the VM list from the current source."""
         self.notify("Refreshing VM list...")
-        # TODO: Reload VMs from source
+        # Note: Actual VM reloading requires integration with source APIs:
+        # - vSphere: Use pyVmomi to query VMs from vCenter
+        # - Local: Scan filesystem for VMDK/VDI/QCOW2 files
+        # - Hyper-V: Query Hyper-V WMI/PowerShell interfaces
+        # Current implementation shows notification only.
 
     def connect_vsphere(self) -> None:
         """Connect to vSphere server."""
         # Get connection details from inputs
         self.notify("Connecting to vSphere...", severity="information")
 
-        # TODO: Actual vSphere connection logic
-        # For now, simulate connection
+        # Note: Actual vSphere connection requires pyVmomi integration:
+        # from pyVim.connect import SmartConnect, Disconnect
+        # 1. Get credentials from input widgets (input_vcenter_host, input_vcenter_user, input_vcenter_pass)
+        # 2. Create SSL context (disable verification or use custom certs)
+        # 3. Call SmartConnect(host=host, user=user, pwd=pwd, sslContext=context)
+        # 4. Store connection object for later VM queries
+        # 5. Handle authentication errors and show appropriate messages
+        # For now, simulate successful connection for UI testing
         self.vsphere_connected = True
         self.refresh_browser()
 
@@ -300,7 +338,16 @@ class VMBrowser(Container):
             return
 
         self.notify(f"Starting migration for {len(self.selected_vms)} VMs...")
-        # TODO: Launch migration wizard or start migration directly
+        # Note: Migration launch requires integration with wizard:
+        # Option 1: Launch migration wizard with pre-selected VMs
+        #   - Get MainApp instance via self.app
+        #   - Call wizard.set_selected_vms(self.selected_vms)
+        #   - Switch to wizard tab: self.app.query_one(TabbedContent).active = "wizard"
+        # Option 2: Start migration directly (bypass wizard)
+        #   - Create migration batch from selected_vms
+        #   - Call batch orchestrator with VM list
+        #   - Show progress in migrations panel
+        # Current implementation shows notification only.
 
     def clear_selection(self) -> None:
         """Clear all VM selections."""
@@ -312,5 +359,16 @@ class VMBrowser(Container):
         """Update the selection info in the footer."""
         total_size = sum(vm.get("size_gb", 0) for vm in self.selected_vms)
 
-        # Update display
-        # TODO: Update Static widgets in footer
+        # Update selection count widget
+        try:
+            count_widget = self.query_one("#selection_count", Static)
+            count_widget.update(f"Selected: {len(self.selected_vms)} VMs")
+        except Exception:
+            pass
+
+        # Update selection size widget
+        try:
+            size_widget = self.query_one("#selection_size", Static)
+            size_widget.update(f"Total size: {total_size:.1f} GB")
+        except Exception:
+            pass

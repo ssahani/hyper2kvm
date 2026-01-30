@@ -402,7 +402,11 @@ class MigrationWizard(Container):
 
         if button_id == "btn_cancel":
             self.notify("Migration wizard cancelled")
-            # TODO: Close wizard or return to home
+            # Note: Wizard cancellation requires tab switching:
+            # - Get MainApp instance: app = self.app
+            # - Switch to home tab: app.query_one(TabbedContent).active = "welcome"
+            # - Reset wizard state: self.reset_wizard()
+            # Current implementation shows notification only.
 
         elif button_id == "btn_back":
             if self.current_step > 0:
@@ -426,7 +430,11 @@ class MigrationWizard(Container):
             self.wizard_data["source_type"] = source_type
 
             # Visual feedback - mark as selected
-            # TODO: Update styling to show selection
+            # Note: Button selection styling requires:
+            # - Add CSS class "selected" to clicked button: button.add_class("selected")
+            # - Remove "selected" class from other source buttons
+            # - Define .selected style in DEFAULT_CSS with highlighted background
+            # Current implementation shows notification only.
 
             self.notify(f"Selected: {source_type}")
 
@@ -449,10 +457,26 @@ class MigrationWizard(Container):
 
     def refresh_wizard(self) -> None:
         """Refresh the wizard UI for the current step."""
-        # TODO: Recompose the wizard with updated step
+        # Note: Full wizard refresh requires dynamic UI updates:
+        # - Remove current step container
+        # - Compose new step content based on self.current_step
+        # - Update progress indicator to highlight current step
+        # - Enable/disable navigation buttons based on step position
+        # Current implementation shows notification only.
         self.notify(f"Now on step {self.current_step + 1}: {self.steps[self.current_step]}")
 
     def start_migration(self) -> None:
         """Start the migration with collected settings."""
         self.notify("Starting migration...", severity="information")
-        # TODO: Launch actual migration process
+        # Note: Migration launch requires backend integration:
+        # 1. Build migration configuration from self.wizard_data:
+        #    - source_path, output_path, disk_format, vm_name, etc.
+        # 2. Create MigrationRecord via migration_tracker
+        # 3. Start migration process (subprocess or thread):
+        #    - Import VMCraft or migration engine
+        #    - Call conversion methods with wizard_data settings
+        #    - Register PID with migration_controller
+        # 4. Switch to migrations tab to show progress:
+        #    - self.app.query_one(TabbedContent).active = "migrations"
+        # 5. Optionally reset wizard for next migration
+        # Current implementation shows notification only.

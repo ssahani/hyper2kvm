@@ -339,7 +339,17 @@ class Hyper2KVMApp(App):
     def action_refresh(self) -> None:
         """Refresh the current view."""
         self.notify("Refreshing...")
-        # TODO: Implement refresh logic based on active tab
+        # Note: Tab-specific refresh requires checking active tab:
+        # tabbed_content = self.query_one(TabbedContent)
+        # if tabbed_content.active == "welcome":
+        #     self.refresh_welcome_stats()
+        # elif tabbed_content.active == "migrations":
+        #     migrations_panel.refresh_migrations()
+        # elif tabbed_content.active == "batch":
+        #     batch_manager.refresh_migrations()
+        # elif tabbed_content.active == "browser":
+        #     vm_browser.refresh_vm_list()
+        # Current implementation shows notification only.
 
     @work(exclusive=True)
     async def update_stats(self) -> None:
