@@ -1,0 +1,38 @@
+apiVersion: hyper2kvm.io/v1alpha1
+kind: OfflineFixJob
+metadata:
+  name: centos9-fix-example
+  namespace: hyper2kvm-system
+spec:
+  # Source disk configuration
+  source:
+    disk:
+      type: qcow2
+      path: /var/lib/imports/centos9.qcow2
+
+  # Fixes to apply
+  fixes:
+  - fstab
+  - initramfs
+  - grub
+  - selinux
+
+  # Execution configuration
+  execution:
+    mode: kubevirt-vm
+    vmImage: quay.io/hyper2kvm/offline-fix-vm:v1.0.0
+    resources:
+      memory: "2Gi"
+      cpu: "2"
+
+  # Safety parameters
+  safety:
+    readOnly: false
+    allowXfsRepair: true
+
+  # Node selection
+  nodeSelector:
+    hyper2kvm.io/nbd-capable: "true"
+
+  # Timeout
+  timeout: "30m"

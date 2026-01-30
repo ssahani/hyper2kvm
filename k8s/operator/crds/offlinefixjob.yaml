@@ -1,0 +1,194 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: offlinefixjobs.hyper2kvm.io
+spec:
+  group: hyper2kvm.io
+  names:
+    kind: OfflineFixJob
+    listKind: OfflineFixJobList
+    plural: offlinefixjobs
+    singular: offlinefixjob
+    shortNames:
+    - ofj
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - source
+            - fixes
+            properties:
+              source:
+                type: object
+                required:
+                - disk
+                properties:
+                  disk:
+                    type: object
+                    required:
+                    - type
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                        - qcow2
+                        - vmdk
+                        - raw
+                      path:
+                        type: string
+                      pvc:
+                        type: string
+                      url:
+                        type: string
+
+              fixes:
+                type: array
+                items:
+                  type: string
+                  enum:
+                  - fstab
+                  - initramfs
+                  - grub
+                  - selinux
+                minItems: 1
+
+              execution:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                    - kubevirt-vm
+                    - pod
+                    default: kubevirt-vm
+                  vmImage:
+                    type: string
+                    default: "quay.io/hyper2kvm/offline-fix-vm:v1.0.0"
+                  resources:
+                    type: object
+                    properties:
+                      memory:
+                        type: string
+                        default: "2Gi"
+                      cpu:
+                        type: string
+                        default: "2"
+
+              safety:
+                type: object
+                properties:
+                  readOnly:
+                    type: boolean
+                    default: false
+                  allowXfsRepair:
+                    type: boolean
+                    default: true
+
+              nodeSelector:
+                type: object
+                additionalProperties:
+                  type: string
+
+              timeout:
+                type: string
+                default: "30m"
+
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum:
+                - Pending
+                - NBDPrepared
+                - VMRunning
+                - Fixing
+                - Completed
+                - Failed
+              node:
+                type: string
+              vmName:
+                type: string
+              nbdDevice:
+                type: string
+              mountPath:
+                type: string
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    message:
+                      type: string
+              result:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  summary:
+                    type: string
+                  operations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        operation:
+                          type: string
+                        success:
+                          type: boolean
+                        message:
+                          type: string
+                        durationSeconds:
+                          type: number
+                  bootConfidence:
+                    type: integer
+                    minimum: 0
+                    maximum: 100
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  artifacts:
+                    type: array
+                    items:
+                      type: string
+              startedAt:
+                type: string
+                format: date-time
+              completedAt:
+                type: string
+                format: date-time
+
+    additionalPrinterColumns:
+    - name: Phase
+      type: string
+      jsonPath: .status.phase
+    - name: Node
+      type: string
+      jsonPath: .status.node
+    - name: Confidence
+      type: integer
+      jsonPath: .status.result.bootConfidence
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+
+    subresources:
+      status: {}

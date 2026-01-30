@@ -1,0 +1,138 @@
+# config/daemon/nbd-prep-daemonset.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nbd-prep
+  namespace: hyper2kvm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nbd-prep
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: ["hyper2kvm.io"]
+  resources: ["offlinefixjobs"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nbd-prep
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nbd-prep
+subjects:
+- kind: ServiceAccount
+  name: nbd-prep
+  namespace: hyper2kvm-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nbd-prep
+  namespace: hyper2kvm-system
+  labels:
+    app: nbd-prep
+    component: offline-fix
+spec:
+  selector:
+    matchLabels:
+      app: nbd-prep
+  template:
+    metadata:
+      labels:
+        app: nbd-prep
+    spec:
+      serviceAccountName: nbd-prep
+      hostPID: true
+      hostNetwork: true
+
+      # Only run on nodes labeled as NBD-capable
+      nodeSelector:
+        hyper2kvm.io/nbd-capable: "true"
+
+      # Tolerate control-plane taints if needed
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+
+      containers:
+      - name: nbd-prep
+        image: quay.io/hyper2kvm/nbd-prep:v1.0.0
+        imagePullPolicy: IfNotPresent
+
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+
+        securityContext:
+          # Capabilities needed for NBD operations
+          capabilities:
+            add:
+            - SYS_ADMIN    # For mount operations
+            - SYS_MODULE   # For modprobe
+          allowPrivilegeEscalation: false
+          # Note: This is NOT privileged: true
+          # We use scoped capabilities instead
+
+        volumeMounts:
+        # Host /dev for NBD devices
+        - name: dev
+          mountPath: /dev
+
+        # Host root for chroot operations (if needed)
+        - name: host-root
+          mountPath: /host
+          readOnly: true
+
+        # Directory for NBD mounts
+        - name: kubevirt-offline
+          mountPath: /var/lib/kubevirt-offline
+
+        # Directory for disk images
+        - name: imports
+          mountPath: /var/lib/imports
+          readOnly: true
+
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep -v grep | grep nbd-prep"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+
+      volumes:
+      - name: dev
+        hostPath:
+          path: /dev
+
+      - name: host-root
+        hostPath:
+          path: /
+
+      - name: kubevirt-offline
+        hostPath:
+          path: /var/lib/kubevirt-offline
+          type: DirectoryOrCreate
+
+      - name: imports
+        hostPath:
+          path: /var/lib/imports
+          type: Directory
