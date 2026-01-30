@@ -127,7 +127,7 @@ jobs:
         bandit -r hyper2kvm/ -ll || true
 
     - name: Upload security report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: security-scan-results
