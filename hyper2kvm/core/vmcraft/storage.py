@@ -902,4 +902,37 @@ class StorageStackActivator:
         except Exception as e:
             self.logger.debug(f"mdraid cleanup warning: {e}")
 
+        # Final aggressive cleanup pass
+        # This catches any stray mounts, LVM devices, or dm devices that weren't tracked
+        try:
+            # Unmount all hyper2kvm temp directories recursively
+            run_sudo(self.logger, ["sh", "-c", "umount -R /tmp/hyper2kvm-guestfs-* 2>/dev/null || true"],
+                   check=False, capture=True, failure_log_level=logging.DEBUG)
+            self.logger.debug("Recursively unmounted all temp directories")
+        except Exception as e:
+            self.logger.debug(f"Recursive unmount warning: {e}")
+
+        try:
+            # Final LVM deactivation pass (in case some VGs weren't caught)
+            run_sudo(self.logger, ["vgchange", "-an", "--all"],
+                   check=False, capture=True, failure_log_level=logging.DEBUG)
+        except Exception:
+            pass
+
+        try:
+            # Remove all device mapper devices (aggressive but safe with proper unmount first)
+            run_sudo(self.logger, ["dmsetup", "remove_all"],
+                   check=False, capture=True, failure_log_level=logging.DEBUG)
+            self.logger.debug("Removed all device mapper devices")
+        except Exception as e:
+            self.logger.debug(f"dmsetup remove_all warning: {e}")
+
+        try:
+            # Final udev settle to ensure all cleanup is processed
+            if _has_command("udevadm"):
+                run_sudo(self.logger, ["udevadm", "settle"],
+                       check=False, capture=True, failure_log_level=logging.DEBUG)
+        except Exception:
+            pass
+
         self.logger.debug("Storage stack deactivated")
