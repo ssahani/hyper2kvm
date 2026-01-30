@@ -7,7 +7,6 @@ Supports:
 - 'auto': Try libguestfs first, fall back to VMCraft
 - 'libguestfs': Force libguestfs (raise if unavailable)
 - 'vmcraft': Force VMCraft implementation (default)
-- 'native': Alias for 'vmcraft' (deprecated)
 """
 
 from __future__ import annotations
@@ -38,7 +37,6 @@ def create_guestfs(
             - 'auto': Try libguestfs, fall back to VMCraft
             - 'libguestfs': Force libguestfs (raise if unavailable)
             - 'vmcraft': Force VMCraft implementation (default)
-            - 'native': Alias for 'vmcraft' (deprecated, for compatibility)
             - None: Defaults to 'vmcraft'
 
     Returns:
@@ -49,7 +47,7 @@ def create_guestfs(
         ImportError: If libguestfs backend requested but not available
 
     Environment Variables:
-        HYPER2KVM_GUESTFS_BACKEND: Override backend selection (auto, libguestfs, vmcraft, native)
+        HYPER2KVM_GUESTFS_BACKEND: Override backend selection (auto, libguestfs, vmcraft)
 
     Examples:
         # Use VMCraft (default)
@@ -74,10 +72,6 @@ def create_guestfs(
         backend = 'vmcraft'
 
     backend = backend.lower()
-
-    # 'native' is deprecated alias for 'vmcraft'
-    if backend == 'native':
-        backend = 'vmcraft'
 
     # Validate backend
     if backend not in ('auto', 'libguestfs', 'vmcraft'):
