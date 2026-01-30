@@ -29,7 +29,7 @@ azure_vm_names:
 
 # Export strategy (zero-downtime with snapshots)
 azure_use_snapshots: true           # Use snapshots (default: true)
-# azure_stage_disk: false           # Create temp disk from snapshot (slower but safer)
+# azure_stage_disk: false           # Create temp disk from snapshot (slower but safer, default: false)
 # azure_disks: "all"                # all (default), os, data
 # azure_consistency: "crash_consistent"  # crash_consistent (default), best_effort_quiesce
 
