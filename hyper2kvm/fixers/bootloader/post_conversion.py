@@ -47,6 +47,7 @@ class PostConversionBootFixer:
             "fstab_hardened": False,
             "initramfs_rebuilt": False,
             "grub_regenerated": False,
+            "services_disabled": [],
             "errors": [],
         }
 
@@ -57,15 +58,17 @@ class PostConversionBootFixer:
         harden_fstab: bool = True,
         rebuild_initramfs: bool = True,
         regenerate_grub: bool = True,
+        disable_blocking_services: bool = True,
     ) -> dict[str, Any]:
         """
-        Apply the 3 golden fixes for reliable KVM boot.
+        Apply the golden fixes for reliable KVM boot after VMware migration.
 
         Args:
             g: GuestFS instance (must be mounted)
             harden_fstab: Add nofail flags to non-root mounts
             rebuild_initramfs: Rebuild generic initramfs with all drivers
             regenerate_grub: Fix and regenerate GRUB config
+            disable_blocking_services: Disable VMware and network wait services
 
         Returns:
             Stats dict with results of each fix
@@ -74,18 +77,23 @@ class PostConversionBootFixer:
 
         # Fix 1: Harden fstab
         if harden_fstab:
-            self.logger.info("🔧 Fix 1/3: Hardening fstab with nofail flags")
+            self.logger.info("🔧 Fix 1/4: Hardening fstab with nofail flags")
             self._harden_fstab(g)
 
         # Fix 2: Rebuild generic initramfs
         if rebuild_initramfs:
-            self.logger.info("🔧 Fix 2/3: Rebuilding generic initramfs")
+            self.logger.info("🔧 Fix 2/4: Rebuilding generic initramfs")
             self._rebuild_initramfs(g)
 
         # Fix 3: Regenerate GRUB config
         if regenerate_grub:
-            self.logger.info("🔧 Fix 3/3: Regenerating GRUB configuration")
+            self.logger.info("🔧 Fix 3/4: Regenerating GRUB configuration")
             self._regenerate_grub(g)
+
+        # Fix 4: Disable blocking services (VMware tools, network-wait)
+        if disable_blocking_services:
+            self.logger.info("🔧 Fix 4/4: Disabling boot-blocking services")
+            self._disable_blocking_services(g)
 
         return self.stats
 
@@ -286,6 +294,65 @@ class PostConversionBootFixer:
 
         except Exception as e:
             error = f"GRUB regeneration failed: {e}"
+            self.logger.warning(f"  ⚠️  {error}")
+            self.stats["errors"].append(error)
+
+    def _disable_blocking_services(self, g: guestfs.GuestFS) -> None:
+        """
+        Disable services that block boot after VMware → KVM migration.
+
+        Critical services to disable:
+        - NetworkManager-wait-online.service: Blocks boot waiting for network that never comes
+        - vmtoolsd.service: VMware Tools daemon (doesn't work on KVM)
+        - vgauthd.service: VMware VGAuth daemon (doesn't work on KVM)
+
+        These services cause "Reached target Paths" hangs because they wait forever
+        for VMware-specific devices/states that don't exist on KVM.
+        """
+        try:
+            # List of services that commonly block boot after VMware migration
+            blocking_services = [
+                "NetworkManager-wait-online.service",
+                "vmtoolsd.service",
+                "vgauthd.service",
+            ]
+
+            disabled_services = []
+
+            for service in blocking_services:
+                try:
+                    # Check if service file exists
+                    service_paths = [
+                        f"/etc/systemd/system/{service}",
+                        f"/usr/lib/systemd/system/{service}",
+                        f"/lib/systemd/system/{service}",
+                    ]
+
+                    service_exists = any(g.is_file(path) for path in service_paths)
+
+                    if service_exists:
+                        # Disable via systemctl
+                        try:
+                            output = g.command_with_mounts(["systemctl", "disable", service])
+                            disabled_services.append(service)
+                            self.logger.info(f"  ✓ Disabled: {service}")
+                        except Exception as e:
+                            self.logger.debug(f"  Could not disable {service}: {e}")
+                    else:
+                        self.logger.debug(f"  Service not found: {service}")
+
+                except Exception as e:
+                    self.logger.debug(f"  Error checking {service}: {e}")
+
+            self.stats["services_disabled"] = disabled_services
+
+            if disabled_services:
+                self.logger.info(f"  ✓ Disabled {len(disabled_services)} boot-blocking service(s)")
+            else:
+                self.logger.debug("  No boot-blocking services found to disable")
+
+        except Exception as e:
+            error = f"Service disabling failed: {e}"
             self.logger.warning(f"  ⚠️  {error}")
             self.stats["errors"].append(error)
 
