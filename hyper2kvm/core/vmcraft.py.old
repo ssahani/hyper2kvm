@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -47,18 +48,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .nbd_manager import NBDDeviceManager
-from .storage_stack import StorageStackActivator, LVMActivator
+from .vmcraft.nbd import NBDDeviceManager
+from .vmcraft.storage import StorageStackActivator, LVMActivator
+from .vmcraft._utils import run_sudo as _run_sudo
 from .utils import U
 
 
 logger = logging.getLogger(__name__)
-
-
-def _run_sudo(logger: logging.Logger, cmd: list[str], *, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
-    """Run command with sudo."""
-    sudo_cmd = ["sudo", *cmd]
-    return U.run_cmd(logger, sudo_cmd, check=check, capture=capture)
 
 
 class VMCraft:
@@ -304,7 +300,11 @@ class VMCraft:
                 if self._looks_like_root():
                     candidates.append(part)
                     # Cache this as a valid root
-                    self._inspect_cache[part] = self._gather_os_info(part)
+                    os_info = self._gather_os_info(part)
+                    self._inspect_cache[part] = os_info
+
+                    # Log detected OS information
+                    self._log_os_detection(part, os_info)
 
                 self.umount_all()
 
@@ -360,6 +360,47 @@ class VMCraft:
         windows_hits = sum(1 for ind in windows_indicators if self._path_exists_ci(ind))
         return windows_hits >= 2
 
+    def _log_os_detection(self, root: str, os_info: dict[str, Any]) -> None:
+        """Log comprehensive OS detection results."""
+        os_type = os_info.get("type", "unknown")
+
+        if os_type == "linux":
+            # Linux detection logging
+            self.logger.info(f"🐧 Detected Linux OS on {root}")
+            self.logger.info(f"   Product: {os_info.get('product', 'Unknown')}")
+            self.logger.info(f"   Distribution: {os_info.get('distro', 'unknown')}")
+            if os_info.get("codename"):
+                self.logger.info(f"   Codename: {os_info['codename']}")
+            if os_info.get("variant"):
+                self.logger.info(f"   Variant: {os_info['variant']}")
+            if os_info.get("major") or os_info.get("minor"):
+                version_str = f"{os_info.get('major', '')}.{os_info.get('minor', '')}"
+                self.logger.info(f"   Version: {version_str}")
+            self.logger.info(f"   Architecture: {os_info.get('arch', 'unknown')}")
+
+        elif os_type == "windows":
+            # Windows detection logging
+            self.logger.info(f"🪟 Detected Windows OS on {root}")
+            self.logger.info(f"   Product: {os_info.get('product', 'Windows')}")
+            if os_info.get("os_name"):
+                self.logger.info(f"   OS Name: {os_info['os_name']}")
+            if os_info.get("edition"):
+                self.logger.info(f"   Edition: {os_info['edition']}")
+            if os_info.get("build"):
+                self.logger.info(f"   Build: {os_info['build']}")
+            if os_info.get("display_version"):
+                self.logger.info(f"   Display Version: {os_info['display_version']}")
+            elif os_info.get("release_id"):
+                self.logger.info(f"   Release ID: {os_info['release_id']}")
+            if os_info.get("major") or os_info.get("minor"):
+                self.logger.info(f"   Version: {os_info.get('major', 0)}.{os_info.get('minor', 0)}")
+            self.logger.info(f"   Architecture: {os_info.get('arch', 'unknown')}")
+
+        else:
+            # Unknown OS
+            self.logger.info(f"❓ Detected unknown OS on {root}")
+            self.logger.info(f"   Product: {os_info.get('product', 'Unknown')}")
+
     def _path_exists_ci(self, path: str) -> bool:
         """Check if path exists (case-insensitive for Windows filesystems)."""
         if not self._mount_root:
@@ -395,7 +436,14 @@ class VMCraft:
         return current.exists()
 
     def _gather_os_info(self, root: str) -> dict[str, Any]:
-        """Gather OS information from mounted root (Linux or Windows)."""
+        """
+        Gather comprehensive OS information from mounted root (Linux or Windows).
+
+        Supports:
+        - All major Linux distributions (Red Hat, Fedora, CentOS, Rocky, Alma, SUSE,
+          Debian, Ubuntu, Arch, Gentoo, Alpine, etc.)
+        - All Windows versions (11, 10, 8.1, 8, 7, Vista, XP, 2000, NT, Servers)
+        """
         info: dict[str, Any] = {
             "type": "unknown",
             "distro": "unknown",
@@ -403,6 +451,8 @@ class VMCraft:
             "major": 0,
             "minor": 0,
             "arch": "unknown",
+            "variant": None,  # Server, Desktop, Workstation, etc.
+            "codename": None,  # Ubuntu: focal, jammy; Windows: 21H2, 22H2
         }
 
         if not self._mount_root:
@@ -412,23 +462,275 @@ class VMCraft:
         if self._path_exists_ci("Windows/System32"):
             return self._gather_windows_info(root)
 
-        # Parse /etc/os-release for Linux
+        # Linux detection - multiple methods with fallbacks
+        return self._gather_linux_info(root, info)
+
+    def _gather_linux_info(self, root: str, info: dict[str, Any]) -> dict[str, Any]:
+        """
+        Comprehensive Linux distribution detection.
+
+        Detection order:
+        1. /etc/os-release (modern standard)
+        2. /etc/lsb-release (LSB standard)
+        3. Distribution-specific files (redhat-release, debian_version, etc.)
+        4. /etc/issue (fallback)
+        """
+        info["type"] = "linux"
+
+        # Method 1: /etc/os-release (systemd standard - most reliable)
         os_release = self._mount_root / "etc/os-release"
         if os_release.exists():
             try:
                 data = {}
                 for line in os_release.read_text().splitlines():
+                    line = line.strip()
+                    if line and '=' in line and not line.startswith('#'):
+                        key, val = line.split('=', 1)
+                        data[key.strip()] = val.strip().strip('"').strip("'")
+
+                # Extract comprehensive info
+                info["product"] = data.get("PRETTY_NAME", data.get("NAME", "Linux"))
+                info["distro"] = data.get("ID", "linux").lower()
+
+                # Version parsing
+                version_id = data.get("VERSION_ID", "0")
+                if version_id:
+                    parts = version_id.split('.')
+                    try:
+                        info["major"] = int(parts[0])
+                        info["minor"] = int(parts[1]) if len(parts) > 1 else 0
+                    except (ValueError, IndexError):
+                        pass
+
+                # Additional metadata
+                info["codename"] = data.get("VERSION_CODENAME") or data.get("UBUNTU_CODENAME")
+
+                # Detect variant (Server, Desktop, etc.)
+                variant = data.get("VARIANT") or data.get("VARIANT_ID")
+                if variant:
+                    info["variant"] = variant
+                elif "server" in info["product"].lower():
+                    info["variant"] = "Server"
+
+                return info
+
+            except Exception as e:
+                self.logger.debug(f"Failed to parse os-release: {e}")
+
+        # Method 2: /etc/lsb-release (older LSB standard)
+        lsb_release = self._mount_root / "etc/lsb-release"
+        if lsb_release.exists():
+            try:
+                data = {}
+                for line in lsb_release.read_text().splitlines():
                     if '=' in line:
                         key, val = line.split('=', 1)
                         data[key.strip()] = val.strip().strip('"')
 
-                info["product"] = data.get("PRETTY_NAME", data.get("NAME", "Unknown"))
-                info["distro"] = data.get("ID", "unknown")
-                version = data.get("VERSION_ID", "0.0")
+                info["product"] = data.get("DISTRIB_DESCRIPTION", "Linux")
+                info["distro"] = data.get("DISTRIB_ID", "linux").lower()
+
+                version = data.get("DISTRIB_RELEASE", "0")
                 parts = version.split('.')
-                info["major"] = int(parts[0]) if parts else 0
+                try:
+                    info["major"] = int(parts[0])
+                    info["minor"] = int(parts[1]) if len(parts) > 1 else 0
+                except (ValueError, IndexError):
+                    pass
+
+                info["codename"] = data.get("DISTRIB_CODENAME")
+                return info
+
+            except Exception as e:
+                self.logger.debug(f"Failed to parse lsb-release: {e}")
+
+        # Method 3: Distribution-specific detection files
+
+        # Red Hat family
+        redhat_release = self._mount_root / "etc/redhat-release"
+        if redhat_release.exists():
+            try:
+                content = redhat_release.read_text().strip()
+                info["product"] = content
+
+                # Parse version from content
+                # Examples:
+                # "Red Hat Enterprise Linux release 8.5 (Ootpa)"
+                # "CentOS Linux release 7.9.2009 (Core)"
+                # "Fedora release 37 (Thirty Seven)"
+                # "Rocky Linux release 9.1 (Blue Onyx)"
+
+                import re
+
+                # Detect distro
+                if "Red Hat Enterprise Linux" in content or "RHEL" in content:
+                    info["distro"] = "rhel"
+                    info["variant"] = "Server"
+                elif "CentOS Stream" in content:
+                    info["distro"] = "centos-stream"
+                elif "CentOS Linux" in content or "CentOS" in content:
+                    info["distro"] = "centos"
+                elif "Fedora" in content:
+                    info["distro"] = "fedora"
+                elif "Rocky Linux" in content:
+                    info["distro"] = "rocky"
+                elif "AlmaLinux" in content:
+                    info["distro"] = "almalinux"
+                elif "Oracle Linux" in content:
+                    info["distro"] = "ol"
+                    info["variant"] = "Server"
+
+                # Extract version
+                version_match = re.search(r'release\s+(\d+)\.?(\d*)', content)
+                if version_match:
+                    info["major"] = int(version_match.group(1))
+                    if version_match.group(2):
+                        info["minor"] = int(version_match.group(2))
+
+                # Extract codename
+                codename_match = re.search(r'\(([^)]+)\)', content)
+                if codename_match:
+                    info["codename"] = codename_match.group(1)
+
+                return info
+
+            except Exception as e:
+                self.logger.debug(f"Failed to parse redhat-release: {e}")
+
+        # SUSE family
+        suse_release = self._mount_root / "etc/SuSE-release"
+        if suse_release.exists():
+            try:
+                content = suse_release.read_text()
+                lines = content.strip().splitlines()
+
+                if lines:
+                    info["product"] = lines[0]
+
+                    if "openSUSE" in content:
+                        info["distro"] = "opensuse"
+                        if "Leap" in content:
+                            info["variant"] = "Leap"
+                        elif "Tumbleweed" in content:
+                            info["variant"] = "Tumbleweed"
+                    elif "SUSE Linux Enterprise Server" in content or "SLES" in content:
+                        info["distro"] = "sles"
+                        info["variant"] = "Server"
+                    elif "SUSE Linux Enterprise Desktop" in content:
+                        info["distro"] = "sled"
+                        info["variant"] = "Desktop"
+                    else:
+                        info["distro"] = "suse"
+
+                    # Parse VERSION and PATCHLEVEL
+                    for line in lines[1:]:
+                        if line.startswith("VERSION"):
+                            info["major"] = int(line.split('=')[1].strip())
+                        elif line.startswith("PATCHLEVEL"):
+                            info["minor"] = int(line.split('=')[1].strip())
+
+                return info
+
+            except Exception as e:
+                self.logger.debug(f"Failed to parse SuSE-release: {e}")
+
+        # Debian family
+        debian_version = self._mount_root / "etc/debian_version"
+        if debian_version.exists():
+            try:
+                version = debian_version.read_text().strip()
+                info["distro"] = "debian"
+                info["product"] = f"Debian GNU/Linux {version}"
+
+                # Parse version (e.g., "11.6" or "bookworm/sid")
+                if '/' not in version:
+                    parts = version.split('.')
+                    try:
+                        info["major"] = int(parts[0])
+                        info["minor"] = int(parts[1]) if len(parts) > 1 else 0
+                    except ValueError:
+                        pass
+                else:
+                    info["codename"] = version.split('/')[0]
+
+                return info
+
+            except Exception as e:
+                self.logger.debug(f"Failed to parse debian_version: {e}")
+
+        # Arch Linux
+        arch_release = self._mount_root / "etc/arch-release"
+        if arch_release.exists():
+            info["distro"] = "arch"
+            info["product"] = "Arch Linux"
+            # Arch is rolling release, no version number
+            return info
+
+        # Gentoo
+        gentoo_release = self._mount_root / "etc/gentoo-release"
+        if gentoo_release.exists():
+            try:
+                content = gentoo_release.read_text().strip()
+                info["distro"] = "gentoo"
+                info["product"] = content
+
+                import re
+                version_match = re.search(r'(\d+)\.(\d+)', content)
+                if version_match:
+                    info["major"] = int(version_match.group(1))
+                    info["minor"] = int(version_match.group(2))
+
+                return info
+
+            except Exception:
+                pass
+
+        # Alpine Linux
+        alpine_release = self._mount_root / "etc/alpine-release"
+        if alpine_release.exists():
+            try:
+                version = alpine_release.read_text().strip()
+                info["distro"] = "alpine"
+                info["product"] = f"Alpine Linux {version}"
+
+                parts = version.split('.')
+                info["major"] = int(parts[0])
                 info["minor"] = int(parts[1]) if len(parts) > 1 else 0
-                info["type"] = "linux"
+
+                return info
+
+            except Exception:
+                pass
+
+        # Slackware
+        slackware_version = self._mount_root / "etc/slackware-version"
+        if slackware_version.exists():
+            try:
+                content = slackware_version.read_text().strip()
+                info["distro"] = "slackware"
+                info["product"] = content
+
+                import re
+                version_match = re.search(r'(\d+)\.(\d+)', content)
+                if version_match:
+                    info["major"] = int(version_match.group(1))
+                    info["minor"] = int(version_match.group(2))
+
+                return info
+
+            except Exception:
+                pass
+
+        # Method 4: Fallback to /etc/issue
+        issue = self._mount_root / "etc/issue"
+        if issue.exists():
+            try:
+                content = issue.read_text().strip()
+                # Remove escape sequences
+                content = content.replace('\\n', '').replace('\\l', '').strip()
+
+                if content and content != "Linux":
+                    info["product"] = content.split('\n')[0]
 
             except Exception:
                 pass
@@ -436,7 +738,21 @@ class VMCraft:
         return info
 
     def _gather_windows_info(self, root: str) -> dict[str, Any]:
-        """Gather Windows OS information from registry and filesystem."""
+        """
+        Gather Windows OS information from registry and filesystem.
+
+        Returns comprehensive Windows version information including:
+        - type: "windows"
+        - distro: "windows"
+        - product: Friendly OS name (e.g., "Windows 11 Pro", "Windows Server 2019")
+        - os_name: Detected OS name (e.g., "Windows 11", "Windows 10")
+        - major/minor: Version numbers
+        - build: Build number (critical for Win10/11 detection)
+        - release_id: Windows 10 version (e.g., "21H2")
+        - display_version: Windows 11 version (e.g., "22H2")
+        - edition: Edition type (Pro, Enterprise, Home, etc.)
+        - arch: Architecture (x86_64, i686, etc.)
+        """
         info: dict[str, Any] = {
             "type": "windows",
             "distro": "windows",
@@ -467,61 +783,125 @@ class VMCraft:
             version_info = self._parse_windows_version(software_hive)
             info.update(version_info)
 
+            # Use os_name as the primary product if available
+            if "os_name" in version_info and version_info["os_name"]:
+                # If we have edition info, append it to product
+                if "edition" in version_info and version_info["edition"]:
+                    edition_map = {
+                        "Professional": "Pro",
+                        "Enterprise": "Enterprise",
+                        "Core": "Home",
+                        "Education": "Education",
+                        "ServerStandard": "Standard",
+                        "ServerDatacenter": "Datacenter",
+                    }
+                    edition = edition_map.get(version_info["edition"], version_info["edition"])
+                    info["product"] = f"{version_info['os_name']} {edition}"
+                elif "product" in version_info and version_info["product"]:
+                    # Use registry ProductName as-is (already has edition)
+                    pass
+                else:
+                    info["product"] = version_info["os_name"]
+
         return info
 
     def _parse_windows_version(self, software_hive: Path) -> dict[str, Any]:
-        """Parse Windows version from SOFTWARE registry hive using chntpw/reged."""
+        r"""
+        Parse Windows version from SOFTWARE registry hive using hivexget.
+
+        Supports comprehensive detection for:
+        - Windows 11 (builds 22000+)
+        - Windows 10 (versions 1507-22H2, builds 10240-19045)
+        - Windows 8.1 (major=6, minor=3)
+        - Windows 8 (major=6, minor=2)
+        - Windows 7 (major=6, minor=1)
+        - Windows Vista (major=6, minor=0)
+        - Windows XP (major=5)
+        - Windows Server 2022, 2019, 2016, 2012 R2, 2012, 2008 R2, 2008, 2003
+
+        Registry key: Microsoft\Windows NT\CurrentVersion
+        Values read:
+        - ProductName (e.g., "Windows 11 Pro", "Windows Server 2019")
+        - CurrentMajorVersionNumber / CurrentMinorVersionNumber (DWORD, Windows 10+)
+        - CurrentBuild or CurrentBuildNumber (string)
+        - ReleaseId (e.g., "2009", "21H2" for Windows 10 versions)
+        - DisplayVersion (e.g., "22H2", "23H2" for Windows 11)
+        - EditionID (e.g., "Professional", "Enterprise", "ServerStandard")
+        """
         version_info = {}
 
+        def _read_registry_value(value_name: str) -> str | None:
+            """Helper to read a registry value."""
+            try:
+                result = _run_sudo(
+                    self.logger,
+                    ["hivexget", str(software_hive),
+                     r"Microsoft\Windows NT\CurrentVersion", value_name],
+                    check=True, capture=True
+                )
+                val = result.stdout.strip().strip('"')
+                return val if val else None
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                return None
+
         try:
-            # Try using chntpw (hivexget) to read registry
-            # Key: Microsoft\Windows NT\CurrentVersion
-            # Values: ProductName, CurrentMajorVersionNumber, CurrentMinorVersionNumber, CurrentBuild
+            # Read ProductName (most reliable identifier)
+            product_name = _read_registry_value("ProductName")
+            if product_name:
+                version_info["product"] = product_name
+                version_info["product_lower"] = product_name.lower()
 
-            # Try with hivexget if available
-            try:
-                # Read ProductName
-                result = _run_sudo(
-                    self.logger,
-                    ["hivexget", str(software_hive),
-                     r"Microsoft\Windows NT\CurrentVersion", "ProductName"],
-                    check=True, capture=True
-                )
-                product_name = result.stdout.strip().strip('"')
-                if product_name:
-                    version_info["product"] = product_name
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                pass
+            # Read version numbers (Windows 10+ uses DWORD values)
+            major_str = _read_registry_value("CurrentMajorVersionNumber")
+            if major_str:
+                try:
+                    # May be hex (0x0000000a) or decimal
+                    if major_str.startswith("0x"):
+                        version_info["major"] = int(major_str, 16)
+                    elif major_str.isdigit():
+                        version_info["major"] = int(major_str)
+                except ValueError:
+                    pass
 
-            # Try to read version numbers
-            try:
-                result = _run_sudo(
-                    self.logger,
-                    ["hivexget", str(software_hive),
-                     r"Microsoft\Windows NT\CurrentVersion", "CurrentMajorVersionNumber"],
-                    check=True, capture=True
-                )
-                major = result.stdout.strip()
-                if major and major.isdigit():
-                    version_info["major"] = int(major)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                pass
+            minor_str = _read_registry_value("CurrentMinorVersionNumber")
+            if minor_str:
+                try:
+                    if minor_str.startswith("0x"):
+                        version_info["minor"] = int(minor_str, 16)
+                    elif minor_str.isdigit():
+                        version_info["minor"] = int(minor_str)
+                except ValueError:
+                    pass
 
-            try:
-                result = _run_sudo(
-                    self.logger,
-                    ["hivexget", str(software_hive),
-                     r"Microsoft\Windows NT\CurrentVersion", "CurrentMinorVersionNumber"],
-                    check=True, capture=True
-                )
-                minor = result.stdout.strip()
-                if minor and minor.isdigit():
-                    version_info["minor"] = int(minor)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                pass
+            # Read build number (critical for Windows 10/11 detection)
+            for build_key in ("CurrentBuild", "CurrentBuildNumber"):
+                build_str = _read_registry_value(build_key)
+                if build_str:
+                    # Extract numeric build (e.g., "22631" from "22631.2861")
+                    match = re.search(r'(\d+)', build_str)
+                    if match:
+                        version_info["build"] = int(match.group(1))
+                        break
+
+            # Read release identifiers (Windows 10/11)
+            release_id = _read_registry_value("ReleaseId")
+            if release_id:
+                version_info["release_id"] = release_id
+
+            display_version = _read_registry_value("DisplayVersion")
+            if display_version:
+                version_info["display_version"] = display_version
+
+            # Read edition (Pro, Enterprise, Home, etc.)
+            edition_id = _read_registry_value("EditionID")
+            if edition_id:
+                version_info["edition"] = edition_id
 
         except Exception as e:
             self.logger.debug(f"Failed to parse Windows version from registry: {e}")
+
+        # Map to friendly OS name using product, build, and major/minor
+        version_info["os_name"] = self._detect_windows_os_name(version_info)
 
         # Fallback: detect version from filesystem structure
         if "product" not in version_info:
@@ -531,6 +911,122 @@ class VMCraft:
                 version_info["product"] = "Windows"
 
         return version_info
+
+    def _detect_windows_os_name(self, version_info: dict[str, Any]) -> str:
+        """
+        Detect friendly Windows OS name from version information.
+
+        Detection priority:
+        1. ProductName string matching (most reliable)
+        2. Build number for Windows 10/11 split (>=22000 = Win11)
+        3. Major/minor version for legacy Windows (7, Vista, XP)
+
+        Reference:
+        - Windows 11: build >= 22000
+        - Windows 10: build >= 10240 and < 22000
+        - Windows 8.1: major=6, minor=3
+        - Windows 8: major=6, minor=2
+        - Windows 7: major=6, minor=1
+        - Windows Vista: major=6, minor=0
+        - Windows XP: major=5, minor=1 or 2
+        - Windows 2000: major=5, minor=0
+        - Windows NT 4.0: major=4
+        """
+        product = version_info.get("product_lower", "").lower()
+        build = version_info.get("build", 0)
+        major = version_info.get("major", 0)
+        minor = version_info.get("minor", 0)
+
+        # Server editions (check first as they're more specific)
+        if "server 2025" in product:
+            return "Windows Server 2025"
+        if "server 2022" in product:
+            return "Windows Server 2022"
+        if "server 2019" in product:
+            return "Windows Server 2019"
+        if "server 2016" in product:
+            return "Windows Server 2016"
+        if "server 2012 r2" in product:
+            return "Windows Server 2012 R2"
+        if "server 2012" in product:
+            return "Windows Server 2012"
+        if "server 2008 r2" in product:
+            return "Windows Server 2008 R2"
+        if "server 2008" in product:
+            return "Windows Server 2008"
+        if "server 2003" in product:
+            return "Windows Server 2003"
+
+        # Client editions
+        if "windows 12" in product:
+            return "Windows 12"
+        if "windows 11" in product:
+            return "Windows 11"
+        if "windows 10" in product:
+            # Distinguish Win11 from Win10 by build
+            if build >= 22000:
+                return "Windows 11"
+            return "Windows 10"
+        if "windows 8.1" in product or "windows blue" in product:
+            return "Windows 8.1"
+        if "windows 8" in product:
+            return "Windows 8"
+        if "windows 7" in product:
+            return "Windows 7"
+        if "vista" in product:
+            return "Windows Vista"
+        if "xp" in product or "windows xp" in product:
+            return "Windows XP"
+        if "2000" in product or "windows 2000" in product:
+            return "Windows 2000"
+        if "nt" in product and "4.0" in product:
+            return "Windows NT 4.0"
+
+        # Build number detection (no ProductName match)
+        if build >= 26000:
+            return "Windows 12"
+        if build >= 22000:
+            return "Windows 11"
+        if build >= 10240:
+            return "Windows 10"
+        if build >= 9600:
+            return "Windows 8.1"
+        if build >= 9200:
+            return "Windows 8"
+        if build >= 7600:
+            return "Windows 7"
+        if build >= 6000:
+            return "Windows Vista"
+
+        # Major/minor version detection (legacy)
+        if major == 10 and minor == 0:
+            # Windows 10/11 (check build)
+            if build >= 22000:
+                return "Windows 11"
+            elif build >= 10240:
+                return "Windows 10"
+            return "Windows 10/11"
+        if major == 6 and minor == 3:
+            return "Windows 8.1"
+        if major == 6 and minor == 2:
+            return "Windows 8"
+        if major == 6 and minor == 1:
+            return "Windows 7"
+        if major == 6 and minor == 0:
+            return "Windows Vista"
+        if major == 5 and minor == 2:
+            return "Windows XP 64-bit / Server 2003"
+        if major == 5 and minor == 1:
+            return "Windows XP"
+        if major == 5 and minor == 0:
+            return "Windows 2000"
+        if major == 4:
+            return "Windows NT 4.0"
+
+        # Unknown
+        if product:
+            return version_info.get("product", "Windows")
+        return "Windows"
 
     def inspect_get_type(self, root: str) -> str:
         """Get OS type (linux, windows, etc.)."""
@@ -2025,7 +2521,7 @@ class VMCraft:
             service_keys = self.win_registry_list_keys('SYSTEM', r'ControlSet001\Services')
 
             for service_name in service_keys[:50]:  # Limit to first 50
-                service_path = f r'ControlSet001\Services\{service_name}'
+                service_path = rf'ControlSet001\Services\{service_name}'
 
                 # Get service type and start type
                 values = self.win_registry_list_values('SYSTEM', service_path)
