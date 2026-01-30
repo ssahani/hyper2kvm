@@ -79,15 +79,41 @@ class Orchestrator:
             True if handled and should continue pipeline, False if should exit
         """
         if not PYVMOMI_AVAILABLE:
-            from ..core.exceptions import Fatal
+            from ..core.exceptions import Fatal, create_helpful_error
 
-            raise Fatal(2, "pyvmomi not installed. Install: pip install pyvmomi")
+            raise create_helpful_error(
+                Fatal,
+                "pyvmomi not installed",
+                code=2,
+                solutions=[
+                    "Install pyvmomi: pip install pyvmomi",
+                    "Or install with vSphere support: pip install hyper2kvm[vsphere]"
+                ],
+                causes=[
+                    "pyvmomi package not found in Python environment",
+                    "Virtual environment not activated"
+                ],
+                doc_link="02-Installation.md#vsphere-integration"
+            )
 
         vs_action = getattr(self.args, "vs_action", "")
         if not REQUESTS_AVAILABLE and (vs_action in ("download_datastore_file", "download_vm_disk", "cbt_sync")):
-            from ..core.exceptions import Fatal
+            from ..core.exceptions import Fatal, create_helpful_error
 
-            raise Fatal(2, "requests not installed. Install: pip install requests")
+            raise create_helpful_error(
+                Fatal,
+                "requests library not installed",
+                code=2,
+                solutions=[
+                    "Install requests: pip install requests",
+                    "Required for HTTP downloads and vCenter API calls"
+                ],
+                causes=[
+                    "requests package not installed",
+                    "Missing optional dependencies"
+                ],
+                doc_link="02-Installation.md#python-dependencies"
+            )
 
         # Check if vSphere export (sync) mode enabled
         if self.vsphere_exporter.is_v2v_enabled():

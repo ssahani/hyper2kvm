@@ -683,7 +683,29 @@ def _export_vm_via_https(
 
     vm = client.get_vm_by_name(vm_name)
     if not vm:
-        raise Fatal(2, f"vsphere export_vm: VM not found: {vm_name}")
+        from ...core.exceptions import create_helpful_error
+
+        vcenter_host = getattr(client, "host", "unknown")
+        raise create_helpful_error(
+            Fatal,
+            f"VM not found: {vm_name}",
+            code=2,
+            solutions=[
+                f"Verify VM name (case-sensitive): govc ls -u '{vcenter_host}' /DC/vm/",
+                "List all accessible VMs: hyper2kvm vsphere --vs-action list-vms",
+                "Check datacenter configuration",
+                "Verify permissions with vCenter administrator"
+            ],
+            causes=[
+                "VM name is misspelled or case-sensitive",
+                "VM is in a different datacenter",
+                "Insufficient permissions to view VM",
+                "VM has been renamed or deleted"
+            ],
+            doc_link="30-vSphere-V2V.md#troubleshooting",
+            vm_name=vm_name,
+            vcenter=vcenter_host
+        )
 
     try:
         vmx_path = vm.summary.config.vmPathName if vm.summary and vm.summary.config else None

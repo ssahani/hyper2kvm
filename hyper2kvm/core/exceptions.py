@@ -110,17 +110,50 @@ class Hyper2KvmError(Exception):
     def user_message(self, *, include_context: bool = False, include_cause: bool = False) -> str:
         """
         Human-friendly message for CLI output/logs.
+
+        If context contains 'solutions', 'causes', or 'doc_link', they are formatted
+        as helpful guidance rather than as compact key=value pairs.
         """
         base = self.msg or self.__class__.__name__
         parts = [base]
 
         if include_context and self.context:
-            parts.append(f"[{_one_line(_format_context_compact(self.context), limit=600)}]")
+            # Extract helpful fields for special formatting
+            solutions = self.context.get("solutions")
+            causes = self.context.get("causes")
+            doc_link = self.context.get("doc_link")
+
+            # Remaining context (excluding helpful fields)
+            remaining_ctx = {
+                k: v
+                for k, v in self.context.items()
+                if k not in ("solutions", "causes", "doc_link")
+            }
+
+            # Add solutions if present
+            if solutions:
+                parts.append("\n\nSolutions:")
+                for i, solution in enumerate(solutions, 1):
+                    parts.append(f"\n  {i}. {solution}")
+
+            # Add common causes if present
+            if causes:
+                parts.append("\n\nCommon causes:")
+                for i, cause in enumerate(causes, 1):
+                    parts.append(f"\n  {i}. {cause}")
+
+            # Add documentation link if present
+            if doc_link:
+                parts.append(f"\n\nDocumentation: {doc_link}")
+
+            # Add remaining context as compact format
+            if remaining_ctx:
+                parts.append(f"\n[{_one_line(_format_context_compact(remaining_ctx), limit=600)}]")
 
         if include_cause and self.cause is not None:
-            parts.append(f"(cause: {type(self.cause).__name__}: {_one_line(str(self.cause))})")
+            parts.append(f"\n(cause: {type(self.cause).__name__}: {_one_line(str(self.cause))})")
 
-        return " ".join(parts)
+        return "".join(parts)
 
     def __str__(self) -> str:
         # Default string should be clean and user-facing
@@ -181,3 +214,49 @@ def format_exception_for_cli(e: BaseException, *, verbose: int = 0) -> str:
     if verbose >= 2:
         return f"{type(e).__name__}: {_one_line(str(e))}"
     return _one_line(str(e)) or type(e).__name__
+
+
+# Enhanced error creation helpers
+
+def create_helpful_error(
+    error_type: type[Hyper2KvmError],
+    message: str,
+    *,
+    code: int = 1,
+    solutions: list[str] | None = None,
+    causes: list[str] | None = None,
+    doc_link: str | None = None,
+    **context: Any
+) -> Hyper2KvmError:
+    """
+    Create an error with helpful context including solutions and documentation links.
+
+    Args:
+        error_type: The exception class (Fatal, VMwareError, etc.)
+        message: The main error message
+        code: Exit code
+        solutions: List of actionable solutions
+        causes: List of common causes
+        doc_link: Documentation link (relative to docs/)
+        **context: Additional context key-value pairs
+
+    Returns:
+        Enhanced error instance
+
+    Example:
+        >>> err = create_helpful_error(
+        ...     Fatal,
+        ...     "VM not found: my-vm",
+        ...     solutions=["Verify VM name with: govc ls /DC/vm/"],
+        ...     doc_link="30-vSphere-V2V.md#troubleshooting"
+        ... )
+    """
+    # Add enhanced context
+    if solutions:
+        context["solutions"] = solutions
+    if causes:
+        context["causes"] = causes
+    if doc_link:
+        context["doc_link"] = f"https://github.com/hyper2kvm/hyper2kvm/blob/main/docs/{doc_link}"
+
+    return error_type(code=code, msg=message, context=context or None)
