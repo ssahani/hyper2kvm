@@ -63,11 +63,23 @@ report = nbd.validate_filesystems(
 )
 for fsck in report['fsck_results']:
     print(f"{fsck['partition']}: {fsck['status']}")
+
+# Comprehensive disk inspection with LVM (requires sudo)
+report = nbd.inspect_disk(
+    '/path/to/disk.vmdk',
+    check_lvm=True,
+    activate_lvm=True,
+    run_fsck=False
+)
+print(f"LVM PVs: {len(report['lvm']['physical_volumes'])}")
+print(f"LVM VGs: {len(report['lvm']['volume_groups'])}")
+print(f"LVM LVs: {len(report['lvm']['logical_volumes'])}")
+print(f"Filesystems: {len(report['filesystems'])}")
 ```
 
 ---
 
-## Validation Methods
+## Validation and Inspection Methods
 
 ### 1. Basic Validation (`_validate_image()`)
 
@@ -153,6 +165,81 @@ report = nbd.validate_filesystems(
 **Raises:**
 - `RuntimeError` if validation fails
 - `FileNotFoundError` if image doesn't exist
+
+---
+
+### 3. Comprehensive Disk Inspection (`inspect_disk()`)
+
+**Complete disk structure analysis including LVM**
+
+```python
+report = nbd.inspect_disk(
+    image_path,
+    format='vmdk',           # Optional format hint
+    check_lvm=True,          # Detect LVM structures
+    activate_lvm=True,       # Activate VGs to see LVs
+    run_fsck=False          # Skip fsck for faster inspection
+)
+```
+
+**What it checks:**
+- ✅ Everything from basic validation
+- ✅ Partition table structure
+- ✅ LVM physical volumes (pvs)
+- ✅ LVM volume groups (vgs)
+- ✅ LVM logical volumes (lvs) when activated
+- ✅ Filesystems on partitions and LVs
+- ✅ Optionally: Filesystem integrity checks
+
+**Advantages:**
+- Complete LVM topology analysis
+- Shows full storage stack
+- Detects filesystems on logical volumes
+- Automatic NBD device allocation
+- Safe automatic cleanup
+
+**Requirements:**
+- Root/sudo privileges
+- NBD kernel module
+- LVM tools (pvs, vgs, lvs)
+
+**Returns:**
+- Comprehensive inspection report:
+  ```python
+  {
+      "image": "/path/to/disk.vmdk",
+      "format": "vmdk",
+      "virtual_size_gb": 100.0,
+      "actual_size_gb": 25.5,
+      "partitions": [
+          {"device": "nbd0p1", "info": "..."}
+      ],
+      "lvm": {
+          "physical_volumes": [
+              {"pv": "/dev/nbd0p2", "vg": "rhel_centos", "size": "95G"}
+          ],
+          "volume_groups": [
+              {"vg": "rhel_centos", "pv_count": "1", "lv_count": "2", "size": "95G"}
+          ],
+          "logical_volumes": [
+              {"lv": "root", "path": "/dev/rhel_centos/root", "size": "91G", "vg": "rhel_centos"},
+              {"lv": "swap", "path": "/dev/rhel_centos/swap", "size": "4G", "vg": "rhel_centos"}
+          ]
+      },
+      "filesystems": [
+          {"device": "/dev/mapper/rhel_centos-root", "fstype": "xfs"},
+          {"device": "/dev/mapper/rhel_centos-swap", "fstype": "swap"}
+      ],
+      "fsck_results": [],  # Populated if run_fsck=True
+      "status": "inspected"
+  }
+  ```
+
+**Use cases:**
+- Pre-migration analysis of LVM setups
+- Understanding complex storage layouts
+- Planning LVM to LVM migrations
+- Troubleshooting storage issues
 
 ---
 

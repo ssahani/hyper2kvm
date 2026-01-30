@@ -742,6 +742,342 @@ class NBDDeviceManager:
 
         return report
 
+    def inspect_disk(
+        self,
+        image_path: str | Path,
+        *,
+        format: str | None = None,
+        check_lvm: bool = True,
+        activate_lvm: bool = True,
+        run_fsck: bool = False,
+    ) -> dict[str, any]:
+        """
+        Perform comprehensive disk image inspection including LVM structures.
+
+        This provides deeper inspection than validate_filesystems, including:
+        - Full LVM structure analysis (PVs, VGs, LVs)
+        - LVM activation and logical volume detection
+        - Partition table details
+        - Filesystem detection on both partitions and LVs
+        - Optional filesystem integrity checks
+
+        Args:
+            image_path: Path to disk image
+            format: Disk format hint (qcow2, vmdk, raw, etc.)
+            check_lvm: Detect and analyze LVM structures
+            activate_lvm: Activate LVM volume groups to see LVs
+            run_fsck: Run read-only filesystem checks
+
+        Returns:
+            Comprehensive inspection report dict
+
+        Raises:
+            RuntimeError: If inspection fails
+
+        Example:
+            nbd = NBDDeviceManager(logger)
+            report = nbd.inspect_disk(
+                '/vms/disk.vmdk',
+                check_lvm=True,
+                activate_lvm=True,
+                run_fsck=True
+            )
+            print(f"Partitions: {len(report['partitions'])}")
+            print(f"LVM VGs: {len(report['lvm']['volume_groups'])}")
+            print(f"LVM LVs: {len(report['lvm']['logical_volumes'])}")
+        """
+        image_path = Path(image_path).resolve()
+        if not image_path.exists():
+            raise FileNotFoundError(f"Disk image not found: {image_path}")
+
+        self.logger.info(f"Performing comprehensive disk inspection: {image_path.name}")
+
+        # First do basic image validation
+        metadata = self._validate_image(image_path)
+
+        # Temporarily connect to NBD for deep inspection
+        temp_nbd = None
+        report = {
+            "image": str(image_path),
+            "format": metadata.get("format", "unknown"),
+            "virtual_size_gb": metadata.get("virtual-size", 0) / (1024**3),
+            "actual_size_gb": metadata.get("actual-size", 0) / (1024**3),
+            "partitions": [],
+            "lvm": {
+                "physical_volumes": [],
+                "volume_groups": [],
+                "logical_volumes": []
+            },
+            "filesystems": [],
+            "fsck_results": [],
+            "status": "unknown"
+        }
+
+        try:
+            # Find free NBD device (use existing auto-detection)
+            self._check_nbd_module()
+            for i in range(self.nbd_min, self.nbd_max + 1):
+                candidate = f"/dev/nbd{i}"
+                if self._is_nbd_free(candidate):
+                    temp_nbd = candidate
+                    break
+
+            if not temp_nbd:
+                raise RuntimeError("No free NBD device for inspection")
+
+            self.logger.debug(f"Using NBD device: {temp_nbd}")
+
+            # Connect image (read-only)
+            connect_cmd = ["qemu-nbd", "--read-only", "--connect", temp_nbd]
+            if format:
+                connect_cmd.extend(["--format", format])
+            connect_cmd.append(str(image_path))
+
+            run_sudo(self.logger, connect_cmd, check=True, capture=True)
+            time.sleep(2)  # Allow kernel to detect partitions
+
+            # Scan partitions
+            run_sudo(self.logger, ["partprobe", temp_nbd], check=False, capture=True)
+            time.sleep(0.5)
+
+            # Get partition information
+            self.logger.debug("Inspecting partition table...")
+            lsblk_result = run_sudo(
+                self.logger,
+                ["lsblk", "-f", "-o", "NAME,FSTYPE,SIZE,LABEL,UUID", temp_nbd],
+                check=True,
+                capture=True
+            )
+
+            # Parse partitions
+            for line in lsblk_result.stdout.splitlines()[1:]:  # Skip header
+                line = line.strip()
+                if line.startswith("├─") or line.startswith("└─"):
+                    parts = line.split()
+                    if parts:
+                        dev_name = parts[0].replace("├─", "").replace("└─", "").strip()
+                        report["partitions"].append({
+                            "device": dev_name,
+                            "info": " ".join(parts)
+                        })
+
+            self.logger.info(f"Found {len(report['partitions'])} partitions")
+
+            # LVM inspection
+            if check_lvm:
+                self.logger.debug("Scanning for LVM structures...")
+
+                # Physical Volumes
+                try:
+                    pvs_result = run_sudo(
+                        self.logger,
+                        ["pvs", "--noheadings", "-o", "pv_name,vg_name,pv_size"],
+                        check=False,
+                        capture=True,
+                        failure_log_level=logging.DEBUG
+                    )
+                    if pvs_result.stdout.strip():
+                        for line in pvs_result.stdout.splitlines():
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                report["lvm"]["physical_volumes"].append({
+                                    "pv": parts[0],
+                                    "vg": parts[1],
+                                    "size": parts[2]
+                                })
+                except Exception as e:
+                    self.logger.debug(f"PV scan failed: {e}")
+
+                # Volume Groups
+                try:
+                    vgs_result = run_sudo(
+                        self.logger,
+                        ["vgs", "--noheadings", "-o", "vg_name,pv_count,lv_count,vg_size"],
+                        check=False,
+                        capture=True,
+                        failure_log_level=logging.DEBUG
+                    )
+                    if vgs_result.stdout.strip():
+                        for line in vgs_result.stdout.splitlines():
+                            parts = line.split()
+                            if len(parts) >= 4:
+                                report["lvm"]["volume_groups"].append({
+                                    "vg": parts[0],
+                                    "pv_count": parts[1],
+                                    "lv_count": parts[2],
+                                    "size": parts[3]
+                                })
+                except Exception as e:
+                    self.logger.debug(f"VG scan failed: {e}")
+
+                # Activate VGs if requested
+                if activate_lvm and report["lvm"]["volume_groups"]:
+                    self.logger.debug("Activating LVM volume groups...")
+                    try:
+                        run_sudo(
+                            self.logger,
+                            ["vgchange", "-ay"],
+                            check=False,
+                            capture=True,
+                            failure_log_level=logging.DEBUG
+                        )
+                        time.sleep(1)  # Wait for device nodes
+
+                        # Ensure device nodes are created
+                        run_sudo(
+                            self.logger,
+                            ["dmsetup", "mknodes"],
+                            check=False,
+                            capture=True,
+                            failure_log_level=logging.DEBUG
+                        )
+                        run_sudo(
+                            self.logger,
+                            ["udevadm", "settle"],
+                            check=False,
+                            capture=True,
+                            failure_log_level=logging.DEBUG
+                        )
+
+                        self.logger.info(f"Activated {len(report['lvm']['volume_groups'])} volume groups")
+                    except Exception as e:
+                        self.logger.debug(f"VG activation failed: {e}")
+
+                # Logical Volumes
+                try:
+                    lvs_result = run_sudo(
+                        self.logger,
+                        ["lvs", "--noheadings", "-o", "lv_name,lv_path,lv_size,vg_name"],
+                        check=False,
+                        capture=True,
+                        failure_log_level=logging.DEBUG
+                    )
+                    if lvs_result.stdout.strip():
+                        for line in lvs_result.stdout.splitlines():
+                            parts = line.split()
+                            if len(parts) >= 4:
+                                report["lvm"]["logical_volumes"].append({
+                                    "lv": parts[0],
+                                    "path": parts[1],
+                                    "size": parts[2],
+                                    "vg": parts[3]
+                                })
+                except Exception as e:
+                    self.logger.debug(f"LV scan failed: {e}")
+
+                self.logger.info(
+                    f"LVM: {len(report['lvm']['physical_volumes'])} PVs, "
+                    f"{len(report['lvm']['volume_groups'])} VGs, "
+                    f"{len(report['lvm']['logical_volumes'])} LVs"
+                )
+
+            # Detect filesystems on all block devices
+            self.logger.debug("Detecting filesystems...")
+            try:
+                blkid_result = run_sudo(
+                    self.logger,
+                    ["blkid"],
+                    check=False,
+                    capture=True,
+                    failure_log_level=logging.DEBUG
+                )
+
+                for line in blkid_result.stdout.splitlines():
+                    if ":" in line:
+                        device = line.split(":")[0]
+                        # Check if this device is related to our NBD or LVM
+                        if temp_nbd in device or "/dev/mapper/" in device or "/dev/dm-" in device:
+                            # Extract filesystem type
+                            fstype = ""
+                            if 'TYPE="' in line:
+                                fstype = line.split('TYPE="')[1].split('"')[0]
+
+                            if fstype and fstype != "LVM2_member":
+                                report["filesystems"].append({
+                                    "device": device,
+                                    "fstype": fstype
+                                })
+
+            except Exception as e:
+                self.logger.debug(f"Filesystem detection failed: {e}")
+
+            self.logger.info(f"Found {len(report['filesystems'])} filesystems")
+
+            # Optional filesystem checks
+            if run_fsck and report["filesystems"]:
+                self.logger.info("Running read-only filesystem checks...")
+                for fs in report["filesystems"]:
+                    device = fs["device"]
+                    fstype = fs["fstype"]
+
+                    # Skip certain filesystem types
+                    if fstype in ["swap", "crypto_LUKS"]:
+                        continue
+
+                    try:
+                        fsck_result = run_sudo(
+                            self.logger,
+                            ["fsck", "-n", device],
+                            check=False,
+                            capture=True,
+                            failure_log_level=logging.DEBUG
+                        )
+
+                        status = "clean" if fsck_result.returncode == 0 else "errors_found"
+                        report["fsck_results"].append({
+                            "device": device,
+                            "fstype": fstype,
+                            "status": status,
+                            "exit_code": fsck_result.returncode,
+                            "output": fsck_result.stdout[:500] if fsck_result.stdout else ""
+                        })
+
+                        if status == "clean":
+                            self.logger.debug(f"Filesystem check passed: {device}")
+                        else:
+                            self.logger.warning(f"Filesystem errors on {device} (exit: {fsck_result.returncode})")
+
+                    except Exception as e:
+                        self.logger.debug(f"Could not check {device}: {e}")
+
+            report["status"] = "inspected"
+            self.logger.info(f"✓ Comprehensive inspection completed for {image_path.name}")
+
+        except Exception as e:
+            report["status"] = "inspection_failed"
+            report["error"] = str(e)
+            self.logger.error(f"Disk inspection failed: {e}")
+            raise RuntimeError(f"Disk inspection failed for {image_path.name}: {e}") from e
+
+        finally:
+            # Cleanup: deactivate LVM and disconnect NBD
+            if activate_lvm and check_lvm:
+                try:
+                    run_sudo(
+                        self.logger,
+                        ["vgchange", "-an"],
+                        check=False,
+                        capture=True,
+                        failure_log_level=logging.DEBUG
+                    )
+                    self.logger.debug("Deactivated LVM volume groups")
+                except Exception as e:
+                    self.logger.debug(f"Could not deactivate VGs: {e}")
+
+            if temp_nbd:
+                try:
+                    run_sudo(
+                        self.logger,
+                        ["qemu-nbd", "--disconnect", temp_nbd],
+                        check=False,
+                        capture=True
+                    )
+                    self.logger.debug(f"Disconnected inspection NBD: {temp_nbd}")
+                except Exception as e:
+                    self.logger.debug(f"Could not disconnect {temp_nbd}: {e}")
+
+        return report
+
     @retry_with_backoff(
         max_attempts=3,
         base_backoff_s=2.0,
