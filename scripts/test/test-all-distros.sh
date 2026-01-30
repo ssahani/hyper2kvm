@@ -123,11 +123,12 @@ echo "  - fstab/crypttab stabilization"
 echo "  - Cross-distribution reliability"
 echo ""
 
-# Test each distribution
-test_distribution "Fedora 42 Server" "fedora42-simple-test.yaml"
-test_distribution "CentOS 10 Server" "test-confs/centos10-test.yaml"
-test_distribution "Arch Linux" "test-confs/arch-test.yaml"
-test_distribution "Ubuntu Server 25.04" "test-confs/ubuntu25-test.yaml"
+# Test each distribution (using absolute paths from repo root)
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+test_distribution "Fedora 42 Server" "$REPO_ROOT/test-confs/fedora42-simple-test.yaml"
+test_distribution "CentOS 10 Server" "$REPO_ROOT/test-confs/centos10-test.yaml"
+test_distribution "Arch Linux" "$REPO_ROOT/test-confs/arch-test.yaml"
+test_distribution "Ubuntu Server 25.04" "$REPO_ROOT/test-confs/ubuntu25-test.yaml"
 
 # Summary
 log_header "Test Summary"
