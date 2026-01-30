@@ -82,6 +82,7 @@
 | **⚡ Performance** | Parallel batch processing • Compression • Progress tracking |
 | **☁️ Cloud Integration** | vSphere API • Cloud-init • AWS/Azure compatibility |
 | **🏢 Enterprise** | LUKS encryption • Daemon mode • Kubernetes/OpenShift native |
+| **🚢 K8s Deployment** | Automated upload • PVC creation • VM provisioning • One-command deploy |
 
 ### 🎯 Key Differentiator
 
@@ -249,11 +250,33 @@ h2kvmctl --cmd local \
     --compress
 ```
 
+### 🚢 Option 3: Direct to Kubernetes/k3s (NEW!)
+
+Migrate **and** deploy to Kubernetes in one command:
+
+```bash
+sudo h2kvmctl --config migration.yaml --deploy-k8s \
+  --k8s-namespace production \
+  --k8s-vm-name web-server-01 \
+  --k8s-auto-start
+```
+
+**What happens automatically**:
+1. ✅ VMDK → QCOW2 conversion with offline fixes
+2. ✅ Upload to Kubernetes PVC
+3. ✅ Create KubeVirt VirtualMachine resource
+4. ✅ Start VM and wait for ready status
+
+**Result**: VM running in Kubernetes/k3s with one command! 🎉
+
+See [K8s Automated Deployment Guide](docs/guides/k8s-automated-deployment.md) for details.
+
 ### 📚 Next Steps
 
 - 📖 [Beginner Tutorial](docs/tutorials/01-beginner-migration.md) - Step-by-step walkthrough
 - 🎯 [More Examples](#quick-examples) - YAML configs for common scenarios
 - 🚀 [Live Migration](#-live-fix-ssh-based) - Zero-downtime migrations
+- 🚢 [K8s Deployment](docs/guides/k8s-automated-deployment.md) - Automated Kubernetes deployment
 
 ---
 

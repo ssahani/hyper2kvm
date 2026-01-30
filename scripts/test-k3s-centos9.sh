@@ -1,6 +1,15 @@
 #!/bin/bash
 # Hyper2KVM K3s CentOS 9 Test Suite
 # Tests migration of CentOS 9 VM to k3s cluster
+#
+# ⚠️  NOTE: This test script demonstrates MANUAL steps for educational purposes.
+#
+# 🚀 For production, use hyper2kvm's BUILT-IN automated deployment:
+#     sudo ./h2kvmctl --config centos9.yaml --deploy-k8s
+#
+# The --deploy-k8s flag does ALL these steps automatically!
+# See: docs/guides/k8s-automated-deployment.md
+#
 # Usage: ./test-k3s-centos9.sh [all|prereq|deploy|migrate|kubevirt|cleanup]
 
 set -e

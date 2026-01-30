@@ -2954,3 +2954,30 @@ We use [Semantic Versioning](https://semver.org/):
 [0.1.0]: https://github.com/ssahani/hyper2kvm/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/ssahani/hyper2kvm/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/ssahani/hyper2kvm/releases/tag/v0.0.1
+
+## [Unreleased] - 2026-02-05
+
+### Added
+- **Automated Kubernetes/k3s Deployment** - New `--deploy-k8s` flag enables end-to-end migration directly to Kubernetes clusters
+  - Automatic namespace and PVC creation
+  - Image upload via temporary pod  
+  - KubeVirt VirtualMachine resource creation
+  - Optional VM auto-start and readiness waiting
+  - Full CLI support (`--k8s-namespace`, `--k8s-vm-name`, `--k8s-cpu`, `--k8s-memory`, etc.)
+  - YAML configuration support for all K8s options
+  - Documentation: `docs/guides/k8s-automated-deployment.md`
+
+- **K8s Deployment Examples** - New `examples/k8s-deployment/` with ready-to-use configs
+  - Basic deployment example
+  - Production deployment example
+  - Multi-namespace deployment example
+
+### Changed
+- **OfflineFixJob Operator** - Migrated from KubeVirt VMI to privileged Pod architecture
+- **Container Registry** - Updated from quay.io to ghcr.io (GitHub Container Registry)
+- **NBD Prep Daemon** - Complete rewrite with smart partition detection and LVM support
+
+### Fixed
+- K3s local-path storage handling (WaitForFirstConsumer binding mode)
+- Sudo requirement for disk mounting operations
+
