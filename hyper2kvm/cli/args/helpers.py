@@ -50,15 +50,32 @@ def _merged_secret(args: argparse.Namespace, conf: dict[str, Any], value_key: st
 
 
 def _merged_cmd(args: argparse.Namespace, conf: dict[str, Any]) -> str | None:
+    """
+    Resolve command from CLI args or config, with alias normalization.
+
+    Supported aliases:
+    - "migrate" → "local"
+    """
+    # Command aliases mapping
+    _COMMAND_ALIASES = {
+        "migrate": "local",
+    }
+
     v = getattr(args, "cmd", None)
     if _require(v):
-        return str(v).strip()
+        cmd = str(v).strip()
+        return _COMMAND_ALIASES.get(cmd, cmd)
+
     v = conf.get("cmd", None)
     if _require(v):
-        return str(v).strip()
+        cmd = str(v).strip()
+        return _COMMAND_ALIASES.get(cmd, cmd)
+
     v = conf.get("command", None)
     if _require(v):
-        return str(v).strip()
+        cmd = str(v).strip()
+        return _COMMAND_ALIASES.get(cmd, cmd)
+
     return None
 
 

@@ -45,7 +45,7 @@ def _add_project_control(p: argparse.ArgumentParser) -> None:
         "--cmd",
         dest="cmd",
         default=None,
-        help="Operation (normally from YAML `cmd:`). Examples: local, fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, azure, daemon, generate-systemd",
+        help="Operation (normally from YAML `cmd:`). Examples: local (alias: migrate), fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, azure, daemon, generate-systemd",
     )
     p.add_argument(
         "--vs-action",

@@ -310,7 +310,7 @@ def validate_args(args: argparse.Namespace, conf: dict[str, Any]) -> None:
             "    command: <cmd>\n"
             "\n"
             "SUPPORTED COMMANDS:\n"
-            "    local           - Convert local VMDK file\n"
+            "    local           - Convert local VMDK file (alias: migrate)\n"
             "    fetch-and-fix   - Fetch from ESXi via SSH and convert\n"
             "    ova             - Extract and convert OVA archive\n"
             "    ovf             - Extract and convert OVF package\n"
@@ -343,6 +343,9 @@ def validate_args(args: argparse.Namespace, conf: dict[str, Any]) -> None:
             "    docs/README.md\n"
             "    docs/98-Enhanced-Features.md\n"
         )
+
+    # Set normalized command back to args.cmd (handles aliases like "migrate" → "local")
+    args.cmd = cmd
 
     # Optional knobs validation (no side effects)
     _validate_win_net_override_inputs(args, conf)

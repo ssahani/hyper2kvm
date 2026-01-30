@@ -272,6 +272,11 @@ class DiskDiscovery:
             # Return empty - daemon mode doesn't use the normal disk discovery flow
             return [], None
 
+        elif cmd == "generate-systemd":
+            # Systemd unit generation mode - handled by orchestrator, not DiskDiscovery
+            # Return empty - this mode doesn't use the normal disk discovery flow
+            return [], None
+
         else:
             U.die(self.logger, f"Unknown command: {cmd}", 1)
 
