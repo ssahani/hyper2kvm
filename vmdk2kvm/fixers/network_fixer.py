@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # vmdk2kvm/fixers/network_fixer.py
 """
 Comprehensive network configuration fixer for VMware -> KVM migration.
