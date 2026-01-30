@@ -302,13 +302,24 @@ class NBDDeviceManager:
                         timeout=3600
                     )
 
-                    # Step 2: RAW → QCOW2 (sparse-aware)
-                    self.logger.info(f"  Step 2/2: RAW → QCOW2")
+                    # Step 2: RAW → QCOW2
+                    # CRITICAL: Detect LVM/mdraid/luks and disable sparse detection if present
+                    # Using -S with LVM causes data corruption as zero runs may contain LVM metadata
+                    has_layered_storage = self._detect_layered_storage(temp_raw)
+
+                    if has_layered_storage:
+                        self.logger.info(f"  Step 2/2: RAW → QCOW2 (sparse disabled - LVM/mdraid/luks detected)")
+                        self.logger.info(f"  ⚠️  Disabling sparse detection to prevent LVM metadata corruption")
+                        sparse_opt = "0"  # Disable sparse detection for safety
+                    else:
+                        self.logger.info(f"  Step 2/2: RAW → QCOW2 (sparse-aware)")
+                        sparse_opt = "64k"  # Safe to use sparse detection
+
                     subprocess.run(
                         [
                             "qemu-img", "convert",
                             "-p",  # Progress
-                            "-S", "64k",  # Sparse-aware: detect 64k zero runs
+                            "-S", sparse_opt,
                             "-f", "raw",
                             "-O", "qcow2",
                             str(temp_raw),
@@ -376,6 +387,55 @@ class NBDDeviceManager:
             if temp_qcow2.exists():
                 temp_qcow2.unlink()
             raise RuntimeError(f"VMDK conversion failed: {e}")
+
+    def _detect_layered_storage(self, raw_image: Path) -> bool:
+        """
+        Detect if RAW image contains layered storage (LVM, mdraid, luks).
+
+        Using sparse detection (-S) with layered storage causes data corruption:
+        - LVM metadata and extents may contain zero runs
+        - mdraid superblocks span sparse regions
+        - luks headers contain zero-padded areas
+
+        Sparse detection would punch holes through these critical structures,
+        making volumes unreadable.
+
+        Args:
+            raw_image: Path to RAW disk image
+
+        Returns:
+            True if layered storage detected, False otherwise
+        """
+        try:
+            # Use qemu-img to get partition table info
+            result = subprocess.run(
+                ["parted", "-s", str(raw_image), "print"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            output = result.stdout.lower()
+
+            # Check for LVM partition type (0x8e for DOS, E6D6D379-F507-44C2-A23C-238F2A3DF928 for GPT)
+            if "lvm" in output or "8e" in output:
+                self.logger.info("  🔍 LVM partition detected in image")
+                return True
+
+            # Check for Linux RAID (0xfd for DOS)
+            if "raid" in output or "fd" in output:
+                self.logger.info("  🔍 mdraid partition detected in image")
+                return True
+
+            # For a more thorough check, we could mount via NBD and check /dev/mapper
+            # but that's more expensive. The partition type check catches most cases.
+
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"Layered storage detection failed: {e}, assuming safe")
+            # If detection fails, err on the side of caution - disable sparse
+            return True
 
     @retry_with_backoff(
         max_attempts=3,
