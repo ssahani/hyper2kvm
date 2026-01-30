@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/vsphere/vddk_client.py
+# hyper2kvm/vmware/transports/vddk_client.py
 # -*- coding: utf-8 -*-
 """
 VDDK client for ESXi "download-only" pulls.

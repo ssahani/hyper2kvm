@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/vmware/vsphere_govc.py
+# hyper2kvm/vmware/vsphere/govc.py
 # -*- coding: utf-8 -*-
 """govc CLI wrapper and utility functions for vSphere operations"""
 from __future__ import annotations
@@ -10,18 +10,18 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from ..core.exceptions import VMwareError
-from ..core.utils import U
+from ...core.exceptions import VMwareError
+from ...core.utils import U
 
 try:
-    from .govc_common import GovcRunner, normalize_ds_path
+    from ..transports.govc_common import GovcRunner, normalize_ds_path
 except ImportError:
     # fallback for minimal environment
     GovcRunner = None
     normalize_ds_path = None
 
-from .vmware_client import VMwareClient
-from .vsphere_errors import VsphereExitCode, _classify_exit_code
+from ..clients.client import VMwareClient
+from .errors import VsphereExitCode, _classify_exit_code
 
 
 # --------------------------------------------------------------------------------------

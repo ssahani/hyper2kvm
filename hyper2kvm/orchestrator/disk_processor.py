@@ -29,7 +29,7 @@ from ..core.logger import Log
 from ..core.recovery_manager import RecoveryManager
 from ..core.utils import U
 from ..fixers.offline_fixer import OfflineFSFix
-from ..vmware.vmdk_parser import VMDK
+from ..vmware.utils.vmdk_parser import VMDK
 
 
 class DiskProcessor:

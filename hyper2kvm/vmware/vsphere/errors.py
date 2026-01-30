@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/vmware/vsphere_errors.py
+# hyper2kvm/vmware/vsphere/errors.py
 # -*- coding: utf-8 -*-
 """Error classification and exit code handling for vSphere operations"""
 from __future__ import annotations
@@ -8,7 +8,7 @@ import errno
 import socket
 from enum import IntEnum
 
-from ..core.exceptions import VMwareError
+from ...core.exceptions import VMwareError
 
 
 class VsphereExitCode(IntEnum):

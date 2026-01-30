@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vsphere/govc_common.py
+# hyper2kvm/vmware/transports/govc_common.py
 from __future__ import annotations
 
 """
@@ -26,11 +26,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from ..core.exceptions import VMwareError
+from ...core.exceptions import VMwareError
 
 # Optional: use project JSON helpers if present (keeps formatting consistent)
 try:  # pragma: no cover
-    from ..core.utils import U  # type: ignore
+    from ...core.utils import U  # type: ignore
 except Exception:  # pragma: no cover
     U = None  # type: ignore
 

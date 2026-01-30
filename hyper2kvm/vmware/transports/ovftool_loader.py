@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # -*- coding: utf-8 -*-
-# hyper2kvm/vmware/vmware_ovftool.py
+# hyper2kvm/vmware/transports/ovftool_loader.py
 
 """
 OVF Tool and govc export operations for VMware
@@ -45,17 +45,17 @@ except Exception:  # pragma: no cover
 
 # HTTP/HTTPS download client
 try:
-    from .http_download_client import VMwareError
+    from .http_client import VMwareError
 except Exception:  # pragma: no cover
     try:
-        from ..core.exceptions import VMwareError  # type: ignore
+        from ...core.exceptions import VMwareError  # type: ignore
     except Exception:  # pragma: no cover
 
         class VMwareError(RuntimeError):
             pass
 
 
-from .vmware_utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path, ensure_output_dir as _ensure_output_dir
+from ..utils.utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path, ensure_output_dir as _ensure_output_dir
 
 
 def govc_export_ovf(client: Any, opt: Any) -> Path:

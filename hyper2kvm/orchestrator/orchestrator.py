@@ -27,7 +27,7 @@ from ..core.utils import U
 from ..libvirt.domain_emitter import emit_from_args
 from ..testers.libvirt_tester import LibvirtTest
 from ..testers.qemu_tester import QemuTest
-from ..vmware.vsphere_mode import VsphereMode
+from ..vmware.vsphere.mode import VsphereMode
 from .disk_discovery import DiskDiscovery
 from .disk_processor import DiskProcessor
 from .virt_v2v_converter import VirtV2VConverter
@@ -35,12 +35,12 @@ from .vsphere_exporter import VsphereExporter
 
 # Check availability
 try:
-    from ..vmware.vmware_client import PYVMOMI_AVAILABLE
+    from ..vmware.clients.client import PYVMOMI_AVAILABLE
 except ImportError:
     PYVMOMI_AVAILABLE = False
 
 try:
-    from ..vmware.http_download_client import REQUESTS_AVAILABLE
+    from ..vmware.transports.http_client import REQUESTS_AVAILABLE
 except ImportError:
     REQUESTS_AVAILABLE = False
 
