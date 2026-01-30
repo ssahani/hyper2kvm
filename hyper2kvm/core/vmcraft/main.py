@@ -69,6 +69,11 @@ from .automated_remediation import AutomatedRemediation
 from .predictive_analytics import PredictiveAnalytics
 from .integration_hub import IntegrationHub
 from .realtime_monitoring import RealtimeMonitoring
+from .ml_analyzer import MLAnalyzer
+from .cloud_optimizer import CloudOptimizer
+from .disaster_recovery import DisasterRecovery
+from .audit_trail import AuditTrail
+from .resource_orchestrator import ResourceOrchestrator
 
 
 logger = logging.getLogger(__name__)
@@ -151,6 +156,11 @@ class VMCraft:
         self._predictive_analytics: PredictiveAnalytics | None = None
         self._integration_hub: IntegrationHub | None = None
         self._realtime_monitoring: RealtimeMonitoring | None = None
+        self._ml_analyzer: MLAnalyzer | None = None
+        self._cloud_optimizer: CloudOptimizer | None = None
+        self._disaster_recovery: DisasterRecovery | None = None
+        self._audit_trail: AuditTrail | None = None
+        self._resource_orchestrator: ResourceOrchestrator | None = None
 
         # Log backend selection
         self.logger.debug("Using VMCraft backend (qemu-nbd + Linux tools)")
@@ -293,6 +303,11 @@ class VMCraft:
         self._predictive_analytics = PredictiveAnalytics(self.logger, self._file_ops, self._mount_root)
         self._integration_hub = IntegrationHub(self.logger, self._file_ops, self._mount_root)
         self._realtime_monitoring = RealtimeMonitoring(self.logger, self._file_ops, self._mount_root)
+        self._ml_analyzer = MLAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._cloud_optimizer = CloudOptimizer(self.logger, self._file_ops, self._mount_root)
+        self._disaster_recovery = DisasterRecovery(self.logger, self._file_ops, self._mount_root)
+        self._audit_trail = AuditTrail(self.logger, self._file_ops, self._mount_root)
+        self._resource_orchestrator = ResourceOrchestrator(self.logger, self._file_ops, self._mount_root)
 
         total_time = time.time() - start_time
         self._perf_metrics['total_launch'] = total_time
@@ -2322,6 +2337,224 @@ class VMCraft:
         if not self._realtime_monitoring:
             raise RuntimeError("Not launched")
         return self._realtime_monitoring.get_monitoring_dashboard()
+
+    # ============================================================================
+    # Machine Learning Analyzer Methods (v9.0)
+    # ============================================================================
+
+    def detect_anomalies(self, metrics: list[dict[str, Any]], metric_type: str = "cpu") -> dict[str, Any]:
+        """Detect anomalies in time series data using statistical methods."""
+        if not self._ml_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ml_analyzer.detect_anomalies(metrics, metric_type)
+
+    def predict_behavior(self, historical_data: list[dict[str, Any]]) -> dict[str, Any]:
+        """Predict future system behavior based on historical patterns."""
+        if not self._ml_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ml_analyzer.predict_behavior(historical_data)
+
+    def classify_workload(self, metrics: dict[str, Any]) -> dict[str, Any]:
+        """Classify workload type based on resource usage patterns."""
+        if not self._ml_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ml_analyzer.classify_workload(metrics)
+
+    def train_baseline(self, training_data: list[dict[str, Any]]) -> dict[str, Any]:
+        """Train baseline model from normal operating data."""
+        if not self._ml_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ml_analyzer.train_baseline(training_data)
+
+    def detect_behavior_change(self, current_metrics: dict[str, Any]) -> dict[str, Any]:
+        """Detect changes in system behavior compared to baseline."""
+        if not self._ml_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ml_analyzer.detect_behavior_change(current_metrics)
+
+    def recommend_optimizations(self, analysis: dict[str, Any]) -> list[dict[str, Any]]:
+        """Generate AI-powered optimization recommendations."""
+        if not self._ml_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ml_analyzer.recommend_optimizations(analysis)
+
+    def get_intelligence_summary(self) -> dict[str, Any]:
+        """Get AI/ML intelligence summary."""
+        if not self._ml_analyzer:
+            raise RuntimeError("Not launched")
+        return self._ml_analyzer.get_intelligence_summary()
+
+    # ============================================================================
+    # Cloud Optimizer Methods (v9.0)
+    # ============================================================================
+
+    def analyze_cloud_readiness(self, system_info: dict[str, Any]) -> dict[str, Any]:
+        """Analyze system readiness for cloud migration."""
+        if not self._cloud_optimizer:
+            raise RuntimeError("Not launched")
+        return self._cloud_optimizer.analyze_cloud_readiness(system_info)
+
+    def recommend_instance_type(self, requirements: dict[str, Any], cloud_provider: str = "aws") -> dict[str, Any]:
+        """Recommend optimal cloud instance type."""
+        if not self._cloud_optimizer:
+            raise RuntimeError("Not launched")
+        return self._cloud_optimizer.recommend_instance_type(requirements, cloud_provider)
+
+    def calculate_cloud_costs(self, usage_profile: dict[str, Any], cloud_provider: str = "aws") -> dict[str, Any]:
+        """Calculate projected cloud costs."""
+        if not self._cloud_optimizer:
+            raise RuntimeError("Not launched")
+        return self._cloud_optimizer.calculate_cloud_costs(usage_profile, cloud_provider)
+
+    def compare_cloud_providers(self, requirements: dict[str, Any]) -> dict[str, Any]:
+        """Compare costs across multiple cloud providers."""
+        if not self._cloud_optimizer:
+            raise RuntimeError("Not launched")
+        return self._cloud_optimizer.compare_cloud_providers(requirements)
+
+    def generate_migration_plan(self, system_info: dict[str, Any], target_cloud: str = "aws") -> dict[str, Any]:
+        """Generate comprehensive cloud migration plan."""
+        if not self._cloud_optimizer:
+            raise RuntimeError("Not launched")
+        return self._cloud_optimizer.generate_migration_plan(system_info, target_cloud)
+
+    def optimize_for_cloud(self, configuration: dict[str, Any]) -> dict[str, Any]:
+        """Optimize system configuration for cloud environment."""
+        if not self._cloud_optimizer:
+            raise RuntimeError("Not launched")
+        return self._cloud_optimizer.optimize_for_cloud(configuration)
+
+    # ============================================================================
+    # Disaster Recovery Methods (v9.0)
+    # ============================================================================
+
+    def assess_recovery_requirements(self, system_info: dict[str, Any]) -> dict[str, Any]:
+        """Assess disaster recovery requirements."""
+        if not self._disaster_recovery:
+            raise RuntimeError("Not launched")
+        return self._disaster_recovery.assess_recovery_requirements(system_info)
+
+    def create_backup_strategy(self, requirements: dict[str, Any]) -> dict[str, Any]:
+        """Create comprehensive backup strategy."""
+        if not self._disaster_recovery:
+            raise RuntimeError("Not launched")
+        return self._disaster_recovery.create_backup_strategy(requirements)
+
+    def calculate_rto_rpo(self, backup_config: dict[str, Any]) -> dict[str, Any]:
+        """Calculate achievable RTO and RPO."""
+        if not self._disaster_recovery:
+            raise RuntimeError("Not launched")
+        return self._disaster_recovery.calculate_rto_rpo(backup_config)
+
+    def create_failover_procedure(self, system_config: dict[str, Any]) -> dict[str, Any]:
+        """Create failover procedure documentation."""
+        if not self._disaster_recovery:
+            raise RuntimeError("Not launched")
+        return self._disaster_recovery.create_failover_procedure(system_config)
+
+    def test_dr_plan(self, dr_config: dict[str, Any]) -> dict[str, Any]:
+        """Simulate DR plan testing."""
+        if not self._disaster_recovery:
+            raise RuntimeError("Not launched")
+        return self._disaster_recovery.test_dr_plan(dr_config)
+
+    def generate_dr_report(self, system_info: dict[str, Any]) -> dict[str, Any]:
+        """Generate comprehensive DR report."""
+        if not self._disaster_recovery:
+            raise RuntimeError("Not launched")
+        return self._disaster_recovery.generate_dr_report(system_info)
+
+    # ============================================================================
+    # Audit Trail Methods (v9.0)
+    # ============================================================================
+
+    def log_event(self, category: str, action: str, details: dict[str, Any], severity: str = "info", user: str = "system") -> dict[str, Any]:
+        """Log audit event."""
+        if not self._audit_trail:
+            raise RuntimeError("Not launched")
+        return self._audit_trail.log_event(category, action, details, severity, user)
+
+    def query_events(self, start_time: str | None = None, end_time: str | None = None, category: str | None = None, severity: str | None = None, user: str | None = None, limit: int = 100) -> dict[str, Any]:
+        """Query audit events with filters."""
+        if not self._audit_trail:
+            raise RuntimeError("Not launched")
+        return self._audit_trail.query_events(start_time, end_time, category, severity, user, limit)
+
+    def generate_compliance_report(self, standard: str = "soc2", period_days: int = 30) -> dict[str, Any]:
+        """Generate compliance audit report."""
+        if not self._audit_trail:
+            raise RuntimeError("Not launched")
+        return self._audit_trail.generate_compliance_report(standard, period_days)
+
+    def track_changes(self, resource_type: str, resource_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        """Track configuration changes."""
+        if not self._audit_trail:
+            raise RuntimeError("Not launched")
+        return self._audit_trail.track_changes(resource_type, resource_id, changes)
+
+    def export_audit_log(self, format: str = "json", include_checksums: bool = True) -> dict[str, Any]:
+        """Export audit log."""
+        if not self._audit_trail:
+            raise RuntimeError("Not launched")
+        return self._audit_trail.export_audit_log(format, include_checksums)
+
+    def verify_integrity(self) -> dict[str, Any]:
+        """Verify audit log integrity."""
+        if not self._audit_trail:
+            raise RuntimeError("Not launched")
+        return self._audit_trail.verify_integrity()
+
+    def get_audit_summary(self) -> dict[str, Any]:
+        """Get audit trail summary."""
+        if not self._audit_trail:
+            raise RuntimeError("Not launched")
+        return self._audit_trail.get_audit_summary()
+
+    # ============================================================================
+    # Resource Orchestrator Methods (v9.0)
+    # ============================================================================
+
+    def analyze_resource_usage(self, current_metrics: dict[str, Any]) -> dict[str, Any]:
+        """Analyze current resource usage patterns."""
+        if not self._resource_orchestrator:
+            raise RuntimeError("Not launched")
+        return self._resource_orchestrator.analyze_resource_usage(current_metrics)
+
+    def create_scaling_policy(self, policy_name: str, policy_type: str = "moderate") -> dict[str, Any]:
+        """Create auto-scaling policy."""
+        if not self._resource_orchestrator:
+            raise RuntimeError("Not launched")
+        return self._resource_orchestrator.create_scaling_policy(policy_name, policy_type)
+
+    def execute_scaling_action(self, action: str, current_capacity: int, reason: str) -> dict[str, Any]:
+        """Execute scaling action."""
+        if not self._resource_orchestrator:
+            raise RuntimeError("Not launched")
+        return self._resource_orchestrator.execute_scaling_action(action, current_capacity, reason)
+
+    def balance_workload(self, workloads: list[dict[str, Any]], available_resources: dict[str, Any]) -> dict[str, Any]:
+        """Balance workloads across available resources."""
+        if not self._resource_orchestrator:
+            raise RuntimeError("Not launched")
+        return self._resource_orchestrator.balance_workload(workloads, available_resources)
+
+    def optimize_resource_allocation(self, current_allocation: dict[str, Any], usage_data: dict[str, Any]) -> dict[str, Any]:
+        """Optimize resource allocation based on usage patterns."""
+        if not self._resource_orchestrator:
+            raise RuntimeError("Not launched")
+        return self._resource_orchestrator.optimize_resource_allocation(current_allocation, usage_data)
+
+    def schedule_maintenance(self, maintenance_type: str, duration_minutes: int) -> dict[str, Any]:
+        """Schedule maintenance window."""
+        if not self._resource_orchestrator:
+            raise RuntimeError("Not launched")
+        return self._resource_orchestrator.schedule_maintenance(maintenance_type, duration_minutes)
+
+    def get_orchestration_metrics(self) -> dict[str, Any]:
+        """Get orchestration metrics and statistics."""
+        if not self._resource_orchestrator:
+            raise RuntimeError("Not launched")
+        return self._resource_orchestrator.get_orchestration_metrics()
 
     # Context manager support
 

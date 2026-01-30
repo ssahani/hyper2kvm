@@ -64,6 +64,11 @@ from .automated_remediation import AutomatedRemediation
 from .predictive_analytics import PredictiveAnalytics
 from .integration_hub import IntegrationHub
 from .realtime_monitoring import RealtimeMonitoring
+from .ml_analyzer import MLAnalyzer
+from .cloud_optimizer import CloudOptimizer
+from .disaster_recovery import DisasterRecovery
+from .audit_trail import AuditTrail
+from .resource_orchestrator import ResourceOrchestrator
 
 __all__ = [
     # Main API
@@ -114,4 +119,9 @@ __all__ = [
     "PredictiveAnalytics",
     "IntegrationHub",
     "RealtimeMonitoring",
+    "MLAnalyzer",
+    "CloudOptimizer",
+    "DisasterRecovery",
+    "AuditTrail",
+    "ResourceOrchestrator",
 ]
