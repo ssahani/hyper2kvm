@@ -7,7 +7,7 @@ from fakes.fake_logger import FakeLogger
 
 def test_validation_suite_basic_checks():
     try:
-        offline_fixer = importlib.import_module("vmdk2kvm.fixers.offline_fixer")
+        offline_fixer = importlib.import_module("hyper2kvm.fixers.offline_fixer")
     except Exception as e:
         pytest.skip(f"Cannot import offline_fixer: {e}")
 

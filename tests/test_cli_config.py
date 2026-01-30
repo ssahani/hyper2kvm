@@ -2,7 +2,7 @@
 import unittest, tempfile, os
 from pathlib import Path
 
-from vmdk2kvm.cli.argument_parser import parse_args_with_config
+from hyper2kvm.cli.argument_parser import parse_args_with_config
 
 class TestCLIConfigTwoPhaseParse(unittest.TestCase):
     def test_config_satisfies_required_vmdk(self):

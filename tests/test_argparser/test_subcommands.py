@@ -5,9 +5,9 @@ import pytest
 
 def _load_parser():
     try:
-        m = importlib.import_module("vmdk2kvm.cli.argument_parser")
+        m = importlib.import_module("hyper2kvm.cli.argument_parser")
     except Exception as e:
-        pytest.skip(f"Cannot import vmdk2kvm.cli.argument_parser: {e}")
+        pytest.skip(f"Cannot import hyper2kvm.cli.argument_parser: {e}")
 
     for attr in ("build_parser", "get_parser", "make_parser", "create_parser", "parser"):
         if hasattr(m, attr):
@@ -35,7 +35,7 @@ def _load_parser():
             except Exception:
                 continue
 
-    pytest.skip("Could not locate an ArgumentParser builder in vmdk2kvm.cli.argument_parser")
+    pytest.skip("Could not locate an ArgumentParser builder in hyper2kvm.cli.argument_parser")
 
 def test_parser_has_subcommands():
     p = _load_parser()
