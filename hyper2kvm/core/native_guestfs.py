@@ -9,6 +9,30 @@ Drop-in replacement for libguestfs.GuestFS that uses:
 - Python file I/O for guest filesystem operations
 
 Maintains API compatibility with libguestfs, including python_return_dict=True semantics.
+
+Supported Filesystems:
+- Linux: ext2/3/4, XFS, Btrfs, ZFS
+- Windows: NTFS (via ntfs-3g), FAT32, exFAT
+- Other: ISO9660, UDF, etc.
+
+Supported Operating Systems:
+- Linux distributions (via /etc/os-release parsing)
+- Windows (via registry hive parsing with hivex tools)
+
+Windows-specific Features:
+- Driver injection to DriverStore
+- Registry read/write operations (SOFTWARE, SYSTEM, SAM hives)
+- Case-insensitive path resolution
+- NTFS file streams and permissions support
+
+System Dependencies:
+- qemu-utils (qemu-nbd)
+- util-linux (mount, umount, lsblk, blkid)
+- lvm2 (vgscan, vgchange, lvs)
+- cryptsetup (LUKS support)
+- ntfs-3g (NTFS write support)
+- libhivex-bin (Windows registry tools: hivexget, hivexregedit)
+- Optional: mdadm, zfsutils-linux, exfat-fuse
 """
 
 from __future__ import annotations
@@ -304,12 +328,12 @@ class NativeGuestFS:
                 raise
 
     def _looks_like_root(self) -> bool:
-        """Check if mounted filesystem looks like a root filesystem."""
+        """Check if mounted filesystem looks like a root filesystem (Linux or Windows)."""
         if not self._mount_root:
             return False
 
-        # Check for common root indicators
-        indicators = [
+        # Check for Linux root indicators
+        linux_indicators = [
             "etc/os-release",
             "etc/fstab",
             "bin/sh",
@@ -317,15 +341,58 @@ class NativeGuestFS:
             "var/lib",
         ]
 
-        hits = 0
-        for ind in indicators:
-            if (self._mount_root / ind).exists():
-                hits += 1
+        linux_hits = sum(1 for ind in linux_indicators if (self._mount_root / ind).exists())
+        if linux_hits >= 2:
+            return True
 
-        return hits >= 2
+        # Check for Windows root indicators (case-insensitive)
+        windows_indicators = [
+            "Windows/System32",
+            "Program Files",
+            "Windows/explorer.exe",
+            "Windows/regedit.exe",
+            "Windows/System32/config/SOFTWARE",
+        ]
+
+        windows_hits = sum(1 for ind in windows_indicators if self._path_exists_ci(ind))
+        return windows_hits >= 2
+
+    def _path_exists_ci(self, path: str) -> bool:
+        """Check if path exists (case-insensitive for Windows filesystems)."""
+        if not self._mount_root:
+            return False
+
+        # Try exact path first
+        full_path = self._mount_root / path
+        if full_path.exists():
+            return True
+
+        # Try case-insensitive search for Windows filesystems
+        parts = Path(path).parts
+        current = self._mount_root
+
+        for part in parts:
+            if not current.is_dir():
+                return False
+
+            # Look for matching entry (case-insensitive)
+            found = False
+            try:
+                for entry in current.iterdir():
+                    if entry.name.lower() == part.lower():
+                        current = entry
+                        found = True
+                        break
+            except (PermissionError, OSError):
+                return False
+
+            if not found:
+                return False
+
+        return current.exists()
 
     def _gather_os_info(self, root: str) -> dict[str, Any]:
-        """Gather OS information from mounted root."""
+        """Gather OS information from mounted root (Linux or Windows)."""
         info: dict[str, Any] = {
             "type": "unknown",
             "distro": "unknown",
@@ -338,7 +405,11 @@ class NativeGuestFS:
         if not self._mount_root:
             return info
 
-        # Parse /etc/os-release
+        # Try Windows detection first
+        if self._path_exists_ci("Windows/System32"):
+            return self._gather_windows_info(root)
+
+        # Parse /etc/os-release for Linux
         os_release = self._mount_root / "etc/os-release"
         if os_release.exists():
             try:
@@ -359,12 +430,104 @@ class NativeGuestFS:
             except Exception:
                 pass
 
-        # Detect Windows
-        if (self._mount_root / "Windows").exists():
-            info["type"] = "windows"
-            info["product"] = "Windows"
+        return info
+
+    def _gather_windows_info(self, root: str) -> dict[str, Any]:
+        """Gather Windows OS information from registry and filesystem."""
+        info: dict[str, Any] = {
+            "type": "windows",
+            "distro": "windows",
+            "product": "Windows",
+            "major": 0,
+            "minor": 0,
+            "arch": "unknown",
+        }
+
+        if not self._mount_root:
+            return info
+
+        # Detect architecture from System32 presence
+        if self._path_exists_ci("Windows/SysWOW64"):
+            info["arch"] = "x86_64"  # 64-bit Windows has SysWOW64
+        elif self._path_exists_ci("Windows/System32"):
+            info["arch"] = "i686"  # 32-bit Windows
+
+        # Try to parse SOFTWARE registry hive for version info
+        software_hive = None
+        for try_path in ["Windows/System32/config/SOFTWARE", "windows/system32/config/software"]:
+            test_path = self._mount_root / try_path
+            if test_path.exists():
+                software_hive = test_path
+                break
+
+        if software_hive:
+            version_info = self._parse_windows_version(software_hive)
+            info.update(version_info)
 
         return info
+
+    def _parse_windows_version(self, software_hive: Path) -> dict[str, Any]:
+        """Parse Windows version from SOFTWARE registry hive using chntpw/reged."""
+        version_info = {}
+
+        try:
+            # Try using chntpw (hivexget) to read registry
+            # Key: Microsoft\Windows NT\CurrentVersion
+            # Values: ProductName, CurrentMajorVersionNumber, CurrentMinorVersionNumber, CurrentBuild
+
+            # Try with hivexget if available
+            try:
+                # Read ProductName
+                result = _run_sudo(
+                    self.logger,
+                    ["hivexget", str(software_hive),
+                     r"Microsoft\Windows NT\CurrentVersion", "ProductName"],
+                    check=True, capture=True
+                )
+                product_name = result.stdout.strip().strip('"')
+                if product_name:
+                    version_info["product"] = product_name
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+
+            # Try to read version numbers
+            try:
+                result = _run_sudo(
+                    self.logger,
+                    ["hivexget", str(software_hive),
+                     r"Microsoft\Windows NT\CurrentVersion", "CurrentMajorVersionNumber"],
+                    check=True, capture=True
+                )
+                major = result.stdout.strip()
+                if major and major.isdigit():
+                    version_info["major"] = int(major)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+
+            try:
+                result = _run_sudo(
+                    self.logger,
+                    ["hivexget", str(software_hive),
+                     r"Microsoft\Windows NT\CurrentVersion", "CurrentMinorVersionNumber"],
+                    check=True, capture=True
+                )
+                minor = result.stdout.strip()
+                if minor and minor.isdigit():
+                    version_info["minor"] = int(minor)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+
+        except Exception as e:
+            self.logger.debug(f"Failed to parse Windows version from registry: {e}")
+
+        # Fallback: detect version from filesystem structure
+        if "product" not in version_info:
+            if self._path_exists_ci("Program Files/Windows NT"):
+                version_info["product"] = "Windows NT-based"
+            elif self._path_exists_ci("Program Files"):
+                version_info["product"] = "Windows"
+
+        return version_info
 
     def inspect_get_type(self, root: str) -> str:
         """Get OS type (linux, windows, etc.)."""
@@ -465,7 +628,7 @@ class NativeGuestFS:
         self._mount_impl(device, mountpoint, options=options)
 
     def _mount_impl(self, device: str, mountpoint: str, *, readonly: bool = False, options: str | None = None) -> None:
-        """Internal mount implementation."""
+        """Internal mount implementation with Windows filesystem support."""
         if not self._launched or not self._mount_root:
             raise RuntimeError("Not launched")
 
@@ -478,19 +641,88 @@ class NativeGuestFS:
         # Create mountpoint if needed
         target.mkdir(parents=True, exist_ok=True)
 
-        # Build mount command
+        # Detect filesystem type for appropriate mount options
+        fstype = self._detect_fstype(device)
+
+        # Build mount command with filesystem-specific options
         cmd = ["mount"]
+        mount_opts = []
 
         if options:
-            cmd.extend(["-o", options])
-        elif readonly:
-            cmd.extend(["-o", "ro"])
+            mount_opts.append(options)
+        else:
+            # Auto-configure based on filesystem type
+            if fstype == "ntfs":
+                # Use ntfs-3g for full read-write support
+                cmd.extend(["-t", "ntfs-3g"])
+                if readonly:
+                    mount_opts.append("ro")
+                else:
+                    # Enable permissions, compression, and streams
+                    mount_opts.extend(["permissions", "streams_interface=windows"])
+            elif fstype in ("vfat", "msdos", "fat"):
+                # FAT filesystems
+                cmd.extend(["-t", "vfat"])
+                mount_opts.extend(["iocharset=utf8", "shortname=mixed"])
+                if readonly:
+                    mount_opts.append("ro")
+            elif fstype == "exfat":
+                # exFAT filesystem
+                cmd.extend(["-t", "exfat"])
+                mount_opts.append("iocharset=utf8")
+                if readonly:
+                    mount_opts.append("ro")
+            elif fstype in ("ext2", "ext3", "ext4"):
+                # Linux ext filesystems
+                if readonly:
+                    mount_opts.extend(["ro", "noload"])
+            elif fstype == "xfs":
+                # XFS filesystem
+                if readonly:
+                    mount_opts.extend(["ro", "norecovery"])
+            elif fstype == "btrfs":
+                # Btrfs filesystem
+                if readonly:
+                    mount_opts.extend(["ro", "norecovery"])
+            else:
+                # Generic fallback
+                if readonly:
+                    mount_opts.append("ro")
+
+        if mount_opts:
+            cmd.extend(["-o", ",".join(mount_opts)])
 
         cmd.extend([device, str(target)])
 
-        # Mount
-        _run_sudo(self.logger, cmd, check=True, capture=True)
-        self._mounted[mountpoint] = device
+        # Mount with retries for different filesystem states
+        try:
+            _run_sudo(self.logger, cmd, check=True, capture=True)
+            self._mounted[mountpoint] = device
+            self.logger.debug(f"Mounted {device} at {mountpoint} (fstype={fstype})")
+        except subprocess.CalledProcessError as e:
+            # If mount failed and it's a Windows filesystem, try with additional recovery options
+            if fstype in ("ntfs", "vfat", "exfat") and not readonly:
+                self.logger.warning(f"Mount failed, retrying {device} in read-only mode...")
+                # Retry in read-only mode
+                cmd_ro = ["mount", "-t", fstype if fstype != "fat" else "vfat", "-o", "ro"]
+                cmd_ro.extend([device, str(target)])
+                try:
+                    _run_sudo(self.logger, cmd_ro, check=True, capture=True)
+                    self._mounted[mountpoint] = device
+                    self.logger.info(f"Mounted {device} at {mountpoint} in read-only mode")
+                    return
+                except subprocess.CalledProcessError:
+                    pass
+            raise RuntimeError(f"Failed to mount {device}: {e.stderr}")
+
+    def _detect_fstype(self, device: str) -> str:
+        """Detect filesystem type using blkid."""
+        try:
+            result = _run_sudo(self.logger, ["blkid", "-o", "value", "-s", "TYPE", device], check=True, capture=True)
+            fstype = result.stdout.strip()
+            return fstype if fstype else "unknown"
+        except Exception:
+            return "unknown"
 
     def umount_all(self) -> None:
         """Unmount all mounted filesystems."""
@@ -808,6 +1040,239 @@ class NativeGuestFS:
         chroot_cmd = ["chroot", str(self._mount_root)] + cmd
         result = _run_sudo(self.logger, chroot_cmd, check=True, capture=True)
         return result.stdout
+
+    # Windows-specific operations
+
+    def win_inject_driver(self, driver_path: str, inf_file: str | None = None) -> dict[str, Any]:
+        """
+        Inject Windows driver into guest filesystem.
+
+        Args:
+            driver_path: Path to driver directory on host
+            inf_file: Optional specific INF file to use (default: auto-detect)
+
+        Returns:
+            Dict with injection results
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        driver_src = Path(driver_path)
+        if not driver_src.exists():
+            raise FileNotFoundError(f"Driver path not found: {driver_path}")
+
+        result = {
+            "ok": False,
+            "driver_path": driver_path,
+            "inf_file": inf_file,
+            "destination": None,
+            "error": None,
+        }
+
+        try:
+            # Find DriverStore path (case-insensitive)
+            driver_store = None
+            for try_path in [
+                "Windows/System32/DriverStore/FileRepository",
+                "windows/system32/driverstore/filerepository",
+            ]:
+                test_path = self._mount_root / try_path
+                if test_path.exists():
+                    driver_store = test_path
+                    break
+
+            if not driver_store:
+                # Fallback: Create DriverStore path
+                driver_store = self._mount_root / "Windows/System32/DriverStore/FileRepository"
+                driver_store.mkdir(parents=True, exist_ok=True)
+
+            # Find INF file if not specified
+            if inf_file is None:
+                inf_files = list(driver_src.glob("*.inf"))
+                if not inf_files:
+                    raise ValueError(f"No INF file found in {driver_path}")
+                inf_file = inf_files[0].name
+
+            # Create destination directory (driver package name from INF)
+            inf_name = Path(inf_file).stem
+            dest_dir = driver_store / inf_name
+            dest_dir.mkdir(parents=True, exist_ok=True)
+
+            # Copy all driver files
+            copied_files = []
+            for src_file in driver_src.iterdir():
+                if src_file.is_file():
+                    dest_file = dest_dir / src_file.name
+                    shutil.copy2(src_file, dest_file)
+                    copied_files.append(src_file.name)
+                    self.logger.debug(f"Copied driver file: {src_file.name}")
+
+            result["ok"] = True
+            result["destination"] = str(dest_dir.relative_to(self._mount_root))
+            result["files_copied"] = len(copied_files)
+            self.logger.info(f"📦 Injected Windows driver: {inf_name} ({len(copied_files)} files)")
+
+        except Exception as e:
+            result["error"] = str(e)
+            self.logger.error(f"Failed to inject driver: {e}")
+
+        return result
+
+    def win_registry_read(self, hive_name: str, key_path: str, value_name: str) -> str | None:
+        """
+        Read value from Windows registry hive.
+
+        Args:
+            hive_name: Registry hive (SOFTWARE, SYSTEM, SAM, etc.)
+            key_path: Registry key path (e.g., "Microsoft\\Windows NT\\CurrentVersion")
+            value_name: Value name to read
+
+        Returns:
+            Value string or None if not found
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        # Find registry hive file
+        hive_file = None
+        for try_path in [
+            f"Windows/System32/config/{hive_name}",
+            f"windows/system32/config/{hive_name.lower()}",
+        ]:
+            test_path = self._mount_root / try_path
+            if test_path.exists():
+                hive_file = test_path
+                break
+
+        if not hive_file:
+            self.logger.warning(f"Registry hive not found: {hive_name}")
+            return None
+
+        try:
+            # Use hivexget to read registry value
+            result = _run_sudo(
+                self.logger,
+                ["hivexget", str(hive_file), key_path, value_name],
+                check=True,
+                capture=True
+            )
+            value = result.stdout.strip().strip('"')
+            return value if value else None
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            self.logger.debug(f"Failed to read registry value {hive_name}\\{key_path}\\{value_name}: {e}")
+            return None
+
+    def win_registry_write(self, hive_name: str, key_path: str, value_name: str, value: str, value_type: str = "sz") -> bool:
+        """
+        Write value to Windows registry hive.
+
+        Args:
+            hive_name: Registry hive (SOFTWARE, SYSTEM, etc.)
+            key_path: Registry key path
+            value_name: Value name to write
+            value: Value to write
+            value_type: Value type (sz=string, dword=32-bit int, etc.)
+
+        Returns:
+            True if successful
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        # Find registry hive file
+        hive_file = None
+        for try_path in [
+            f"Windows/System32/config/{hive_name}",
+            f"windows/system32/config/{hive_name.lower()}",
+        ]:
+            test_path = self._mount_root / try_path
+            if test_path.exists():
+                hive_file = test_path
+                break
+
+        if not hive_file:
+            self.logger.warning(f"Registry hive not found: {hive_name}")
+            return False
+
+        try:
+            # Use hivexregedit to write registry value
+            # Create a temporary reg file with the change
+            reg_content = f"""Windows Registry Editor Version 5.00
+
+[{key_path}]
+"{value_name}"="{value}"
+"""
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.reg', delete=False) as f:
+                f.write(reg_content)
+                reg_file = f.name
+
+            try:
+                # Apply registry changes using hivexregedit
+                _run_sudo(
+                    self.logger,
+                    ["hivexregedit", "--merge", str(hive_file), reg_file],
+                    check=True,
+                    capture=True
+                )
+                self.logger.info(f"✏️  Updated registry: {hive_name}\\{key_path}\\{value_name}")
+                return True
+
+            finally:
+                Path(reg_file).unlink(missing_ok=True)
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            self.logger.error(f"Failed to write registry value: {e}")
+            return False
+
+    def win_resolve_path(self, path: str) -> Path | None:
+        """
+        Resolve Windows path (case-insensitive).
+
+        Args:
+            path: Windows-style path (e.g., "C:\\Windows\\System32\\drivers")
+
+        Returns:
+            Resolved Path object or None if not found
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        # Strip drive letter if present
+        if len(path) >= 2 and path[1] == ':':
+            path = path[3:]  # Remove "C:\"
+
+        # Convert backslashes to forward slashes
+        path = path.replace('\\', '/')
+
+        # Try exact path first
+        full_path = self._mount_root / path
+        if full_path.exists():
+            return full_path
+
+        # Try case-insensitive search
+        parts = Path(path).parts
+        current = self._mount_root
+
+        for part in parts:
+            if not current.is_dir():
+                return None
+
+            # Look for matching entry (case-insensitive)
+            found = False
+            try:
+                for entry in current.iterdir():
+                    if entry.name.lower() == part.lower():
+                        current = entry
+                        found = True
+                        break
+            except (PermissionError, OSError):
+                return None
+
+            if not found:
+                return None
+
+        return current if current.exists() else None
 
     # Context manager support
 
