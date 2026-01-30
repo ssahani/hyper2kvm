@@ -14,6 +14,7 @@ All fixers are:
 from .fix_fstab import FstabFixer
 from .fix_initramfs import InitramfsFixer
 from .fix_grub import GrubFixer
+from .fix_selinux import SELinuxFixer
 from .utils import (
     get_block_device_uuid,
     get_block_device_label,
@@ -25,6 +26,7 @@ __all__ = [
     'FstabFixer',
     'InitramfsFixer',
     'GrubFixer',
+    'SELinuxFixer',
     'get_block_device_uuid',
     'get_block_device_label',
     'detect_os_from_root',
