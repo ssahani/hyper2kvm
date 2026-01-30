@@ -51,9 +51,7 @@ class NetworkTopology:
         self.logger = logger
         self.fix_level = fix_level
 
-    # ---------------------------
     # Edge helpers (topology safety)
-    # ---------------------------
 
     def _edge_touches(self, e: TopoEdge, name: str) -> bool:
         """Check if edge involves a specific interface."""
@@ -72,9 +70,7 @@ class NetworkTopology:
         """Check if interface is member of bond/bridge/VLAN."""
         return any(self._is_lower_layer_member_edge(e, name) for e in edges)
 
-    # ---------------------------
     # Interface rename detection
-    # ---------------------------
 
     def needs_interface_rename(self, interface_name: str) -> bool:
         """
@@ -122,9 +118,7 @@ class NetworkTopology:
             return f"eth{match.group()}"
         return "eth0"
 
-    # ---------------------------
     # Topology building - backend-specific parsers
-    # ---------------------------
 
     def _netplan_add_to_topology(
         self,
@@ -307,9 +301,7 @@ class NetworkTopology:
             graph.add_node(vlan_parent, graph.infer_kind(vlan_parent), source=cfg.path)
             graph.add_edge(vlan_parent, iface_name, "vlan")
 
-    # ---------------------------
     # Main topology builder
-    # ---------------------------
 
     def build_topology(self, configs: List[NetworkConfig]) -> TopologyGraph:
         """
@@ -365,9 +357,7 @@ class NetworkTopology:
 
         return graph
 
-    # ---------------------------
     # Interface rename planning
-    # ---------------------------
 
     def compute_rename_map(self, topo: TopologyGraph) -> Dict[str, str]:
         """

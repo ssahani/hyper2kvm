@@ -363,9 +363,7 @@ class VMwareClient:
 
         self._rich_console = Console(stderr=True) if (RICH_AVAILABLE and Console is not None) else None
 
-    # ---------------------------------------------------------------------
     # build from config using shared resolver (vs_* + vc_* + *_env)
-    # ---------------------------------------------------------------------
 
     @classmethod
     def from_config(
@@ -399,9 +397,7 @@ class VMwareClient:
     def has_creds(self) -> bool:
         return bool(self.host and self.user and self.password)
 
-    # ---------------------------
     # Internal helpers: tool handles
-    # ---------------------------
 
     def _govc(self) -> Optional[GovmomiCLI]:
         """
@@ -457,9 +453,7 @@ class VMwareClient:
                 raise VMwareError(f"OVF Tool not found: {e}")
         return self._ovftool_paths
 
-    # ---------------------------
     # Context managers
-    # ---------------------------
 
     def __enter__(self) -> "VMwareClient":
         self.connect()
@@ -473,9 +467,7 @@ class VMwareClient:
                 self.logger.error("Exception in context: %s: %s", getattr(exc_type, "__name__", exc_type), exc_val)
         return False
 
-    # ---------------------------
     # Connection
-    # ---------------------------
 
     def _require_pyvmomi(self) -> None:
         if not PYVMOMI_AVAILABLE:
@@ -561,9 +553,7 @@ class VMwareClient:
         except Exception as e:
             raise VMwareError(f"Failed to retrieve content: {e}")
 
-    # ---------------------------
     # Datacenters / Hosts - Delegate to vmware_datastore
-    # ---------------------------
 
     def _refresh_datacenter_cache(self) -> None:
         return _datastore_refresh_datacenter_cache(self)
@@ -583,9 +573,7 @@ class VMwareClient:
     def list_host_names(self, *, refresh: bool = False) -> List[str]:
         return _datastore_list_host_names(self, refresh=refresh)
 
-    # ---------------------------
     # VM lookup - Delegate to vmware_datastore
-    # ---------------------------
 
     def get_vm_by_name(self, name: str) -> Any:
         return _datastore_get_vm_by_name(self, name)
@@ -618,9 +606,7 @@ class VMwareClient:
     def resolve_compute_for_vm(self, vm_name: str, preferred: Optional[str]) -> str:
         return _datastore_resolve_compute_for_vm(self, vm_name, preferred)
 
-    # ---------------------------
     # govc export (stable) - Delegate to vmware_ovftool
-    # ---------------------------
 
     def _ensure_output_dir(self, base: Path) -> Path:
         out = Path(base).expanduser().resolve()
@@ -633,9 +619,7 @@ class VMwareClient:
     def govc_export_ova(self, opt: V2VExportOptions) -> Path:
         return _ovftool_govc_export_ova(self, opt)
 
-    # ---------------------------
     # OVF Tool export/deploy - Delegate to vmware_ovftool
-    # ---------------------------
 
     def _vm_inventory_path_under_vmfolder(self, vm_obj: Any, dc_obj: Any) -> str:
         """
@@ -736,9 +720,7 @@ class VMwareClient:
     def ovftool_deploy_ova(self, source_ova: Path, opt: V2VExportOptions) -> None:
         return _ovftool_ovftool_deploy_ova(self, source_ova, opt)
 
-    # ---------------------------
     # Datastore parsing + HTTPS /folder download - Delegate to vmware_datastore
-    # ---------------------------
 
     @staticmethod
     def parse_backing_filename(file_name: str) -> Tuple[str, str]:
@@ -800,9 +782,7 @@ class VMwareClient:
             force_https=force_https,
         )
 
-    # ---------------------------
     # Download-only (list via DatastoreBrowser, download via govc/https) - Delegate to vmware_datastore
-    # ---------------------------
 
     def wait_for_task(self, task: Any) -> None:
         return _datastore_wait_for_task(self, task)
@@ -941,9 +921,7 @@ class VMwareClient:
         """
         return _datastore_download_only_vm_force_https(self, opt)
 
-    # ---------------------------
     # virt-v2v (power user path) - Delegate to vmware_v2v
-    # ---------------------------
 
     def _vpx_uri(self, *, datacenter: str, compute: str, no_verify: bool) -> str:
         q = "?no_verify=1" if no_verify else ""
@@ -1152,9 +1130,7 @@ class VMwareClient:
     def v2v_export_vm(self, opt: V2VExportOptions) -> Path:
         return _v2v_export_vm(self, opt)
 
-    # ---------------------------
     # VDDK raw disk download (experimental orchestration only) - Delegate to vmware_vddk
-    # ---------------------------
 
     def _require_vddk_client(self) -> None:
         if not VDDK_CLIENT_AVAILABLE:
@@ -1192,9 +1168,7 @@ class VMwareClient:
     def vddk_download_disk(self, opt: V2VExportOptions) -> Path:
         return _vddk_download_disk(self, opt)
 
-    # ---------------------------
     # Unified entrypoint (policy) - refactored into smaller handlers
-    # ---------------------------
 
     @staticmethod
     def _normalize_export_mode(mode: Optional[str]) -> str:

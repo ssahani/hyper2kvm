@@ -875,9 +875,7 @@ class VsphereMode:
             except Exception as e:
                 raise Fatal(2, f"OVF Tool is required but not found: {e}")
 
-    # -------------------------------------------------------------------------
     # govc helpers (public GovcRunner methods)
-    # -------------------------------------------------------------------------
     def _govc_list_vm_names(self) -> List[Dict[str, Any]]:
         """
         Inventory via govc.
@@ -936,9 +934,7 @@ class VsphereMode:
             self.logger.debug("govc: list_vm_names took %s", _fmt_duration(time.monotonic() - t0))
         return detailed
 
-    # -------------------------------------------------------------------------
     # OVF Tool helpers
-    # -------------------------------------------------------------------------
     def _ovftool_export_vm(self, client: "VMwareClient", vm_name: str, out_dir: Path) -> None:
         self._require_ovftool()
 
@@ -1035,9 +1031,7 @@ class VsphereMode:
 
         self.logger.info("OVF Tool deployment completed in %s", _fmt_duration(time.monotonic() - t0))
 
-    # -------------------------------------------------------------------------
     # Main runner
-    # -------------------------------------------------------------------------
     def run(self) -> int:
         vc_host = self.args.vcenter
         vc_user = self.args.vc_user

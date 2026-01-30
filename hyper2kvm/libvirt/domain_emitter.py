@@ -150,9 +150,7 @@ def emit_from_args(
         guest_kind, bool(uefi), bool(headless), name, img
     )
 
-    # ---------------------------
     # WINDOWS
-    # ---------------------------
     if guest_kind == "windows":
         if not _WIN_DOMAIN_OK or WinDomainSpec is None or render_windows_domain_xml is None:
             logger.warning("emit_domain_xml requested for Windows but windows_domain not available")
@@ -206,9 +204,7 @@ def emit_from_args(
             logger.info("💿 VirtIO driver ISO: %s", driver_iso)
         return xml_path
 
-    # ---------------------------
     # LINUX
-    # ---------------------------
     if not _LINUX_DOMAIN_OK or emit_linux_domain is None:
         logger.warning("emit_domain_xml requested but libvirt linux_domain not available")
         return None

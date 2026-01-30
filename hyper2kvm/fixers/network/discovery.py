@@ -82,9 +82,7 @@ class NetworkDiscovery:
         self.logger = logger
         self.backup_suffix = backup_suffix
 
-    # ---------------------------
     # Safe file I/O operations
-    # ---------------------------
 
     def _get_mode_safe(self, g: guestfs.GuestFS, path: str) -> Optional[int]:
         """
@@ -163,9 +161,7 @@ class NetworkDiscovery:
         elif prefer_mode is not None:
             self._chmod_safe(g, path, prefer_mode)
 
-    # ---------------------------
     # Configuration type detection
-    # ---------------------------
 
     def detect_config_type(self, path: str) -> NetworkConfigType:
         """
@@ -216,9 +212,7 @@ class NetworkDiscovery:
             return True
         return False
 
-    # ---------------------------
     # Backup and hashing
-    # ---------------------------
 
     def create_backup(
         self,
@@ -278,9 +272,7 @@ class NetworkDiscovery:
         h = hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()
         return h[:12]
 
-    # ---------------------------
     # Configuration file discovery
-    # ---------------------------
 
     def read_config_file(self, g: guestfs.GuestFS, path: str) -> Optional[NetworkConfig]:
         """

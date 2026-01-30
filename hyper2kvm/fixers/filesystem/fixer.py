@@ -61,9 +61,7 @@ class FilesystemFixer:
             "end_time": 0.0,
         }
 
-    # -------------------------------------------------------------------------
     # Logging / small utils
-    # -------------------------------------------------------------------------
 
     def _log(self, level: int, msg: str, *args, **kwargs) -> None:
         if self.logger:
@@ -78,9 +76,7 @@ class FilesystemFixer:
         except Exception:
             self.stats[key] = inc
 
-    # -------------------------------------------------------------------------
     # Normalization helpers
-    # -------------------------------------------------------------------------
 
     def _normalize_fs_type(self, fs_type: str) -> str:
         s = (fs_type or "").strip().lower().replace("-", "_")
@@ -91,9 +87,7 @@ class FilesystemFixer:
         toks = [t for t in re.split(r"[^a-z0-9_]+", s) if t]
         return toks or ([s] if s else [])
 
-    # -------------------------------------------------------------------------
     # Appliance memory helpers (best-effort)
-    # -------------------------------------------------------------------------
 
     def _get_guestfs_memsize_mib_best_effort(self, ctx: Any | None = None) -> Optional[int]:
         for key in ("guestfs_memsize_mib", "memsize_mib", "appliance_memsize_mib"):
@@ -125,9 +119,7 @@ class FilesystemFixer:
         m = max(256, min(m, usable))
         return min(m, 2048)
 
-    # -------------------------------------------------------------------------
     # Command helpers
-    # -------------------------------------------------------------------------
 
     def _has_command(self, g: guestfs.GuestFS) -> bool:
         return bool(hasattr(g, "command"))
@@ -187,9 +179,7 @@ class FilesystemFixer:
                 return True
         return False
 
-    # -------------------------------------------------------------------------
     # Filesystem type detection
-    # -------------------------------------------------------------------------
 
     def _vfs_type(self, g: guestfs.GuestFS, dev: str) -> str:
         dev_text = U.to_text(dev)
@@ -262,9 +252,7 @@ class FilesystemFixer:
         self._log(logging.DEBUG, "❓ vfs detect: could not detect filesystem type for %s", dev_text)
         return ""
 
-    # -------------------------------------------------------------------------
     # Classification
-    # -------------------------------------------------------------------------
 
     def _classify_fs_type(self, fs_type: str) -> Dict[str, Any]:
         fs_raw = fs_type or ""
@@ -300,9 +288,7 @@ class FilesystemFixer:
 
         return classification
 
-    # -------------------------------------------------------------------------
     # Repair runners (small + focused)
-    # -------------------------------------------------------------------------
 
     def _run_fsck_ext(self, g: guestfs.GuestFS, dev: str, dry_run: bool, force_repair: bool = False) -> Dict[str, Any]:
         result: Dict[str, Any] = {

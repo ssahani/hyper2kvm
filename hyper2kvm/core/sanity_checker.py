@@ -138,9 +138,7 @@ class SanityChecker:
         self.report.notes["mode"] = str(getattr(args, "mode", "") or "default")
         self.report.notes["output_dir"] = str(self.out_root)
 
-    # -------------------------------------------------------------------------
     # tiny helpers
-    # -------------------------------------------------------------------------
 
     def _need(self, flag: str) -> bool:
         """Return True if args has flag and it evaluates truthy."""
@@ -173,9 +171,7 @@ class SanityChecker:
     def _args_mode(self) -> str:
         return str(getattr(self.args, "mode", "") or "")
 
-    # ------------------------
     # network policy
-    # ------------------------
 
     def _wants_network_check(self) -> bool:
         """
@@ -201,9 +197,7 @@ class SanityChecker:
             return False
         return self._args_mode() in ("fetch", "fetch-and-fix", "remote") or self._need("download")
 
-    # ------------------------
     # guestfs policy
-    # ------------------------
 
     def _needs_guestfs(self) -> bool:
         """
@@ -236,9 +230,7 @@ class SanityChecker:
         except Exception:
             return None
 
-    # -------------------------------------------------------------------------
     # argument validation (lightweight)
-    # -------------------------------------------------------------------------
 
     def check_args(self) -> None:
         self.report.checks_ran.append("args")
@@ -261,9 +253,7 @@ class SanityChecker:
             if not host:
                 self._add_err(ErrorKind.BAD_ARGS, f"Mode '{mode}' requires a host (--host/--esxi-host/--remote-host)")
 
-    # -------------------------------------------------------------------------
     # checks
-    # -------------------------------------------------------------------------
 
     def check_tools(self) -> None:
         self.report.checks_ran.append("tools")
@@ -539,9 +529,7 @@ class SanityChecker:
             else:
                 self._add_warn(msg)
 
-    # -------------------------------------------------------------------------
     # orchestration
-    # -------------------------------------------------------------------------
 
     def _run_checks(self, checks: Sequence[Tuple[str, callable]]) -> None:
         if self._is_tty():
