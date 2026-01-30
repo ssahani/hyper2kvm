@@ -1,434 +1,821 @@
 # hyper2kvm Examples
 
-This directory contains working examples for common hyper2kvm migration scenarios.
+This directory contains **40+ working examples** for common hyper2kvm migration scenarios, organized by use case.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Directory Structure](#directory-structure)
+- [Common Scenarios](#common-scenarios)
+- [Configuration Format](#configuration-format)
+- [Complete Workflows](#complete-workflows)
+- [Tips and Best Practices](#tips-and-best-practices)
+
+---
+
+## Quick Start
+
+### 5-Minute Migration
+
+```bash
+# 1. Install hyper2kvm (see docs/INSTALL.md)
+pip install -e .
+
+# 2. Run a basic conversion
+sudo python -m hyper2kvm local \
+  --vmdk /path/to/vm.vmdk \
+  --flatten \
+  --to-output vm-fixed.qcow2 \
+  --compress
+
+# 3. Or use a config file
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-basic.yaml
+```
+
+### Using Configuration Files
+
+```bash
+# Single config
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-basic.yaml
+
+# Merge multiple configs (later overrides earlier)
+sudo python -m hyper2kvm \
+  --config examples/yaml/00-common/common.yaml \
+  --config examples/yaml/10-local/local-linux-basic.yaml
+
+# Override with CLI args
+sudo python -m hyper2kvm \
+  --config examples/yaml/10-local/local-linux-basic.yaml \
+  --compress --to-output /custom/path.qcow2
+```
+
+---
 
 ## Directory Structure
 
 ```
 examples/
-├── json/               # JSON configuration files (machine-friendly)
-│   ├── 00-common/     # Shared/base configurations
-│   ├── 10-local/      # Local VMDK conversions
-│   ├── 11-batch/      # Batch/multi-VM migrations
-│   ├── 20-live-fix/   # Live SSH-based fixes
-│   ├── 30-vsphere/    # vSphere/ESXi integration
-│   └── 40-fetch/      # Remote fetch scenarios
-└── yaml/              # YAML configuration files (human-friendly)
-    └── (mirrors json structure)
+├── README.md                    # This file
+├── scripts/                     # Shell script examples
+│   ├── migrate-single-vm.sh     # Single VM migration script
+│   ├── migrate-batch.sh         # Batch migration script
+│   └── test-migration.sh        # Test converted VMs
+│
+└── yaml/                        # YAML configuration examples
+    ├── 00-common/               # Reusable base configs
+    │   ├── common.yaml          # Standard settings
+    │   ├── common-fast.yaml     # Speed-optimized
+    │   └── common-strict.yaml   # Maximum validation
+    │
+    ├── 10-local/                # Local VMDK conversions (14 examples)
+    │   ├── local-linux-basic.yaml
+    │   ├── local-linux-cloud-init.yaml
+    │   ├── local-linux-grow-root.yaml
+    │   ├── local-windows-virtio-basic.yaml
+    │   └── ... (more)
+    │
+    ├── 11-batch/                # Batch/multi-VM migrations (2 examples)
+    │   ├── batch-local-two-vms.yaml
+    │   └── batch-local-many.yaml
+    │
+    ├── 20-live-fix/             # Live SSH fixes (3 examples)
+    │   ├── live-fix-basic.yaml
+    │   ├── live-fix-batch.yaml
+    │   └── live-fix-dry-run.yaml
+    │
+    ├── 30-fetch-and-fix/        # Remote fetch (3 examples)
+    │   ├── fetch-basic.yaml
+    │   ├── fetch-batch-parallel.yaml
+    │   └── fetch-full-chain-and-test.yaml
+    │
+    ├── 40-ova-ovf/              # OVA/OVF handling (2 examples)
+    │   ├── ova-basic.yaml
+    │   └── ovf-basic.yaml
+    │
+    ├── 50-daemon/               # Automation (2 examples)
+    │   ├── daemon-watch.yaml
+    │   └── generate-systemd.yaml
+    │
+    ├── 60-vsphere/              # vSphere integration (11 examples)
+    │   ├── vsphere-list-vms.yaml
+    │   ├── vsphere-export-vm.yaml
+    │   └── ... (more)
+    │
+    └── 99-merge-demos/          # Config merging examples (3 examples)
+        ├── merge-base.yaml
+        ├── merge-override.yaml
+        └── merge-run-local.yaml
 ```
+
+**Total:** 40+ working examples
 
 ---
 
-## Quick Start Examples
+## Common Scenarios
 
-### 1. Convert a Local VMDK to QCOW2
+### Linux Migrations
 
-```bash
-# Basic conversion with automatic fixes
-sudo python -m hyper2kvm local \
-  --vmdk /path/to/linux.vmdk \
-  --flatten \
-  --to-output linux-fixed.qcow2 \
-  --compress
-```
-
-**Using config file:**
-```bash
-sudo python -m hyper2kvm --config examples/json/10-local/local-linux-basic.json
-```
-
-### 2. Fetch and Convert Remote VMDK from ESXi
+#### 1. Basic Linux VM Conversion
 
 ```bash
-# Fetch VMDK from ESXi over SSH and convert
-sudo python -m hyper2kvm fetch-and-fix \
-  --host esxi.example.com \
-  --user root \
-  --remote /vmfs/volumes/datastore1/vm/vm.vmdk \
-  --fetch-all \
-  --flatten \
-  --to-output vm-converted.qcow2
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-basic.yaml
 ```
 
-**Using config file:**
-```bash
-sudo python -m hyper2kvm --config examples/json/40-fetch/fetch-esxi-linux.json
-```
+**What it does:**
+- Converts VMDK to qcow2
+- Flattens snapshots
+- Fixes /etc/fstab (UUID/PARTUUID)
+- Regenerates bootloader (GRUB)
+- Cleans network config
+- Compresses output
 
-### 3. Fix a Running Linux VM Over SSH
+**Use when:** You have a Linux VM VMDK file locally
+
+#### 2. Cloud-Init Ready Image
 
 ```bash
-# Apply network/bootloader fixes to a live VM
-sudo python -m hyper2kvm live-fix \
-  --host 192.168.1.100 \
-  --user root \
-  --sudo \
-  --fix-network \
-  --fix-bootloader
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-cloud-init.yaml
 ```
 
-**Using config file:**
-```bash
-sudo python -m hyper2kvm --config examples/json/20-live-fix/live-fix-basic.json
-```
+**What it does:**
+- Everything in basic conversion
+- Injects cloud-init
+- Configures for cloud deployment
+- Sets up console access
 
-### 4. Windows VM with VirtIO Driver Injection
+**Use when:** Preparing VMs for cloud platforms (OpenStack, etc.)
+
+#### 3. Expand Root Partition
 
 ```bash
-# Convert Windows VM and inject VirtIO drivers
-sudo python -m hyper2kvm local \
-  --vmdk /path/to/windows.vmdk \
-  --flatten \
-  --to-output windows-fixed.qcow2 \
-  --windows \
-  --inject-virtio \
-  --virtio-win-iso /path/to/virtio-win.iso
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-grow-root.yaml
 ```
 
-**Using config file:**
-```bash
-sudo python -m hyper2kvm --config examples/json/10-local/local-windows-virtio-basic.json
-```
+**What it does:**
+- Resizes disk image
+- Expands root partition
+- Resizes filesystem
+- Fixes bootloader and fstab
 
-### 5. Batch Migration of Multiple VMs
+**Use when:** Your VM disk is too small for the target environment
+
+#### 4. UEFI Boot Test
 
 ```bash
-# Process multiple VMs from YAML matrix
-sudo python -m hyper2kvm --config examples/json/11-batch/batch-local-many.json
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-libvirt-smoke-uefi.yaml
 ```
+
+**What it does:**
+- Converts VM
+- Validates UEFI boot
+- Tests with libvirt
+- Generates boot report
+
+**Use when:** Migrating UEFI-based VMs
 
 ---
 
-## Example Categories
+### Windows Migrations
 
-### 00-common: Base Configurations
+#### 5. Windows with VirtIO Drivers
 
-Shared settings that can be merged with specific scenarios:
-
-- **common.json** - Standard settings for most migrations
-- **common-fast.json** - Optimized for speed (less validation)
-- **common-strict.json** - Maximum safety and validation
-
-**Usage:**
 ```bash
-# Merge common settings with specific config
-sudo python -m hyper2kvm \
-  --config examples/json/00-common/common.json \
-  --config examples/json/10-local/local-linux-basic.json
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-windows-virtio-basic.yaml
 ```
 
-### 10-local: Local VMDK Conversions
+**What it does:**
+- Converts Windows VMDK
+- Injects VirtIO storage drivers (offline registry modification)
+- Injects VirtIO network drivers
+- Two-phase boot strategy (SATA → VirtIO)
+- Validates boot
 
-Process VMDK files already on local disk:
+**Use when:** Migrating any Windows VM to KVM
 
-- **local-linux-basic.json** - Simple Linux VM conversion
-- **local-linux-cloud-init.json** - Cloud image preparation
-- **local-linux-grow-root.json** - Expand root partition during conversion
-- **local-windows-virtio-basic.json** - Windows with VirtIO drivers
-- **local-with-virt-v2v-primary.json** - Use virt-v2v as primary converter
+#### 6. Windows with Extra Devices
 
-### 11-batch: Batch Operations
+```bash
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-windows-virtio-extra-devices.yaml
+```
 
-Process multiple VMs in one run:
+**What it does:**
+- All basic Windows fixes
+- Adds VirtIO balloon driver
+- Adds VirtIO RNG driver
+- Adds VirtIO SCSI driver
+- QEMU guest agent
 
-- **batch-local-two-vms.json** - Convert two VMs
-- **batch-local-many.json** - YAML matrix for many VMs
-
-### 20-live-fix: Live SSH Fixes
-
-Fix running VMs without conversion:
-
-- **live-fix-basic.json** - Network and bootloader fixes
-- **live-fix-batch.json** - Fix multiple running VMs
-
-### 30-vsphere: vSphere Integration
-
-Export and convert VMs from vSphere:
-
-- **vsphere-export-single.json** - Export one VM
-- **vsphere-export-batch.json** - Export multiple VMs
-- **vsphere-with-credentials.json** - Using credential file
-
-### 40-fetch: Remote Fetch
-
-Fetch VMDKs from remote systems:
-
-- **fetch-esxi-linux.json** - Fetch from ESXi host
-- **fetch-with-identity.json** - Using SSH key authentication
+**Use when:** You need advanced VirtIO devices for Windows
 
 ---
 
-## Configuration File Format
+### Remote/Network Migrations
 
-### JSON Format
+#### 7. Fetch from ESXi via SSH
 
-```json
-{
-  "command": "local",
-  "vmdk": "/path/to/disk.vmdk",
-  "flatten": true,
-  "to_output": "output.qcow2",
-  "compress": true,
-  "report": "migration-report.md"
-}
+```bash
+sudo python -m hyper2kvm --config examples/yaml/30-fetch-and-fix/fetch-basic.yaml
 ```
 
-### YAML Format
+**What it does:**
+- Connects to ESXi host via SSH
+- Downloads VMDK files
+- Flattens snapshot chains
+- Applies all fixes
+- Converts to qcow2
+
+**Use when:** Migrating VMs from ESXi without vCenter
+
+#### 8. Parallel Batch Fetch
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/30-fetch-and-fix/fetch-batch-parallel.yaml
+```
+
+**What it does:**
+- Fetches multiple VMs in parallel
+- Processes disks concurrently
+- Maximizes throughput
+- Individual error isolation
+
+**Use when:** Migrating many VMs from ESXi
+
+---
+
+### vSphere Integration
+
+#### 9. List VMs in vSphere
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/60-vsphere/vsphere-list-vms.yaml
+```
+
+**What it does:**
+- Connects to vCenter
+- Lists all VMs
+- Shows VM properties
+- Exports to JSON/YAML
+
+**Use when:** Planning migrations from vSphere
+
+#### 10. Export VM from vSphere
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/60-vsphere/vsphere-export-vm.yaml
+```
+
+**What it does:**
+- Exports VM from vCenter
+- Downloads all disks
+- Applies fixes
+- Converts to qcow2
+- Validates boot
+
+**Use when:** Migrating from vCenter/vSphere
+
+#### 11. Enable CBT (Changed Block Tracking)
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/60-vsphere/vsphere-enable-cbt.yaml
+```
+
+**What it does:**
+- Enables CBT on VM
+- Configures for incremental backups
+- Prepares for fast syncs
+
+**Use when:** Setting up incremental migration workflows
+
+---
+
+### Live Fixes (No Conversion)
+
+#### 12. Fix Running Linux VM
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/20-live-fix/live-fix-basic.yaml
+```
+
+**What it does:**
+- Connects to running VM via SSH
+- Fixes /etc/fstab
+- Regenerates GRUB
+- Cleans network config
+- NO conversion, NO downtime
+
+**Use when:** Fixing VMs already running on KVM
+
+#### 13. Dry-Run Preview
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/20-live-fix/live-fix-dry-run.yaml
+```
+
+**What it does:**
+- Shows what WOULD be changed
+- No actual modifications
+- Generates detailed report
+
+**Use when:** Testing fixes before applying
+
+---
+
+### Batch Operations
+
+#### 14. Migrate Two VMs
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/11-batch/batch-local-two-vms.yaml
+```
+
+**What it does:**
+- Processes two VMs sequentially
+- Independent error handling
+- Individual reports
+
+**Use when:** Small batch migrations
+
+#### 15. Migrate Many VMs (YAML Matrix)
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/11-batch/batch-local-many.yaml
+```
+
+**What it does:**
+- Reads VM list from YAML
+- Processes all VMs
+- Parallel execution option
+- Batch summary report
+
+**Use when:** Large-scale migrations
+
+---
+
+### Advanced Workflows
+
+#### 16. virt-v2v Integration
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-with-virt-v2v-post.yaml
+```
+
+**What it does:**
+- Runs hyper2kvm fixes first
+- Then runs virt-v2v
+- Combines strengths of both tools
+- Maximum compatibility
+
+**Use when:** Complex migrations needing both tools
+
+#### 17. Raw Disk for DD
+
+```bash
+sudo python -m hyper2kvm --config examples/yaml/10-local/local-linux-raw-for-dd.yaml
+```
+
+**What it does:**
+- Converts to RAW format
+- Optimized for `dd` imaging
+- Sparse file support
+- Exact byte copy
+
+**Use when:** Creating bootable USB or bare-metal deployments
+
+---
+
+## Configuration Format
+
+### YAML Example (Recommended)
 
 ```yaml
-command: local
-vmdk: /path/to/disk.vmdk
+# Basic Linux migration
+cmd: local
+vmdk: /data/vms/web-server/web-server.vmdk
 flatten: true
-to_output: output.qcow2
+to_output: /data/kvm/web-server.qcow2
 compress: true
-report: migration-report.md
+
+# Fixes
+fix_fstab: true
+fix_grub: true
+fix_network: true
+
+# Validation
+libvirt_test: true
+
+# Reporting
+report: /var/log/migrations/web-server-$(date +%Y%m%d).md
+log_level: INFO
+```
+
+### Minimal Example
+
+```yaml
+cmd: local
+vmdk: /path/to/vm.vmdk
+to_output: /output/vm.qcow2
+```
+
+### Comprehensive Example
+
+```yaml
+# Command and input
+cmd: local
+vmdk: /data/vm/ubuntu-server.vmdk
+
+# Processing
+flatten: true
+compress: true
+grow_root: 20G
+
+# Linux fixes
+fix_fstab: true
+fix_grub: true
+fix_initramfs: true
+fix_network: true
+remove_vmware_tools: true
+
+# Cloud preparation
+inject_cloud_init: true
+
+# Testing
+libvirt_test: true
+qemu_test: true
+
+# Output
+to_output: /data/kvm/ubuntu-server.qcow2
+output_format: qcow2
+
+# Reporting
+report: ubuntu-server-migration.md
+log_level: DEBUG
+dry_run: false
 ```
 
 ---
 
-## Common Options
+## Complete Workflows
 
-### Input Options
-- `vmdk`: Path to source VMDK file
-- `command`: Operation mode (local, fetch-and-fix, live-fix, vsphere)
+### Workflow 1: VMware Workstation → KVM
 
-### Output Options
-- `to_output`: Output file path (.qcow2 recommended)
-- `compress`: Enable compression
-- `flatten`: Flatten snapshot chains
-
-### Processing Options
-- `fix_network`: Fix network configuration
-- `fix_bootloader`: Regenerate bootloader config
-- `inject_virtio`: Inject Windows VirtIO drivers (Windows only)
-- `grow_root`: Expand root partition
-
-### Testing Options
-- `libvirt_test`: Boot test with libvirt
-- `qemu_test`: Boot test with QEMU
-- `dry_run`: Show plan without executing
-
-### Reporting
-- `report`: Generate markdown migration report
-- `log_level`: Logging verbosity (DEBUG, INFO, WARNING, ERROR)
-
----
-
-## Merging Configuration Files
-
-You can layer multiple config files:
+**Scenario:** Migrate a development VM from VMware Workstation to KVM
 
 ```bash
-# Base settings + specific VM config
-sudo python -m hyper2kvm \
-  --config examples/json/00-common/common.json \
-  --config my-vm.json
+# Step 1: Locate the VMDK
+ls ~/vmware/Ubuntu-Development/*.vmdk
 
-# Override with command-line args
-sudo python -m hyper2kvm \
-  --config examples/json/10-local/local-linux-basic.json \
+# Step 2: Convert with fixes
+sudo python -m hyper2kvm local \
+  --vmdk ~/vmware/Ubuntu-Development/Ubuntu-Development.vmdk \
+  --flatten \
+  --to-output ~/kvm/ubuntu-dev.qcow2 \
   --compress \
-  --to-output custom-output.qcow2
+  --fix-fstab \
+  --fix-grub \
+  --fix-network
+
+# Step 3: Test boot
+sudo python -m hyper2kvm local \
+  --vmdk ~/kvm/ubuntu-dev.qcow2 \
+  --qemu-test
+
+# Step 4: Import to libvirt
+sudo cp ~/kvm/ubuntu-dev.qcow2 /var/lib/libvirt/images/
+sudo virt-install \
+  --name ubuntu-dev \
+  --memory 4096 \
+  --vcpus 2 \
+  --disk /var/lib/libvirt/images/ubuntu-dev.qcow2,bus=virtio \
+  --network bridge=virbr0,model=virtio \
+  --graphics vnc \
+  --import
 ```
 
-**Merge priority** (later overrides earlier):
-1. First config file
-2. Second config file
-3. Command-line arguments
+### Workflow 2: ESXi → KVM (Production)
 
----
-
-## Creating Your Own Config
-
-### Step 1: Start with a Template
+**Scenario:** Migrate production web server from ESXi to KVM
 
 ```bash
-cp examples/json/10-local/local-linux-basic.json my-migration.json
+# Step 1: Fetch from ESXi
+sudo python -m hyper2kvm fetch-and-fix \
+  --host esxi-prod-01.example.com \
+  --user root \
+  --identity ~/.ssh/esxi_key \
+  --remote /vmfs/volumes/production/web-01/web-01.vmdk \
+  --fetch-all \
+  --flatten \
+  --to-output /staging/web-01.qcow2 \
+  --compress \
+  --report /staging/reports/web-01-migration.md
+
+# Step 2: Test on staging KVM host
+scp /staging/web-01.qcow2 staging-kvm:/var/lib/libvirt/images/
+ssh staging-kvm "sudo virsh define /staging/web-01.xml && sudo virsh start web-01"
+
+# Step 3: Validate
+ssh staging-kvm "curl http://localhost"  # Test web service
+
+# Step 4: Production deployment
+scp /staging/web-01.qcow2 prod-kvm:/var/lib/libvirt/images/
+ssh prod-kvm "sudo virsh define /prod/web-01.xml && sudo virsh start web-01"
 ```
 
-### Step 2: Edit for Your Environment
+### Workflow 3: vSphere → KVM (Batch)
 
-```json
-{
-  "command": "local",
-  "vmdk": "/data/vms/myvm/myvm.vmdk",
-  "flatten": true,
-  "to_output": "/data/converted/myvm.qcow2",
-  "compress": true,
-  "fix_network": true,
-  "fix_bootloader": true,
-  "report": "/data/reports/myvm-migration.md",
-  "log_level": "INFO"
-}
-```
-
-### Step 3: Run
+**Scenario:** Migrate 10 VMs from vCenter to KVM
 
 ```bash
-sudo python -m hyper2kvm --config my-migration.json
+# Step 1: Create VM list (vms-to-migrate.yaml)
+cat > vms-to-migrate.yaml <<EOF
+vms:
+  - vm_name: web-01
+    output: /data/kvm/web-01.qcow2
+  - vm_name: web-02
+    output: /data/kvm/web-02.qcow2
+  - vm_name: db-01
+    output: /data/kvm/db-01.qcow2
+  # ... more VMs
+EOF
+
+# Step 2: Export all VMs
+sudo python -m hyper2kvm vsphere \
+  --vcenter vcenter.example.com \
+  --username admin@vsphere.local \
+  --password-file ~/.vcenter_pass \
+  --vs-action export-batch \
+  --config vms-to-migrate.yaml \
+  --parallel 4
+
+# Step 3: Validate all
+for vm in /data/kvm/*.qcow2; do
+  sudo python -m hyper2kvm local \
+    --vmdk "$vm" \
+    --libvirt-test \
+    --dry-run
+done
 ```
 
----
+### Workflow 4: Windows Migration
 
-## Example Workflows
+**Scenario:** Migrate Windows 10 VM with full driver support
 
-### Workflow 1: ESXi to KVM Migration
+```bash
+# Step 1: Download VirtIO drivers
+wget https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso \
+  -O /data/virtio-win.iso
 
-1. **Export from ESXi:**
-   ```bash
-   sudo python -m hyper2kvm fetch-and-fix \
-     --host esxi.example.com \
-     --remote /vmfs/volumes/ds1/prod-web/prod-web.vmdk \
-     --fetch-all \
-     --to-output prod-web.qcow2
-   ```
+# Step 2: Convert with driver injection
+sudo python -m hyper2kvm local \
+  --vmdk /data/vmware/Windows10-Pro/Windows10-Pro.vmdk \
+  --windows \
+  --inject-virtio \
+  --virtio-win-iso /data/virtio-win.iso \
+  --flatten \
+  --compress \
+  --to-output /data/kvm/windows10.qcow2 \
+  --report /data/reports/windows10-migration.md
 
-2. **Test the converted VM:**
-   ```bash
-   sudo python -m hyper2kvm local \
-     --vmdk prod-web.qcow2 \
-     --libvirt-test \
-     --dry-run
-   ```
-
-3. **Deploy to production KVM:**
-   ```bash
-   sudo cp prod-web.qcow2 /var/lib/libvirt/images/
-   sudo virsh define prod-web.xml
-   sudo virsh start prod-web
-   ```
-
-### Workflow 2: Batch Migration
-
-1. **Create VM list (vms.yaml):**
-   ```yaml
-   vms:
-     - vmdk: /data/vm1/vm1.vmdk
-       to_output: /data/converted/vm1.qcow2
-     - vmdk: /data/vm2/vm2.vmdk
-       to_output: /data/converted/vm2.qcow2
-   ```
-
-2. **Run batch migration:**
-   ```bash
-   sudo python -m hyper2kvm --config vms.yaml
-   ```
-
-### Workflow 3: Windows with VirtIO
-
-1. **Download VirtIO drivers:**
-   ```bash
-   wget https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso
-   ```
-
-2. **Convert with driver injection:**
-   ```bash
-   sudo python -m hyper2kvm local \
-     --vmdk windows10.vmdk \
-     --windows \
-     --inject-virtio \
-     --virtio-win-iso virtio-win.iso \
-     --to-output windows10-kvm.qcow2
-   ```
-
----
-
-## Troubleshooting Examples
-
-### Enable Debug Logging
-
-```json
-{
-  "command": "local",
-  "vmdk": "/path/to/problematic.vmdk",
-  "log_level": "DEBUG",
-  "to_output": "debug-output.qcow2"
-}
-```
-
-### Dry Run (Preview Only)
-
-```json
-{
-  "command": "local",
-  "vmdk": "/path/to/test.vmdk",
-  "dry_run": true,
-  "to_output": "test.qcow2"
-}
-```
-
-### Generate Detailed Report
-
-```json
-{
-  "command": "local",
-  "vmdk": "/path/to/vm.vmdk",
-  "report": "detailed-migration-report.md",
-  "to_output": "vm.qcow2"
-}
+# Step 3: Import to libvirt with UEFI
+sudo virt-install \
+  --name windows10 \
+  --memory 8192 \
+  --vcpus 4 \
+  --disk /data/kvm/windows10.qcow2,bus=virtio \
+  --network network=default,model=virtio \
+  --os-variant win10 \
+  --boot uefi \
+  --graphics spice \
+  --import
 ```
 
 ---
 
 ## Tips and Best Practices
 
-### 1. Always Flatten Snapshots
-```json
-{"flatten": true}
-```
-Ensures a clean, single-file output without snapshot dependencies.
+### General Best Practices
 
-### 2. Use Compression for Storage
-```json
-{"compress": true}
-```
-QCOW2 compression significantly reduces disk usage.
+1. **Always Flatten Snapshots**
+   ```yaml
+   flatten: true
+   ```
+   Ensures clean, single-file output without dependencies
 
-### 3. Test Before Production
-```json
-{"libvirt_test": true, "dry_run": true}
-```
-Validate the conversion plan before executing.
+2. **Use Compression**
+   ```yaml
+   compress: true
+   ```
+   QCOW2 compression saves 40-60% disk space
 
-### 4. Keep Backups
-```json
-{"backup": true}
-```
-Always maintain original VMDKs until conversion is verified.
+3. **Generate Reports**
+   ```yaml
+   report: migration-report-$(date +%Y%m%d-%H%M%S).md
+   ```
+   Documents all changes for troubleshooting
 
-### 5. Generate Reports
-```json
-{"report": "migration-$(date +%Y%m%d).md"}
-```
-Document what was changed for troubleshooting.
+4. **Test Before Production**
+   ```yaml
+   dry_run: true
+   libvirt_test: true
+   ```
+   Validate conversion plan and boot capability
+
+5. **Keep Backups**
+   - Never delete source VMDKs until new VM is verified
+   - Keep migration reports for audit trail
+
+### Performance Optimization
+
+1. **Parallel Processing**
+   ```yaml
+   parallel_processing: true
+   parallel_workers: 4
+   ```
+   Use for multi-disk VMs
+
+2. **Skip Unnecessary Fixes**
+   ```yaml
+   fix_network: false  # If network already correct
+   ```
+
+3. **Use RAW for Speed**
+   ```yaml
+   output_format: raw  # Faster than qcow2, but larger
+   ```
+
+### Troubleshooting
+
+1. **Enable Debug Logging**
+   ```yaml
+   log_level: DEBUG
+   ```
+
+2. **Dry-Run First**
+   ```yaml
+   dry_run: true
+   ```
+
+3. **Test Individual Components**
+   ```bash
+   # Test disk inspection
+   sudo guestfish --ro -a vm.vmdk -i
+
+   # Test qemu-img
+   qemu-img info vm.vmdk
+   ```
+
+### Security
+
+1. **Use SSH Keys**
+   ```yaml
+   identity: ~/.ssh/esxi_key
+   ```
+
+2. **Store Credentials Securely**
+   ```yaml
+   password_file: ~/.vcenter_pass  # Not in YAML!
+   ```
+
+3. **Validate Checksums**
+   ```yaml
+   verify_checksums: true
+   ```
 
 ---
 
-## Need Help?
+## Creating Custom Configurations
 
-- **Documentation:** See `docs/` directory
-- **CLI Reference:** `python -m hyper2kvm --help`
-- **Issues:** https://github.com/hyper2kvm/hyper2kvm/issues
-- **Examples:** This directory has 30+ working examples
+### Template
+
+```yaml
+# ============================================
+# Migration Configuration
+# ============================================
+# Description: [What this migration does]
+# Use Case: [When to use this]
+# Prerequisites: [What you need]
+# ============================================
+
+# Command
+cmd: local  # or fetch-and-fix, vsphere, etc.
+
+# Input
+vmdk: /path/to/source.vmdk
+
+# Processing
+flatten: true
+compress: true
+
+# Fixes (enable as needed)
+fix_fstab: true
+fix_grub: true
+fix_network: true
+
+# Output
+to_output: /path/to/output.qcow2
+
+# Testing
+libvirt_test: false
+dry_run: false
+
+# Reporting
+report: migration-report.md
+log_level: INFO
+```
+
+### Save and Run
+
+```bash
+# Save as my-migration.yaml
+sudo python -m hyper2kvm --config my-migration.yaml
+```
+
+---
+
+## Example Index
+
+### By Use Case
+
+**Quick Conversions:**
+- `10-local/local-linux-basic.yaml` - Fastest path to qcow2
+- `10-local/local-windows-virtio-basic.yaml` - Windows quick migration
+
+**Production Migrations:**
+- `30-fetch-and-fix/fetch-full-chain-and-test.yaml` - Complete workflow
+- `60-vsphere/vsphere-export-vm.yaml` - vSphere export
+
+**Testing/Validation:**
+- `10-local/local-linux-qemu-smoke.yaml` - QEMU boot test
+- `10-local/local-linux-libvirt-smoke-uefi.yaml` - UEFI validation
+- `20-live-fix/live-fix-dry-run.yaml` - Preview changes
+
+**Advanced:**
+- `10-local/local-with-virt-v2v-post.yaml` - Hybrid approach
+- `11-batch/batch-local-many.yaml` - Mass migration
+- `50-daemon/daemon-watch.yaml` - Automated monitoring
+
+### By Operating System
+
+**Linux:**
+- Ubuntu/Debian: `10-local/local-linux-basic.yaml`
+- RHEL/CentOS: `10-local/local-linux-basic.yaml`
+- Cloud Images: `10-local/local-linux-cloud-init.yaml`
+
+**Windows:**
+- Windows 10/11: `10-local/local-windows-virtio-basic.yaml`
+- Windows Server: `10-local/local-windows-virtio-extra-devices.yaml`
+
+**Specialized:**
+- PhotonOS: `yaml/photon-ova.yaml`
+- RHEL 10: `yaml/stabilizeall-esx8-rhel10.yaml`
+
+---
+
+## Getting Help
+
+**Documentation:**
+- [Quick Start Guide](../docs/QUICKSTART.md)
+- [CLI Reference](../docs/CLI_REFERENCE.md)
+- [YAML Configuration Guide](../docs/YAML-EXAMPLES.md)
+- [Troubleshooting](../docs/FAILURE_MODES.md)
+
+**Command-Line Help:**
+```bash
+python -m hyper2kvm --help
+python -m hyper2kvm local --help
+python -m hyper2kvm vsphere --help
+```
+
+**Community:**
+- GitHub Issues: https://github.com/hyper2kvm/hyper2kvm/issues
+- Discussions: https://github.com/hyper2kvm/hyper2kvm/discussions
 
 ---
 
 ## Contributing Examples
 
-Have a useful migration scenario? Contribute it!
+Have a useful migration scenario? Share it!
 
-1. Create your config file
+1. Create your configuration file
 2. Test it thoroughly
-3. Add documentation
+3. Document the use case
 4. Submit a pull request
 
-Example template:
-```json
-{
-  "// DESCRIPTION": "What this example does",
-  "// USE_CASE": "When to use this",
-  "// PREREQUISITES": "What you need",
-  "command": "...",
-  "...": "..."
-}
+**Example template:**
+```yaml
+# ============================================
+# [Example Name]
+# ============================================
+# Description: [Clear description of what this does]
+# Use Case: [When someone should use this]
+# Prerequisites: [What's needed to run this]
+# Author: [Your name]
+# Date: [Date created]
+# ============================================
+
+cmd: [command]
+# ... rest of config
 ```
+
+---
+
+**Explore the `yaml/` directory for 40+ ready-to-use examples!**
