@@ -104,11 +104,11 @@ test_prerequisites() {
 
     # Test 6: Check for hyper2kvm CLI
     log_test "hyper2kvm CLI is available"
-    if command -v h2kvmctl &> /dev/null; then
-        H2KVM_VERSION=$(h2kvmctl --version 2>&1 || echo "unknown")
-        log_success "h2kvmctl found: $H2KVM_VERSION"
+    if command -v hyper2kvm &> /dev/null; then
+        H2KVM_VERSION=$(hyper2kvm --version 2>&1 | grep -i version || echo "installed")
+        log_success "hyper2kvm found: $H2KVM_VERSION"
     else
-        log_fail "h2kvmctl not found"
+        log_fail "hyper2kvm not found"
         log_info "Install with: pip install -e ."
         return 1
     fi
@@ -190,7 +190,7 @@ test_migration() {
 
     # Run migration locally
     log_info "Running migration (this may take a few minutes)..."
-    if h2kvmctl -c "$CONFIG_FILE"; then
+    if hyper2kvm --config "$CONFIG_FILE"; then
         log_success "Migration completed successfully!"
 
         # Show output
