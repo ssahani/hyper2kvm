@@ -15,7 +15,7 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # Phase 2: parses full args (so required args can be satisfied by config)
 #
 # --------------------------------------------------------------------------------------
-# 0) Common keys (apply to ALL modes)
+# Common keys (apply to ALL modes)
 # --------------------------------------------------------------------------------------
 # output_dir: ./out
 # workdir: ./out/work
@@ -63,26 +63,91 @@ YAML_EXAMPLE = r"""# vmdk2kvm configuration examples (YAML)
 # headless: true
 #
 # --------------------------------------------------------------------------------------
+# Libvirt: emit domain XML / deploy into libvirt (define/start)
+# --------------------------------------------------------------------------------------
+# This section is additive. If the orchestrator doesn't recognize these keys yet,
+# it will ignore them. When wired, they map cleanly to linux_domain.emit_linux_domain()
+# and virsh operations.
+#
+# Emit domain XML after pipeline:
+# emit_domain_xml: true        # write <vm_name>.xml (relative to output_dir unless absolute)
+# libvirt_xml_dir: ./libvirt   # directory for emitted XML (optional)
+# libvirt_xml_name: null       # override filename (optional)
+#
+# Deploy actions:
+# virsh_define: true           # virsh define <xml>
+# virsh_start: false           # virsh start <vm_name> (optional "deploy")
+# virsh_autostart: false       # virsh autostart <vm_name> (optional)
+#
+# Storage safety (recommended when defining):
+# copy_to_libvirt_images: true          # copy final disk to libvirt-readable dir
+# libvirt_images_dir: /var/lib/libvirt/images
+# overwrite_disk_copy: false
+#
+# Template selection hint:
+# guest_os: linux              # linux | windows
+#
+# Domain knobs used by emitter (mostly mirror "Tests" knobs above):
+# machine: q35                 # q35|pc
+# disk_bus: virtio
+# disk_dev: vda
+# disk_cache: none             # or null to omit
+# net_model: virtio
+# libvirt_network: default
+#
+# Graphics knobs (ignored if headless:true => graphics=none):
+# graphics: spice              # none|vnc|spice
+# graphics_listen: 127.0.0.1
+# video: virtio                # virtio|vga|qxl
+# usb_tablet: true
+#
+# Linux clock policy:
+# clock: utc                   # utc|localtime
+#
+# UEFI knobs (used only if uefi:true):
+# ovmf_code: /usr/share/edk2/ovmf/OVMF_CODE.fd
+# nvram_vars: null
+# ovmf_vars_template: null
+#
+# Optional: attach cloud-init seed ISO in the emitted XML:
+# cloudinit_iso: null
+# cloudinit_seed_iso: null
+#
+# Windows-only emission knobs (ignored unless guest_os=windows):
+# win_stage: bootstrap          # bootstrap | final
+# win_driver_iso: null          # path to virtio-win.iso (or dir if emitter expects dir)
+# virtio_win_iso: null          # alias
+# driver_iso: null              # alias
+# win_localtime_clock: true
+# win_hyperv: true
+#
+# Example: "deploy" after conversion:
+# emit_domain_xml: true
+# virsh_define: true
+# virsh_start: true
+# copy_to_libvirt_images: true
+#
+# --------------------------------------------------------------------------------------
 # 1) LOCAL (offline local VMDK conversion)
 # --------------------------------------------------------------------------------------
 # Basic local mode config: fix + flatten + convert to qcow2 (Linux guest)
-command: local
-vmdk: /path/to/vm.vmdk
-output_dir: ./out
-workdir: ./out/work
-flatten: true
-flatten_format: qcow2
-to_output: vm-fixed.qcow2
-out_format: qcow2
-compress: true
-compress_level: 6
-fstab_mode: stabilize-all
-print_fstab: true
-regen_initramfs: true
-remove_vmware_tools: true
-checksum: true
-report: local-report.md
-verbose: 1
+# command: local
+# vmdk: /path/to/vm.vmdk
+# output_dir: ./out
+# workdir: ./out/work
+# flatten: true
+# flatten_format: qcow2
+# to_output: vm-fixed.qcow2
+# out_format: qcow2
+# compress: true
+# compress_level: 6
+# fstab_mode: stabilize-all
+# print_fstab: true
+# regen_initramfs: true
+# remove_vmware_tools: true
+# checksum: true
+# report: local-report.md
+# verbose: 1
 # --- Local: "minimal safe" dry-run preview (no changes performed) ---
 # command: local
 # vmdk: /path/to/vm.vmdk
@@ -391,7 +456,7 @@ verbose: 1
 # disk: 0
 # local_path: ./downloads/myVM-disk0.vmdk
 #
-# ✅ NEW: Download-only VM folder pull (NO virt-v2v, NO guest inspection):
+# Download-only VM folder pull (NO virt-v2v, NO guest inspection):
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
@@ -404,7 +469,7 @@ verbose: 1
 # exclude_glob: ["*.lck", "*.log", "*.vswp", "*.vmem", "*.vmsn"]
 # concurrency: 4
 #
-# ✅ NEW: VDDK raw download (single disk) (requires vddk_client + VDDK libs):
+# VDDK raw download (single disk) (requires vddk_client + VDDK libs):
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
@@ -538,7 +603,7 @@ verbose: 1
 # # vs_snapshot_moref: "snapshot-123"
 # # vs_create_snapshot: true
 #
-# # ✅ NEW: “download-only” handoff (do not run any inspection/fix/test after export)
+# “download-only” handoff (do not run any inspection/fix/test after export)
 # vs_download_only: true
 #
 # # Safety default: keep this 1 unless you REALLY know your datastore can take it
