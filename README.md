@@ -4,7 +4,7 @@
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/hyper2kvm)](https://pypi.org/project/hyper2kvm/)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![GitHub stars](https://img.shields.io/github/stars/hyper2kvm/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/ssahani/hyper2kvm/stargazers/)
+[![GitHub stars](https://img.shields.io/github/stars/ssahani/hyper2kvm.svg?style=social&label=Star&maxAge=2592000)](https://github.com/ssahani/hyper2kvm/stargazers/)
 [![CI](https://github.com/ssahani/hyper2kvm/workflows/tests/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
 [![Security](https://github.com/ssahani/hyper2kvm/workflows/security/badge.svg)](https://github.com/ssahani/hyper2kvm/actions)
 

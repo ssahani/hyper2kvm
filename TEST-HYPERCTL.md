@@ -138,7 +138,7 @@ The jobs failed due to vCenter configuration (not Python integration issues).
 
 ## 📝 Future Improvements
 
-1. **Environment Variable Support**: Add support for `H2KVMD_URL` environment variable
+1. **Environment Variable Support**: Add support for `HYPERVISORD_URL` environment variable
 2. **JSON Output**: Request hyperctl to add `-json` flag for easier parsing
 3. **Progress Streaming**: Add real-time progress updates via websocket/SSE
 4. **Retry Logic**: Add automatic retry for transient connection failures
