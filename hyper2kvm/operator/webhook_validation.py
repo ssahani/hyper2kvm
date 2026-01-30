@@ -200,6 +200,143 @@ class MigrationJobValidator:
         if network_type and network_type not in ['pod', 'masquerade', 'bridge']:
             errors.append(f"Invalid networkType: {network_type}")
 
+        # Validate eviction strategy
+        self._validate_eviction_strategy(create_vm.get('evictionStrategy'), errors)
+
+        # Validate migration policy reference
+        self._validate_migration_policy_ref(create_vm.get('migrationPolicyRef'), errors)
+
+        # Validate CPU configuration
+        self._validate_cpu_config(create_vm.get('cpuConfig'), errors)
+
+        # Validate firmware
+        self._validate_firmware(create_vm.get('firmware'), errors)
+
+        # Validate multi-disk
+        self._validate_multi_disk(create_vm.get('disks'), errors)
+
+        # Validate interfaces
+        self._validate_interfaces(create_vm.get('interfaces'), errors)
+
+    def _validate_eviction_strategy(self, eviction_strategy: Optional[str], errors: List[str]):
+        """Validate eviction strategy."""
+        if eviction_strategy and eviction_strategy not in ['None', 'LiveMigrate', 'LiveMigrateIfPossible', 'External']:
+            errors.append(f"Invalid evictionStrategy: {eviction_strategy}")
+
+    def _validate_migration_policy_ref(self, policy_ref: Optional[str], errors: List[str]):
+        """Validate migration policy reference."""
+        if policy_ref:
+            if not re.match(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', policy_ref):
+                errors.append(f"Invalid migrationPolicyRef: {policy_ref}")
+
+    def _validate_cpu_config(self, cpu_config: Optional[Dict[str, Any]], errors: List[str]):
+        """Validate CPU configuration."""
+        if not cpu_config:
+            return
+
+        cores = cpu_config.get('cores', 1)
+        sockets = cpu_config.get('sockets', 1)
+        threads = cpu_config.get('threads', 1)
+
+        if not isinstance(cores, int) or cores < 1:
+            errors.append(f"Invalid cpuConfig.cores: {cores}. Must be >= 1")
+
+        if not isinstance(sockets, int) or sockets < 1:
+            errors.append(f"Invalid cpuConfig.sockets: {sockets}. Must be >= 1")
+
+        if not isinstance(threads, int) or threads < 1:
+            errors.append(f"Invalid cpuConfig.threads: {threads}. Must be >= 1")
+
+        # Validate total CPU count matches
+        total_cpus = cores * sockets * threads
+        if total_cpus > 128:
+            self.warnings.append(
+                f"CPU configuration results in {total_cpus} total CPUs "
+                "(cores × sockets × threads). This may be excessive."
+            )
+
+    def _validate_firmware(self, firmware: Optional[Dict[str, Any]], errors: List[str]):
+        """Validate firmware configuration."""
+        if not firmware:
+            return
+
+        bootloader = firmware.get('bootloader')
+        if bootloader and bootloader not in ['bios', 'uefi', 'uefi-secure']:
+            errors.append(f"Invalid firmware.bootloader: {bootloader}")
+
+        secure_boot = firmware.get('secureBoot', False)
+        if secure_boot and bootloader not in ['uefi', 'uefi-secure']:
+            errors.append("secureBoot requires bootloader to be 'uefi' or 'uefi-secure'")
+
+    def _validate_multi_disk(self, disks: Optional[List[Dict[str, Any]]], errors: List[str]):
+        """Validate multi-disk configuration."""
+        if not disks:
+            return
+
+        disk_names = set()
+        boot_orders = []
+
+        for idx, disk in enumerate(disks):
+            if 'name' not in disk:
+                errors.append(f"Disk {idx}: name is required")
+                continue
+
+            disk_name = disk['name']
+            if disk_name in disk_names:
+                errors.append(f"Duplicate disk name: {disk_name}")
+            disk_names.add(disk_name)
+
+            if 'pvcName' not in disk:
+                errors.append(f"Disk {disk_name}: pvcName is required")
+
+            # Validate bus type
+            bus = disk.get('bus', 'virtio')
+            if bus not in ['virtio', 'sata', 'scsi']:
+                errors.append(f"Disk {disk_name}: invalid bus type: {bus}")
+
+            # Track boot orders
+            boot_order = disk.get('bootOrder')
+            if boot_order:
+                if not isinstance(boot_order, int) or boot_order < 1:
+                    errors.append(f"Disk {disk_name}: bootOrder must be >= 1")
+                else:
+                    boot_orders.append(boot_order)
+
+        # Check for duplicate boot orders
+        if boot_orders and len(boot_orders) != len(set(boot_orders)):
+            errors.append("Duplicate bootOrder values found in disks")
+
+    def _validate_interfaces(self, interfaces: Optional[List[Dict[str, Any]]], errors: List[str]):
+        """Validate network interfaces configuration."""
+        if not interfaces:
+            return
+
+        interface_names = set()
+
+        for idx, iface in enumerate(interfaces):
+            if 'name' not in iface:
+                errors.append(f"Interface {idx}: name is required")
+                continue
+
+            iface_name = iface['name']
+            if iface_name in interface_names:
+                errors.append(f"Duplicate interface name: {iface_name}")
+            interface_names.add(iface_name)
+
+            if 'type' not in iface:
+                errors.append(f"Interface {iface_name}: type is required")
+                continue
+
+            iface_type = iface['type']
+            if iface_type not in ['masquerade', 'bridge', 'sriov']:
+                errors.append(f"Interface {iface_name}: invalid type: {iface_type}")
+
+            # Validate MAC address format if present
+            mac_address = iface.get('macAddress')
+            if mac_address:
+                if not re.match(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$', mac_address):
+                    errors.append(f"Interface {iface_name}: invalid MAC address format: {mac_address}")
+
     def _validate_cleanup_policy(self, cleanup_policy: Optional[str], errors: List[str]):
         """Validate cleanup policy."""
         if cleanup_policy and cleanup_policy not in ['Always', 'OnSuccess', 'Never']:
