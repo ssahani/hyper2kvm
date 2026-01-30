@@ -45,7 +45,7 @@ def _add_project_control(p: argparse.ArgumentParser) -> None:
         "--cmd",
         dest="cmd",
         default=None,
-        help="Operation (normally from YAML `cmd:`). Examples: local (alias: migrate), fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, azure, daemon, generate-systemd",
+        help="Operation (normally from YAML `cmd:`). Examples: local (alias: migrate), fetch-and-fix, ova, ovf, vhd, ami, raw, live-fix, libvirt-xml, vsphere, azure, daemon, generate-systemd",
     )
     p.add_argument(
         "--vs-action",
@@ -459,6 +459,7 @@ def _add_input_paths(p: argparse.ArgumentParser) -> None:
     p.add_argument("--ovf", default=None, help="Path to .ovf (disks in same dir)")
     p.add_argument("--vhd", default=None, help="Path to .vhd OR tarball containing a .vhd (e.g. .tar/.tar.gz/.tgz).")
     p.add_argument("--ami", default=None, help="Path to tar/tar.gz/tgz/tar.xz containing a disk payload (raw/img/qcow2/vmdk/vhd/...).")
+    p.add_argument("--raw", default=None, help="Path to raw disk image (.raw/.img) OR tarball containing a raw disk.")
 
 
 def _add_ssh_fetch_knobs(p: argparse.ArgumentParser) -> None:

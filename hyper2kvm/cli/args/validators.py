@@ -115,6 +115,23 @@ def _validate_cmd_ami(args: argparse.Namespace, conf: dict[str, Any]) -> None:
         raise SystemExit("cmd=ami: missing required `ami:` (YAML) or CLI --ami")
 
 
+def _validate_cmd_raw(args: argparse.Namespace, conf: dict[str, Any]) -> None:
+    """Validate raw command (raw disk image or tarball)."""
+    # Accept multiple arg names for raw input
+    raw_src = (
+        _merged_get(args, conf, "raw")
+        or _merged_get(args, conf, "img")
+        or _merged_get(args, conf, "raw_src")
+        or _merged_get(args, conf, "raw_path")
+    )
+    if not _require(raw_src):
+        raise SystemExit(
+            "cmd=raw: missing required raw disk input\n"
+            "Provide one of: `raw:`, `img:`, `raw_src:`, or `raw_path:` (YAML)\n"
+            "Or CLI: --raw <path>"
+        )
+
+
 def _validate_cmd_live_fix(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     if not _require(_merged_get(args, conf, "host")):
         raise SystemExit("cmd=live-fix: missing required `host:` (YAML) or CLI --host")
@@ -316,8 +333,11 @@ def validate_args(args: argparse.Namespace, conf: dict[str, Any]) -> None:
             "    ovf             - Extract and convert OVF package\n"
             "    vhd             - Convert VHD/Azure disk\n"
             "    ami             - Extract and convert AMI/cloud tarball\n"
+            "    raw             - Extract and convert raw disk image/tarball\n"
             "    live-fix        - Apply fixes to running VM via SSH\n"
+            "    libvirt-xml     - Parse libvirt XML and generate manifest\n"
             "    vsphere         - vSphere/vCenter operations\n"
+            "    azure           - Azure VM migration operations\n"
             "    daemon          - Watch directory for incoming VMs\n"
             "    generate-systemd - Generate systemd service unit\n"
             "\n"
@@ -360,7 +380,9 @@ def validate_args(args: argparse.Namespace, conf: dict[str, Any]) -> None:
         "ovf": _validate_cmd_ovf,
         "vhd": _validate_cmd_vhd,
         "ami": _validate_cmd_ami,
+        "raw": _validate_cmd_raw,
         "live-fix": _validate_cmd_live_fix,
+        "libvirt-xml": lambda _a, _c: None,  # Handled by orchestrator
         "generate-systemd": lambda _a, _c: None,
         "daemon": lambda _a, _c: None,
         "vsphere": _validate_cmd_vsphere,
