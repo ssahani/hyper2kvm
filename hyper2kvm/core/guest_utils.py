@@ -7,7 +7,7 @@ to avoid duplication across modules.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 try:
     import guestfs  # type: ignore

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="hyper2kvm",

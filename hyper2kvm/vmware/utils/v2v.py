@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import quote
 
 # Optional: Rich progress UI (TTY friendly). Falls back to plain logs if Rich not available.
@@ -54,7 +54,6 @@ try:
 except Exception:  # pragma: no cover
     # For standalone usage, define a minimal version
     from dataclasses import dataclass
-    from typing import Tuple
 
     @dataclass
     class V2VExportOptions:  # type: ignore

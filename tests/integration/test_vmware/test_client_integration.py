@@ -10,9 +10,9 @@ CRITICAL: These tests cover data loss risk paths including:
 """
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 # TODO: Import actual classes once implemented
 # from hyper2kvm.vmware.clients.client import VMwareClient

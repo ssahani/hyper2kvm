@@ -14,7 +14,7 @@ import ssl
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.parse import quote
 
 # Optional: Rich progress UI (TTY friendly). Falls back to plain logs if Rich not available.
@@ -445,7 +445,7 @@ class VMwareClient:
                     version or "unknown",
                 )
             except Exception as e:
-                raise VMwareError(f"OVF Tool not found: {e}")
+                raise VMwareError(f"OVF Tool not found: {e}") from e
         return self._ovftool_paths
 
     # Context managers
@@ -536,7 +536,7 @@ class VMwareClient:
             self.logger.info("Connected to vSphere: %s:%s", self.host, self.port)
         except Exception as e:
             self.si = None
-            raise VMwareError(f"Failed to connect to vSphere: {e}")
+            raise VMwareError(f"Failed to connect to vSphere: {e}") from e
 
     def disconnect(self) -> None:
         try:
@@ -558,7 +558,7 @@ class VMwareClient:
         try:
             return self.si.RetrieveContent()
         except Exception as e:
-            raise VMwareError(f"Failed to retrieve content: {e}")
+            raise VMwareError(f"Failed to retrieve content: {e}") from e
 
     # Datacenters / Hosts - Delegate to vmware_datastore
 
@@ -913,7 +913,7 @@ class VMwareClient:
                 msg = f"{name}: {e}"
                 failures.append(msg)
                 if fail_on_missing:
-                    raise VMwareError(f"{log_prefix} download failed:\n" + "\n".join(failures))
+                    raise VMwareError(f"{log_prefix} download failed:\n" + "\n".join(failures)) from e
                 self.logger.error("%s download failed (non-fatal): %s", log_prefix, msg)
 
         if failures and fail_on_missing:

@@ -31,9 +31,7 @@ Layouts:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-import tempfile
 from pathlib import Path
 from typing import NoReturn
 
@@ -212,7 +210,7 @@ class TestImageCreator:
         )
 
         self.images.append(descriptor)
-        success(f"Created multi-extent VMDK with 3 extents")
+        success("Created multi-extent VMDK with 3 extents")
 
     def _build_security_tests(self) -> None:
         """Build test images for security validation."""

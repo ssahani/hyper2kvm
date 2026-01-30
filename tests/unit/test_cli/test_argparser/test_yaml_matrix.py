@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import importlib
+
 import pytest
+
 
 def _load_config_loader():
     try:
@@ -13,7 +15,7 @@ def _load_config_loader():
             return ("func", getattr(m, attr))
 
     if hasattr(m, "ConfigLoader"):
-        CL = getattr(m, "ConfigLoader")
+        CL = m.ConfigLoader
         try:
             inst = CL()
             for meth in ("load_config", "load"):

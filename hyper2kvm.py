@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import sys
 import traceback
-from typing import Optional
 
 from hyper2kvm.cli.argument_parser import parse_args_with_config
-from hyper2kvm.orchestrator.orchestrator import Orchestrator as PipelineOrchestrator
 from hyper2kvm.core.exceptions import Fatal
+from hyper2kvm.orchestrator.orchestrator import Orchestrator as PipelineOrchestrator
 
 
 def _print_stderr(msg: str) -> None:
@@ -33,7 +32,7 @@ def _safe_log(logger, level: str, msg: str) -> None:
 
 
 def main() -> None:
-    logger: Optional[object] = None
+    logger: object | None = None
 
     # Phase 1: parse (Fatal can happen here)
     try:
@@ -44,10 +43,10 @@ def main() -> None:
         # Only print if we truly never got a logger.
         if logger is None:
             _print_stderr(f"💥 ERROR    {e}")
-        raise SystemExit(getattr(e, "code", 1))
+        raise SystemExit(getattr(e, "code", 1)) from e
     except KeyboardInterrupt:
         _safe_log(logger, "warning", "Interrupted by user (Ctrl+C).")
-        raise SystemExit(130)
+        raise SystemExit(130) from None
 
     # Phase 2: run pipeline
     try:

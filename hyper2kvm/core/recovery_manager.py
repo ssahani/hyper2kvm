@@ -12,7 +12,7 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
@@ -414,7 +414,7 @@ class RecoveryManager:
                 f"Failed to acquire workdir lock: {p} ({e})",
                 code=ExitCode.LOCK_FAILED,
                 path=p,
-            )
+            ) from e
 
     def close(self) -> None:
         # Call this when done to release lock and mark manifest final.
@@ -563,7 +563,7 @@ class RecoveryManager:
                 stage=stage,
                 checkpoint_id=cp.id,
                 path=cp_file,
-            )
+            ) from e
 
         self._append_index_event({"type": "checkpoint", "run_id": self.run_id, "checkpoint": cp.to_dict()})
         self.logger.debug("Checkpoint saved: stage=%s id=%s file=%s", stage, cp.id, cp_file.name)
@@ -603,7 +603,7 @@ class RecoveryManager:
                     stage=stage,
                     checkpoint_id=cp.id,
                     path=cp_file,
-                )
+                ) from e
 
             self._append_index_event({"type": "complete", "run_id": self.run_id, "id": cp.id, "ts": U.now_ts()})
             self._write_latest_completed(cp, cp_file)
@@ -922,7 +922,7 @@ class RecoveryManager:
                 stage=stage,
                 checkpoint_id=decision.checkpoint_id,
                 path=decision.checkpoint_path,
-            )
+            ) from e
         if not cp.validate_integrity():
             raise RecoveryError(
                 f"Checkpoint integrity failed: {decision.checkpoint_path}",

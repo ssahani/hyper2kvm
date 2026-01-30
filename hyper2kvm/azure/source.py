@@ -10,7 +10,6 @@ import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from rich.progress import (
     BarColumn,

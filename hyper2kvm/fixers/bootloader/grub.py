@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import guestfs  # type: ignore
 
@@ -1073,7 +1073,7 @@ def wire_into(cls: type) -> type:
       - update_grub_root
       - regen
     """
-    setattr(cls, "remove_stale_device_map", remove_stale_device_map)
-    setattr(cls, "update_grub_root", update_grub_root)
-    setattr(cls, "regen", regen)
+    cls.remove_stale_device_map = remove_stale_device_map
+    cls.update_grub_root = update_grub_root
+    cls.regen = regen
     return cls

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-import unittest
 import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from hyper2kvm.vmware.utils.vmdk_parser import VMDK
 
@@ -156,7 +156,7 @@ RW 41943040 SPARSE "test.vmdk"
 
             # Should handle gracefully
             try:
-                info = VMDK.parse_descriptor(self.logger, vmdk)
+                VMDK.parse_descriptor(self.logger, vmdk)
             except Exception:
                 pass  # Expected to fail or return None/empty
 

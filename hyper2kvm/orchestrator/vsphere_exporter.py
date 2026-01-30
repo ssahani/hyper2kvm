@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from typing import List
 
 from ..core.cred import resolve_vsphere_creds
 from ..core.exceptions import Fatal, VMwareError
@@ -61,7 +60,7 @@ class VsphereExporter:
         if getattr(self.args, "vs_vm", None):
             vms = [str(self.args.vs_vm)]
         elif getattr(self.args, "vs_vms", None):
-            v = getattr(self.args, "vs_vms")
+            v = self.args.vs_vms
             if isinstance(v, (list, tuple)):
                 vms = [str(x) for x in v]
             else:
@@ -106,7 +105,7 @@ class VsphereExporter:
         try:
             creds = resolve_vsphere_creds(vars(self.args))
         except Exception as e:
-            raise Fatal(2, f"Missing vSphere credentials for export: {e}")
+            raise Fatal(2, f"Missing vSphere credentials for export: {e}") from e
 
         # Accept both vs_* and vc_* knobs
         port = int(getattr(self.args, "vs_port", None) or getattr(self.args, "vc_port", None) or 443)

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import guestfs  # type: ignore
 

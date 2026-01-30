@@ -8,13 +8,11 @@ Tracks processed files to avoid duplicate conversions.
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
 
 
 class FileDeduplicator:

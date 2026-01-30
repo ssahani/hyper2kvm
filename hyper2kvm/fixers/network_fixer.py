@@ -20,7 +20,7 @@ here for backward compatibility with existing code.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import guestfs  # type: ignore
 

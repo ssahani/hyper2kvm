@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-from typing import Dict
-
 
 def make_tags(*, enable: bool, run_tag: str, vm_name: str) -> dict[str, str]:
     """

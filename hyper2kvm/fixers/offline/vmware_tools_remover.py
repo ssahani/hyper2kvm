@@ -10,7 +10,6 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 from ...core.utils import U
 
@@ -144,7 +143,7 @@ class OfflineVmwareToolsRemover:
         try:
             candidate.relative_to(self.mount_point)
         except Exception:
-            raise RuntimeError(f"Path escapes mount_point: {rel_path} -> {candidate}")
+            raise RuntimeError(f"Path escapes mount_point: {rel_path} -> {candidate}") from None
         return candidate
 
     def _rel_from_mount(self, p: Path) -> str:

@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from ..core.xml_utils import xml_escape as _xml
 from .libvirt_utils import sanitize_name as _sanitize_name

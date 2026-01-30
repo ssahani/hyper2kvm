@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from hyper2kvm.core.exceptions import Hyper2KvmError, Fatal, VMwareError
+
+from hyper2kvm.core.exceptions import Fatal, Hyper2KvmError, VMwareError
 
 
 @pytest.mark.unit

@@ -13,7 +13,6 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from rich.progress import (
     BarColumn,

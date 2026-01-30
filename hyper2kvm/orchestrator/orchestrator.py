@@ -7,7 +7,6 @@ import argparse
 import logging
 import shutil
 from pathlib import Path
-from typing import List, Optional
 
 from ..core.logger import Log
 from ..core.recovery_manager import RecoveryManager

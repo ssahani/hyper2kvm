@@ -8,8 +8,10 @@ reference files outside the base directory using path traversal attacks.
 from __future__ import annotations
 
 import logging
-import pytest
 from pathlib import Path
+
+import pytest
+
 from hyper2kvm.vmware.utils.vmdk_parser import VMDK, VMDKError
 
 

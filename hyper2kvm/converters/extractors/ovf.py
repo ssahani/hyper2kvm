@@ -8,7 +8,7 @@ import tarfile
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from rich.progress import (
     BarColumn,
@@ -442,7 +442,7 @@ class OVF:
         try:
             rel = target.relative_to(outdir_r)
         except Exception:
-            raise ValueError(f"Target is not inside outdir: {target}")
+            raise ValueError(f"Target is not inside outdir: {target}") from None
 
         cur = outdir_r
         for part in rel.parts[:-1]:  # parent components only
@@ -453,7 +453,7 @@ class OVF:
                     raise ValueError(f"Parent component is a symlink: {cur}")
             except OSError:
                 # If we can't stat, treat as suspicious
-                raise ValueError(f"Unable to stat parent component safely: {cur}")
+                raise ValueError(f"Unable to stat parent component safely: {cur}") from None
 
     @staticmethod
     def _safe_out_path(outdir: Path, rel: str) -> Path:

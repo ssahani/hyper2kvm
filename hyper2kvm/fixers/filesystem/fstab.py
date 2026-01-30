@@ -6,7 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     import guestfs  # type: ignore

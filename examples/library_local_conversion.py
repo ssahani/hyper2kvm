@@ -13,8 +13,8 @@ Usage:
     python library_local_conversion.py /path/to/source.vmdk /path/to/output.qcow2
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
 
 from hyper2kvm import DiskProcessor, GuestDetector
@@ -38,7 +38,7 @@ def convert_vmdk_to_qcow2(source_path: str, output_path: str):
     # Optional: Detect guest OS for optimizations
     # Note: This requires mounting the disk, so it's optional
     try:
-        detector = GuestDetector()
+        GuestDetector()
         # For offline detection, we'd need to mount first
         # guest = detector.detect_from_image(source_path)
         # logger.info(f"Detected guest: {guest.os_pretty}")
@@ -90,7 +90,7 @@ def main():
 
     # Run conversion
     try:
-        result = convert_vmdk_to_qcow2(source_path, output_path)
+        convert_vmdk_to_qcow2(source_path, output_path)
         logger.info("✓ Conversion successful!")
         sys.exit(0)
 

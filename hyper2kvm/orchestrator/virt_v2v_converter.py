@@ -12,7 +12,6 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional
 
 from ..core.exceptions import Fatal
 from ..core.logger import Log

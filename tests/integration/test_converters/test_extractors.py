@@ -11,8 +11,6 @@ CRITICAL: These tests cover data integrity risk paths including:
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock
 
 # TODO: Import actual classes
 # from hyper2kvm.converters.extractors.ami import AMI

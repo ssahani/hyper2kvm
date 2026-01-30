@@ -14,8 +14,8 @@ Usage:
     sudo python library_guest_fixing.py /var/lib/libvirt/images/vm.qcow2
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
 
 from hyper2kvm import GuestDetector
@@ -46,7 +46,7 @@ def fix_guest_os(image_path: str, report_path: str = None):
         detector = GuestDetector()
         guest = detector.detect_from_image(image_path)
 
-        logger.info(f"Detected guest OS:")
+        logger.info("Detected guest OS:")
         logger.info(f"  OS:           {guest.os_pretty}")
         logger.info(f"  Type:         {guest.guest_type}")
         logger.info(f"  Architecture: {guest.architecture}")
@@ -88,7 +88,7 @@ def fix_guest_os(image_path: str, report_path: str = None):
     try:
         result = fixer.fix_grub()
         if result.success:
-            logger.info(f"✓ GRUB fixed")
+            logger.info("✓ GRUB fixed")
             fixes_applied.append('grub')
         else:
             logger.warning(f"✗ GRUB fix failed: {result.error}")
@@ -117,7 +117,7 @@ def fix_guest_os(image_path: str, report_path: str = None):
         try:
             result = fixer.regenerate_initramfs()
             if result.success:
-                logger.info(f"✓ Initramfs regenerated")
+                logger.info("✓ Initramfs regenerated")
                 fixes_applied.append('initramfs')
             else:
                 logger.warning(f"✗ Initramfs regeneration failed: {result.error}")
@@ -134,7 +134,7 @@ def fix_guest_os(image_path: str, report_path: str = None):
             logger.info(f"✓ VMware Tools removed: {result.items_removed} items")
             fixes_applied.append('vmware-tools')
         else:
-            logger.info(f"VMware Tools not found or already removed")
+            logger.info("VMware Tools not found or already removed")
     except Exception as e:
         logger.warning(f"VMware Tools removal exception: {e}")
 
@@ -204,7 +204,7 @@ def main():
         result = fix_guest_os(image_path, report_path)
 
         if result['fixes_failed']:
-            logger.warning(f"⚠ Some fixes failed, but migration may still work")
+            logger.warning("⚠ Some fixes failed, but migration may still work")
             sys.exit(0)
         else:
             logger.info("✓ All fixes applied successfully!")

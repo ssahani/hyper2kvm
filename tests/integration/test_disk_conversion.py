@@ -9,10 +9,11 @@ Tests actual disk conversion using real test images:
 - Compression
 """
 
-import pytest
 import subprocess
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture
@@ -84,8 +85,8 @@ def test_raw_to_qcow2_with_compression(test_linux_raw_image, output_dir):
 
     # Verify it's smaller than original (due to compression)
     # Note: May not always be true for small test images
-    original_size = test_linux_raw_image.stat().st_size
-    compressed_size = output_qcow2.stat().st_size
+    test_linux_raw_image.stat().st_size
+    output_qcow2.stat().st_size
 
     # At minimum, verify it's valid QCOW2
     info_result = subprocess.run([

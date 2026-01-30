@@ -12,12 +12,12 @@ Usage:
     python library_boot_testing.py /var/lib/libvirt/images/vm.qcow2
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
 
-from hyper2kvm.testers import QemuTest, LibvirtTest
 from hyper2kvm import GuestDetector
+from hyper2kvm.testers import LibvirtTest, QemuTest
 
 # Setup logging
 logging.basicConfig(
@@ -70,15 +70,15 @@ def test_boot_qemu(
         result = tester.test_boot()
 
         if result.success:
-            logger.info(f"✓ Boot test PASSED")
+            logger.info("✓ Boot test PASSED")
             logger.info(f"  Boot time: {result.boot_time:.2f}s")
             if result.console_log:
                 logger.info(f"  Console log: {len(result.console_log)} bytes")
         else:
-            logger.error(f"✗ Boot test FAILED")
+            logger.error("✗ Boot test FAILED")
             logger.error(f"  Error: {result.error}")
             if result.last_console_lines:
-                logger.error(f"  Last console output:")
+                logger.error("  Last console output:")
                 for line in result.last_console_lines[-10:]:
                     logger.error(f"    {line}")
 
@@ -128,14 +128,14 @@ def test_boot_libvirt(
         result = tester.test_boot()
 
         if result.success:
-            logger.info(f"✓ Boot test PASSED")
+            logger.info("✓ Boot test PASSED")
             logger.info(f"  Boot time: {result.boot_time:.2f}s")
             logger.info(f"  Domain:    {result.domain_name}")
         else:
-            logger.error(f"✗ Boot test FAILED")
+            logger.error("✗ Boot test FAILED")
             logger.error(f"  Error: {result.error}")
             if result.console_log:
-                logger.error(f"  Console output available")
+                logger.error("  Console output available")
 
         return result
 
@@ -160,7 +160,7 @@ def auto_detect_and_test(image_path: str):
         detector = GuestDetector()
         guest = detector.detect_from_image(image_path)
 
-        logger.info(f"Detected guest:")
+        logger.info("Detected guest:")
         logger.info(f"  OS:       {guest.os_pretty}")
         logger.info(f"  Firmware: {guest.firmware}")
         logger.info(f"  Arch:     {guest.architecture}")

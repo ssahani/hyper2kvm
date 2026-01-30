@@ -10,8 +10,9 @@ Tests mounting, unmounting, and mount-related operations:
 - is_whole_device
 """
 
-import pytest
 import shutil
+
+import pytest
 
 
 @pytest.mark.requires_images

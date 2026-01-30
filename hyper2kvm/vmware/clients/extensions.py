@@ -10,7 +10,6 @@ import shlex
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from .client import V2VExportOptions, VMwareClient, VMwareError
 

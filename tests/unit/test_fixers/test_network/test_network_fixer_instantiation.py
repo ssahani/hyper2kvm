@@ -8,6 +8,7 @@ was instantiated without required arguments, causing runtime failures.
 from __future__ import annotations
 
 import logging
+
 import pytest
 
 from hyper2kvm.fixers.network.core import NetworkFixer

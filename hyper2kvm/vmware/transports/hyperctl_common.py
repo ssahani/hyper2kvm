@@ -12,14 +12,13 @@ Design goals:
   - Match the govc_common.py pattern for consistency
 """
 
-import json
 import logging
 import os
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...core.exceptions import VMwareError
 
@@ -71,14 +70,14 @@ class HyperCtlRunner:
             )
             return result
         except subprocess.TimeoutExpired:
-            raise VMwareError(msg=f"hyperctl command timed out after {self.timeout}s")
+            raise VMwareError(msg=f"hyperctl command timed out after {self.timeout}s") from None
         except subprocess.CalledProcessError as e:
-            raise VMwareError(msg=f"hyperctl failed: {e.stderr}")
+            raise VMwareError(msg=f"hyperctl failed: {e.stderr}") from e
         except FileNotFoundError:
             raise VMwareError(
                 msg=f"hyperctl not found at {self.hyperctl_path}. "
                 "Install hypersdk or set HYPERCTL_PATH environment variable."
-            )
+            ) from None
 
     def check_daemon_status(self) -> dict[str, Any]:
         """Check if hypervisord daemon is running and get status."""

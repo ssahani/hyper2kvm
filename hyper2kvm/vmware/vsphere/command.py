@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from ...core.exceptions import VMwareError
 from ..clients.client import V2VExportOptions, VMwareClient

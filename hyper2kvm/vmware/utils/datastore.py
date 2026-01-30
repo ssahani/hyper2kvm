@@ -12,7 +12,7 @@ import re
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 # Optional: pyvmomi imports (conditional)
 try:
@@ -462,7 +462,7 @@ def _download_selected_files(
             msg = f"{name}: {e}"
             failures.append(msg)
             if fail_on_missing:
-                raise VMwareError(f"{log_prefix} download failed:\n" + "\n".join(failures))
+                raise VMwareError(f"{log_prefix} download failed:\n" + "\n".join(failures)) from e
             client.logger.error("%s download failed (non-fatal): %s", log_prefix, msg)
 
     if failures and fail_on_missing:
@@ -578,4 +578,4 @@ def _content(client: Any) -> Any:
     try:
         return client.si.RetrieveContent()
     except Exception as e:
-        raise VMwareError(f"Failed to retrieve content: {e}")
+        raise VMwareError(f"Failed to retrieve content: {e}") from e

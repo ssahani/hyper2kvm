@@ -10,10 +10,9 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..core.optional_imports import (
-    RICH_AVAILABLE,
     BarColumn,
     Progress,
     TextColumn,

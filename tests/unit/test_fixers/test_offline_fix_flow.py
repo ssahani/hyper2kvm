@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import importlib
-import pytest
 
+import pytest
 from fakes.fake_guestfs import FakeGuestFS
 from fakes.fake_logger import FakeLogger
+
 
 def _pick_fstab_mode(offline_fixer):
     FM = offline_fixer.FstabMode

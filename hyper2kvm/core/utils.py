@@ -11,7 +11,7 @@ import shlex
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from .exceptions import Fatal
 
@@ -191,7 +191,7 @@ class U:
                 yield b
 
         # If Rich isn't available or not a TTY, do it quietly.
-        rich_ok = Progress is not None and getattr(getattr(__import__("sys"), "stderr"), "isatty", lambda: False)()
+        rich_ok = Progress is not None and getattr(__import__("sys").stderr, "isatty", lambda: False)()
 
         if not rich_ok:
             with open(path, "rb") as f:

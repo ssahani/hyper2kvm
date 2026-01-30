@@ -7,7 +7,7 @@ Provides common helpers for list operations to avoid duplication across modules.
 from __future__ import annotations
 
 from collections.abc import Hashable
-from typing import List, TypeVar
+from typing import TypeVar
 
 T = TypeVar('T', bound=Hashable)
 

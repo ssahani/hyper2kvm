@@ -13,7 +13,7 @@ import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from rich.progress import (
     BarColumn,
@@ -136,7 +136,7 @@ class DiskProcessor:
     def _is_luks_enabled(self) -> bool:
         """Check if LUKS unlocking is enabled."""
         if hasattr(self.args, "luks_enable"):
-            enabled = bool(getattr(self.args, "luks_enable"))
+            enabled = bool(self.args.luks_enable)
             Log.trace(self.logger, "🔐 luks_enable flag: %s", enabled)
             return enabled
         enabled = bool(
@@ -195,7 +195,7 @@ class DiskProcessor:
             Log.trace(
                 self.logger,
                 "☁️ cloud-init loaded: keys=%s",
-                sorted(list(cloud_init_data.keys())) if isinstance(cloud_init_data, dict) else type(cloud_init_data).__name__,
+                sorted(cloud_init_data.keys()) if isinstance(cloud_init_data, dict) else type(cloud_init_data).__name__,
             )
 
         # Offline fixes

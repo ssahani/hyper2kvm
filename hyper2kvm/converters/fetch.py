@@ -11,7 +11,6 @@ import re
 import shlex
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from ..core.utils import U
 from ..ssh.ssh_client import SSHClient

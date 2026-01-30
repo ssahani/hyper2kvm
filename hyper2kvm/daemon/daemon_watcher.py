@@ -17,7 +17,6 @@ Features:
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import json
 import logging
 import os
@@ -26,11 +25,11 @@ import sys
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event, Lock
-from typing import Any, Dict, Optional, Set
+from typing import Any
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -698,7 +697,7 @@ class DaemonWatcher:
 
         # Start worker pool
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        for i in range(self.max_workers):
+        for _i in range(self.max_workers):
             self.executor.submit(self._worker_loop)
 
         self.logger.info("✅ Daemon ready")

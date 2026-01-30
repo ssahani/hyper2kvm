@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-import unittest
-import tempfile
 import argparse
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock
 
 from hyper2kvm.orchestrator.disk_discovery import DiskDiscovery
 

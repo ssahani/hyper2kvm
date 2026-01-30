@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import importlib
+
 import pytest
+
 
 def test_two_phase_config_supported():
     try:

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from ...config.config_loader import YAML_AVAILABLE, yaml
 from .model import (

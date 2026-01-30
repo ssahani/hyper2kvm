@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
-from typing import List, Optional
 
 from ..core.guest_identity import GuestDetector, GuestType, emit_guest_identity_log
 from ..core.logger import Log

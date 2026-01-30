@@ -9,7 +9,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
@@ -467,7 +467,7 @@ class LibvirtTest:
         # Most hosts use a swtpm socket at /run/libvirt/swtpm/<name>/swtpm-sock automatically
         # if created via virt-manager; here we only declare device. If socket doesn't exist,
         # libvirt start will fail (which is fine: it's a smoke test).
-        return f"""    <tpm model='tpm-tis'>
+        return """    <tpm model='tpm-tis'>
       <backend type='emulator' version='2.0'/>
     </tpm>"""
 

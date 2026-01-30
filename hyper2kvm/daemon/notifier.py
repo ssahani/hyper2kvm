@@ -7,13 +7,12 @@ Sends alerts via webhook, email, or other channels.
 
 from __future__ import annotations
 
-import json
 import logging
 import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 try:
     import requests

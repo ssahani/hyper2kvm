@@ -14,11 +14,11 @@ Usage:
     python library_vsphere_migration.py vcenter.example.com vm-name
 """
 
-import sys
-import os
 import logging
+import os
+import sys
 
-from hyper2kvm import VMwareClient, Orchestrator
+from hyper2kvm import Orchestrator, VMwareClient
 
 # Setup logging
 logging.basicConfig(
@@ -152,7 +152,7 @@ def main():
         print("  full    - Full migration with fixes and testing")
         print()
         print("Example:")
-        print(f"  export VCENTER_PASSWORD='password'")
+        print("  export VCENTER_PASSWORD='password'")
         print(f"  {sys.argv[0]} vcenter.example.com rhel9-prod export")
         sys.exit(1)
 
@@ -162,9 +162,9 @@ def main():
 
     try:
         if mode == 'full':
-            result = full_orchestration_example(vcenter_host, vm_name)
+            full_orchestration_example(vcenter_host, vm_name)
         else:
-            result = migrate_from_vsphere(vcenter_host, vm_name)
+            migrate_from_vsphere(vcenter_host, vm_name)
 
         logger.info("✓ Success!")
         sys.exit(0)

@@ -30,8 +30,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from hyper2kvm.vmware.transports import (
     HYPERCTL_AVAILABLE,
-    export_vm_hyperctl,
     create_hyperctl_runner,
+    export_vm_hyperctl,
 )
 
 logging.basicConfig(
@@ -70,7 +70,7 @@ def main():
             progress_callback=show_progress,
         )
 
-        logger.info(f"✅ Export completed!")
+        logger.info("✅ Export completed!")
         logger.info(f"Job ID: {result.get('job_id')}")
 
     except Exception as e:
@@ -106,7 +106,7 @@ def advanced_example():
 
     # Wait for completion with progress callback
     def progress(status):
-        print(f".", end="", flush=True)
+        print(".", end="", flush=True)
 
     result = runner.wait_for_job_completion(
         job_id=job_id,

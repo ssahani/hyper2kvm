@@ -10,9 +10,9 @@ Tests file/directory operations inside guest filesystems:
 - exists, is_file, is_dir
 """
 
-import pytest
-import tempfile
 import shutil
+
+import pytest
 
 
 @pytest.mark.requires_images

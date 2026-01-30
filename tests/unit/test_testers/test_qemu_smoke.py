@@ -3,12 +3,12 @@
 New tests for QemuTest static method API
 Tests the current QemuTest.run() static method implementation
 """
-import unittest
 import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
-from hyper2kvm.testers.qemu_tester import QemuTest, QemuDisplay, QemuNet, QemuMachine
+from hyper2kvm.testers.qemu_tester import QemuDisplay, QemuMachine, QemuNet, QemuTest
 
 
 class TestQemuTestStaticAPI(unittest.TestCase):

@@ -9,7 +9,7 @@ import subprocess
 from collections.abc import Iterable
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from ...core.exceptions import VMwareError
 from ...core.utils import U

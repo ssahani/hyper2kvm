@@ -6,7 +6,7 @@ import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ..core.utils import U
 

@@ -3,8 +3,8 @@
 Security-focused tests for VMDK path traversal protection
 Tests the enhanced security features in the VMDK parser
 """
-import unittest
 import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import Mock
 

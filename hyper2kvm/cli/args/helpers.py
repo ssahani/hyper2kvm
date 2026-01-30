@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 def _require(v: Any) -> bool:
@@ -107,9 +107,9 @@ def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: dict[str
             f.write(json.dumps(parsed, indent=2, sort_keys=True))
             f.write("\n")
     except Exception as e:
-        raise SystemExit(f"Failed to write materialized win-net override JSON to {out_path}: {e}")
+        raise SystemExit(f"Failed to write materialized win-net override JSON to {out_path}: {e}") from e
 
-    setattr(args, "win_net_override", out_path)
+    args.win_net_override = out_path
 
     try:
         logger.info("Materialized win_net_json into %s", out_path)
@@ -142,9 +142,9 @@ def _materialize_virtio_config_json_if_needed(args: argparse.Namespace, conf: di
             f.write(json.dumps(parsed, indent=2, sort_keys=True))
             f.write("\n")
     except Exception as e:
-        raise SystemExit(f"Failed to write materialized virtio-config JSON to {out_path}: {e}")
+        raise SystemExit(f"Failed to write materialized virtio-config JSON to {out_path}: {e}") from e
 
-    setattr(args, "virtio_config_path", out_path)
+    args.virtio_config_path = out_path
 
     try:
         logger.info("Materialized virtio_config_json into %s", out_path)

@@ -12,9 +12,9 @@ This script creates realistic test VM disk images with:
 Used for comprehensive integration testing.
 """
 
-import os
 import sys
 from pathlib import Path
+
 
 def create_test_images():
     """Create test VM disk images with guestfs"""
@@ -220,11 +220,11 @@ def create_vmdk_from_qcow2(source_qcow2: Path, target_vmdk: Path):
             str(target_vmdk)
         ], check=True, capture_output=True)
 
-        print(f"  ✓ Converted to VMDK format")
+        print("  ✓ Converted to VMDK format")
     except subprocess.CalledProcessError as e:
         print(f"  ! Failed to create VMDK: {e}")
     except FileNotFoundError:
-        print(f"  ! qemu-img not found, install qemu-utils")
+        print("  ! qemu-img not found, install qemu-utils")
 
 
 if __name__ == "__main__":

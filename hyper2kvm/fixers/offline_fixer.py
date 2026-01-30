@@ -17,7 +17,7 @@ import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, TypeVar
 
 import guestfs  # type: ignore
 
@@ -1192,12 +1192,12 @@ class OfflineFSFix:
             # keep your existing mdraid_check()/inject_cloud_init() if they exist
             mdraid = self._run_stage(
                 "mdraid_check",
-                lambda: getattr(self, "mdraid_check")(g) if hasattr(self, "mdraid_check") else {"present": False},
+                lambda: self.mdraid_check(g) if hasattr(self, "mdraid_check") else {"present": False},
                 default={"present": False},
             )
             cloud_init = self._run_stage(
                 "inject_cloud_init",
-                lambda: getattr(self, "inject_cloud_init")(g) if hasattr(self, "inject_cloud_init") else {"enabled": False},
+                lambda: self.inject_cloud_init(g) if hasattr(self, "inject_cloud_init") else {"enabled": False},
                 default={"enabled": False},
             )
 

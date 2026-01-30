@@ -10,7 +10,6 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 from ..core.utils import U
 from .ssh_config import SSHConfig

@@ -19,7 +19,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from typing import List, Optional, Set
 
 import guestfs  # type: ignore
 

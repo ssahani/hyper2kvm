@@ -10,7 +10,7 @@ import os
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.parse import quote
 
 import requests
@@ -873,7 +873,7 @@ class VsphereMode:
                     version or "unknown",
                 )
             except Exception as e:
-                raise Fatal(2, f"OVF Tool is required but not found: {e}")
+                raise Fatal(2, f"OVF Tool is required but not found: {e}") from e
 
     # govc helpers (public GovcRunner methods)
     def _govc_list_vm_names(self) -> list[dict[str, Any]]:
@@ -1086,7 +1086,7 @@ class VsphereMode:
             if _debug_enabled(self.args):
                 self.logger.debug("vsphere: connected in %s", _fmt_duration(time.monotonic() - t0))
         except VMwareError as e:
-            raise Fatal(2, f"vsphere: Connection failed: {e}")
+            raise Fatal(2, f"vsphere: Connection failed: {e}") from e
 
         try:
             return self._handle_action(action, client, str(vc_host))
@@ -1154,10 +1154,10 @@ class VsphereMode:
             self._ovftool_export_vm(client, str(vm_name), out_dir)
             return 0
         except (OvfToolNotFound, OvfToolAuthError, OvfToolSslError, OvfToolError) as e:
-            raise Fatal(2, f"OVF Tool export failed: {e}")
+            raise Fatal(2, f"OVF Tool export failed: {e}") from e
         except Exception as e:
             self.logger.exception("ovftool_export: unexpected error")
-            raise Fatal(2, f"OVF Tool export failed with unexpected error: {e}")
+            raise Fatal(2, f"OVF Tool export failed with unexpected error: {e}") from e
 
     def _handle_ovftool_deploy(self) -> int:
         source_path = getattr(self.args, "source_path", None)
@@ -1171,10 +1171,10 @@ class VsphereMode:
             self._ovftool_deploy_ova(source_path, str(target_vm_name) if target_vm_name else None)
             return 0
         except (OvfToolNotFound, OvfToolAuthError, OvfToolSslError, OvfToolError) as e:
-            raise Fatal(2, f"OVF Tool deployment failed: {e}")
+            raise Fatal(2, f"OVF Tool deployment failed: {e}") from e
         except Exception as e:
             self.logger.exception("ovftool_deploy: unexpected error")
-            raise Fatal(2, f"OVF Tool deployment failed with unexpected error: {e}")
+            raise Fatal(2, f"OVF Tool deployment failed with unexpected error: {e}") from e
 
     def _handle_download_datastore_file(self, client: VMwareClient, dc_name: str) -> int:
         if not all([getattr(self.args, "datastore", None), getattr(self.args, "ds_path", None), getattr(self.args, "local_path", None)]):
@@ -1245,7 +1245,7 @@ class VsphereMode:
                 ds_name, folder = _parse_datastore_dir_override(str(override), default_ds=ds_name)
                 self.logger.info("download_only_vm: using vs_datastore_dir override: [%s] %s", ds_name, folder or ".")
             except Exception as e:
-                raise Fatal(2, f"vsphere download_only_vm: invalid vs_datastore_dir={override!r}: {e}")
+                raise Fatal(2, f"vsphere download_only_vm: invalid vs_datastore_dir={override!r}: {e}") from e
 
         if _debug_enabled(self.args):
             self.logger.debug(

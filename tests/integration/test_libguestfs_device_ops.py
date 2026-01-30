@@ -11,8 +11,9 @@ Tests device-level operations:
 - vfs_type, vfs_label, vfs_uuid
 """
 
-import pytest
 import shutil
+
+import pytest
 
 
 @pytest.mark.requires_images

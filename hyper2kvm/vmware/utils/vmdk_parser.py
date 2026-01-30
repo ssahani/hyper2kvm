@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class VMDKType(Enum):
@@ -256,7 +256,7 @@ class VMDK:
             raise VMDKError(
                 f"Path traversal attempt detected: basename fallback for '{ref}' "
                 f"resolves to '{base}' which is outside base directory '{base_dir}'"
-            )
+            ) from None
 
         return base
 

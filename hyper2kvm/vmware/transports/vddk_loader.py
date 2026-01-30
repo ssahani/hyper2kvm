@@ -7,7 +7,7 @@ VDDK disk download orchestration for VMware
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 # Import VMwareError
 try:

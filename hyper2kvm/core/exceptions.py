@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 def _safe_int(x: Any, default: int = 1) -> int:
@@ -20,7 +20,7 @@ def _clamp_exit_code(code: int) -> int:
             raise ValueError(f"Exit code must be in range 0-255, got {code}")
         return code
     except TypeError:
-        raise ValueError(f"Exit code must be an integer, got {type(code).__name__}")
+        raise ValueError(f"Exit code must be an integer, got {type(code).__name__}") from None
 
 
 def _one_line(s: str, limit: int = 600) -> str:

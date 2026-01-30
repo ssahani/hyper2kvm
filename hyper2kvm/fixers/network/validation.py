@@ -9,7 +9,6 @@ the config files and that essential sections/keywords are preserved.
 from __future__ import annotations
 
 import logging
-from typing import List
 
 from ...config.config_loader import YAML_AVAILABLE, yaml
 from .model import IfcfgKV, NetworkConfigType

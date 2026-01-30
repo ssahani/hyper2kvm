@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from .helpers import _merged_get, _merged_secret, _require
 
@@ -19,7 +19,7 @@ def _validate_json_object_file(path: str, flag: str) -> None:
         if not isinstance(parsed, dict):
             raise ValueError("top-level JSON must be an object")
     except Exception as e:
-        raise SystemExit(f"{flag} is not valid JSON object: {path}: {e}")
+        raise SystemExit(f"{flag} is not valid JSON object: {path}: {e}") from e
 
 
 def _validate_json_object_inline(js: str, flag: str) -> None:
@@ -28,7 +28,7 @@ def _validate_json_object_inline(js: str, flag: str) -> None:
         if not isinstance(parsed, dict):
             raise ValueError("top-level JSON must be an object")
     except Exception as e:
-        raise SystemExit(f"{flag} is not valid JSON object: {e}")
+        raise SystemExit(f"{flag} is not valid JSON object: {e}") from e
 
 
 def _validate_win_net_override_inputs(args: argparse.Namespace, conf: dict[str, Any]) -> None:

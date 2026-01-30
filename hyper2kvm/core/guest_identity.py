@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import guestfs  # type: ignore
 
@@ -264,9 +264,9 @@ class GuestDetector:
           - If nothing is mounted, we return all-zero scores.
         """
         if not cls._mounted_anything(g):
-            return {gt: 0.0 for gt in GuestType}
+            return dict.fromkeys(GuestType, 0.0)
 
-        scores: dict[GuestType, float] = {gt: 0.0 for gt in GuestType}
+        scores: dict[GuestType, float] = dict.fromkeys(GuestType, 0.0)
 
         for os_type, indicators in cls.OS_INDICATORS.items():
             if os_type == GuestType.UNKNOWN:

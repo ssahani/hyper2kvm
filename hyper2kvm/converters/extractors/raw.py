@@ -10,7 +10,7 @@ import stat
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from rich.progress import (
     BarColumn,

@@ -1,25 +1,25 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # tests/test_hyperctl_common.py
 """Unit tests for hyperctl integration."""
 
-import unittest
-from unittest.mock import Mock, patch, MagicMock
-import subprocess
 import os
-from pathlib import Path
+import subprocess
 
 # Add parent to path for imports
 import sys
+import unittest
+from pathlib import Path
+from unittest.mock import Mock, patch
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from hyper2kvm.core.exceptions import VMwareError
 from hyper2kvm.vmware.transports.hyperctl_common import (
+    HyperCtlConfig,
     HyperCtlRunner,
     create_hyperctl_runner,
     export_vm_hyperctl,
-    HyperCtlConfig,
 )
-from hyper2kvm.core.exceptions import VMwareError
 
 
 class TestHyperCtlConfig(unittest.TestCase):
@@ -246,7 +246,7 @@ class TestHyperCtlRunner(unittest.TestCase):
         def progress_callback(status):
             progress_calls.append(status)
 
-        result = self.runner.wait_for_job_completion(
+        self.runner.wait_for_job_completion(
             job_id="abc123",
             poll_interval=1,
             progress_callback=progress_callback,
@@ -323,7 +323,7 @@ class TestFactoryFunctions(unittest.TestCase):
         """Test convenience export function."""
         mock_export.return_value = {"job_id": "test123"}
 
-        result = export_vm_hyperctl(
+        export_vm_hyperctl(
             vm_path="/dc/vm/test",
             output_path="/tmp/test",
             parallel_downloads=8,

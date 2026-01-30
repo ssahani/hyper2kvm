@@ -19,7 +19,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from ..core.xml_utils import xml_escape_attr as _xml_escape_attr
 from ..core.xml_utils import xml_escape_text as _xml_escape_text

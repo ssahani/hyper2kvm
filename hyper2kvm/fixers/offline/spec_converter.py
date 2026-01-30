@@ -13,8 +13,6 @@ for spec conversion logic.
 """
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import guestfs  # type: ignore
 
 from ...core.utils import U

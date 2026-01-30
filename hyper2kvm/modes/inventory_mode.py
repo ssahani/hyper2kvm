@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # Optional: reuse your existing building blocks (present in your tree)
 from ..converters.fetch import Fetch
@@ -174,7 +174,7 @@ class InventoryMode:
             raise Fatal(2, "inventory(esxi): require --esxi-host and --esxi-remote")
 
         fetch_dir = (
-            Path(getattr(self.args, "download_dir")).expanduser().resolve()
+            Path(self.args.download_dir).expanduser().resolve()
             if getattr(self.args, "download_dir", None)
             else (out_root / "downloaded")
         )

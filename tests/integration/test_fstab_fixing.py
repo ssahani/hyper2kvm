@@ -5,10 +5,9 @@ Integration Tests for fstab Fixing
 Tests actual fstab manipulation on real test images using libguestfs.
 """
 
-import pytest
-from pathlib import Path
-import tempfile
 import shutil
+
+import pytest
 
 
 @pytest.mark.requires_images

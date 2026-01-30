@@ -13,7 +13,7 @@ import stat
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from rich.progress import (
     BarColumn,
@@ -498,7 +498,7 @@ class AMI:
           2) Probe candidates using qemu-img info (best) / file (fallback).
           3) If no extension hits, do a large-file heuristic BUT still prefer probe-success.
         """
-        exts = set(e.lower() for e in AMI.DISK_EXTS)
+        exts = {e.lower() for e in AMI.DISK_EXTS}
 
         hits: list[Path] = []
         candidates: list[Path] = []
@@ -645,7 +645,7 @@ class AMI:
 
     @staticmethod
     def _debug_top_level(outdir: Path) -> str:
-        top = sorted(list(outdir.iterdir()), key=lambda p: p.name)
+        top = sorted(outdir.iterdir(), key=lambda p: p.name)
         names = [p.name + ("/" if p.is_dir() else "") for p in top[:30]]
         return ", ".join(names) or "(none)"
 

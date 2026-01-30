@@ -243,13 +243,13 @@ Description: system and service manager
             g.chmod(0o755, "/bin/ls")
 
             # GRUB
-            grub_cfg = """set default=0
+            grub_cfg = f"""set default=0
 set timeout=5
-menuentry 'Ubuntu' {
-    linux /vmlinuz root=UUID=%s ro quiet
+menuentry 'Ubuntu' {{
+    linux /vmlinuz root=UUID={ROOT_UUID} ro quiet
     initrd /initrd.img
-}
-""" % ROOT_UUID
+}}
+"""
             g.write("/boot/grub/grub.cfg", grub_cfg)
 
             if self.use_efi:
@@ -273,7 +273,7 @@ menuentry 'Ubuntu' {
 
             logging.info(f"Ubuntu image created: {output}")
 
-        except Exception as e:
+        except Exception:
             if os.path.exists(temp_img):
                 os.unlink(temp_img)
             raise
@@ -426,7 +426,7 @@ Description: GNU Bourne Again SHell
 
             logging.info(f"Debian image created: {output}")
 
-        except Exception as e:
+        except Exception:
             if os.path.exists(temp_img):
                 os.unlink(temp_img)
             raise
@@ -546,7 +546,7 @@ def main() -> None:
 
         print(f"\n✓ VM image created: {args.output}")
         if HAS_GUESTFS:
-            print(f"\nTo test boot:")
+            print("\nTo test boot:")
             print(f"  qemu-system-x86_64 -m 2048 -hda {args.output}")
 
     except Exception as e:

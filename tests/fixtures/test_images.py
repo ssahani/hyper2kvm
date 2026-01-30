@@ -13,11 +13,11 @@ Usage in tests:
         assert test_linux_qcow2_image.exists()
 """
 
-from pathlib import Path
-from typing import Generator
-import pytest
 import subprocess
-import os
+from collections.abc import Generator
+from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture(scope="session")

@@ -10,9 +10,9 @@ CRITICAL: These tests cover checkpoint corruption risk paths including:
 """
 from __future__ import annotations
 
-import pytest
-from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 # TODO: Import actual classes
 # from hyper2kvm.core.recovery_manager import RecoveryManager

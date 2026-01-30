@@ -25,7 +25,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from ..utils.utils import is_tty as _is_tty
 
@@ -326,7 +326,7 @@ def export_to_ovf_or_ova(
 
     mode = "OVA" if dest_path.suffix.lower() == ".ova" else "OVF"
     _print_panel(
-        title=f"Exporting via ovftool",
+        title="Exporting via ovftool",
         body=f"Mode: {mode} | Output: {dest}\nSource: {_mask_vi_credentials(source)}",
     )
     _info_line(f"Starting {mode} export...")

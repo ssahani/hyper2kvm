@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import unittest
-import tempfile
-from pathlib import Path
 from dataclasses import asdict
 
 from hyper2kvm.ssh.ssh_config import SSHConfig
@@ -61,7 +59,7 @@ class TestSSHConfig(unittest.TestCase):
     def test_builds_ssh_command_with_user(self):
         """Test building SSH command with user."""
         config = SSHConfig(host="example.com", user="testuser")
-        cmd = config.base_cmd()
+        config.base_cmd()
 
         # Check that target includes user@host
         target = config.target()

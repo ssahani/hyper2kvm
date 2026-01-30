@@ -18,11 +18,11 @@ Usage:
     python library_azure_migration.py my-resource-group my-vm
 """
 
-import sys
-import os
 import logging
+import os
+import sys
 
-from hyper2kvm import AzureSourceProvider, AzureConfig, Orchestrator
+from hyper2kvm import AzureConfig, AzureSourceProvider, Orchestrator
 
 # Setup logging
 logging.basicConfig(
@@ -164,10 +164,10 @@ def main():
         print("  AZURE_CLIENT_SECRET")
         print()
         print("Example:")
-        print(f"  export AZURE_SUBSCRIPTION_ID='...'")
-        print(f"  export AZURE_TENANT_ID='...'")
-        print(f"  export AZURE_CLIENT_ID='...'")
-        print(f"  export AZURE_CLIENT_SECRET='...'")
+        print("  export AZURE_SUBSCRIPTION_ID='...'")
+        print("  export AZURE_TENANT_ID='...'")
+        print("  export AZURE_CLIENT_ID='...'")
+        print("  export AZURE_CLIENT_SECRET='...'")
         print(f"  {sys.argv[0]} my-rg ubuntu-vm-01 download")
         sys.exit(1)
 
@@ -177,9 +177,9 @@ def main():
 
     try:
         if mode == 'full':
-            result = full_orchestration_example(resource_group, vm_name)
+            full_orchestration_example(resource_group, vm_name)
         else:
-            result = migrate_from_azure(resource_group, vm_name)
+            migrate_from_azure(resource_group, vm_name)
 
         logger.info("✓ Success!")
         sys.exit(0)

@@ -10,7 +10,7 @@ import time
 import traceback
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Protocol
 
 # Types
 
@@ -468,8 +468,8 @@ class ValidationSuite:
         return ctx
 
     def _effective_redact_tokens(self, spec: CheckSpec, context: dict[str, Any]) -> set[str]:
-        base = set(str(k).lower() for k in (context.get("redact_keys", []) or []))
-        extra = set(str(k).lower() for k in (spec.redact_keys or []))
+        base = {str(k).lower() for k in (context.get("redact_keys", []) or [])}
+        extra = {str(k).lower() for k in (spec.redact_keys or [])}
         # sensible defaults
         base |= {
             "password",

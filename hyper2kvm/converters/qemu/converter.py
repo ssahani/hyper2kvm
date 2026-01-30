@@ -13,7 +13,6 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
 
 from rich.progress import (
     BarColumn,

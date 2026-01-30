@@ -8,7 +8,7 @@ import logging
 import random
 import subprocess
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .exceptions import AzureAuthError, AzureCLIError
 
@@ -55,13 +55,13 @@ def run_az_json(args: list[str], *, timeout_s: int = 300, retries: int = 3) -> A
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
         except FileNotFoundError:
-            raise AzureCLIError("Azure CLI 'az' not found. Install Azure CLI.")
+            raise AzureCLIError("Azure CLI 'az' not found. Install Azure CLI.") from None
         except subprocess.TimeoutExpired:
             last_err = f"az timed out after {timeout_s}s"
             if attempt + 1 < retries:
                 _backoff_sleep(attempt, 1.0, 15.0)
                 continue
-            raise AzureCLIError(last_err)
+            raise AzureCLIError(last_err) from None
 
         if p.returncode == 0:
             out = (p.stdout or "").strip()
@@ -70,7 +70,7 @@ def run_az_json(args: list[str], *, timeout_s: int = 300, retries: int = 3) -> A
             try:
                 return json.loads(out)
             except Exception as e:
-                raise AzureCLIError(f"Failed to parse az JSON output: {e}")
+                raise AzureCLIError(f"Failed to parse az JSON output: {e}") from e
 
         last_err = (p.stderr or p.stdout or "").strip()
         if attempt + 1 < retries and _is_transient(last_err):
@@ -87,7 +87,7 @@ def validate_account(subscription: str | None, tenant: str | None) -> dict[str, 
     try:
         acct = run_az_json(["account", "show"], timeout_s=30, retries=2)
     except AzureCLIError as e:
-        raise AzureAuthError(f"Azure CLI not logged in or not usable: {e}")
+        raise AzureAuthError(f"Azure CLI not logged in or not usable: {e}") from e
 
     if subscription:
         run_az_json(["account", "set", "--subscription", subscription], timeout_s=60, retries=2)

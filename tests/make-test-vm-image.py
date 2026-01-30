@@ -168,13 +168,13 @@ class VMImageCreator:
         info("Creating MBR partition table")
 
         # Use sfdisk to create partition table
-        sfdisk_input = """label: dos
+        sfdisk_input = f"""label: dos
 label-id: 0x12345678
-device: {img}
+device: {img_path}
 unit: sectors
 
-{img}1 : start=2048, type=83, bootable
-""".format(img=img_path)
+{img_path}1 : start=2048, type=83, bootable
+"""
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.sfdisk', delete=False) as f:
             f.write(sfdisk_input)
@@ -496,9 +496,9 @@ def main() -> None:
     creator.run()
 
     print("\n✓ Test VM image ready!")
-    print(f"\nTo inspect the image:")
+    print("\nTo inspect the image:")
     print(f"  qemu-img info {args.output}")
-    print(f"\nTo test boot:")
+    print("\nTo test boot:")
     print(f"  qemu-system-x86_64 -m 1024 -hda {args.output}")
 
 

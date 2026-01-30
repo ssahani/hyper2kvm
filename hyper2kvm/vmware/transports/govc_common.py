@@ -24,7 +24,7 @@ import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from ...core.exceptions import VMwareError
 
@@ -232,11 +232,11 @@ def _summarize_json_shape(data: Any) -> str:
                 return "list(len=0)"
             head = data[0]
             if isinstance(head, dict):
-                keys = sorted(list(head.keys()))
+                keys = sorted(head.keys())
                 return f"list(len={len(data)}), head_keys={keys}"
             return f"list(len={len(data)}), head_type={type(head).__name__}"
         if isinstance(data, dict):
-            keys = sorted(list(data.keys()))
+            keys = sorted(data.keys())
             return f"dict(keys={keys})"
         return type(data).__name__
     except Exception:
@@ -460,7 +460,7 @@ class GovcRunner:
             _log(self.logger, "debug", "govc.json: parsed shape=%s", _summarize_json_shape(data))
             return data
         except Exception as e:
-            raise VMwareError(f"govc returned non-JSON output: {e}: {out[:2000]}")
+            raise VMwareError(f"govc returned non-JSON output: {e}: {out[:2000]}") from e
 
     def run(self, cmd: Sequence[str], *, json_output: bool = False) -> Any:
         """

@@ -7,7 +7,7 @@ OVF Tool and govc export operations for VMware
 
 import time
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 # govc helpers (single source of truth)
 try:
@@ -213,7 +213,7 @@ def ovftool_export_vm(client: Any, opt: Any) -> Path:
             log_prefix="ovftool",
         )
     except OvfToolError as e:
-        raise VMwareError(f"OVF Tool export failed: {e}")
+        raise VMwareError(f"OVF Tool export failed: {e}") from e
 
     client.logger.info("OVF Tool export completed in %.1fs", time.time() - t0)
     return ova_path
@@ -247,6 +247,6 @@ def ovftool_deploy_ova(client: Any, source_ova: Path, opt: Any) -> None:
             log_prefix="ovftool",
         )
     except OvfToolError as e:
-        raise VMwareError(f"OVF Tool deployment failed: {e}")
+        raise VMwareError(f"OVF Tool deployment failed: {e}") from e
 
     client.logger.info("OVF Tool deployment completed in %.1fs", time.time() - t0)

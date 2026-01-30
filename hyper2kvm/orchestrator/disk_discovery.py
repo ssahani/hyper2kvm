@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from ..converters.extractors.ovf import OVF
 from ..converters.extractors.raw import RAW
