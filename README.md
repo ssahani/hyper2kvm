@@ -50,7 +50,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-See [docs/INSTALL.md](docs/INSTALL.md) for Ubuntu/Debian, Arch, Alpine, macOS, and Windows (WSL).
+See [docs/INSTALL.md](docs/02-Installation.md) for Ubuntu/Debian, Arch, Alpine, macOS, and Windows (WSL).
 
 ### Basic Usage
 
@@ -76,7 +76,7 @@ sudo python -m hyper2kvm live-fix \
   --fix-fstab --fix-grub --fix-network
 ```
 
-For more examples, see [docs/QUICKSTART.md](docs/QUICKSTART.md) and [examples/README.md](examples/README.md).
+For more examples, see [docs/QUICKSTART.md](docs/03-Quick-Start.md) and [examples/README.md](examples/README.md).
 
 ---
 
@@ -116,23 +116,23 @@ For more examples, see [docs/QUICKSTART.md](docs/QUICKSTART.md) and [examples/RE
 
 ### Getting Started 🚀
 
-- **[Quick Start Guide](docs/QUICKSTART.md)** - Get migrating in 5 minutes ⚡
-- **[Installation Guide](docs/INSTALL.md)** - Comprehensive installation for all platforms 🔧
-- **[CLI Reference](docs/CLI_REFERENCE.md)** - Complete command-line documentation 📖
-- **[YAML Examples](docs/YAML-EXAMPLES.md)** - Configuration file templates 📝
+- **[Quick Start Guide](docs/03-Quick-Start.md)** - Get migrating in 5 minutes ⚡
+- **[Installation Guide](docs/02-Installation.md)** - Comprehensive installation for all platforms 🔧
+- **[CLI Reference](docs/04-CLI-Reference.md)** - Complete command-line documentation 📖
+- **[YAML Examples](docs/05-YAML-Examples.md)** - Configuration file templates 📝
 
 ### Deep Dive 🔬
 
-- **[Architecture](docs/ARCHITECTURE.md)** - System design and internal structure 🏗️
-- **[Cookbook](docs/cookbook.md)** - Common migration scenarios and solutions 👨‍🍳
-- **[Failure Modes](docs/FAILURE_MODES.md)** - Troubleshooting guide 🔧
+- **[Architecture](docs/01-Architecture.md)** - System design and internal structure 🏗️
+- **[Cookbook](docs/06-Cookbook.md)** - Common migration scenarios and solutions 👨‍🍳
+- **[Failure Modes](docs/90-Failure-Modes.md)** - Troubleshooting guide 🔧
 
 ### Platform-Specific 🖥️
 
-- **[Windows Migrations](docs/WINDOWS.md)** - Windows-specific guide and VirtIO driver injection 🪟
-- **[vSphere Integration](docs/VSPEHERE-V2V-EXPORT.md)** - vSphere export strategies ☁️
-- **[PhotonOS](docs/PHOTONOS.md)** - VMware PhotonOS specific notes 🐧
-- **[RHEL 10](docs/RHEL10.md)** - RHEL 10 migration guide 🎩
+- **[Windows Migrations](docs/10-Windows-Guide.md)** - Windows-specific guide and VirtIO driver injection 🪟
+- **[vSphere Integration](docs/30-vSphere-V2V.md)** - vSphere export strategies ☁️
+- **[PhotonOS](docs/21-Photon-OS.md)** - VMware PhotonOS specific notes 🐧
+- **[RHEL 10](docs/20-RHEL-10.md)** - RHEL 10 migration guide 🎩
 
 ### Examples 💡
 
@@ -202,7 +202,7 @@ pip install -e .
 
 **Important:** `libguestfs` and `hivex` are system packages, NOT pip packages. They must be installed via your OS package manager (dnf, apt, zypper).
 
-See [docs/INSTALL.md](docs/INSTALL.md) for detailed installation instructions for all Linux distributions, macOS, and Windows (WSL).
+See [docs/INSTALL.md](docs/02-Installation.md) for detailed installation instructions for all Linux distributions, macOS, and Windows (WSL).
 
 ---
 
@@ -806,11 +806,11 @@ YAML is treated as **code**:
 
 Complete documentation is available in the [`docs/`](docs/) directory:
 
-- **Getting Started:** [QUICKSTART.md](docs/QUICKSTART.md), [INSTALL.md](docs/INSTALL.md)
-- **Reference:** [CLI_REFERENCE.md](docs/CLI_REFERENCE.md), [YAML-EXAMPLES.md](docs/YAML-EXAMPLES.md)
-- **Architecture:** [ARCHITECTURE.md](docs/ARCHITECTURE.md), [orchestrator/README.md](hyper2kvm/orchestrator/README.md)
-- **Platform Guides:** [WINDOWS.md](docs/WINDOWS.md), [PHOTONOS.md](docs/PHOTONOS.md), [RHEL10.md](docs/RHEL10.md)
-- **Troubleshooting:** [FAILURE_MODES.md](docs/FAILURE_MODES.md), [cookbook.md](docs/cookbook.md)
+- **Getting Started:** [QUICKSTART.md](docs/03-Quick-Start.md), [INSTALL.md](docs/02-Installation.md)
+- **Reference:** [CLI_REFERENCE.md](docs/04-CLI-Reference.md), [YAML-EXAMPLES.md](docs/05-YAML-Examples.md)
+- **Architecture:** [ARCHITECTURE.md](docs/01-Architecture.md), [orchestrator/README.md](hyper2kvm/orchestrator/README.md)
+- **Platform Guides:** [WINDOWS.md](docs/10-Windows-Guide.md), [PHOTONOS.md](docs/21-Photon-OS.md), [RHEL10.md](docs/20-RHEL-10.md)
+- **Troubleshooting:** [FAILURE_MODES.md](docs/90-Failure-Modes.md), [cookbook.md](docs/06-Cookbook.md)
 
 ---
 
@@ -860,13 +860,13 @@ bandit -r hyper2kvm/
    - Reference related issues
    - Ensure CI passes (tests, linting, security)
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture guidelines.
+See [ARCHITECTURE.md](docs/01-Architecture.md) for detailed architecture guidelines.
 
 ### Reporting Issues
 
 - **Bugs:** Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
 - **Features:** Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
-- **Security:** Email security issues privately (see [SECURITY.md](SECURITY.md) if available)
+- **Security:** Email security issues privately (see SECURITY.md if available)
 
 ---
 
