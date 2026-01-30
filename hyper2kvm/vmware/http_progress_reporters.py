@@ -15,13 +15,10 @@ from __future__ import annotations
 import logging
 import sys
 from abc import ABC, abstractmethod
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Optional
 
 # Import from sibling module
 from ..core.utils import U
-
-if TYPE_CHECKING:
-    from dataclasses import dataclass
 
 # Optional: Rich UI
 try:
@@ -65,9 +62,29 @@ def _console() -> Optional[Any]:
     if not (RICH_AVAILABLE and Console and _is_tty()):
         return None
     try:
-        return Console(stderr=False)
+        # Use stdout (default) unless you explicitly want stderr.
+        return Console()
     except Exception:
         return None
+
+
+def _rich_construct(cls: Any, *args: Any, **kwargs: Any) -> Any:
+    """
+    Construct a Rich column in a way that is compatible across Rich versions.
+
+    Some Rich versions do not accept certain kwargs (e.g., TimeRemainingColumn(style=...)).
+    We try once with kwargs; if that fails, we retry after dropping known-problem kwargs.
+    """
+    try:
+        return cls(*args, **kwargs)
+    except TypeError:
+        # Retry with a reduced set of kwargs.
+        # Common offender: style= on TimeRemainingColumn / TimeElapsedColumn.
+        for bad in ("style", "justify", "markup"):
+            if bad in kwargs:
+                kwargs = dict(kwargs)
+                kwargs.pop(bad, None)
+        return cls(*args, **kwargs)
 
 
 # --------------------------------------------------------------------------------------
@@ -102,24 +119,37 @@ class RichProgressReporter(ProgressReporter):
         self.task_id: Optional[int] = None
 
     def start(self, description: str, total: Optional[int] = None) -> None:
+        # Build columns with version-safe constructors
+        spinner = _rich_construct(SpinnerColumn, style="bright_green")
+        desc = _rich_construct(TextColumn, "[progress.description]{task.description}", style="bold cyan")
+        bar = _rich_construct(
+            BarColumn,
+            complete_style="bright_blue",
+            finished_style="bright_green",
+            pulse_style="magenta",
+        )
+        downloaded = _rich_construct(DownloadColumn)
+        speed = _rich_construct(TransferSpeedColumn)
+        remaining = _rich_construct(TimeRemainingColumn, style="yellow")
+        elapsed = _rich_construct(TimeElapsedColumn, style="dim green")
+
         self.progress = Progress(
-            SpinnerColumn(style="bright_green"),
-            TextColumn("[progress.description]{task.description}", style="bold cyan"),
-            BarColumn(
-                complete_style="bright_blue",
-                finished_style="bright_green",
-                pulse_style="magenta",
-            ),
-            DownloadColumn(),
-            TransferSpeedColumn(),
-            TimeRemainingColumn(style="yellow"),
-            TimeElapsedColumn(style="dim green"),
+            spinner,
+            desc,
+            bar,
+            downloaded,
+            speed,
+            remaining,
+            elapsed,
             console=self.console,
             transient=False,  # Keep progress bar visible after completion
             refresh_per_second=max(1, int(self.refresh_hz)),
         )
         self.progress.start()
-        self.task_id = self.progress.add_task(description, total=total if total and total > 0 else None)
+        self.task_id = self.progress.add_task(
+            description,
+            total=total if total and total > 0 else None,
+        )
 
     def update(self, delta: int) -> None:
         if self.progress and self.task_id is not None:
@@ -172,8 +202,10 @@ class LoggingProgressReporter(ProgressReporter):
         self.downloaded = 0
         self.total: Optional[int] = None
         self.last_log_mark = 0
+        self.description = ""
 
     def start(self, description: str, total: Optional[int] = None) -> None:
+        self.description = description
         self.total = total
         self.logger.info("Starting download: %s", description)
 
@@ -193,7 +225,17 @@ class LoggingProgressReporter(ProgressReporter):
                 self.logger.info("Download progress: %s", U.human_bytes(self.downloaded))
 
     def finish(self) -> None:
-        self.logger.info("Download completed: %s", U.human_bytes(self.downloaded))
+        if self.total and self.total > 0:
+            pct = (self.downloaded / self.total) * 100.0
+            self.logger.info(
+                "Download completed: %s (%s / %s, %.1f%%)",
+                self.description,
+                U.human_bytes(self.downloaded),
+                U.human_bytes(self.total),
+                pct,
+            )
+        else:
+            self.logger.info("Download completed: %s (%s)", self.description, U.human_bytes(self.downloaded))
 
 
 class NoopProgressReporter(ProgressReporter):
@@ -222,27 +264,23 @@ def create_progress_reporter(
 
     Strategy:
     1. If show_progress=False → NoopProgressReporter
-    2. If Rich available + TTY → RichProgressReporter
+    2. If Rich available + TTY → RichProgressReporter (unless simple_progress forced)
     3. If TTY (no Rich) → SimpleProgressReporter
     4. Fallback → LoggingProgressReporter
-
-    Args:
-        options: HTTPDownloadOptions with progress configuration
-        file_name: Name of file being downloaded
-        logger: Logger for LoggingProgressReporter
-
-    Returns:
-        ProgressReporter instance
     """
-    if not options.show_progress:
+    if not getattr(options, "show_progress", True):
         return NoopProgressReporter()
+
+    # If user explicitly asked for simple progress, honor that first.
+    if getattr(options, "simple_progress", False) and _is_tty():
+        return SimpleProgressReporter(file_name)
 
     if RICH_AVAILABLE and Progress and _is_tty():
         con = _console()
         if con:
-            return RichProgressReporter(con, options.progress_refresh_hz)
+            return RichProgressReporter(con, getattr(options, "progress_refresh_hz", 10.0))
 
-    if options.simple_progress and _is_tty():
+    if _is_tty():
         return SimpleProgressReporter(file_name)
 
-    return LoggingProgressReporter(logger, options.log_every_bytes)
+    return LoggingProgressReporter(logger, getattr(options, "log_every_bytes", 128 * 1024 * 1024))
