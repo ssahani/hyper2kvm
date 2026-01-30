@@ -431,7 +431,7 @@ hyper2kvm/
 ```bash
 
 **Total:** 27 directories, 117+ Python modules
-
+```
 ---
 
 ## Orchestrator Architecture (Refactored)
