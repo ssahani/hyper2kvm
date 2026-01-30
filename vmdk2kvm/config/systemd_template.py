@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from __future__ import annotations
 
+import getpass
 import os
 import shlex
 from dataclasses import dataclass
@@ -64,7 +65,39 @@ def _q(s: str) -> str:
     return shlex.quote(s)
 
 
-@dataclass
+def _q_opt(s: Optional[str]) -> str:
+    """Quote optional strings; empty becomes empty."""
+    if not s:
+        return ""
+    return _q(str(s))
+
+
+def _join_rw_paths(rw: Any) -> str:
+    """
+    Normalize ReadWritePaths value.
+    - Accept string or list/tuple of strings.
+    - Keep spacing tidy.
+    """
+    if isinstance(rw, (list, tuple)):
+        parts = [str(x).strip() for x in rw if str(x).strip()]
+        return " ".join(parts)
+    if isinstance(rw, str) and rw.strip():
+        return rw.strip()
+    return "/var/lib/vmdk2kvm /var/log/vmdk2kvm /tmp"
+
+
+def _normalize_extra_args(extra: Any) -> str:
+    """
+    Extra args are appended verbatim (user-controlled).
+    We keep behavior same (no parsing), but trim and collapse whitespace a bit.
+    """
+    if extra is None:
+        return ""
+    s = str(extra).strip()
+    return " ".join(s.split()) if s else ""
+
+
+@dataclass(frozen=True)
 class SystemdUnitParams:
     python: str
     script: str
@@ -90,21 +123,22 @@ def _infer_defaults(args: Any) -> SystemdUnitParams:
 
     user = getattr(args, "user", None) or "root"
     group = getattr(args, "group", None) or user
-    workdir = getattr(args, "workdir", None) or "/"
+
+    # Prefer explicit workdir, else infer from script directory, else "/"
+    workdir = getattr(args, "workdir", None)
+    if not workdir:
+        try:
+            p = Path(str(script)).expanduser()
+            workdir = str(p.parent) if p.parent and str(p.parent) != "." else "/"
+        except Exception:
+            workdir = "/"
+
     env_file = getattr(args, "env_file", None) or "/etc/default/vmdk2kvm"
 
-    # Read/write paths: allow user to pass a list or a string
-    rw = getattr(args, "rw_paths", None)
-    if isinstance(rw, (list, tuple)):
-        rw_paths = " ".join(str(x) for x in rw)
-    elif isinstance(rw, str) and rw.strip():
-        rw_paths = rw.strip()
-    else:
-        rw_paths = "/var/lib/vmdk2kvm /var/log/vmdk2kvm /tmp"
+    rw_paths = _join_rw_paths(getattr(args, "rw_paths", None))
+    extra_args = _normalize_extra_args(getattr(args, "extra_args", None))
 
-    extra = getattr(args, "extra_args", None) or ""
-    extra_args = extra.strip()
-
+    # Quote ExecStart pieces; keep User/Group/paths unquoted (systemd expects raw)
     return SystemdUnitParams(
         python=_q(str(python)),
         script=_q(str(script)),
@@ -119,51 +153,95 @@ def _infer_defaults(args: Any) -> SystemdUnitParams:
     )
 
 
+def _validate_params(p: SystemdUnitParams) -> None:
+    """
+    Conservative validation. We do NOT fail on missing files because this is a generator,
+    but we guard against empty critical fields.
+    """
+    if not p.python or not p.script:
+        raise ValueError("python/script cannot be empty")
+    if not p.watch_dir or not p.config:
+        raise ValueError("watch_dir/config cannot be empty")
+    if not p.user:
+        raise ValueError("user cannot be empty")
+    if not p.group:
+        raise ValueError("group cannot be empty")
+    if not p.workdir:
+        raise ValueError("workdir cannot be empty")
+
+
+def _render_unit(p: SystemdUnitParams) -> str:
+    return SYSTEMD_UNIT_TEMPLATE.format_map(
+        {
+            "python": p.python,
+            "script": p.script,
+            "watch_dir": p.watch_dir,
+            "config": p.config,
+            "extra_args": p.extra_args,
+            "user": p.user,
+            "group": p.group,
+            "workdir": p.workdir,
+            "env_file": p.env_file,
+            "rw_paths": p.rw_paths,
+        }
+    )
+
+
 def generate_systemd_unit(args: Any, logger=None) -> None:
     """
     Print or write a sample systemd unit file.
 
-    Enhancements:
-      - fills template with values from args (python/script/watch_dir/config/user/group/...)
-      - supports atomic write to output file
-      - creates parent dir when writing
-      - logs next-step instructions
-      - avoids dangerous unquoted ExecStart arguments
+    Enhancements (same functionality):
+      - robust default inference (workdir inferred from script when unset)
+      - small validation to avoid emitting broken units
+      - atomic write + fsync for durability (best effort)
+      - clearer next-step instructions and safer enable command
+      - still avoids dangerous unquoted ExecStart args
     """
     params = _infer_defaults(args)
-
-    unit = SYSTEMD_UNIT_TEMPLATE.format_map(
-        {
-            "python": params.python,
-            "script": params.script,
-            "watch_dir": params.watch_dir,
-            "config": params.config,
-            "extra_args": params.extra_args,
-            "user": params.user,
-            "group": params.group,
-            "workdir": params.workdir,
-            "env_file": params.env_file,
-            "rw_paths": params.rw_paths,
-        }
-    )
+    _validate_params(params)
+    unit = _render_unit(params)
 
     out = getattr(args, "output", None)
     if out:
-        out_path = Path(out).expanduser()
+        out_path = Path(str(out)).expanduser()
         U.ensure_dir(out_path.parent)
 
         tmp = out_path.with_suffix(out_path.suffix + ".tmp")
         tmp.write_text(unit, encoding="utf-8")
+
+        # Best-effort durability: fsync file then fsync dir
+        try:
+            with open(tmp, "rb") as f:
+                os.fsync(f.fileno())
+        except Exception:
+            pass
+
         tmp.replace(out_path)
 
+        try:
+            dfd = os.open(str(out_path.parent), os.O_DIRECTORY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
+        except Exception:
+            pass
+
         if logger:
-            logger.info(f"Systemd unit written to {out_path}")
-            # Helpful next steps (no assumptions about distro, but generally correct)
+            logger.info("Systemd unit written to %s", out_path)
+
             name = out_path.name
-            logger.info(f"Next steps:")
-            logger.info(f"  sudo install -m 0644 {out_path} /etc/systemd/system/{name}")
-            logger.info(f"  sudo systemctl daemon-reload")
-            logger.info(f"  sudo systemctl enable --now {name.replace('.service','')}.service")
+            unit_name = name if name.endswith(".service") else f"{name}.service"
+
+            logger.info("Next steps:")
+            logger.info("  sudo install -m 0644 %s /etc/systemd/system/%s", out_path, unit_name)
+            logger.info("  sudo systemctl daemon-reload")
+            logger.info("  sudo systemctl enable --now %s", unit_name)
+
+            # Extra tip, but harmless:
+            logger.info("  sudo journalctl -u %s -f", unit_name)
+
         return
 
     # No output path: print to stdout
