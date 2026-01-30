@@ -3881,8 +3881,8 @@ class VMCraft:
             LVMActivator.activate(self.logger, nbd_device=self._nbd_device)
 
     def lvs(self) -> list[str]:
-        """List logical volumes."""
-        return LVMActivator.list_logical_volumes(self.logger)
+        """List logical volumes (filtered to NBD device if available)."""
+        return LVMActivator.list_logical_volumes(self.logger, nbd_device=self._nbd_device)
 
     # LVM Creation APIs
 

@@ -61,13 +61,13 @@ class LVMActivator:
                 nbd_partitions = glob.glob(f"{nbd_device}p*")
                 logger.info(f"Scanning NBD partitions for LVM: {nbd_partitions}")
 
-                # Scan each NBD partition explicitly
+                # Scan each NBD partition with devicesfile disabled
                 for part in nbd_partitions:
-                    run_sudo(logger, ["pvscan", "--cache", part], check=False, capture=True)
-                    logger.info(f"  Scanned PV: {part}")
+                    run_sudo(logger, ["pvscan", "--devicesfile", "", "--cache", part], check=False, capture=True)
+                    logger.debug(f"  Scanned PV: {part}")
 
-                # General scan
-                run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
+                # General scan with devicesfile disabled
+                run_sudo(logger, ["vgscan", "--devicesfile", "", "--cache"], check=True, capture=True)
             elif _has_command("pvscan"):
                 run_sudo(logger, ["pvscan", "--cache"], check=True, capture=True)
                 run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
@@ -76,13 +76,13 @@ class LVMActivator:
             vgs_to_activate = []
             if nbd_partitions and _has_command("pvs"):
                 try:
-                    # Query each NBD partition directly with --devices to avoid host LVM
+                    # Query each NBD partition with devicesfile disabled
                     vg_set = set()
                     for part in nbd_partitions:
                         try:
                             result = run_sudo(
                                 logger,
-                                ["pvs", "--devices", part, "--noheadings", "-o", "vg_name"],
+                                ["pvs", "--devicesfile", "", "--devices", part, "--noheadings", "-o", "vg_name"],
                                 check=True,
                                 capture=True,
                                 failure_log_level=logging.DEBUG
@@ -101,12 +101,12 @@ class LVMActivator:
                 except Exception as e:
                     logger.warning(f"Could not determine VGs from NBD partitions: {e}")
 
-            # Activate only NBD-related VGs
+            # Activate only NBD-related VGs with devicesfile disabled
             if vgs_to_activate:
                 for vg in vgs_to_activate:
                     try:
-                        # Build device list for vgchange to avoid host VG with same name
-                        devices_arg = []
+                        # Build device list for vgchange
+                        devices_arg = ["--devicesfile", ""]
                         for part in nbd_partitions:
                             devices_arg.extend(["--devices", part])
 
@@ -130,31 +130,50 @@ class LVMActivator:
             return audit
 
     @staticmethod
-    def list_logical_volumes(logger: logging.Logger) -> list[str]:
+    def list_logical_volumes(logger: logging.Logger, nbd_device: str | None = None) -> list[str]:
         """
-        List logical volumes.
+        List logical volumes, optionally filtered to only NBD-backed LVs.
+
+        Args:
+            nbd_device: If provided, only return LVs backed by this NBD device
 
         Returns:
             List of LV device paths (e.g., ['/dev/mapper/vg-lv'])
         """
         try:
-            # Use lvs with JSON output for structured parsing
-            result = run_sudo(
-                logger,
-                ["lvs", "--reportformat", "json", "--noheadings"],
-                check=True,
-                capture=True
-            )
+            # Use lvs with lv_path and devices columns
+            # Disable devices file to make filtering work
+            cmd = [
+                "lvs",
+                "--devicesfile", "",
+                "--reportformat", "json",
+                "--noheadings",
+                "-o", "lv_path,devices,vg_name"
+            ]
+
+            result = run_sudo(logger, cmd, check=True, capture=True)
 
             data = json.loads(result.stdout)
             lvs_data = data.get("report", [{}])[0].get("lv", [])
 
             devices = []
             for lv in lvs_data:
+                lv_path = lv.get("lv_path", "")
+                lv_devices = lv.get("devices", "")
                 vg_name = lv.get("vg_name", "")
-                lv_name = lv.get("lv_name", "")
-                if vg_name and lv_name:
-                    devices.append(f"/dev/mapper/{vg_name}-{lv_name}")
+
+                # If NBD filtering is requested, check if this LV uses NBD partitions
+                if nbd_device:
+                    if nbd_device in lv_devices or f"{nbd_device}p" in lv_devices:
+                        devices.append(lv_path)
+                        logger.debug(f"Found NBD-backed LV: {lv_path} (VG: {vg_name}, devices: {lv_devices})")
+                else:
+                    # No filtering - return all LVs
+                    if lv_path:
+                        devices.append(lv_path)
+
+            if nbd_device:
+                logger.info(f"Found {len(devices)} LVs on {nbd_device}: {devices}")
 
             return devices
 
