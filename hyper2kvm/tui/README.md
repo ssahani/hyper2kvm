@@ -183,16 +183,42 @@ Components communicate via:
 - Shared state (to be implemented)
 - Message passing (to be implemented)
 
-### Backend Integration (TODO)
+### Backend Integration
 
-Currently, components have placeholder TODOs for:
-- vSphere connection
-- File browsing
-- Migration launching
-- Progress monitoring
-- Statistics collection
+#### Implemented Features
 
-These will be integrated with the existing hyper2kvm backend.
+**Settings Persistence** (`tui_config.py`):
+- JSON-based configuration storage at `~/.config/hyper2kvm/tui.json`
+- Automatic loading on startup
+- Save/load/reset operations
+- Deep merging with defaults
+- All 6 settings categories supported
+
+**Migration History Tracking** (`migration_tracker.py`):
+- Persistent migration history at `~/.config/hyper2kvm/migration_history.json`
+- Real-time statistics calculation
+- Active migration tracking
+- Success rate computation
+- Automatic cleanup of old records (30-day retention, configurable)
+- Max history limit enforcement (1000 records by default)
+
+**Statistics Dashboard**:
+- Total migrations count
+- Active migrations count
+- Completed today count
+- Success rate percentage
+- Background updates every 5 seconds
+
+#### In Progress
+
+Components have placeholder TODOs for:
+- vSphere connection and authentication
+- File browsing integration
+- Migration process launching
+- Live progress monitoring with websockets
+- Log streaming and display
+
+These will be progressively integrated with the existing hyper2kvm backend.
 
 ## Development
 
@@ -239,20 +265,44 @@ HYPER2KVM_LOG_LEVEL=DEBUG hyper2kvm-tui
 - Make components responsive
 - Test in different terminal sizes
 
+## Configuration and Data Files
+
+The TUI stores configuration and data in `~/.config/hyper2kvm/`:
+
+- **`tui.json`**: User preferences and settings
+  - General settings (output directory, logging)
+  - Migration defaults (format, compression)
+  - vSphere connection preferences
+  - Offline fixes configuration
+  - Performance settings
+  - Advanced options
+
+- **`migration_history.json`**: Migration tracking data
+  - All migration records with metadata
+  - Status, progress, timing information
+  - Source/destination paths
+  - Error messages and logs
+  - Automatically cleaned up after 30 days
+
+Both files are created automatically on first use and use JSON format for easy inspection and manual editing if needed.
+
 ## Roadmap
 
 ### v0.2 (Current)
 - ✅ Main application structure
 - ✅ All 6 panels implemented
 - ✅ Basic UI and navigation
+- ✅ Settings persistence with JSON storage
+- ✅ Migration history tracking
+- ✅ Real-time statistics dashboard
 - ⏳ Backend integration (in progress)
 
 ### v0.3 (Next)
-- [ ] Live migration progress updates
+- [ ] Live migration progress updates with websockets
 - [ ] vSphere connection implementation
 - [ ] File browser implementation
-- [ ] Settings persistence
-- [ ] Help dialogs
+- [ ] Help dialogs with keyboard shortcuts
+- [ ] Migration log viewer
 
 ### v0.4 (Future)
 - [ ] Advanced filtering
