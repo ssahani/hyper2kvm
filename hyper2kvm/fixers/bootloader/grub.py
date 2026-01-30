@@ -550,6 +550,87 @@ def remove_stale_device_map(self, g: guestfs.GuestFS) -> int:
 
 # initramfs driver injection (boot-relevant, keep here)
 
+def _find_available_modules(g: guestfs.GuestFS, kver: str, candidates: list[str]) -> list[str]:
+    """
+    Check which candidate modules actually exist in the guest kernel modules directory.
+
+    Args:
+        g: GuestFS instance
+        kver: Kernel version (e.g., "4.18.0-348.el8.x86_64")
+        candidates: List of module names to check (without .ko extension)
+
+    Returns:
+        List of modules that actually exist on the guest system
+    """
+    available = []
+    modules_base = f"/lib/modules/{kver}"
+
+    # Check if modules directory exists
+    try:
+        if not g.is_dir(modules_base):
+            return []
+    except Exception:
+        return []
+
+    # Common module search paths within /lib/modules/<kver>/
+    search_dirs = [
+        f"{modules_base}/kernel/drivers/block",
+        f"{modules_base}/kernel/drivers/scsi",
+        f"{modules_base}/kernel/drivers/net",
+        f"{modules_base}/kernel/drivers/virtio",
+        f"{modules_base}/kernel/drivers/nvme/host",
+        f"{modules_base}/kernel/drivers/ata",
+        f"{modules_base}/kernel/drivers/md",
+        f"{modules_base}/kernel/crypto",
+    ]
+
+    # Also check the modules.builtin file for built-in modules
+    builtin_modules = set()
+    builtin_path = f"{modules_base}/modules.builtin"
+    try:
+        if g.is_file(builtin_path):
+            builtin_content = g.read_file(builtin_path)
+            # modules.builtin has paths like kernel/drivers/block/virtio_blk.ko
+            for line in builtin_content.splitlines():
+                # Extract module name from path
+                if line.strip() and line.endswith('.ko'):
+                    mod_name = line.rsplit('/', 1)[-1].replace('.ko', '')
+                    builtin_modules.add(mod_name)
+    except Exception:
+        pass
+
+    # Check each candidate module
+    for mod_name in candidates:
+        # Check if it's built-in
+        if mod_name in builtin_modules:
+            available.append(mod_name)
+            continue
+
+        # Check if .ko file exists in any search directory
+        found = False
+        for search_dir in search_dirs:
+            try:
+                if not g.is_dir(search_dir):
+                    continue
+
+                # Check for both .ko and .ko.xz (compressed modules)
+                for files in [g.ls(search_dir)]:
+                    for file in files:
+                        if file in [f"{mod_name}.ko", f"{mod_name}.ko.xz", f"{mod_name}.ko.gz"]:
+                            available.append(mod_name)
+                            found = True
+                            break
+                    if found:
+                        break
+            except Exception:
+                continue
+
+            if found:
+                break
+
+    return available
+
+
 def _get_initramfs_add_drivers(self) -> list[str]:
     """
     Knob sources (highest → lowest):
@@ -565,14 +646,15 @@ def _get_initramfs_add_drivers(self) -> list[str]:
             drivers = [str(x).strip() for x in list(val) if str(x).strip()]
         return _dedup_keep_order(drivers)
 
+    # Default drivers for KVM/virtio migration
+    # Only include actual kernel module names that exist as .ko files
+    # Removed: "virtio" (not a real module), "virtio_ring" (doesn't exist on RHEL 8+),
+    #          "virtio_pci" (doesn't exist as standalone .ko on RHEL 8+)
     return _dedup_keep_order(
         [
-            "virtio",
-            "virtio_ring",
             "virtio_blk",
             "virtio_scsi",
             "virtio_net",
-            "virtio_pci",
             "nvme",
             "ahci",
             "sd_mod",
@@ -915,7 +997,33 @@ def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
     except Exception as e:
         info["device_map_error"] = str(e)
 
-    add_drivers = _get_initramfs_add_drivers(self)
+    # Get candidate drivers from config or defaults
+    candidate_drivers = _get_initramfs_add_drivers(self)
+
+    # Determine guest kernels early so we can filter drivers
+    guest_kvers: list[str] = []
+    try:
+        if _dir_exists(g, "/lib/modules"):
+            guest_kvers = sorted([U.to_text(x) for x in g.ls("/lib/modules") if U.to_text(x).strip()])
+    except Exception:
+        guest_kvers = []
+
+    # Dynamically filter to only modules that actually exist on the guest system
+    add_drivers = candidate_drivers
+    if guest_kvers:
+        # Use the latest kernel version for module detection
+        latest_kver = guest_kvers[-1]
+        available_drivers = _find_available_modules(g, latest_kver, candidate_drivers)
+        if available_drivers:
+            add_drivers = available_drivers
+            _log_info(self, f"Filtered initramfs drivers to available modules: {add_drivers}")
+        else:
+            # Fallback to candidates if detection fails
+            _log_info(self, f"Could not detect available modules, using candidates: {add_drivers}")
+    else:
+        _log_info(self, f"No kernel versions found, using candidate drivers: {add_drivers}")
+
+    info["initramfs_add_drivers_candidates"] = candidate_drivers
     info["initramfs_add_drivers"] = add_drivers
 
     # Mount /boot, /boot/efi for correct output location (critical)
@@ -973,13 +1081,7 @@ def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
 
     info["initramfs_driver_injection"] = inject_audit
 
-    # Determine guest kernels
-    guest_kvers: list[str] = []
-    try:
-        if _dir_exists(g, "/lib/modules"):
-            guest_kvers = sorted([U.to_text(x) for x in g.ls("/lib/modules") if U.to_text(x).strip()])
-    except Exception:
-        guest_kvers = []
+    # guest_kvers already determined earlier for module filtering
     info["guest_kernels"] = guest_kvers
 
     # Initramfs regen attempts (highest success probability first)
