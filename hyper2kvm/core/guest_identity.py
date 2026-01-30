@@ -149,7 +149,7 @@ class GuestDetector:
         try:
             if not g.is_file(path):
                 return None
-            content = g.read_file(path) or ""
+            content = (g.read_file(path) or b"").decode('utf-8', errors='ignore')
             lines = content.splitlines()
             return lines[0].strip() if lines else None
         except Exception:
@@ -400,7 +400,7 @@ class GuestDetector:
         for p in ("/etc/os-release", "/usr/lib/os-release"):
             try:
                 if g.is_file(p):
-                    osr_raw = g.read_file(p) or ""
+                    osr_raw = (g.read_file(p) or b"").decode('utf-8', errors='ignore')
                     break
             except Exception:
                 continue
@@ -426,7 +426,7 @@ class GuestDetector:
         # issue fallback
         try:
             if g.is_file("/etc/issue") and not ident.os_pretty_name:
-                issue = g.read_file("/etc/issue") or ""
+                issue = (g.read_file("/etc/issue") or b"").decode('utf-8', errors='ignore')
                 txt = cls.parse_issue_file(issue)
                 if txt:
                     ident.os_pretty_name = txt
