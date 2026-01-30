@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/network_validation.py
+# hyper2kvm/fixers/network/validation.py
 """
 Network configuration fix validation.
 
@@ -11,8 +11,8 @@ from __future__ import annotations
 import logging
 from typing import List
 
-from ..config.config_loader import YAML_AVAILABLE, yaml
-from .network_model import FixResult, IfcfgKV, NetworkConfig, NetworkConfigType
+from ...config.config_loader import YAML_AVAILABLE, yaml
+from .model import FixResult, IfcfgKV, NetworkConfig, NetworkConfigType
 
 
 class NetworkValidation:

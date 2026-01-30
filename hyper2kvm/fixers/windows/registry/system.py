@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/registry_system.py
+# hyper2kvm/fixers/windows/registry/system.py
 # -*- coding: utf-8 -*-
 """
 SYSTEM hive editing for driver installation and control settings.
@@ -24,12 +24,12 @@ from typing import Any, Dict, List, Optional
 import guestfs  # type: ignore
 import hivex  # type: ignore
 
-from ..core.utils import U
+from ....core.utils import U
 
 # Import registry utilities from sub-modules
-from .registry_io import _download_hive_local, _is_probably_regf, _log_mountpoints_best_effort
-from .registry_mount import _ensure_windows_root
-from .registry_encoding import (
+from .io import _download_hive_local, _is_probably_regf, _log_mountpoints_best_effort
+from .mount import _ensure_windows_root
+from .encoding import (
     NodeLike,
     _close_best_effort,
     _commit_best_effort,
@@ -54,7 +54,7 @@ from .registry_encoding import (
 )
 
 # Import shared logging utilities
-from ..core.logging_utils import safe_logger as _safe_logger_base
+from ....core.logging_utils import safe_logger as _safe_logger_base
 
 
 def _safe_logger(self) -> logging.Logger:

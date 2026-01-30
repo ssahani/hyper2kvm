@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_registry.py
+# hyper2kvm/fixers/windows/registry_core.py
 # -*- coding: utf-8 -*-
 """
 Windows registry editing for virtualization fixes.
@@ -20,13 +20,13 @@ This file re-exports the public APIs for backward compatibility.
 from __future__ import annotations
 
 # Re-export public APIs from sub-modules
-from .registry_firstboot import provision_firstboot_payload_and_service
-from .registry_software import add_software_runonce, append_devicepath_software_hive
-from .registry_system import edit_system_hive, set_system_dword
+from .registry.firstboot import provision_firstboot_payload_and_service
+from .registry.software import add_software_runonce, append_devicepath_software_hive
+from .registry.system import edit_system_hive, set_system_dword
 
 # Re-export commonly used internal functions for compatibility
 # (These are used by other fixers in the codebase)
-from .registry_encoding import (
+from .registry.encoding import (
     _close_best_effort,
     _commit_best_effort,
     _decode_reg_sz,
@@ -52,8 +52,8 @@ from .registry_encoding import (
     _upload_bytes,
     NodeLike,
 )
-from .registry_io import _download_hive_local, _is_probably_regf, _log_mountpoints_best_effort
-from .registry_mount import _ensure_windows_root, _guest_path_join, _looks_like_windows_root
+from .registry.io import _download_hive_local, _is_probably_regf, _log_mountpoints_best_effort
+from .registry.mount import _ensure_windows_root, _guest_path_join, _looks_like_windows_root
 
 # Re-export for compatibility with existing code that imports these
 __all__ = [
@@ -99,7 +99,8 @@ __all__ = [
 
 
 # Import shared logging utilities
-from ..core.logging_utils import safe_logger as _safe_logger_base
+import logging
+from ...core.logging_utils import safe_logger as _safe_logger_base
 
 
 def _safe_logger(self) -> logging.Logger:

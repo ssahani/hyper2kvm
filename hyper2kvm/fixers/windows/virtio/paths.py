@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_virtio_paths.py
+# hyper2kvm/fixers/windows/virtio/paths.py
 # -*- coding: utf-8 -*-
 """Path resolution utilities for Windows filesystem operations"""
 
@@ -11,7 +11,7 @@ from typing import Optional
 
 import guestfs  # type: ignore
 
-from .windows_virtio_utils import _safe_logger, _log_mountpoints_best_effort
+from .utils import _safe_logger, _log_mountpoints_best_effort
 
 
 # ---------------------------

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/bootloader_fixer.py
+# hyper2kvm/fixers/bootloader/fixer.py
 # ---------------------------------------------------------------------
 # Multi-bootloader detection + KVM-friendly “safe” fixes.
 #
@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..core.utils import U
+from ...core.utils import U
 
 
 class BootloaderType(Enum):

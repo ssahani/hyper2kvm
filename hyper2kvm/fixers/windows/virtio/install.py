@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_virtio_install.py
+# hyper2kvm/fixers/windows/virtio/install.py
 # -*- coding: utf-8 -*-
 """
 VirtIO driver installation pipeline stages.
@@ -17,14 +17,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import guestfs  # type: ignore
 
-from ..core.utils import U
-from .windows_registry import (
+from ....core.utils import U
+from ..registry_core import (
     append_devicepath_software_hive,
     edit_system_hive,
     provision_firstboot_payload_and_service,
     _ensure_windows_root,
 )
-from .windows_virtio_utils import (
+from .utils import (
     _safe_logger,
     _log,
     _guest_mkdir_p,
@@ -32,9 +32,9 @@ from .windows_virtio_utils import (
     _guest_sha256,
     _is_probably_driver_payload,
 )
-from .windows_virtio_config import DriverStartType, DriverType, _parse_start_type
-from .windows_virtio_paths import WindowsSystemPaths, _guestfs_to_windows_path
-from .windows_virtio_detection import WindowsVirtioPlan, DriverFile, _plan_to_dict
+from .config import DriverStartType, DriverType, _parse_start_type
+from .paths import WindowsSystemPaths, _guestfs_to_windows_path
+from .detection import WindowsVirtioPlan, DriverFile, _plan_to_dict
 
 
 def _sha256_path(p: Path) -> str:
@@ -59,7 +59,7 @@ def _virtio_preflight(self, g: guestfs.GuestFS) -> Tuple[Optional[Path], Optiona
         return None, {"injected": False, "reason": "virtio_drivers_dir_invalid", "path": str(virtio_src)}
 
     # Import here to avoid circular dependency
-    from .windows_virtio import is_windows
+    from .core import is_windows
     if not is_windows(self, g):
         return None, {"injected": False, "reason": "not_windows"}
     if not getattr(self, "inspect_root", None):
@@ -413,9 +413,9 @@ def _virtio_provision_firstboot(self, g: guestfs.GuestFS, result: Dict[str, Any]
 
 
 def _virtio_bcd_backup(self, g: guestfs.GuestFS, result: Dict[str, Any]) -> None:
-    from .windows_virtio_utils import _step
+    from .utils import _step
     # Import here to avoid circular dependency
-    from .windows_virtio import windows_bcd_actual_fix
+    from .core import windows_bcd_actual_fix
     logger = _safe_logger(self)
     with _step(logger, "🧷 BCD store discovery + backup"):
         try:

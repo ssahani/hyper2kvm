@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_virtio_config.py
+# hyper2kvm/fixers/windows/virtio/config.py
 # -*- coding: utf-8 -*-
 """Configuration and validation for Windows VirtIO driver injection"""
 
@@ -12,8 +12,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..config.config_loader import YAML_AVAILABLE, yaml
-from .windows_virtio_utils import _safe_logger
+from ....config.config_loader import YAML_AVAILABLE, yaml
+from .utils import _safe_logger
 
 
 # ---------------------------

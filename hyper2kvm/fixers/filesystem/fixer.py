@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/filesystem_fixer.py
+# hyper2kvm/fixers/filesystem/fixer.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import guestfs  # type: ignore
 
-from ..core.utils import U
+from ...core.utils import U
 
 
 class FilesystemFixer:

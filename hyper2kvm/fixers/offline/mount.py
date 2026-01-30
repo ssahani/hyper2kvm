@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/offline_fixer_mount.py
+# hyper2kvm/fixers/offline/mount.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import guestfs  # type: ignore
 
-from ..core.utils import U, guest_has_cmd
-from .fstab_rewriter import parse_btrfsvol_spec
-from . import filesystem_fixer  # type: ignore
+from ...core.utils import U, guest_has_cmd
+from ..filesystem.fstab import parse_btrfsvol_spec
+from ..filesystem import fixer as filesystem_fixer  # type: ignore
 
 
 @dataclass

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/offline_validation.py
+# hyper2kvm/fixers/offline/validation.py
 # -*- coding: utf-8 -*-
 """
 Post-fix validation and health checks for offline guest modifications.
@@ -18,8 +18,8 @@ from typing import Any, Dict
 
 import guestfs  # type: ignore
 
-from ..core.utils import guest_has_cmd, guest_ls_glob
-from ..core.validation_suite import ValidationSuite
+from ...core.utils import guest_has_cmd, guest_ls_glob
+from ...core.validation_suite import ValidationSuite
 
 
 class OfflineValidationManager:

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_network_fixer.py
+# hyper2kvm/fixers/windows/network_fixer.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -101,11 +101,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import guestfs  # type: ignore
 
-from ..core.utils import U
-from ..core.logging_utils import safe_logger as _safe_logger_base, emoji_for_level as _emoji, log_with_emoji as _log, log_step as _step
-from ..core.guest_utils import guest_mkdir_p as _guest_mkdir_p, guest_write_text as _guest_write_text, deep_merge_dict as _deep_merge_dict
-from ..core.list_utils import dedup_preserve_order_str
-from .windows_registry import (
+from ...core.utils import U
+from ...core.logging_utils import safe_logger as _safe_logger_base, emoji_for_level as _emoji, log_with_emoji as _log, log_step as _step
+from ...core.guest_utils import guest_mkdir_p as _guest_mkdir_p, guest_write_text as _guest_write_text, deep_merge_dict as _deep_merge_dict
+from ...core.list_utils import dedup_preserve_order_str
+from .registry_core import (
     provision_firstboot_payload_and_service,
     _ensure_windows_root,  # internal helper in same package
 )

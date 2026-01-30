@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/live_grub_fixer.py
+# hyper2kvm/fixers/live/grub_fixer.py
 from __future__ import annotations
 
 import base64
@@ -9,8 +9,8 @@ import shlex
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..core.utils import U
-from ..ssh.ssh_client import SSHClient
+from ...core.utils import U
+from ...ssh.ssh_client import SSHClient
 
 
 # ---------------------------------------------------------------------

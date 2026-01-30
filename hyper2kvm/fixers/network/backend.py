@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/network_fixers_backend.py
+# hyper2kvm/fixers/network/backend.py
 """
 Backend-specific network configuration fixers for VMware -> KVM migration.
 
@@ -19,9 +19,9 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
-from ..config.config_loader import YAML_AVAILABLE, yaml
+from ...config.config_loader import YAML_AVAILABLE, yaml
 
-from .network_model import (
+from .model import (
     DeviceKind,
     FixLevel,
     FixResult,

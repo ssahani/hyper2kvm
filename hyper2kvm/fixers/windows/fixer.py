@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/windows_fixer.py
+# hyper2kvm/fixers/windows/fixer.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from __future__ import annotations
 Thin façade for Windows fixing.
 
 This module intentionally stays small and delegates the heavy lifting to:
-  - windows_virtio.py          (driver discovery + injection + staging + BCD backup hints)
-  - windows_registry.py        (offline hive edits: SYSTEM services/CDD + SOFTWARE DevicePath)
-  - windows_network_fixer.py   (best-effort network config retention via firstboot PowerShell)
+  - virtio/core.py             (driver discovery + injection + staging + BCD backup hints)
+  - registry_core.py           (offline hive edits: SYSTEM services/CDD + SOFTWARE DevicePath)
+  - network_fixer.py           (best-effort network config retention via firstboot PowerShell)
 """
 
 import logging
@@ -17,14 +17,14 @@ from typing import Any, Dict
 
 import guestfs  # type: ignore
 
-from ..core.logging_utils import safe_logger as _safe_logger_base
-from .windows_virtio import (
+from ...core.logging_utils import safe_logger as _safe_logger_base
+from .virtio.core import (
     inject_virtio_drivers,
     is_windows,
     windows_bcd_actual_fix,
 )
 
-from .windows_network_fixer import retain_windows_network_config
+from .network_fixer import retain_windows_network_config
 
 
 def _safe_logger(self) -> logging.Logger:

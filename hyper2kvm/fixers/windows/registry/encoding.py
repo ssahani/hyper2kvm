@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Union
 import guestfs  # type: ignore
 import hivex  # type: ignore
 
-from .registry_io import _is_probably_regf
+from .io import _is_probably_regf
 
 # ---------------------------------------------------------------------------
 # Guest file helpers

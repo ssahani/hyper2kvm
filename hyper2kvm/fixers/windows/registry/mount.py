@@ -12,7 +12,7 @@ from typing import List, Optional
 
 import guestfs  # type: ignore
 
-from .registry_io import _log_mountpoints_best_effort
+from .io import _log_mountpoints_best_effort
 
 
 def _win_expected_paths() -> List[str]:

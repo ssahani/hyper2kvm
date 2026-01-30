@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/fixers/network_discovery.py
+# hyper2kvm/fixers/network/discovery.py
 """
 Network configuration file discovery and I/O operations.
 
@@ -23,8 +23,8 @@ from typing import List, Optional, Set
 
 import guestfs  # type: ignore
 
-from ..core.utils import U, guest_ls_glob
-from .network_model import NetworkConfig, NetworkConfigType
+from ...core.utils import U, guest_ls_glob
+from .model import NetworkConfig, NetworkConfigType
 
 # Network configuration file patterns for different backends
 CONFIG_PATTERNS = {

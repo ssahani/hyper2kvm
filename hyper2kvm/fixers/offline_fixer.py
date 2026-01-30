@@ -25,7 +25,7 @@ from .. import __version__
 from ..core.recovery_manager import RecoveryManager
 from ..core.utils import U, blinking_progress, guest_has_cmd, guest_ls_glob
 from ..core.validation_suite import ValidationSuite
-from .fstab_rewriter import (
+from .filesystem.fstab import (
     IGNORE_MOUNTPOINTS,
     _BYPATH_PREFIX,
     Change,
@@ -36,11 +36,11 @@ from .fstab_rewriter import (
 from .report_writer import write_report
 
 # Delegated fixers (keep OfflineFSFix "thin")
-from . import filesystem_fixer  # type: ignore
+from .filesystem import fixer as filesystem_fixer  # type: ignore
 from . import network_fixer  # type: ignore
-from . import grub_fixer  # type: ignore
+from .bootloader import grub as grub_fixer  # type: ignore
 from .windows import fixer as windows_fixer  # type: ignore
-from .offline_vmware_tools_remover import OfflineVmwareToolsRemover
+from .offline.vmware_tools_remover import OfflineVmwareToolsRemover
 
 # Extracted modules for focused functionality
 from .offline.spec_converter import SpecConverter
