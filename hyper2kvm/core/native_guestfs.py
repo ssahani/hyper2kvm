@@ -548,6 +548,65 @@ class NativeGuestFS:
         else:
             self._guest_path(path).write_bytes(content)
 
+    def upload(self, local_path: str, remote_path: str) -> None:
+        """
+        Upload a file from host to guest filesystem.
+
+        Args:
+            local_path: Path to file on host
+            remote_path: Destination path in guest filesystem
+
+        Example:
+            g.upload('/tmp/myfile.txt', '/etc/myconfig.conf')
+        """
+        local = Path(local_path)
+        if not local.exists():
+            raise FileNotFoundError(f"Local file not found: {local_path}")
+
+        if not local.is_file():
+            raise ValueError(f"Local path is not a file: {local_path}")
+
+        # Read from host, write to guest
+        content = local.read_bytes()
+        guest_path = self._guest_path(remote_path)
+
+        # Ensure parent directory exists
+        guest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write to guest
+        guest_path.write_bytes(content)
+
+        self.logger.info(f"📤 Uploaded: {local_path} -> {remote_path} ({len(content)} bytes)")
+
+    def download(self, remote_path: str, local_path: str) -> None:
+        """
+        Download a file from guest to host filesystem.
+
+        Args:
+            remote_path: Path to file in guest filesystem
+            local_path: Destination path on host
+
+        Example:
+            g.download('/etc/fstab', '/tmp/fstab.backup')
+        """
+        guest_path = self._guest_path(remote_path)
+
+        if not guest_path.exists():
+            raise FileNotFoundError(f"Guest file not found: {remote_path}")
+
+        if not guest_path.is_file():
+            raise ValueError(f"Guest path is not a file: {remote_path}")
+
+        # Read from guest
+        content = guest_path.read_bytes()
+
+        # Write to host
+        local = Path(local_path)
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(content)
+
+        self.logger.info(f"📥 Downloaded: {remote_path} -> {local_path} ({len(content)} bytes)")
+
     def ls(self, path: str) -> list[str]:
         """List directory contents."""
         return [str(p.name) for p in self._guest_path(path).iterdir()]
