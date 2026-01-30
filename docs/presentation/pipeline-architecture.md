@@ -366,23 +366,24 @@ User Command → Pipeline Execution → Exit
 Watch Queue → Detect File → Run Pipeline → Archive → Loop
 ```
 
+### CLI Mode Flow
 ```mermaid
 graph LR
-    subgraph CLI_MODE[CLI Mode - One Shot]
-        C1[Command] --> C2[Pipeline] --> C3[Exit]
-    end
-
-    subgraph DAEMON_MODE[Daemon Mode - Continuous]
-        D1[Watch] --> D2[Detect]
-        D2 --> D3[Pipeline]
-        D3 --> D4[Archive]
-        D4 --> D1
-    end
+    C1[CLI: Command] --> C2[Pipeline] --> C3[Exit]
 
     classDef cli fill:#2196F3,stroke:#1565C0,color:#fff
-    classDef daemon fill:#4CAF50,stroke:#2E7D32,color:#fff
-
     class C1,C2,C3 cli
+```
+
+### Daemon Mode Flow
+```mermaid
+graph LR
+    D1[Daemon: Watch] --> D2[Detect]
+    D2 --> D3[Pipeline]
+    D3 --> D4[Archive]
+    D4 --> D1
+
+    classDef daemon fill:#4CAF50,stroke:#2E7D32,color:#fff
     class D1,D2,D3,D4 daemon
 ```
 
