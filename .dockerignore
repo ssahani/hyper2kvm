@@ -75,11 +75,19 @@ Thumbs.db
 
 # Project specific
 output/
+out/
 *.vmdk
 *.qcow2
 *.img
+*.ova
 security-report.json
 .secrets.baseline
+
+# Kubernetes manifests (not needed in image)
+k8s/
+
+# Claude plan files
+.claude/
 
 # Keep only necessary files
 !requirements.txt

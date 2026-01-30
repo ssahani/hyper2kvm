@@ -14,7 +14,10 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import guestfs  # type: ignore
+try:
+    import guestfs  # type: ignore
+except ImportError:
+    guestfs = None  # type: ignore
 
 from ..registry_core import (
     append_devicepath_software_hive,

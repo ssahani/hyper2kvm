@@ -1,0 +1,31 @@
+apiVersion: hyper2kvm.io/v1alpha1
+kind: MigrationJob
+metadata:
+  name: inspect-debian-12
+  namespace: hyper2kvm-workers
+  labels:
+    environment: staging
+    vm-type: linux
+    operation: inspect
+spec:
+  operation: inspect
+
+  image:
+    path: /data/input/debian-12-server.vmdk
+    format: vmdk
+
+  parameters:
+    deep_scan: true
+    check_integrity: true
+    report_format: json
+
+  artifacts:
+    output_path: /data/output
+    report_name: debian-12-inspection.json
+
+  priority: 50
+  timeout: 30m
+
+  retryPolicy:
+    maxRetries: 1
+    backoff: fixed

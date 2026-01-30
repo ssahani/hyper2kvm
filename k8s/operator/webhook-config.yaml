@@ -1,0 +1,177 @@
+---
+# ValidatingWebhookConfiguration for MigrationJob
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: hyper2kvm-validating-webhook
+webhooks:
+- name: validate.migrationjob.hyper2kvm.io
+  admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: hyper2kvm-webhook
+      namespace: hyper2kvm-system
+      path: /validate
+      port: 443
+    caBundle: ${CA_BUNDLE}  # Replaced by script
+  rules:
+  - operations:
+    - CREATE
+    - UPDATE
+    apiGroups:
+    - hyper2kvm.io
+    apiVersions:
+    - v1alpha1
+    resources:
+    - migrationjobs
+  failurePolicy: Fail  # Reject if webhook fails
+  sideEffects: None
+  timeoutSeconds: 10
+
+---
+# MutatingWebhookConfiguration for MigrationJob
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: hyper2kvm-mutating-webhook
+webhooks:
+- name: mutate.migrationjob.hyper2kvm.io
+  admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: hyper2kvm-webhook
+      namespace: hyper2kvm-system
+      path: /mutate
+      port: 443
+    caBundle: ${CA_BUNDLE}  # Replaced by script
+  rules:
+  - operations:
+    - CREATE
+    apiGroups:
+    - hyper2kvm.io
+    apiVersions:
+    - v1alpha1
+    resources:
+    - migrationjobs
+  failurePolicy: Ignore  # Allow if webhook fails (fail open for mutations)
+  sideEffects: None
+  timeoutSeconds: 10
+
+---
+# Webhook Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: hyper2kvm-webhook
+  namespace: hyper2kvm-system
+  labels:
+    app: hyper2kvm-webhook
+spec:
+  type: ClusterIP
+  ports:
+  - name: https
+    port: 443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    app: hyper2kvm-webhook
+
+---
+# Webhook Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hyper2kvm-webhook
+  namespace: hyper2kvm-system
+  labels:
+    app: hyper2kvm-webhook
+    version: v1.5.0
+spec:
+  replicas: 2  # For high availability
+  selector:
+    matchLabels:
+      app: hyper2kvm-webhook
+  template:
+    metadata:
+      labels:
+        app: hyper2kvm-webhook
+        version: v1.5.0
+    spec:
+      serviceAccountName: hyper2kvm-operator
+      containers:
+      - name: webhook
+        image: hyper2kvm:operator
+        imagePullPolicy: IfNotPresent
+
+        command:
+        - python3
+        - -m
+        - hyper2kvm.operator.webhook_server
+
+        args:
+        - --host=0.0.0.0
+        - --port=8443
+        - --cert=/certs/tls.crt
+        - --key=/certs/tls.key
+
+        ports:
+        - name: https
+          containerPort: 8443
+          protocol: TCP
+        - name: health
+          containerPort: 8080
+          protocol: TCP
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+        volumeMounts:
+        - name: webhook-certs
+          mountPath: /certs
+          readOnly: true
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+
+      volumes:
+      - name: webhook-certs
+        secret:
+          secretName: hyper2kvm-webhook-certs
+
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 10

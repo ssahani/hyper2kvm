@@ -1,0 +1,20 @@
+{
+  "migrations": [
+    {
+      "vmdk": "/data/batch/web-01.vmdk",
+      "to_output": "web-01.qcow2",
+      "description": "Web server 1"
+    },
+    {
+      "vmdk": "/data/batch/web-02.vmdk",
+      "to_output": "web-02.qcow2",
+      "description": "Web server 2"
+    },
+    {
+      "vmdk": "/data/batch/db-01.vmdk",
+      "to_output": "db-01.qcow2",
+      "out_format": "raw",
+      "description": "Database server (raw format for better performance)"
+    }
+  ]
+}

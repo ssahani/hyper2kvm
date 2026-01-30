@@ -9,7 +9,10 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-import guestfs  # type: ignore
+try:
+    import guestfs  # type: ignore
+except ImportError:
+    guestfs = None  # type: ignore
 
 from .windows_virtio_utils import _safe_logger
 

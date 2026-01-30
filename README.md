@@ -573,9 +573,139 @@ h2kvmctl --cmd live-fix \
 - ✅ **Batch Processing** - Parallel migrations with manifests
 - ✅ **Testing Integration** - Libvirt/QEMU smoke tests
 - ✅ **Cloud Features** - Cloud-init, vSphere, Azure support
+- ✅ **Worker Job Protocol v1** - Production Kubernetes deployment (v1.0-1.4)
+- ✅ **Kubernetes Operator** - Automated job orchestration with CRD ✨ NEW (v1.4.0)
+- ✅ **Container Support** - Docker, Podman, Helm charts, full CI/CD
+- ✅ **Observability** - Prometheus metrics, Grafana dashboards
 - ✅ **Documentation** - Comprehensive guides, tutorials, API reference
 
 **See:** [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## Kubernetes & Container Deployment 🐳
+
+### Worker Job Protocol v1
+
+Production-grade job orchestration for VM migrations on Kubernetes with full observability and automation.
+
+**Key Features:**
+- ✅ **10-State Job Lifecycle** - Created → Validated → Queued → Assigned → Running → Completed
+- ✅ **Prometheus Metrics** - 8 metrics with Grafana dashboard
+- ✅ **Helm Charts** - One-command deployment with 50+ configurable parameters
+- ✅ **Persistent Storage** - State, events, input, output, temp PVCs
+- ✅ **CI/CD Pipelines** - GitHub Actions + GitLab CI with multi-arch builds
+- ✅ **Operational Tools** - Backup, restore, Helm migration scripts
+- ✅ **Operator Foundation** - CRD definitions for future automation
+
+### Quick Kubernetes Deployment
+
+**Install with Helm:**
+```bash
+# Add Helm repo
+helm repo add hyper2kvm https://ssahani.github.io/hyper2kvm
+helm repo update
+
+# Install workers
+helm install hyper2kvm-worker hyper2kvm/hyper2kvm-worker \
+  --namespace hyper2kvm-workers \
+  --create-namespace \
+  --values custom-values.yaml
+```
+
+**Local Testing with k3d:**
+```bash
+# Create k3d cluster
+k3d cluster create test-cluster --agents 2
+
+# Deploy with Helm
+helm install hyper2kvm-worker ./helm/hyper2kvm-worker \
+  --namespace hyper2kvm-workers \
+  --create-namespace \
+  --set storage.state.enabled=false \
+  --set storage.events.enabled=false
+
+# Submit migration job
+POD=$(kubectl get pods -n hyper2kvm-workers -l app=hyper2kvm-worker -o jsonpath='{.items[0].metadata.name}')
+kubectl cp job.json hyper2kvm-workers/$POD:/tmp/job.json
+kubectl exec -n hyper2kvm-workers $POD -- \
+  python3 -m hyper2kvm.worker.cli run /tmp/job.json --follow
+```
+
+**Docker/Podman:**
+```bash
+# Build worker image
+docker build --target worker -t hyper2kvm:worker .
+
+# Run privileged worker
+docker run --privileged \
+  -v /data/input:/data/input:ro \
+  -v /data/output:/data/output:rw \
+  -v /dev:/dev \
+  hyper2kvm:worker
+```
+
+**Monitoring:**
+- **Grafana Dashboard**: 9 panels (active jobs, success rate, duration percentiles, storage usage)
+- **Prometheus Metrics**: Migration rate, duration histograms, worker status
+- **Real-time Progress**: JSONL event streaming
+
+**Documentation:**
+- [Worker Protocol Specification](docs/worker/PROTOCOL_SPEC.md)
+- [Quick Start Guide](docs/worker/QUICKSTART.md)
+- [Kubernetes Deployment](k8s/README.md)
+- [Helm Chart README](helm/hyper2kvm-worker/README.md)
+- [Complete Implementation Summary](docs/deployment/WORKER_PROTOCOL_SUMMARY.md)
+
+**Versions:**
+- **v1.0.0** - Core Protocol (schemas, state machine, engine, CLI)
+- **v1.1.0** - Production Enhancements (persistent storage, metrics, automation)
+- **v1.2.0** - Observability (Grafana dashboard, Helm charts)
+- **v1.3.0** - CI/CD & Operations (GitHub Actions, GitLab CI, backup/restore, CRDs)
+- **v1.4.0** - Kubernetes Operator (automated job assignment, reconciliation loop)
+- **v1.5.0** - Admission Control & Metrics (webhooks, quotas, 20+ metrics)
+- **v1.6.0** - Operator Helm Chart & E2E Tests (production packaging, automated testing) ✨ NEW
+
+**Kubernetes Operator (v1.6.0) - Helm Chart:**
+```bash
+# Install operator with Helm (recommended)
+helm install hyper2kvm-operator ./helm/hyper2kvm-operator \
+  --namespace hyper2kvm-system \
+  --create-namespace
+
+# Create a migration job (fully automated!)
+kubectl apply -f - <<EOF
+apiVersion: hyper2kvm.io/v1alpha1
+kind: MigrationJob
+metadata:
+  name: example-conversion
+  namespace: default
+spec:
+  operation: convert
+  image:
+    path: /data/input/vm-disk.vmdk
+    format: vmdk
+  artifacts:
+    output_dir: /data/output
+    output_name: vm-disk.qcow2
+    output_format: qcow2
+EOF
+
+# Watch automatic job assignment and execution
+kubectl get migrationjob example-conversion -w
+```
+
+**Operator Features (v1.6.0):**
+- ✅ **Production Helm Chart** - 50+ configurable parameters, automated TLS certificates
+- ✅ **Admission Webhooks** - Validation, mutation, resource quotas (10 jobs/namespace)
+- ✅ **Enhanced Metrics** - 20+ Prometheus metrics for operator and webhooks
+- ✅ **E2E Testing** - Comprehensive test suite with 14 automated tests
+- ✅ **HA Deployment** - Webhook replicas for high availability
+- ✅ **Certificate Management** - Self-signed, cert-manager, or custom certificates
+
+**See:**
+- [Worker Protocol Summary](docs/deployment/WORKER_PROTOCOL_SUMMARY.md)
+- [Operator Helm Chart Guide](docs/deployment/v1.6.0-helm-chart.md) ✨ NEW
 
 ---
 

@@ -9,6 +9,7 @@ Provides common helper functions used across all VMCraft submodules.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import time
 from typing import Any
@@ -142,7 +143,7 @@ def run_sudo(
     """
     Run command with sudo and enhanced error handling.
 
-    Uses simple pattern: prepend 'sudo' to command.
+    Uses simple pattern: prepend 'sudo' to command if not already root.
     For consistency with existing code patterns.
 
     Args:
@@ -163,7 +164,11 @@ def run_sudo(
     Example:
         result = run_sudo(logger, ["mount", "/dev/sda1", "/mnt"], retry=True)
     """
-    sudo_cmd = ["sudo", *cmd]
+    # Only prepend sudo if we're not already running as root
+    if os.geteuid() == 0:
+        sudo_cmd = cmd
+    else:
+        sudo_cmd = ["sudo", *cmd]
 
     try:
         if retry:

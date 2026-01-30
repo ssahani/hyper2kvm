@@ -7,9 +7,335 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## [2.0.0] - 2026-01-30
 
-#### Configurable VMDK Conversion Directory (January 2026)
+### Added
+- **Priority Preemption** - Job priority management (IMPLEMENTED)
+  - `hyper2kvm/operator/priority_manager.py` - Priority and preemption logic (350+ lines)
+  - Job priority levels (0-100): CRITICAL, HIGH, NORMAL, LOW, BACKGROUND
+  - Preemption policies: Never, Lower, SameOrLower, Always
+  - Automatic preemption of lower-priority running jobs
+  - Preemption history tracking
+  - Priority-based queue ordering
+
+- **Auto-scaling Workers** - HPA integration (IMPLEMENTED)
+  - `k8s/worker/worker-hpa.yaml` - HorizontalPodAutoscaler configuration
+  - Scale based on CPU, memory, and queue depth
+  - Configurable min/max replicas (2-20)
+  - Smart scale-up/scale-down policies
+  - ServiceMonitor for Prometheus integration
+
+- **Advanced Retry Logic** - Sophisticated retry mechanism (IMPLEMENTED)
+  - `hyper2kvm/operator/retry_manager.py` - Retry logic and backoff (280+ lines)
+  - Exponential, linear, and fixed backoff strategies
+  - Configurable retry budgets
+  - Failure threshold tracking (time-windowed)
+  - Non-retryable error patterns
+  - Immediate retry for transient errors
+  - Retry history tracking
+
+- **Cost & SLA Tracking** - Resource cost monitoring (IMPLEMENTED)
+  - `hyper2kvm/operator/cost_tracker.py` - Cost calculation and SLA monitoring (350+ lines)
+  - Automatic cost calculation (compute, storage, network)
+  - Configurable cost rates
+  - SLA definition and compliance checking
+  - SLA metrics (duration, success rate, retries)
+  - Cost optimization recommendations
+  - Cost statistics and reporting
+
+- **Job Templating** - Reusable job templates (IMPLEMENTED)
+  - `k8s/operator/crds/jobtemplate.yaml` - JobTemplate CRD
+  - `hyper2kvm/operator/template_manager.py` - Template management (320+ lines)
+  - Parameterized job templates
+  - Parameter validation (type, pattern, range)
+  - Template instantiation with parameter substitution
+  - Template usage tracking
+  - Template library
+
+- **Backup/Restore** - Operator state backup (IMPLEMENTED)
+  - `hyper2kvm/operator/backup_manager.py` - Backup and restore logic (320+ lines)
+  - Automated state backups
+  - Compressed backup format (gzip)
+  - Backup validation
+  - Disaster recovery support
+  - Backup cleanup policies
+  - Cross-cluster migration support
+
+- **Web UI Dashboard** - Frontend documentation (DOCUMENTED ONLY)
+  - Architecture and API design documented
+  - React frontend planned
+  - Real-time updates via WebSocket
+  - Requires separate implementation
+
+- **Multi-Cluster Federation** - Foundation laid (DOCUMENTED ONLY)
+  - Architecture documented
+  - Cluster registry design
+  - Requires separate implementation
+
+### Changed
+- **MigrationJob CRD** - Extended schema for v2.0.0
+  - Added `spec.preemptionPolicy` field
+  - Added `status.preempted` object
+  - Added `status.cost` object
+  - Added `status.sla` object
+  - Added `status.nextRetryTime` field
+
+- **Operator Controller** - Integration with new managers
+  - Priority-based job scheduling
+  - Preemption logic on job assignment
+  - Retry logic on job failure
+  - Cost tracking on job completion
+  - SLA compliance checking
+
+- **Metrics** - Version updated to v2.0.0
+  - Added preemption metrics
+  - Added retry metrics
+  - Added cost metrics
+  - Added SLA compliance metrics
+
+### Breaking Changes
+- **CRD Schema** - New required fields may need migration
+- **API Compatibility** - v1alpha1 extended (backward compatible with careful migration)
+- **Metrics** - New metric names introduced
+
+### Documentation
+- **`docs/deployment/v2.0.0-comprehensive-features.md`** - Complete v2.0.0 guide (1,500+ lines)
+  - All 8 features documented with examples
+  - Configuration guides
+  - Migration guide from v1.9.0
+  - Architecture diagrams
+  - Monitoring queries
+
+## [1.9.0] - 2026-01-30
+
+### Added
+- **Job Dependencies** - Advanced job scheduling with dependencies
+  - `hyper2kvm/operator/dag_validator.py` - DAG validation and cycle detection (400+ lines)
+  - `hyper2kvm/operator/dependency_manager.py` - Dependency management (280+ lines)
+  - Jobs can declare dependencies via `dependsOn` field in CRD
+  - Automatic DAG validation (cycle detection, missing references)
+  - Smart dependency resolution and execution ordering
+  - Failure propagation to dependent jobs
+  - Dependency status tracking in job status
+
+- **Enhanced CRD** - MigrationJob v1alpha1 updates
+  - `spec.dependsOn` - Array of job names this job depends on
+  - `status.dependencies` - Dependency tracking (total, completed, failed, blocking)
+  - Validation rules prevent empty dependency names
+
+- **DAG Execution Features**
+  - Topological sorting for execution order
+  - Execution planning (parallelizable job detection)
+  - Critical path calculation
+  - Ready job detection (all dependencies met)
+  - Blocked job tracking
+  - Execution statistics
+
+- **Enhanced Metrics** - Dependency tracking
+  - `hyper2kvm_operator_dag_total_jobs` - Total jobs in DAG
+  - `hyper2kvm_operator_dag_ready_jobs` - Jobs ready to execute
+  - `hyper2kvm_operator_dag_blocked_jobs` - Jobs blocked by dependencies
+  - `hyper2kvm_operator_dag_max_depth` - Maximum DAG depth
+  - `hyper2kvm_operator_dag_parallelism_potential` - Max parallel jobs
+  - `hyper2kvm_operator_dependency_violations_total` - Validation failures
+  - `hyper2kvm_operator_dependency_failures_propagated_total` - Propagated failures
+  - `hyper2kvm_operator_job_dependency_count` - Dependencies per job (histogram)
+  - `hyper2kvm_operator_dependency_wait_time_seconds` - Wait time for dependencies
+
+- **Comprehensive Testing**
+  - `tests/test_dag_validator.py` - Unit tests (500+ lines, 30+ tests)
+  - `tests/e2e_dependencies_test.sh` - E2E tests (600+ lines, 8 tests)
+  - Tests DAG construction, cycle detection, execution planning
+  - Tests simple chains, parallel deps, complex DAGs
+  - Tests validation failures (cycles, missing refs, self-deps)
+
+- **Documentation**
+  - `docs/deployment/v1.9.0-advanced-job-scheduling.md` - Complete guide (1,000+ lines)
+  - Configuration, use cases, monitoring, troubleshooting
+  - Best practices for dependency design
+  - Execution flow and status tracking
+
+### Changed
+- **Controller** - Enhanced with dependency checking
+  - Jobs checked for dependency readiness before assignment
+  - Dependency manager integrated into reconciliation loop
+  - Startup loads existing jobs into dependency graph
+  - Failure propagation on job completion
+
+- **Metrics** - Version updated to v1.9.0
+  - Operator info metric updated
+
+### Security
+- **Validation** - Prevents malicious dependency patterns
+  - Circular dependency detection prevents resource exhaustion
+  - Missing reference validation prevents undefined behavior
+  - Self-dependency rejection prevents deadlocks
+
+## [1.8.0] - 2026-01-30
+
+### Added
+- **Leader Election** - Kubernetes-native HA for operator
+  - `hyper2kvm/operator/leader_election.py` - Complete leader election implementation (520 lines)
+  - `hyper2kvm/operator/leader_aware_controller.py` - Controller integration (200 lines)
+  - Uses Kubernetes Lease API (coordination.k8s.io/v1)
+  - Automatic leader failover (<20 seconds)
+  - Graceful leadership handoff
+  - Configurable lease duration, renew deadline, retry period
+
+- **Enhanced Metrics** - Leader election tracking
+  - `hyper2kvm_operator_leader_election_enabled` - LE status
+  - `hyper2kvm_operator_is_leader` - Leadership status
+  - `hyper2kvm_operator_leader_transitions_total` - Transition count
+  - `hyper2kvm_operator_lease_renewal_total` - Renewal attempts
+  - `hyper2kvm_operator_lease_acquisition_total` - Acquisition attempts
+  - `hyper2kvm_operator_time_since_last_renewal_seconds` - Renewal staleness
+
+- **Multi-Replica Support** - HA operator deployments
+  - Run 2+ operator replicas for high availability
+  - Single active leader, other replicas standby
+  - Automatic failover on leader failure
+  - Pod anti-affinity for node distribution
+
+- **Comprehensive Testing**
+  - `tests/test_leader_election.py` - Unit tests (400+ lines, 20+ tests)
+  - `tests/e2e_leader_election_test.sh` - E2E tests (500+ lines, 12 tests)
+  - Tests leader election, failover, renewals, scaling
+
+- **Helm Chart Updates**
+  - Leader election configuration in values.yaml
+  - Environment variables for LE settings
+  - RBAC already includes lease permissions
+
+- **Documentation**
+  - `docs/deployment/v1.8.0-operator-ha.md` - Complete HA guide (800+ lines)
+  - Configuration, deployment, operations, troubleshooting
+  - Best practices for production HA
+
+### Changed
+- Updated operator deployment to support multiple replicas
+- Enhanced metrics module with leader election metrics
+- Updated Helm chart values with leader election settings
+
+## [1.7.0] - 2026-01-30
+
+### Added
+- **Helm Repository Publishing** - Automated chart publishing to GitHub Pages
+  - `scripts/package-charts.sh` - Package charts and generate repository index (300 lines)
+  - `scripts/bump-chart-version.sh` - Semantic version bumping for charts (350 lines)
+  - `.github/workflows/helm-release.yml` - Automated release workflow (150 lines)
+  - `docs/helm-repository.md` - Complete repository usage guide (500+ lines)
+  - GitHub Pages Helm repository at `https://ssahani.github.io/hyper2kvm`
+
+- **Release Automation**
+  - Automated chart linting in CI/CD
+  - Automated chart packaging on tag push (v*.*.*)
+  - Automated GitHub Pages deployment
+  - Automated GitHub Release creation with chart artifacts
+  - Repository index generation and merging
+  - Chart verification step in CI
+
+- **Documentation**
+  - Helm repository usage guide with installation examples
+  - Chart versioning and release procedures
+  - GitOps integration examples (ArgoCD, Flux)
+  - Production deployment patterns with Helm
+  - Complete release workflow documentation
+
+- **Scripts Enhancement**
+  - Updated `scripts/README.md` with Helm chart management section
+  - Detailed script documentation and usage examples
+  - Best practices for chart versioning and packaging
+
+### Changed
+- Updated main README.md with Helm repository installation instructions
+- Enhanced operator installation documentation with repository URL
+- Added CHANGELOG.md for tracking all releases
+
+## [1.6.0] - 2026-01-30
+
+### Added
+- **Production Helm Chart** - Complete operator packaging
+  - 18 Helm templates with 50+ configurable parameters
+  - Automated TLS certificate generation via Helm hook
+  - cert-manager integration support
+  - HA webhook deployment (2+ replicas)
+  - Security hardening (non-root, read-only FS, dropped capabilities)
+  - Pod Security Standards enforcement
+  - NetworkPolicy templates for network isolation
+
+- **E2E Testing** - Comprehensive operator testing
+  - `tests/e2e_operator_test.sh` - 14 automated E2E tests (500 lines)
+  - Tests: operator deployment, webhooks, health checks, metrics, admission control
+  - Color-coded output with pass/fail summary
+  - Automated setup and teardown with configurable cleanup
+
+- **Certificate Management**
+  - Helm pre-install hook for automated certificate generation
+  - Self-signed certificate automation (10-year validity)
+  - cert-manager integration option for trusted CAs
+  - Custom certificate secret support
+
+- **Documentation**
+  - `docs/deployment/v1.6.0-helm-chart.md` - Complete deployment guide (800+ lines)
+  - `helm/hyper2kvm-operator/README.md` - Chart usage guide (500+ lines)
+  - Installation, upgrade, troubleshooting, and production considerations
+
+## [1.5.0] - 2026-01-30
+
+### Added
+- **Admission Webhooks** - Validation and mutation
+  - `hyper2kvm/operator/webhook.py` - Validation and mutation logic (400 lines)
+  - `hyper2kvm/operator/webhook_server.py` - Flask webhook server (150 lines)
+  - Validating webhook with 10+ validation rules
+  - Mutating webhook with 6+ default value injections
+  - Resource quota enforcement (10 active jobs per namespace, configurable)
+  - Worker capacity checking before job creation
+
+- **Enhanced Operator Metrics**
+  - `hyper2kvm/operator/metrics.py` - Operator-specific metrics (300 lines)
+  - 20+ Prometheus metrics for operator performance
+  - Webhook metrics (validations, mutations, duration)
+  - Queue depth and worker utilization tracking
+
+- **Comprehensive Testing**
+  - `tests/test_operator_webhook.py` - 30 webhook tests (400 lines)
+  - `tests/test_operator_assigner.py` - 21 assigner tests (300 lines)
+  - Unit test coverage for all operator components (51 tests total)
+
+- **TLS Certificate Automation**
+  - `scripts/generate-webhook-certs.sh` - Automated certificate generation (150 lines)
+  - `k8s/operator/webhook-config.yaml` - Webhook deployment (200 lines)
+
+- **Documentation**
+  - `docs/deployment/v1.5.0-webhooks-metrics.md` - Complete guide (600 lines)
+
+## [1.4.0] - 2026-01-30
+
+### Added
+- **Kubernetes Operator** - Automated job orchestration
+  - `hyper2kvm/operator/controller.py` - Kopf-based controller (600 lines)
+  - `hyper2kvm/operator/worker_registry.py` - Worker tracking (150 lines)
+  - `hyper2kvm/operator/job_assigner.py` - 100-point scoring algorithm (200 lines)
+  - Job reconciliation loop (30-second interval)
+  - Automated worker discovery
+  - Intelligent job assignment based on worker load and capabilities
+  - Real-time status updates to CRD
+  - Kubernetes event emission for job lifecycle
+
+- **MigrationJob CRD**
+  - Custom Resource Definition for job specification
+  - 10-state job lifecycle tracking
+  - Priority and timeout configuration
+  - Retry policy support with exponential/linear/fixed backoff
+  - Artifact management for outputs
+
+- **Documentation**
+  - `docs/deployment/v1.4.0-operator.md` - Operator guide (600 lines)
+  - `k8s/operator/README.md` - Quick start and examples
+
+### Added (Earlier in January 2026)
+
+#### Configurable VMDK Conversion Directory
 
 **Problem Solved**:
 - VMDK→QCOW2 conversions used hardcoded `/var/tmp/vmcraft-conversions/`

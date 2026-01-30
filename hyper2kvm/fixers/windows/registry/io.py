@@ -12,7 +12,10 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import guestfs  # type: ignore
+try:
+    import guestfs  # type: ignore
+except ImportError:
+    guestfs = None  # type: ignore
 
 
 def _is_probably_regf(path: Path) -> bool:

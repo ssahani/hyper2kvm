@@ -1,0 +1,51 @@
+apiVersion: hyper2kvm.io/v1alpha1
+kind: MigrationJob
+metadata:
+  name: fix-ubuntu-boot
+  namespace: hyper2kvm-workers
+  labels:
+    environment: production
+    vm-type: linux
+    operation: offline-fix
+spec:
+  operation: offline_fix
+
+  image:
+    path: /data/input/ubuntu-22.04-broken.qcow2
+    format: qcow2
+
+  parameters:
+    # Fix bootloader issues
+    fix_bootloader: true
+    bootloader_type: grub2
+
+    # Stabilize fstab
+    fstab_mode: stabilize-all
+
+    # Regenerate initramfs
+    regen_initramfs: true
+
+    # Network configuration
+    fix_network: true
+    network_config:
+      mode: static
+      interface: eth0
+      ip: 192.168.1.100
+      netmask: 255.255.255.0
+      gateway: 192.168.1.1
+
+  artifacts:
+    output_path: /data/output
+    backup_original: true
+
+  priority: 90  # High priority - production fix
+
+  timeout: 1h
+
+  retryPolicy:
+    maxRetries: 3
+    backoff: exponential
+
+  workerSelector:
+    hyper2kvm.io/worker-enabled: "true"
+    hyper2kvm.io/fix-capable: "true"

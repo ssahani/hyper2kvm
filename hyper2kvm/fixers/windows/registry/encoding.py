@@ -26,7 +26,11 @@ else:
         import guestfs  # type: ignore
     except ImportError:
         guestfs = None  # type: ignore
-import hivex  # type: ignore
+
+try:
+    import hivex  # type: ignore
+except ImportError:
+    hivex = None  # type: ignore
 
 from .io import _is_probably_regf
 

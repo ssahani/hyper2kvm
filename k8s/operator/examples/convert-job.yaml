@@ -1,0 +1,49 @@
+apiVersion: hyper2kvm.io/v1alpha1
+kind: MigrationJob
+metadata:
+  name: convert-windows-server-2019
+  namespace: hyper2kvm-workers
+  labels:
+    environment: production
+    vm-type: windows
+spec:
+  # Operation type
+  operation: convert
+
+  # Source image specification
+  image:
+    path: /data/input/windows-server-2019.vmdk
+    format: vmdk
+    checksum: sha256:1234567890abcdef...
+
+  # Operation parameters
+  parameters:
+    output_format: qcow2
+    compress: true
+    fstab_mode: stabilize-all
+    regen_initramfs: true
+    virtio_injection: true
+    network_config:
+      mode: dhcp
+
+  # Output artifacts
+  artifacts:
+    output_path: /data/output
+    output_format: qcow2
+    compress: true
+
+  # Job priority (0-100, higher = more priority)
+  priority: 75
+
+  # Timeout for job execution
+  timeout: 2h
+
+  # Retry policy
+  retryPolicy:
+    maxRetries: 2
+    backoff: exponential
+
+  # Worker selection (optional)
+  workerSelector:
+    hyper2kvm.io/worker-enabled: "true"
+    # node: "worker-node-1"  # Uncomment to pin to specific node

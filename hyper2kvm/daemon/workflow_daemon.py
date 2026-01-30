@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import shutil
 import signal
 import time
@@ -545,6 +546,9 @@ class WorkflowDaemon:
         self.logger.info(f"  4. Check results in: {self.processed_dir}")
         self.logger.info("")
 
+        # Write PID file for health checks (Kubernetes liveness/readiness probes)
+        self._write_pid_file()
+
         # Main loop
         while not self.stop_event.is_set():
             try:
@@ -562,9 +566,35 @@ class WorkflowDaemon:
 
         self.logger.info("🛑 Workflow daemon stopped")
 
+    def _write_pid_file(self) -> None:
+        """Write PID file for health checks (Kubernetes liveness probes)."""
+        try:
+            pid_dir = Path("/var/lib/hyper2kvm")
+            pid_dir.mkdir(parents=True, exist_ok=True)
+            pid_file = pid_dir / "daemon.pid"
+
+            with open(pid_file, 'w') as f:
+                f.write(str(os.getpid()))
+
+            self.logger.info(f"📝 PID file written: {pid_file} (PID: {os.getpid()})")
+        except Exception as e:
+            self.logger.warning(f"Failed to write PID file: {e}")
+
+    def _remove_pid_file(self) -> None:
+        """Remove PID file on shutdown."""
+        try:
+            pid_file = Path("/var/lib/hyper2kvm/daemon.pid")
+            if pid_file.exists():
+                pid_file.unlink()
+                self.logger.info("🗑️  PID file removed")
+        except Exception as e:
+            self.logger.warning(f"Failed to remove PID file: {e}")
+
     def stop(self) -> None:
-        """Stop the workflow daemon."""
+        """Stop the workflow daemon gracefully."""
         self.logger.info("🛑 Stopping workflow daemon...")
+        self.logger.info("⏳ Waiting for active jobs to complete...")
+
         self.stop_event.set()
 
         # Stop observer
@@ -572,12 +602,17 @@ class WorkflowDaemon:
             self.observer.stop()
             self.observer.join(timeout=5)
 
-        # Stop executor
+        # Stop executor (wait for current jobs to finish)
         if self.executor:
             self.executor.shutdown(wait=True, cancel_futures=False)
+            self.logger.info("✅ All jobs completed")
 
         # Save stats
         self.stats.save(force=True)
         self.stats.print_summary()
 
+        # Remove PID file
+        self._remove_pid_file()
+
         self.logger.info("✅ Workflow daemon shutdown complete")
+        self.logger.info("💡 Note: NBD devices and LVM volumes are cleaned up per-job")

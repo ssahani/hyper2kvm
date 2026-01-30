@@ -1,0 +1,231 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hyper2kvm-system
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hyper2kvm-operator
+  namespace: hyper2kvm-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hyper2kvm-operator
+rules:
+# MigrationJob CRD permissions
+- apiGroups:
+  - hyper2kvm.io
+  resources:
+  - migrationjobs
+  - migrationjobs/status
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+
+# Worker pod access
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - pods/log
+  - pods/exec
+  verbs:
+  - get
+  - list
+  - watch
+
+# Event creation
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+
+# ConfigMap access (for operator config)
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+
+# Kopf operator framework requirements
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hyper2kvm-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hyper2kvm-operator
+subjects:
+- kind: ServiceAccount
+  name: hyper2kvm-operator
+  namespace: hyper2kvm-system
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hyper2kvm-operator
+  namespace: hyper2kvm-system
+  labels:
+    app: hyper2kvm-operator
+    version: v1.4.0
+spec:
+  replicas: 1  # Single replica for now (no leader election)
+  selector:
+    matchLabels:
+      app: hyper2kvm-operator
+  template:
+    metadata:
+      labels:
+        app: hyper2kvm-operator
+        version: v1.4.0
+    spec:
+      serviceAccountName: hyper2kvm-operator
+
+      containers:
+      - name: operator
+        image: hyper2kvm:operator
+        imagePullPolicy: IfNotPresent
+
+        command:
+        - python3
+        - -m
+        - hyper2kvm.operator.cli
+
+        env:
+        - name: OPERATOR_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+
+        - name: OPERATOR_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+
+        # Logging configuration
+        - name: PYTHONUNBUFFERED
+          value: "1"
+
+        # Kopf configuration
+        - name: KOPF_LOG_LEVEL
+          value: "INFO"
+
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65534  # nobody
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+
+      volumes:
+      - name: tmp
+        emptyDir: {}
+
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hyper2kvm-operator
+  namespace: hyper2kvm-system
+  labels:
+    app: hyper2kvm-operator
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: hyper2kvm-operator
+
+---
+# Optional: ServiceMonitor for Prometheus metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hyper2kvm-operator
+  namespace: hyper2kvm-system
+  labels:
+    app: hyper2kvm-operator
+spec:
+  selector:
+    matchLabels:
+      app: hyper2kvm-operator
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics

@@ -11,7 +11,10 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-import guestfs  # type: ignore
+try:
+    import guestfs  # type: ignore
+except ImportError:
+    guestfs = None  # type: ignore
 
 from .io import _log_mountpoints_best_effort
 

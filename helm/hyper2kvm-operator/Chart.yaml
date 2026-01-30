@@ -1,0 +1,28 @@
+apiVersion: v2
+name: hyper2kvm-operator
+description: Kubernetes Operator for automated VM migration job orchestration
+type: application
+version: 1.6.0
+appVersion: "1.6.0"
+
+keywords:
+  - vm-migration
+  - kubernetes-operator
+  - vmware
+  - kvm
+  - qemu
+  - automation
+
+home: https://github.com/ssahani/hyper2kvm
+sources:
+  - https://github.com/ssahani/hyper2kvm
+
+maintainers:
+  - name: Susant Sahani
+    email: ssahani@gmail.com
+
+icon: https://raw.githubusercontent.com/ssahani/hyper2kvm/main/docs/logo.png
+
+annotations:
+  category: Infrastructure
+  operator.io/version: v1.6.0
