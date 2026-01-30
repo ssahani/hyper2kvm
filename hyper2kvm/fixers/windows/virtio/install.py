@@ -11,13 +11,11 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import guestfs  # type: ignore
 
-from ....core.utils import U
 from ..registry_core import (
     append_devicepath_software_hive,
     edit_system_hive,
@@ -32,7 +30,7 @@ from .utils import (
     _guest_sha256,
     _is_probably_driver_payload,
 )
-from .config import DriverStartType, DriverType, _parse_start_type
+from .config import DriverStartType, DriverType
 from .paths import WindowsSystemPaths, _guestfs_to_windows_path
 from .detection import WindowsVirtioPlan, DriverFile, _plan_to_dict
 

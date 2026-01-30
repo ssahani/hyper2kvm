@@ -9,7 +9,6 @@ Datastore operations, VM discovery, and download-only mode for VMware
 from __future__ import annotations
 
 import fnmatch
-import logging
 import re
 import time
 from pathlib import Path
@@ -44,7 +43,7 @@ except Exception:  # pragma: no cover
     GovcRunner = None  # type: ignore
 
 
-from .utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path, ensure_output_dir as _ensure_output_dir
+from .utils import ensure_output_dir as _ensure_output_dir
 
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
 

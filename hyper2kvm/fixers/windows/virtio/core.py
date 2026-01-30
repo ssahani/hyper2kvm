@@ -10,10 +10,9 @@ import json
 import logging
 import shutil
 import tempfile
-import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List
 
 import guestfs  # type: ignore
 
@@ -26,33 +25,20 @@ from .config import (
     DriverType,
     WindowsRelease,
     _load_virtio_config,
-    _parse_start_type,
-    _validate_virtio_config,
 )
 
 # Import from split modules - utilities
 from .utils import (
-    _deep_merge_dict,
-    _emoji,
-    _guest_download_bytes,
-    _guest_mkdir_p,
-    _guest_sha256,
-    _guest_write_text,
     _log,
     _log_mountpoints_best_effort,
-    _normalize_product_name,
     _safe_logger,
-    _sha256_path,
     _step,
-    _to_int,
 )
 
 # Import from split modules - paths
 from .paths import (
     WindowsSystemPaths,
     _find_windows_root,
-    _guestfs_to_windows_path,
-    _resolve_windows_system_paths,
 )
 
 # Import from split modules - detection
@@ -61,7 +47,6 @@ from .detection import (
     WindowsVirtioPlan,
     _bucket_candidates,
     _choose_driver_plan,
-    _detect_windows_release,
     _plan_to_dict,
     _windows_version_info,
     is_windows,

@@ -7,7 +7,6 @@ from __future__ import annotations
 virt-v2v orchestration for VMware VM conversion
 """
 
-import logging
 import os
 import shlex
 import shutil

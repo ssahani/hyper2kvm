@@ -12,7 +12,7 @@ import logging
 from typing import List
 
 from ...config.config_loader import YAML_AVAILABLE, yaml
-from .model import FixResult, IfcfgKV, NetworkConfig, NetworkConfigType
+from .model import IfcfgKV, NetworkConfigType
 
 
 class NetworkValidation:

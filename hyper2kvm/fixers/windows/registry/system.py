@@ -27,29 +27,21 @@ import hivex  # type: ignore
 from ....core.utils import U
 
 # Import registry utilities from sub-modules
-from .io import _download_hive_local, _is_probably_regf, _log_mountpoints_best_effort
+from .io import _download_hive_local, _log_mountpoints_best_effort
 from .mount import _ensure_windows_root
 from .encoding import (
-    NodeLike,
     _close_best_effort,
     _commit_best_effort,
-    _decode_reg_sz,
     _delete_child_if_exists,
     _detect_current_controlset,
     _driver_start_default,
     _driver_type_norm,
     _ensure_child,
     _hivex_read_dword,
-    _hivex_read_sz,
-    _hivex_read_value_dict,
-    _mk_reg_value,
     _node_id,
-    _node_ok,
     _open_hive_local,
     _pci_id_normalize,
-    _reg_sz,
     _set_dword,
-    _set_expand_sz,
     _set_sz,
 )
 

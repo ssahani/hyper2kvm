@@ -11,7 +11,7 @@ from typing import Optional
 
 import guestfs  # type: ignore
 
-from .utils import _safe_logger, _log_mountpoints_best_effort
+from .utils import _safe_logger
 
 
 # Logging helper (imported from utils, but need _log here)

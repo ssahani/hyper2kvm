@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from ..core.cred import resolve_vsphere_creds
 from ..core.exceptions import Fatal, VMwareError

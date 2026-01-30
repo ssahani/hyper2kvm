@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .utils import _safe_logger, _log, _sha256_path, _is_probably_driver_payload
+from .utils import _safe_logger, _log
 from .config import DriverType, DriverStartType, _parse_start_type
 from .detection import WindowsVirtioPlan, DriverFile, _bucket_candidates
 

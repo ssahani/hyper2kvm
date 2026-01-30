@@ -40,7 +40,6 @@ import random
 import signal
 import socket
 import ssl
-import sys
 import time
 import traceback
 from dataclasses import dataclass

@@ -16,7 +16,6 @@ What this module does well (on purpose):
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 from dataclasses import dataclass

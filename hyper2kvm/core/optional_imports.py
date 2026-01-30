@@ -10,7 +10,6 @@ the need for try/except import blocks scattered across 20+ files.
 
 from __future__ import annotations
 
-from typing import Any, Optional
 
 # Rich library (progress bars, panels, console formatting)
 try:
