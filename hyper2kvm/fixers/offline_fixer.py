@@ -707,12 +707,29 @@ class OfflineFSFix:
 
         real: str | None = None
         if root_dev.startswith("/dev/disk/by-"):
+            # Try guestfs realpath first (works for by-uuid, by-label inside guest)
             try:
                 rp = U.to_text(g.realpath(root_dev)).strip()
                 if rp.startswith("/dev/"):
                     real = rp
             except Exception:
                 real = None
+
+            # For by-path devices, use host-level symlink resolution
+            # because VMCraft device paths are on the host, not in the guest filesystem
+            if not real and root_dev.startswith("/dev/disk/by-path/"):
+                try:
+                    import os
+                    real_dev = os.readlink(root_dev)
+                    # Handle relative symlinks
+                    if not real_dev.startswith("/"):
+                        real_dev = os.path.normpath(os.path.join(os.path.dirname(root_dev), real_dev))
+                    if real_dev.startswith("/dev/"):
+                        real = real_dev
+                        self.logger.info(f"Resolved by-path root device: {root_dev} -> {real}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to resolve by-path root device {root_dev}: {e}")
+                    real = None
 
         # by-path from inspection may be meaningless in a different VM topology
         if not real and root_dev.startswith("/dev/disk/by-path/"):
@@ -792,7 +809,7 @@ class OfflineFSFix:
                 seen.add(d)
                 out.append(d)
 
-        # Filter out known non-root devices
+        # Filter out known non-root devices and resolve by-path devices
         filtered = []
         for d in out:
             # Skip libguestfs appliance loop devices
@@ -803,6 +820,24 @@ class OfflineFSFix:
             if "/luks-" in d and not d.startswith("/dev/mapper/luks-"):
                 self.logger.debug(f"Filtering out LUKS placeholder: {d}")
                 continue
+
+            # CRITICAL: Resolve by-path devices to real device paths
+            # Device paths with colons (e.g., /dev/disk/by-path/pci-0000:00:10.0-scsi-0:0:0:0-part2)
+            # are interpreted as NFS paths by mount, causing "mount.nfs: Failed to resolve server" errors
+            if d.startswith("/dev/disk/by-path/"):
+                try:
+                    import os
+                    # Resolve symlink on host system (not inside guest filesystem)
+                    real_dev = os.readlink(d)
+                    # Handle relative symlinks
+                    if not real_dev.startswith("/"):
+                        real_dev = os.path.normpath(os.path.join(os.path.dirname(d), real_dev))
+                    self.logger.debug(f"Resolved by-path device: {d} -> {real_dev}")
+                    d = real_dev
+                except Exception as e:
+                    self.logger.warning(f"Failed to resolve by-path device {d}: {e}; skipping")
+                    continue
+
             filtered.append(d)
 
         # Get current NBD device and its partitions to filter candidates

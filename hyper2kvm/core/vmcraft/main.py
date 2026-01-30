@@ -724,6 +724,26 @@ class VMCraft:
             raise RuntimeError("Not launched")
         return self._file_ops.realpath(path)
 
+    def blkid(self, device: str) -> dict[str, str]:
+        """Get device metadata using blkid."""
+        try:
+            cmd = ["blkid", "-p", "-o", "export", device]
+            result = run_sudo(self.logger, cmd, check=True, capture=True)
+
+            # Parse blkid output (KEY=VALUE format)
+            metadata = {}
+            for line in result.stdout.strip().split('\n'):
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    # blkid returns uppercase keys, keep them uppercase
+                    metadata[key] = value
+
+            self.logger.debug(f"blkid({device}): {metadata}")
+            return metadata
+        except Exception as e:
+            self.logger.debug(f"blkid failed for {device}: {e}")
+            return {}
+
     # Filesystem operations
 
     def list_filesystems(self) -> dict[str, str]:

@@ -380,6 +380,11 @@ class FstabStabilizer:
             fstab_content = self.g.read_file(fstab_path)
             if isinstance(fstab_content, bytes):
                 fstab_content = fstab_content.decode("utf-8", errors="replace")
+
+            # Log original fstab
+            logger.info(f"📄 Original {fstab_path}:")
+            for line_num, line in enumerate(fstab_content.splitlines(), 1):
+                logger.info(f"  {line_num:3d}: {line}")
         except Exception as e:
             result["errors"].append(f"Failed to read {fstab_path}: {e}")
             return result
@@ -419,9 +424,21 @@ class FstabStabilizer:
         # Write updated fstab
         try:
             new_fstab_content = "\n".join(new_lines) + "\n"
+
+            # Log changes made
+            logger.info(f"\n📝 Fstab conversions summary:")
+            for conv in result["conversions"]:
+                if conv["converted"]:
+                    logger.info(f"  Line {conv['line']:3d}: {conv['original']:50s} -> {conv['new']:50s} ({conv['mountpoint']})")
+
+            # Log new fstab
+            logger.info(f"\n📄 Updated {fstab_path}:")
+            for line_num, line in enumerate(new_lines, 1):
+                logger.info(f"  {line_num:3d}: {line}")
+
             self.g.write(fstab_path, new_fstab_content)
             result["success"] = True
-            logger.info(f"Stabilized {fstab_path}: {self.stats['converted']} entries converted")
+            logger.info(f"\n✅ Stabilized {fstab_path}: {self.stats['converted']} of {self.stats['total_entries']} entries converted")
         except Exception as e:
             result["errors"].append(f"Failed to write {fstab_path}: {e}")
             return result

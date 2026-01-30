@@ -126,6 +126,12 @@ class FstabCrypttabRewriter:
             return 0, [], {"reason": "missing"}
 
         before = U.to_text(g.read_file(fstab))
+
+        # Always log original fstab
+        self.logger.info(f"\n📄 Original /etc/fstab:")
+        for line_num, line in enumerate(before.splitlines(), 1):
+            self.logger.info(f"  {line_num:3d}: {line}")
+
         if self.print_fstab:
             print("\n--- /etc/fstab (before) ---\n" + before)
 
@@ -213,14 +219,18 @@ class FstabCrypttabRewriter:
                 print("\n--- /etc/fstab (after - unchanged) ---\n" + before)
             return 0, [], audit
 
-        # Log changes
+        # Log changes summary
+        self.logger.info(f"\n📝 Fstab conversions summary:")
         for ch in changes:
-            self.logger.info(
-                f"fstab line {ch.line_no}: {ch.old} -> {ch.new} "
-                f"({ch.mountpoint}) [{ch.reason}]"
-            )
+            self.logger.info(f"  Line {ch.line_no:3d}: {ch.old:50s} -> {ch.new:50s} ({ch.mountpoint}) [{ch.reason}]")
 
         after = "\n".join(out_lines) + "\n"
+
+        # Always log updated fstab
+        self.logger.info(f"\n📄 Updated /etc/fstab:")
+        for line_num, line in enumerate(out_lines, 1):
+            self.logger.info(f"  {line_num:3d}: {line}")
+
         if self.print_fstab:
             print("\n--- /etc/fstab (after) ---\n" + after)
 

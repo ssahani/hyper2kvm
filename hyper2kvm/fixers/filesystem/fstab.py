@@ -112,12 +112,14 @@ class Ident:
         if not root_dev:
             return None
 
-        m = re.match(r"^(/dev/(?:nvme\d+n\d+|mmcblk\d+))p\d+$", root_dev)
+        # Match devices with 'p' separator: nvme0n1p1, mmcblk0p1, nbd0p1, loop0p1
+        m = re.match(r"^(/dev/(?:nvme\d+n\d+|mmcblk\d+|nbd\d+|loop\d+))p\d+$", root_dev)
         if m:
             base = m.group(1)
-            _LOG.debug("🧠 root_dev_base: nvme/mmc => %r", base)
+            _LOG.debug("🧠 root_dev_base: nvme/mmc/nbd/loop => %r", base)
             return base
 
+        # Match traditional devices: sda1, vda1, xvda1, hda1
         m = re.match(r"^(/dev/[a-zA-Z]+)\d+$", root_dev)
         if m:
             base = m.group(1)
@@ -146,13 +148,15 @@ class Ident:
             _LOG.debug("🫥 bypath inference: could not derive base from root_dev=%r", root_dev)
             return None
 
-        if re.match(r"^/dev/(nvme\d+n\d+|mmcblk\d+)$", base):
+        # Devices that use 'p' separator: nvme, mmcblk, nbd, loop
+        if re.match(r"^/dev/(nvme\d+n\d+|mmcblk\d+|nbd\d+|loop\d+)$", base):
             out = f"{base}p{partno}"
-            _LOG.debug("🧩 bypath inference: %r + part%d => %r", base, partno, out)
+            _LOG.debug("🧩 bypath inference: %r + part%d => %r (with p separator)", base, partno, out)
             return out
 
+        # Traditional devices: sda, vda, xvda, hda
         out = f"{base}{partno}"
-        _LOG.debug("🧩 bypath inference: %r + part%d => %r", base, partno, out)
+        _LOG.debug("🧩 bypath inference: %r + part%d => %r (direct concat)", base, partno, out)
         return out
 
 
