@@ -277,8 +277,8 @@ These are installed separately as binaries, not via pip:
 
 | Tool | Purpose | When Needed | Install Method |
 |------|---------|-------------|----------------|
-| **govc** | vSphere control plane (PRIMARY) | vSphere migrations (recommended) | Binary from GitHub/brew/dnf |
-| **ovftool** | OVF/OVA export/import | vSphere migrations (alternative) | Binary from VMware |
+| **govc** | vSphere control plane (PRIMARY) | vSphere migrations (recommended) | Download binary from [GitHub releases](https://github.com/vmware/govmomi/releases) → /usr/local/bin |
+| **ovftool** | OVF/OVA export/import | vSphere migrations (alternative) | Download .bundle from [VMware](https://customerconnect.vmware.com/downloads/) |
 | virt-v2v | Alternative migration engine | Optional experimental path | dnf install virt-v2v |
 | libvirt | VM testing and validation | Optional smoke tests | dnf install libvirt |
 
@@ -289,12 +289,14 @@ hyper2kvm supports **three control plane options** for vSphere, in order of pref
 #### Option 1: govc (PRIMARY - Recommended)
 
 ```bash
-# Install govc binary (NO Python packages needed)
-# On Fedora/RHEL
-sudo dnf install govmomi
+# Download govc binary from GitHub releases
+# Get latest version from: https://github.com/vmware/govmomi/releases
+VERSION=v0.33.0
+curl -L https://github.com/vmware/govmomi/releases/download/${VERSION}/govc_Linux_x86_64.tar.gz | \
+  sudo tar -C /usr/local/bin -xvzf - govc
 
-# Or from binary
-curl -L https://github.com/vmware/govmomi/releases/download/v0.33.0/govc_Linux_x86_64.tar.gz | tar -C /usr/local/bin -xvzf - govc
+# Verify installation
+govc version
 
 # No pip install needed for vSphere!
 pip install hyper2kvm  # Just core
@@ -303,14 +305,23 @@ pip install hyper2kvm  # Just core
 **Advantages:**
 - ✅ No Python dependencies
 - ✅ Faster and more stable
-- ✅ Official VMware tool
+- ✅ Official VMware open-source tool
 - ✅ Works on RHEL without any PyPI packages
+- ✅ Easy to update (just download new binary)
 
 #### Option 2: ovftool (Alternative)
 
 ```bash
-# Download from VMware website (requires VMware account)
-# Install the binary
+# Download OVF Tool from VMware Customer Connect (requires free VMware account)
+# URL: https://customerconnect.vmware.com/downloads/
+# Search for "VMware OVF Tool" and download the .bundle file
+
+# Install (example for version 4.6.0)
+chmod +x VMware-ovftool-4.6.0-*-lin.x86_64.bundle
+sudo ./VMware-ovftool-4.6.0-*-lin.x86_64.bundle --eulas-agreed
+
+# Verify installation
+ovftool --version
 
 # No pip install needed for vSphere!
 pip install hyper2kvm  # Just core
@@ -320,6 +331,7 @@ pip install hyper2kvm  # Just core
 - ✅ No Python dependencies
 - ✅ Official VMware tool
 - ✅ OVF/OVA export/import
+- ✅ Advanced features (compression, validation)
 
 #### Option 3: pyvmomi (Fallback)
 
@@ -370,8 +382,10 @@ pip install --user hyper2kvm[ui]
 
 **Option 3: With vSphere (Using govc - Recommended)**
 ```bash
-# Install govc binary first (no Python deps)
-sudo dnf install govmomi  # or download binary
+# Install govc binary from GitHub releases (no Python deps)
+VERSION=v0.33.0
+curl -L https://github.com/vmware/govmomi/releases/download/${VERSION}/govc_Linux_x86_64.tar.gz | \
+  sudo tar -C /usr/local/bin -xvzf - govc
 
 # Install hyper2kvm minimal
 pip install --user hyper2kvm
