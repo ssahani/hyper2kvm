@@ -72,6 +72,49 @@ azure = [
     "requests>=2.25.0",
 ]
 
+# Enhanced validation (optional for RHEL 10 compatibility)
+# Provides type-safe configuration validation with better error messages
+validation = [
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+]
+
+# Advanced retry logic (optional for RHEL 10 compatibility)
+# Provides advanced retry features, falls back to stdlib if not available
+retry = [
+    "tenacity>=8.2.0",
+]
+
+# Daemon mode (file watching)
+# Enables automatic migration processing from watched directories
+daemon = [
+    "watchdog>=3.0.0",
+]
+
+# Interactive TUI (Terminal User Interface)
+# Real-time monitoring dashboard with live metrics
+tui = [
+    "textual>=0.47.0",
+]
+
+# Async operations (parallel migrations)
+# Enables async VMware operations for 3-5x faster batch migrations
+async = [
+    "httpx>=0.24.0",
+    "httpx[http2]>=0.24.0",
+]
+
+# All enhancements (validation + retry + daemon + tui + async)
+enhanced = [
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "tenacity>=8.2.0",
+    "watchdog>=3.0.0",
+    "textual>=0.47.0",
+    "httpx>=0.24.0",
+    "httpx[http2]>=0.24.0",
+]
+
 # Full installation with all optional dependencies
 full = [
     "rich>=10.0.0",
@@ -82,12 +125,20 @@ full = [
     "azure-mgmt-network>=22.0.0",
     "azure-mgmt-resource>=22.0.0",
     "azure-storage-blob>=12.14.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "tenacity>=8.2.0",
+    "watchdog>=3.0.0",
+    "textual>=0.47.0",
+    "httpx>=0.24.0",
+    "httpx[http2]>=0.24.0",
 ]
 
 # Development tools
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=3.0.0",
+    "pytest-asyncio>=0.21.0",
     "black>=22.0.0",
     "flake8>=4.0.0",
     "mypy>=0.950",
