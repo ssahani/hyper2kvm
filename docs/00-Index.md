@@ -12,10 +12,11 @@
 - **[🚀 03-Quick-Start](03-Quick-Start.md)** - 5-minute quick start guide
 - **[⚙️ 04-CLI-Reference](04-CLI-Reference.md)** - Complete command-line reference
 - **[📝 05-YAML-Examples](05-YAML-Examples.md)** - Configuration file examples
+- **[🤝 CONTRIBUTING](CONTRIBUTING.md)** - Contributing guidelines, GitLab mirror info
 
 ### 🏗️ Architecture & Design
 - **[🏗️ 01-Architecture](01-Architecture.md)** - System architecture and design
-- **[🎨 07-vSphere-Design](07-vSphere-Design.md)** - vSphere integration architecture
+- **[🎨 07-vSphere-Design](07-vSphere-Design.md)** - vSphere integration (powered by hypersdk)
 
 ### 👨‍🍳 Recipes & Workflows
 - **[📖 06-Cookbook](06-Cookbook.md)** - Common migration recipes
@@ -63,7 +64,7 @@ Linux migrations are generally more straightforward, but each distro has specifi
 
 ## ☁️ vSphere Integration
 
-Migrate VMs directly from VMware vCenter/vSphere.
+Migrate VMs directly from VMware vCenter/vSphere using **hypersdk** - VMware's modern, type-safe Python SDK for enterprise-grade API integration.
 
 ### Migration Paths
 

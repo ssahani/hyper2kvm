@@ -79,8 +79,9 @@ pip install -e .
 
 #### Package Locations
 
-- **PyPI:** https://pypi.org/project/hyper2kvm/
-- **GitHub:** https://github.com/ssahani/hyper2kvm
+- **PyPI:** https://pypi.org/project/hyper2kvm/ (v0.1.0+)
+- **GitHub:** https://github.com/hyper2kvm/hyper2kvm (primary development)
+- **GitLab:** https://gitlab.com/hyper2kvm/hyper2kvm (auto-synced mirror)
 - **Documentation:** [docs/](docs/)
 - **Examples:** [examples/](examples/)
 
@@ -96,6 +97,7 @@ sudo python -m hyper2kvm local \
   --flatten --compress
 
 # Migrate from vSphere with full inspection and fixes
+# (powered by hypersdk for enterprise-grade VMware API integration)
 sudo python -m hyper2kvm vsphere \
   --vcenter vcenter.example.com \
   --username admin@vsphere.local \

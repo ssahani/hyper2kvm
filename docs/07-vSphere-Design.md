@@ -1,5 +1,6 @@
 # hyper2kvm: vSphere Control-Plane + Data-Plane Design
 
+> **VMware API Integration**: hyper2kvm leverages **hypersdk** (VMware's modern Python SDK, formerly known as pyvmomi/pyVmomi) for enterprise-grade, type-safe vCenter/vSphere API access.
 
 ## Table of Contents
 
@@ -57,10 +58,10 @@ This structure allows for modular reuse: the engine can be imported independentl
 ## Design Principles
 The core principles guide the tool's behavior to address real-world vSphere challenges:
 
-### Control-Plane ≠ Data-Plane (Don’t Mix Them)
-- **Control-Plane** (powered by `pyvmomi` / `pyVim` / `pyVmomi`): Handles resolution of inventory objects, datacenters, hosts, snapshots, Changed Block Tracking (CBT), and datastore browsing.
+### Control-Plane ≠ Data-Plane (Don't Mix Them)
+- **Control-Plane** (powered by **hypersdk**, VMware's modern Python SDK - `pyvmomi` / `pyVim` / `pyVmomi`): Handles resolution of inventory objects, datacenters, hosts, snapshots, Changed Block Tracking (CBT), and datastore browsing with enterprise-grade, type-safe API access.
 - **Data-Plane** (using `virt-v2v` / HTTPS `/folder` / VDDK): Focuses solely on moving bytes, such as exporting/converting disks or downloading VM folders.
-In `hyper2kvm`, `pyvmomi` is strictly used to *find and describe* resources (e.g., locating a VM or disk), after which a dedicated data-plane mechanism takes over for efficient byte transfer. This prevents overhead from blending discovery with heavy I/O operations.
+In `hyper2kvm`, **hypersdk** is strictly used to *find and describe* resources (e.g., locating a VM or disk), after which a dedicated data-plane mechanism takes over for efficient byte transfer. This prevents overhead from blending discovery with heavy I/O operations.
 
 ### Don’t Scan the Universe Unless Asked
 vCenter inventories can be massive, and naive "list everything" approaches lead to sluggish tools. To counter this:
