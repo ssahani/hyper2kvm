@@ -1,20 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/network/core.py
 """
-Network configuration fixer orchestrator.
-
-This module provides the main NetworkFixer orchestrator that coordinates
-network configuration fixing for VMware -> KVM migration. It delegates to
-specialized modules for discovery, topology, validation, and backend-specific fixes.
-
-The orchestrator follows a pipeline:
-1. Discovery: Find all network config files on guest filesystem
-2. Topology: Build device relationship graph (bonds, bridges, VLANs)
-3. Planning: Compute interface rename map if needed (AGGRESSIVE mode)
-4. Fixing: Apply backend-specific fixes to each config file
-5. Validation: Verify fixes didn't corrupt configurations
-6. Apply: Write fixes to disk with atomic operations
-7. Summary: Generate statistics and recommendations
+Network configuration fixer for VMware to KVM migration.
 """
 from __future__ import annotations
 
@@ -33,11 +20,7 @@ from .validation import NetworkValidation
 
 class NetworkFixer:
     """
-    Main network configuration fixer orchestrator.
-
-    Coordinates the entire network fixing pipeline by delegating to
-    specialized modules. Uses composition over inheritance for clean
-    separation of concerns.
+    Network configuration fixer for VMware to KVM migration.
     """
 
     # VMware-specific driver patterns to remove
