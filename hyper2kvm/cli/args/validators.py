@@ -284,8 +284,15 @@ def validate_args(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     New-project policy:
       - No CLI subcommands.
       - YAML drives the operation (cmd / vs_action), CLI can override.
+      - Manifest-driven workflow bypasses cmd requirement.
     """
     from .helpers import _merged_cmd
+
+    # Check if using manifest-driven workflow
+    if hasattr(args, 'manifest') and args.manifest:
+        # Manifest workflow doesn't require cmd validation
+        # The manifest loader will handle all validation
+        return
 
     cmd = _merged_cmd(args, conf)
     if not _require(cmd):

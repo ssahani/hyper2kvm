@@ -18,6 +18,14 @@ def _add_global_config_logging(p: argparse.ArgumentParser) -> None:
         default=[],
         help="YAML/JSON config file (repeatable; later overrides earlier).",
     )
+    p.add_argument(
+        "--manifest",
+        dest="manifest",
+        default=None,
+        help="Manifest JSON file for declarative pipeline workflow. "
+             "When specified, uses manifest-driven LOAD→INSPECT→FIX→CONVERT→VALIDATE pipeline "
+             "and generates report.json with per-stage results, warnings, and artifact paths.",
+    )
     p.add_argument("--dump-config", action="store_true", help="Print merged normalized config and exit.")
     p.add_argument("--dump-args", action="store_true", help="Print final parsed args and exit.")
     p.add_argument("--version", action="version", version=__version__)
