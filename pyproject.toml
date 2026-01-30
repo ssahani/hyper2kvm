@@ -71,9 +71,6 @@ Changelog = "https://github.com/ssahani/hyper2kvm/releases"
 [project.scripts]
 hyper2kvm = "hyper2kvm.__main__:main"
 
-[tool.setuptools]
-packages = ["hyper2kvm"]
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["hyper2kvm*"]
