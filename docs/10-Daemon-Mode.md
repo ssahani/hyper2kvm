@@ -13,48 +13,18 @@ Daemon mode monitors a directory for incoming VM disk files and automatically pr
 
 ## How It Works
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Incoming Directory (watch_dir)                         │
-│  /var/lib/hyper2kvm/queue/                              │
-│                                                          │
-│  User drops:                                             │
-│  - vm1.vmdk                                              │
-│  - vm2.ova                                               │
-│  - vm3.vhd                                               │
-└────────────┬────────────────────────────────────────────┘
-             │
-             │  Watchdog monitors for new files
-             │  (filesystem events - instant detection)
-             ▼
-┌─────────────────────────────────────────────────────────┐
-│  hyper2kvm Daemon                                        │
-│                                                          │
-│  1. Detects new file                                     │
-│  2. Queues for processing                                │
-│  3. Runs full conversion pipeline:                       │
-│     - Extract/convert disk                               │
-│     - Fix fstab, initramfs, grub                         │
-│     - Convert to qcow2 (optional)                        │
-│     - Compress (optional)                                │
-│  4. Outputs to: /var/lib/hyper2kvm/output/vm1/           │
-│  5. Archives source to: .processed/vm1.vmdk              │
-└────────────┬────────────────────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────────────────────┐
-│  Output Directory (output_dir)                           │
-│  /var/lib/hyper2kvm/output/                              │
-│                                                          │
-│  vm1/                                                    │
-│    ├── vm1.qcow2                                         │
-│    ├── domain.xml                                        │
-│    └── metadata.json                                     │
-│                                                          │
-│  vm2/                                                    │
-│    ├── vm2.qcow2                                         │
-│    └── ...                                               │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    IncomingDir[Incoming Directory watch_dir<br/>/var/lib/hyper2kvm/queue/<br/><br/>User drops:<br/>• vm1.vmdk<br/>• vm2.ova<br/>• vm3.vhd]
+    Daemon[hyper2kvm Daemon<br/><br/>1. Detects new file<br/>2. Queues for processing<br/>3. Runs full conversion pipeline:<br/>  - Extract/convert disk<br/>  - Fix fstab, initramfs, grub<br/>  - Convert to qcow2 optional<br/>  - Compress optional<br/>4. Outputs to: /var/lib/hyper2kvm/output/vm1/<br/>5. Archives source to: .processed/vm1.vmdk]
+    OutputDir[Output Directory output_dir<br/>/var/lib/hyper2kvm/output/<br/><br/>vm1/<br/>├── vm1.qcow2<br/>├── domain.xml<br/>└── metadata.json<br/><br/>vm2/<br/>├── vm2.qcow2<br/>└── ...]
+
+    IncomingDir -->|Watchdog monitors for new files<br/>filesystem events - instant detection| Daemon
+    Daemon --> OutputDir
+
+    style IncomingDir fill:#FF9800,stroke:#E65100,color:#fff
+    style Daemon fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style OutputDir fill:#2196F3,stroke:#1565C0,color:#fff
 ```
 
 ## Supported File Types
