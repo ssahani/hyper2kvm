@@ -6,9 +6,15 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    import guestfs  # type: ignore
+else:
+    try:
+        import guestfs  # type: ignore
+    except ImportError:
+        guestfs = None  # type: ignore
 
 from .utils import U
 
@@ -516,6 +522,8 @@ class GuestDetector:
 
         Returns GuestIdentity or None if no OS roots.
         """
+        if guestfs is None:
+            raise ImportError("guestfs module not available. Install python3-libguestfs.")
         g: guestfs.GuestFS | None = None
         try:
             g = guestfs.GuestFS(python_return_dict=True)

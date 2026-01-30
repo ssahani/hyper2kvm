@@ -13,9 +13,15 @@ This module intentionally stays small and delegates the heavy lifting to:
 """
 
 import logging
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    import guestfs  # type: ignore
+else:
+    try:
+        import guestfs  # type: ignore
+    except ImportError:
+        guestfs = None  # type: ignore
 
 from ...core.logging_utils import safe_logger as _safe_logger_base
 from .virtio.core import (

@@ -9,9 +9,15 @@ import hashlib
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    import guestfs  # type: ignore
+else:
+    try:
+        import guestfs  # type: ignore
+    except ImportError:
+        guestfs = None  # type: ignore
 
 # Import shared logging utilities (use directly, no wrappers)
 from ....core.logging_utils import safe_logger as _safe_logger_base, emoji_for_level as _emoji, log_with_emoji as _log, log_step as _step

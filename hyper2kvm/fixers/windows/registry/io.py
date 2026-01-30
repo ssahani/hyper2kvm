@@ -10,9 +10,15 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    import guestfs  # type: ignore
+else:
+    try:
+        import guestfs  # type: ignore
+    except ImportError:
+        guestfs = None  # type: ignore
 
 
 def _is_probably_regf(path: Path) -> bool:

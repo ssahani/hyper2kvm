@@ -10,11 +10,18 @@ import os
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import requests
-from pyVmomi import vim, vmodl  # noqa: F401
+if TYPE_CHECKING:
+    from pyVmomi import vim, vmodl
+else:
+    try:
+        from pyVmomi import vim, vmodl
+    except ImportError:
+        # Set imported names to None
+        vim = vmodl = None, None  # type: ignore
 
 # Optional: Rich progress UI (TTY friendly). Falls back to plain logs if Rich not available.
 try:  # pragma: no cover

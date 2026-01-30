@@ -12,9 +12,15 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    import guestfs  # type: ignore
+else:
+    try:
+        import guestfs  # type: ignore
+    except ImportError:
+        guestfs = None  # type: ignore
 
 from ....core.utils import U
 

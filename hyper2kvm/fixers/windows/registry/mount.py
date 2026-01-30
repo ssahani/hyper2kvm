@@ -9,9 +9,15 @@ CRITICAL: Ensures guestfs / is mapped to Windows C: drive before registry operat
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    import guestfs  # type: ignore
+else:
+    try:
+        import guestfs  # type: ignore
+    except ImportError:
+        guestfs = None  # type: ignore
 
 from .io import _log_mountpoints_best_effort
 

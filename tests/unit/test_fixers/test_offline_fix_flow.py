@@ -20,6 +20,10 @@ def test_offline_fixer_runs_and_builds_report(monkeypatch, tmp_path):
     except Exception as e:
         pytest.skip(f"Cannot import offline_fixer: {e}")
 
+    # Skip if guestfs is not available
+    if offline_fixer.guestfs is None:
+        pytest.skip("guestfs module not available")
+
     fake = FakeGuestFS()
     fake.dirs |= {"/etc", "/boot", "/boot/grub2", "/tmp"}
     fake.fs["/etc/fstab"] = b"UUID=111 / ext4 defaults 0 1\n"
