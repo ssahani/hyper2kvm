@@ -667,6 +667,17 @@ class PostConversionBootFixer:
 
             if fixed_content != content:
                 self.logger.info("  Fixing malformed GRUB_CMDLINE_LINUX")
+                # Debug: show what we're fixing
+                self.logger.debug("=" * 60)
+                self.logger.debug("BEFORE fix:")
+                for i, line in enumerate(content.splitlines(), 1):
+                    if 'GRUB_CMDLINE_LINUX' in line or i >= 40:  # Show GRUB lines and lines near 44
+                        self.logger.debug(f"  {i:3d}: {repr(line)}")
+                self.logger.debug("AFTER fix:")
+                for i, line in enumerate(fixed_content.splitlines(), 1):
+                    if 'GRUB_CMDLINE_LINUX' in line or i >= 40:
+                        self.logger.debug(f"  {i:3d}: {repr(line)}")
+                self.logger.debug("=" * 60)
                 g.write(grub_default, fixed_content.encode('utf-8'))
 
             # Regenerate GRUB config
@@ -808,31 +819,46 @@ class PostConversionBootFixer:
 
     def _fix_grub_cmdline(self, content: str) -> str:
         """
-        Fix malformed GRUB_CMDLINE_LINUX entries.
+        Fix malformed GRUB config entries with unclosed quotes.
 
         Common issue: Missing closing quote causes shell syntax error.
         Example:
             GRUB_CMDLINE_LINUX="... root=UUID=xxx
             GRUB_DISABLE_RECOVERY="true"
 
-        Fix: Add closing quote before newline.
+        Fix: Add closing quote before newline for any line with unbalanced quotes.
         """
         lines = content.splitlines()
         fixed_lines = []
 
-        for i, line in enumerate(lines):
-            # Check for GRUB_CMDLINE_LINUX or GRUB_CMDLINE_LINUX_DEFAULT without closing quote
-            # Also handle lines with leading whitespace
-            stripped = line.lstrip()
-            if stripped.startswith('GRUB_CMDLINE_LINUX=') or stripped.startswith('GRUB_CMDLINE_LINUX_DEFAULT='):
-                # Count quotes
-                quote_count = line.count('"')
+        for i, line in enumerate(lines, 1):
+            original_line = line
 
-                # If odd number of quotes, line is malformed
-                if quote_count % 2 == 1:
-                    # Add closing quote at end
+            # Skip comments and empty lines
+            stripped = line.lstrip()
+            if not stripped or stripped.startswith('#'):
+                fixed_lines.append(line)
+                continue
+
+            # Check any line that looks like a shell variable assignment
+            if '=' in line:
+                # Count quotes
+                double_quote_count = line.count('"')
+                single_quote_count = line.count("'")
+
+                # Fix double quotes if unbalanced
+                if double_quote_count % 2 == 1:
                     line = line.rstrip() + '"'
-                    self.logger.debug(f"  Fixed line {i+1}: added closing quote")
+                    self.logger.debug(f"  Fixed line {i}: added closing double quote")
+                    self.logger.debug(f"    Before: {repr(original_line)}")
+                    self.logger.debug(f"    After:  {repr(line)}")
+
+                # Fix single quotes if unbalanced
+                elif single_quote_count % 2 == 1:
+                    line = line.rstrip() + "'"
+                    self.logger.debug(f"  Fixed line {i}: added closing single quote")
+                    self.logger.debug(f"    Before: {repr(original_line)}")
+                    self.logger.debug(f"    After:  {repr(line)}")
 
             fixed_lines.append(line)
 
