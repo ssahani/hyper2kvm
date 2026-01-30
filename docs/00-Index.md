@@ -20,7 +20,7 @@
 
 ### 👨‍🍳 Recipes & Workflows
 - **[📖 06-Cookbook](06-Cookbook.md)** - Common migration recipes
-- **[☁️ 30-vSphere-V2V](30-vSphere-V2V.md)** - vSphere to KVM workflows
+- **[☁️ 30-vSphere-Export](30-vSphere-Export.md)** - vSphere to KVM workflows
 
 ---
 
@@ -71,7 +71,7 @@ Migrate VMs directly from VMware vCenter/vSphere using **hypersdk** - VMware's m
 ```mermaid
 graph LR
     A[vSphere VM] --> B{Export Method}
-    B -->|virt-v2v| C[Direct Conversion]
+    B -->|direct export| C[Direct Conversion]
     B -->|govc| D[Download VMDK]
     B -->|OVF Tool| E[Export OVA/OVF]
     C --> F[KVM QCOW2]
@@ -83,9 +83,9 @@ graph LR
 
 | Method | Speed | Use Case | Guide |
 |--------|-------|----------|-------|
-| **virt-v2v + VDDK** | ⚡ Fast | Production, large VMs | [30-vSphere-V2V](30-vSphere-V2V.md) |
+| **direct export + VDDK** | ⚡ Fast | Production, large VMs | [30-vSphere-Export](30-vSphere-Export.md) |
 | **govc download** | 🐢 Slow | Small VMs, testing | [07-vSphere-Design](07-vSphere-Design.md) |
-| **OVF Tool** | ⚖️ Medium | OVA/OVF export | [30-vSphere-V2V](30-vSphere-V2V.md#ovftool) |
+| **OVF Tool** | ⚖️ Medium | OVA/OVF export | [30-vSphere-Export](30-vSphere-Export.md#ovftool) |
 
 ---
 
@@ -122,7 +122,7 @@ regen_initramfs: true
 See the `test-confs/` directory for 30+ production-ready configuration examples:
 - Local VMDK conversions (01-05)
 - vSphere downloads (10-11)
-- virt-v2v exports (20-24)
+- Direct exports (20-24)
 - OVFTool exports (30-31)
 - LibVirt XML templates (60-66)
 
@@ -181,7 +181,7 @@ report: /tmp/hyper2kvm-report.md
 23. **[🦎 SUSE](23-SUSE.md)** - openSUSE/SUSE Linux migration
 
 ### Advanced Topics
-30. **[☁️ vSphere V2V](30-vSphere-V2V.md)** - vSphere to KVM using virt-v2v
+30. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere to KVM using direct export
 
 ### Troubleshooting
 90. **[⚠️ Failure Modes](90-Failure-Modes.md)** - Troubleshooting guide
@@ -203,7 +203,7 @@ report: /tmp/hyper2kvm-report.md
 4. Review OS-specific guides (RHEL, Ubuntu, Windows)
 
 ### Advanced Path
-1. Deep dive into **[vSphere V2V](30-vSphere-V2V.md)**
+1. Deep dive into **[vSphere Export](30-vSphere-Export.md)**
 2. Master **[Windows migrations](10-Windows-Guide.md)**
 3. Handle **[Failure Modes](90-Failure-Modes.md)**
 4. Contribute to the project!
@@ -214,7 +214,7 @@ report: /tmp/hyper2kvm-report.md
 
 ### Related Projects
 - **[libguestfs](https://libguestfs.org/)** - Offline VM inspection and modification
-- **[virt-v2v](https://libguestfs.org/virt-v2v.1.html)** - VM conversion tool
+- **[virt-v2v](https://libguestfs.org/virt-v2v.1.html)** - Reference VM conversion tool
 - **[govc](https://github.com/vmware/govmomi/tree/master/govc)** - vSphere CLI
 - **[KVM](https://www.linux-kvm.org/)** - Linux virtualization
 - **[QEMU](https://www.qemu.org/)** - Machine emulator & virtualizer
@@ -230,7 +230,7 @@ report: /tmp/hyper2kvm-report.md
 
 | Source Platform | Destination | Best Method | Complexity | Guide |
 |----------------|-------------|-------------|------------|-------|
-| vSphere → | KVM | virt-v2v + VDDK | ⭐⭐⭐ | [30-vSphere-V2V](30-vSphere-V2V.md) |
+| vSphere → | KVM | direct export + VDDK | ⭐⭐⭐ | [30-vSphere-Export](30-vSphere-Export.md) |
 | Local VMDK (Windows) → | KVM | local + VirtIO inject | ⭐⭐⭐⭐ | [10-Windows-Guide](10-Windows-Guide.md) |
 | Local VMDK (Linux) → | KVM | local + offline fix | ⭐⭐ | [03-Quick-Start](03-Quick-Start.md) |
 | Hyper-V VHD → | KVM | local (WIP) | ⭐⭐⭐ | N/A |
@@ -275,7 +275,7 @@ See the main [README](../README.md) for contribution guidelines.
 ### Most Popular Guides
 1. **[🚀 Quick Start](03-Quick-Start.md)** - Start here!
 2. **[🪟 Windows Guide](10-Windows-Guide.md)** - Windows migrations
-3. **[☁️ vSphere V2V](30-vSphere-V2V.md)** - vSphere integration
+3. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere integration
 4. **[⚠️ Failure Modes](90-Failure-Modes.md)** - Troubleshooting
 
 ### Recently Updated

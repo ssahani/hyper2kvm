@@ -173,15 +173,15 @@ graph TB
 
 ```mermaid
 graph LR
-    subgraph Modes["Export Mode Options via V2VExportOptions.export_mode"]
-        V2V["v2v Default<br/>━━━━━━━<br/>✓ Converted Output<br/>✓ qcow2/raw Local<br/>✓ Uses virt-v2v<br/>✓ VDDK/SSH Transport"]
+    subgraph Modes["Export Mode Options via ExportOptions.export_mode"]
+        Export["export Default<br/>━━━━━━━<br/>✓ Converted Output<br/>✓ qcow2/raw Local<br/>✓ Direct Export<br/>✓ VDDK/SSH Transport"]
 
         Download["download_only<br/>━━━━━━━<br/>✓ Exact VM Folder<br/>✓ Byte-for-Byte<br/>✓ HTTPS /folder<br/>✓ Globs/Concurrency"]
 
         VDDK["vddk_download<br/>━━━━━━━<br/>✓ Single Disk Raw<br/>✓ Fast VDDK Pull<br/>✓ No Conversion<br/>✓ Sector Reads"]
     end
 
-    style V2V fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style Export fill:#4CAF50,stroke:#2E7D32,color:#fff
     style Download fill:#2196F3,stroke:#1565C0,color:#fff
     style VDDK fill:#FF9800,stroke:#E65100,color:#fff
 ```
@@ -194,11 +194,11 @@ flowchart TD
     VsphereMode --> AsyncExport[VMwareClient.async_export_vm]
     AsyncExport --> ModeCheck{Export Mode?}
 
-    ModeCheck -->|v2v| V2VExport[v2v Export<br/>Convert]
+    ModeCheck -->|export| ExportMode[Direct Export<br/>Convert]
     ModeCheck -->|download_only| DownloadOnly[Download Only<br/>Exact Copy]
     ModeCheck -->|vddk_download| VDDKDownload[VDDK Disk<br/>Download]
 
-    V2VExport --> Output1[Local qcow2/raw]
+    ExportMode --> Output1[Local qcow2/raw]
     DownloadOnly --> Output2[VM Folder Files]
     VDDKDownload --> Output3[Raw Disk Image]
 
@@ -206,7 +206,7 @@ flowchart TD
     style VsphereMode fill:#FF9800,stroke:#E65100,color:#fff
     style AsyncExport fill:#2196F3,stroke:#1565C0,color:#fff
     style ModeCheck fill:#FFC107,stroke:#F57C00,color:#000
-    style V2VExport fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style ExportMode fill:#4CAF50,stroke:#2E7D32,color:#fff
     style DownloadOnly fill:#00BCD4,stroke:#006064,color:#fff
     style VDDKDownload fill:#F44336,stroke:#C62828,color:#fff
     style Output1 fill:#8BC34A,stroke:#558B2F,color:#fff
@@ -232,10 +232,10 @@ Key Patterns:
 - Datastore browser tasks like `SearchDatastore_Task` and `SearchDatastoreSubFolders_Task` for directory listings.
 
 #### Data-Plane Options in `hyper2kvm`
-1. **virt-v2v Export Mode (`export_mode="v2v"`)**:
+1. **Direct Export Mode (`export_mode="export"`)**:
    - Implemented in `VMwareClient`.
    - Builds correct `vpx://user@host/<dc>/<compute>` URIs.
-   - Writes passwords to temp files for `virt-v2v -ip`.
+   - Writes passwords to temp files for export processing.
    - Validates/resolves `vddk-libdir` for VDDK transport.
    - Streams subprocess output safely with chunking.
    - Emits local output to `output_dir`.
@@ -284,7 +284,7 @@ This transforms vSphere into an efficient incremental block source, avoiding ful
 ## Mode Selection Cheatsheet (for `hyper2kvm`)
 | Need | Mode | Transport/Details |
 |------|------|-------------------|
-| **Converted qcow2/raw (accept virt-v2v conversion)** | `export_mode="v2v"` | `vddk` or `ssh` |
+| **Converted qcow2/raw (accept direct export conversion)** | `export_mode="export"` | `vddk` or `ssh` |
 | **Exact VM folder contents from datastore** | `export_mode="download_only"` | HTTP `/folder` |
 | **One disk as raw bytes via VDDK** | `export_mode="vddk_download"` | VDDK client |
 | **Incremental updates on local disk** | `cbt_sync` | CBT + ranged HTTP reads |
@@ -333,7 +333,7 @@ python -m hyper2kvm vsphere \
 
 ```python
 from hyper2kvm.vmware.clients.client import VMwareClient
-from hyper2kvm.vmware.vsphere.mode import V2VExportOptions
+from hyper2kvm.vmware.vsphere.mode import ExportOptions
 
 # Initialize client
 client = VMwareClient(
@@ -343,10 +343,10 @@ client = VMwareClient(
 )
 
 # Configure export
-options = V2VExportOptions(
+options = ExportOptions(
     vm_name='web-server',
     output_dir='/data/exports',
-    export_mode='v2v',
+    export_mode='export',
     transport='vddk',
     vddk_libdir='/usr/lib/vmware-vix-disklib'
 )
@@ -360,7 +360,7 @@ await client.async_export_vm(options)
 - **Error Handling**: Integrates stderr tails for diagnostics; detects transient issues (e.g., connection resets, auth failures).
 - **Performance Tips**: Enable `prefer_cached_vm_lookup` for repetitive tasks; tune `download_only_concurrency` to balance load.
 - **Security**: Supports `no_verify` but auto-computes thumbprints; passwords use secure temp files.
-- **Extensibility**: `V2VExportOptions` dataclass for easy customization; add `extra_args` for `virt-v2v`.
+- **Extensibility**: `ExportOptions` dataclass for easy customization; add `extra_args` for export processing.
 - **Future Directions**: Full consolidation of download logic; multi-disk CBT expansions; enhanced retry mechanisms.
 
 For code-level details, see `vmware_client.py`. If further expansions or examples are needed, provide specifics!

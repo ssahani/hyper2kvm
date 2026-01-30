@@ -154,7 +154,7 @@ class GovmomiCLI(GovcRunner):
 
 
 @dataclass
-class V2VExportOptions:
+class ExportOptions:
     """
     Export and download options for vSphere VMs.
     """
@@ -162,15 +162,15 @@ class V2VExportOptions:
     vm_name: str
     export_mode: str = "ovf_export"  # stable default
 
-    # vCenter placement resolution (for virt-v2v)
+    # vCenter placement resolution (for export)
     datacenter: str = "auto"
     compute: str = "auto"
 
-    # virt-v2v options
-    transport: str = "vddk"  # virt-v2v transport: vddk|ssh
+    # export options
+    transport: str = "vddk"  # export transport: vddk|ssh
     no_verify: bool = False
-    vddk_libdir: Path | None = None  # passed to virt-v2v -io vddk-libdir
-    vddk_thumbprint: str | None = None  # passed to virt-v2v vddk-thumbprint (if provided)
+    vddk_libdir: Path | None = None  # passed to export -io vddk-libdir
+    vddk_thumbprint: str | None = None  # passed to export vddk-thumbprint (if provided)
     vddk_snapshot_moref: str | None = None
     vddk_transports: str | None = None
     output_dir: Path = Path("./out")
@@ -305,10 +305,10 @@ from ..utils.datastore import (
     wait_for_task as _datastore_wait_for_task,
 )
 
-# Import v2v operations
-# NOTE: v2v functionality removed - hyper2kvm uses pure architecture now
-# from ..utils.v2v import (
-#     v2v_export_vm as _v2v_export_vm,
+# Import export operations
+# NOTE: export functionality removed - hyper2kvm uses pure architecture now
+# from ..utils.export import (
+#     export_export_vm as _export_export_vm,
 # )
 
 
@@ -795,10 +795,10 @@ class VMwareClient:
         out.mkdir(parents=True, exist_ok=True)
         return out
 
-    def govc_export_ovf(self, opt: V2VExportOptions) -> Path:
+    def govc_export_ovf(self, opt: ExportOptions) -> Path:
         return _ovftool_govc_export_ovf(self, opt)
 
-    def govc_export_ova(self, opt: V2VExportOptions) -> Path:
+    def govc_export_ova(self, opt: ExportOptions) -> Path:
         return _ovftool_govc_export_ova(self, opt)
 
     # OVF Tool export/deploy - Delegate to vmware_ovftool
@@ -863,7 +863,7 @@ class VMwareClient:
         dc_q = _quote_inventory_path(dc_name)
         return f"vi://{self.user}:{self.password}@{self.host}/{dc_q}/vm/{inv_rel_q}"
 
-    def _ovftool_export_options(self, opt: V2VExportOptions) -> Any:
+    def _ovftool_export_options(self, opt: ExportOptions) -> Any:
         if OvfExportOptions is None:
             raise VMwareError("OvfExportOptions not available (ovftool_client import failed)")
         return OvfExportOptions(
@@ -879,7 +879,7 @@ class VMwareClient:
             extra_args=opt.ovftool_extra_args,
         )
 
-    def _ovftool_deploy_options(self, opt: V2VExportOptions, *, name: str) -> Any:
+    def _ovftool_deploy_options(self, opt: ExportOptions, *, name: str) -> Any:
         if OvfDeployOptions is None:
             raise VMwareError("OvfDeployOptions not available (ovftool_client import failed)")
         return OvfDeployOptions(
@@ -896,10 +896,10 @@ class VMwareClient:
             extra_args=opt.ovftool_extra_args,
         )
 
-    def ovftool_export_vm(self, opt: V2VExportOptions) -> Path:
+    def ovftool_export_vm(self, opt: ExportOptions) -> Path:
         return _ovftool_ovftool_export_vm(self, opt)
 
-    def ovftool_deploy_ova(self, source_ova: Path, opt: V2VExportOptions) -> None:
+    def ovftool_deploy_ova(self, source_ova: Path, opt: ExportOptions) -> None:
         return _ovftool_ovftool_deploy_ova(self, source_ova, opt)
 
     # Datastore parsing + HTTPS /folder download - Delegate to vmware_datastore
@@ -1094,16 +1094,16 @@ class VMwareClient:
         if failures and fail_on_missing:
             raise VMwareError(f"{log_prefix}: one or more downloads failed:\n" + "\n".join(failures))
 
-    def download_only_vm(self, opt: V2VExportOptions) -> Path:
+    def download_only_vm(self, opt: ExportOptions) -> Path:
         return _datastore_download_only_vm(self, opt)
 
-    def _download_only_vm_force_https(self, opt: V2VExportOptions) -> Path:
+    def _download_only_vm_force_https(self, opt: ExportOptions) -> Path:
         """
         Forced HTTPS /folder fallback. This bypasses govc even if installed.
         """
         return _datastore_download_only_vm_force_https(self, opt)
 
-    # virt-v2v (power user path) - Delegate to vmware_v2v
+    # export (power user path) - Delegate to vmware_export
 
     def _vpx_uri(self, *, datacenter: str, compute: str, no_verify: bool) -> str:
         q = "?no_verify=1" if no_verify else ""
@@ -1118,11 +1118,11 @@ class VMwareClient:
         pw = (self.password or "").strip()
         if not pw:
             raise VMwareError(
-                "Missing vSphere password for virt-v2v (-ip). "
+                "Missing vSphere password for export (-ip). "
                 "Set vs_password or vs_password_env (or vc_password/vc_password_env as fallback)."
             )
         base_dir = self._ensure_output_dir(base_dir)
-        pwfile = base_dir / f".v2v-pass-{os.getpid()}.txt"
+        pwfile = base_dir / f".export-pass-{os.getpid()}.txt"
         # Create file atomically with secure permissions to avoid race condition (CWE-377)
         try:
             fd = os.open(str(pwfile), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -1137,9 +1137,9 @@ class VMwareClient:
             os.close(fd)
         return pwfile
 
-    def _build_virt_v2v_cmd(self, opt: V2VExportOptions, *, password_file: Path) -> list[str]:
+    def _build_virt_export_cmd(self, opt: ExportOptions, *, password_file: Path) -> list[str]:
         if not opt.vm_name:
-            raise VMwareError("V2VExportOptions.vm_name is required")
+            raise VMwareError("ExportOptions.vm_name is required")
         if not self.si:
             raise VMwareError("Not connected to vSphere; cannot export. Call connect() first.")
 
@@ -1148,10 +1148,10 @@ class VMwareClient:
 
         transport = (opt.transport or "").strip().lower()
         if transport not in ("vddk", "ssh"):
-            raise VMwareError(f"Unsupported virt-v2v transport: {transport!r} (expected 'vddk' or 'ssh')")
+            raise VMwareError(f"Unsupported export transport: {transport!r} (expected 'vddk' or 'ssh')")
 
         argv: list[str] = [
-            "virt-v2v",
+            "export",
             "-i",
             "libvirt",
             "-ic",
@@ -1278,21 +1278,21 @@ class VMwareClient:
                 console=self._rich_console,  # type: ignore[arg-type]
                 transient=True,
             ) as progress:
-                task_id = progress.add_task("virt-v2v running…", total=None)
+                task_id = progress.add_task("export running…", total=None)
                 while True:
                     for ln in pump():
                         last_line = ln.strip()
                         if last_line:
                             self.logger.info("%s", last_line)
                             show = last_line[:117] + "..." if len(last_line) > 120 else last_line
-                            progress.update(task_id, description=f"virt-v2v running… {show}")
+                            progress.update(task_id, description=f"export running… {show}")
 
                     if proc.poll() is not None:
                         self._drain_remaining_output(proc, max_rounds=10)
                         break
 
                 rc = int(proc.wait())
-                progress.update(task_id, description=f"virt-v2v finished (rc={rc})")
+                progress.update(task_id, description=f"export finished (rc={rc})")
                 return rc
 
         # Plain logger loop
@@ -1308,9 +1308,8 @@ class VMwareClient:
         self._drain_remaining_output(proc, max_rounds=10)
         return int(proc.wait())
 
-    # NOTE: v2v functionality removed - hyper2kvm uses pure architecture now
-    # def v2v_export_vm(self, opt: V2VExportOptions) -> Path:
-    #     return _v2v_export_vm(self, opt)
+    # NOTE: export functionality uses pure hyper2kvm architecture
+    # Legacy method removed
 
     # VDDK raw disk download (experimental orchestration only) - Delegate to vmware_vddk
 
@@ -1343,11 +1342,11 @@ class VMwareClient:
             raise VMwareError("Could not resolve ESXi host name for VM runtime.host")
         return name
 
-    def _default_vddk_download_path(self, opt: V2VExportOptions, *, disk_index: int) -> Path:
+    def _default_vddk_download_path(self, opt: ExportOptions, *, disk_index: int) -> Path:
         out_dir = self._ensure_output_dir(opt.output_dir)
         return out_dir / f"{_safe_vm_name(opt.vm_name)}-disk{disk_index}.vmdk"
 
-    def vddk_download_disk(self, opt: V2VExportOptions) -> Path:
+    def vddk_download_disk(self, opt: ExportOptions) -> Path:
         return _vddk_download_disk(self, opt)
 
     # Unified entrypoint (policy) - refactored into smaller handlers
@@ -1356,28 +1355,28 @@ class VMwareClient:
     def _normalize_export_mode(mode: str | None) -> str:
         return (mode or "ovf_export").strip().lower()
 
-    def _handle_mode_vddk(self, mode: str, opt: V2VExportOptions) -> Path | None:
+    def _handle_mode_vddk(self, mode: str, opt: ExportOptions) -> Path | None:
         if mode in ("vddk_download", "vddk-download", "vddkdownload"):
             return self.vddk_download_disk(opt)
         return None
 
-    def _handle_mode_v2v(self, mode: str, opt: V2VExportOptions) -> Path | None:
-        if mode in ("v2v", "virt-v2v", "virt_v2v"):
-            return self.v2v_export_vm(opt)
+    def _handle_mode_export(self, mode: str, opt: ExportOptions) -> Path | None:
+        if mode in ("export", "export", "virt_export"):
+            return self.export_export_vm(opt)
         return None
 
-    def _handle_mode_ovftool(self, mode: str, opt: V2VExportOptions) -> Path | None:
+    def _handle_mode_ovftool(self, mode: str, opt: ExportOptions) -> Path | None:
         if mode in ("ovftool_export", "ovftool", "ovftool-export"):
             self.logger.info("Export mode=OVF Tool: attempting OVF Tool export for VM=%s", opt.vm_name)
             return self.ovftool_export_vm(opt)
         return None
 
-    def _handle_mode_download_only(self, mode: str, opt: V2VExportOptions) -> Path | None:
+    def _handle_mode_download_only(self, mode: str, opt: ExportOptions) -> Path | None:
         if mode in ("download_only", "download-only", "download"):
             return self.download_only_vm(opt)
         return None
 
-    def _stable_chain_ovf_ova_https(self, opt: V2VExportOptions, *, log_context: str) -> Path:
+    def _stable_chain_ovf_ova_https(self, opt: ExportOptions, *, log_context: str) -> Path:
         try:
             self.logger.info("%s: attempting govc export.ovf for VM=%s", log_context, opt.vm_name)
             return self.govc_export_ovf(opt)
@@ -1391,7 +1390,7 @@ class VMwareClient:
                 )
                 return self._download_only_vm_force_https(opt)
 
-    def _stable_chain_ova_https(self, opt: V2VExportOptions, *, log_context: str) -> Path:
+    def _stable_chain_ova_https(self, opt: ExportOptions, *, log_context: str) -> Path:
         try:
             self.logger.info("%s: attempting govc export.ova for VM=%s", log_context, opt.vm_name)
             return self.govc_export_ova(opt)
@@ -1399,14 +1398,14 @@ class VMwareClient:
             self.logger.warning("%s: govc export.ova failed; forcing HTTPS /folder fallback: %s", log_context, e_ova)
             return self._download_only_vm_force_https(opt)
 
-    def export_vm(self, opt: V2VExportOptions) -> Path:
+    def export_vm(self, opt: ExportOptions) -> Path:
         """
         Export VM using specified export mode.
         """
         mode = self._normalize_export_mode(opt.export_mode)
 
         # Explicit/special modes first (no fallback unless explicitly coded)
-        for handler in (self._handle_mode_vddk, self._handle_mode_v2v):
+        for handler in (self._handle_mode_vddk, self._handle_mode_export):
             out = handler(mode, opt)
             if out is not None:
                 return out

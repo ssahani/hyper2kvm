@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-"""Mapping applier for network and storage V2V-style transformations."""
+"""Mapping applier for network and storage batch migration transformations."""
 
 from __future__ import annotations
 

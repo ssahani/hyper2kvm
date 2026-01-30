@@ -165,8 +165,8 @@ It must **see the driver succeed once** under a safe controller.
 
 This is why:
 
-* virt-v2v does a SATA boot internally
-* Microsoft’s own migration tools do the same
+* Migration tools perform a SATA boot internally
+* Microsoft's own migration tools do the same
 * Registry-only fixes *appear* correct but still BSOD
 
 ---

@@ -132,7 +132,7 @@ def vm_not_found_error(vm_name: str, vcenter: str | None = None) -> str:
     if vcenter:
         helper.add_example(f"govc ls -u 'user@{vcenter}' /")
 
-    helper.add_doc("30-vSphere-V2V.md#troubleshooting", "vSphere Troubleshooting")
+    helper.add_doc("30-vSphere-Export.md#troubleshooting", "vSphere Troubleshooting")
 
     return helper.build()
 

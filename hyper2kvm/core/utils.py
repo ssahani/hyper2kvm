@@ -105,7 +105,7 @@ class U:
 
         try:
             if stream:
-                # Realtime streaming (best for long qemu-img/qemu-nbd/v2v etc)
+                # Realtime streaming (best for long qemu-img/qemu-nbd etc)
                 proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,

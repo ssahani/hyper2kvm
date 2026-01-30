@@ -21,7 +21,7 @@ Complete documentation for the hyper2kvm VM migration toolkit.
 - **[SUSE](23-SUSE.md)** - SUSE Linux conversions
 
 ### Advanced Topics
-- **[vSphere Integration](30-vSphere-V2V.md)** - vSphere/ESXi export
+- **[vSphere Integration](30-vSphere-Export.md)** - vSphere/ESXi export
 - **[vSphere Design](07-vSphere-Design.md)** - vSphere architecture
 - **[Cookbook](06-Cookbook.md)** - Recipes and examples
 
@@ -157,7 +157,7 @@ graph TB
 4. If issues: [Windows Troubleshooting](12-Windows-Troubleshooting.md)
 
 ### Migrating from ESXi/vSphere
-1. Read [vSphere Integration](30-vSphere-V2V.md)
+1. Read [vSphere Integration](30-vSphere-Export.md)
 2. Use [Examples](../examples/README.md) → "Fetch from ESXi"
 3. Check [vSphere Design](07-vSphere-Design.md) for details
 
@@ -201,7 +201,7 @@ docs/
 │   └── 23-SUSE.md                     # SUSE Linux
 │
 ├── Integration/
-│   └── 30-vSphere-V2V.md              # vSphere export
+│   └── 30-vSphere-Export.md           # vSphere export
 │
 └── Troubleshooting/
     └── 90-Failure-Modes.md            # Troubleshooting guide
@@ -226,7 +226,7 @@ docs/
 
 **Path:**
 1. [Architecture](01-Architecture.md) - Understand the system
-2. [vSphere Integration](30-vSphere-V2V.md) - Setup vSphere export
+2. [vSphere Integration](30-vSphere-Export.md) - Setup vSphere export
 3. [YAML Configuration](05-YAML-Examples.md) - Batch configuration
 4. [Cookbook](06-Cookbook.md) - Batch migration recipes
 5. [Failure Modes](90-Failure-Modes.md) - Handle errors
@@ -261,7 +261,7 @@ docs/
 - [libvirt](https://libvirt.org/) - Virtualization API
 
 ### Optional Tools
-- [virt-v2v](https://libguestfs.org/virt-v2v.1.html) - Alternative converter
+- [virt-v2v](https://libguestfs.org/virt-v2v.1.html) - Reference converter tool
 - [VirtIO Drivers](https://docs.fedoraproject.org/en-US/quick-docs/creating-windows-virtual-machines-using-virtio-drivers/) - Windows drivers
 
 ### References

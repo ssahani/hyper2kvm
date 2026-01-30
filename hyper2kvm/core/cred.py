@@ -34,7 +34,7 @@ def resolve_vsphere_creds(cfg: Mapping[str, Any]) -> VsphereCreds:
     """
     Resolve vSphere creds for BOTH:
       - pyvmomi control plane (vc_* / vcenter)
-      - virt-v2v data plane (vs_*)
+      - export data plane (vs_*)
 
     Priority:
       host: vs_host > vcenter > vc_host

@@ -302,10 +302,10 @@ watch_dir: /var/lib/hyper2kvm/queue
 output_dir: /mnt/storage/converted-vms
 workdir: /var/lib/hyper2kvm/work
 
-# Use virt-v2v for faster conversions
-use_v2v: true
-v2v_parallel: true
-v2v_concurrency: 4
+# Use direct export for faster conversions
+use_export: true
+export_parallel: true
+export_concurrency: 4
 
 # Skip time-consuming operations
 fstab_mode: minimal
@@ -452,11 +452,11 @@ command: daemon
 daemon: true
 
 # Use direct I/O
-use_v2v: true
+use_export: true
 
 # Enable parallel processing
 parallel_processing: true
-v2v_concurrency: 2
+export_concurrency: 2
 
 # Skip compression (do later if needed)
 compress: false

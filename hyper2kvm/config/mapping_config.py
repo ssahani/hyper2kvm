@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-"""Network and storage mapping configuration for V2V-style migrations."""
+"""Network and storage mapping configuration for batch migrations."""
 
 from __future__ import annotations
 

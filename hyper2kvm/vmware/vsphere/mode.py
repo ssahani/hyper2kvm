@@ -702,7 +702,7 @@ def _export_vm_via_https(
                 "Insufficient permissions to view VM",
                 "VM has been renamed or deleted"
             ],
-            doc_link="30-vSphere-V2V.md#troubleshooting",
+            doc_link="30-vSphere-Export.md#troubleshooting",
             vm_name=vm_name,
             vcenter=vcenter_host
         )

@@ -1044,9 +1044,9 @@ for vm_name in ['vm1', 'vm2', 'vm3']:
 
 ---
 
-## V2V-Style Migration APIs
+## Batch Migration APIs
 
-hyper2kvm provides enterprise-grade V2V (virtual-to-virtual) migration capabilities with comprehensive APIs for batch processing, automation, and integration.
+hyper2kvm provides enterprise-grade batch migration capabilities with comprehensive APIs for batch processing, automation, and integration.
 
 ### Batch Orchestration
 

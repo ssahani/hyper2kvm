@@ -2,7 +2,7 @@
 # hyper2kvm/orchestrator/vsphere_exporter.py
 """
 vSphere VM export handler.
-Supports virt-v2v export, download-only, and VDDK download modes.
+Supports direct export, download-only, and VDDK download modes.
 """
 
 from __future__ import annotations
@@ -18,13 +18,13 @@ from ..core.utils import U
 
 # Conditional imports
 try:
-    from ..vmware.clients.client import V2VExportOptions, VMwareClient
+    from ..vmware.clients.client import ExportOptions, VMwareClient
 
-    VSPHERE_V2V_AVAILABLE = True
+    VSPHERE_EXPORT_AVAILABLE = True
 except Exception:
     VMwareClient = None  # type: ignore
-    V2VExportOptions = None  # type: ignore
-    VSPHERE_V2V_AVAILABLE = False
+    ExportOptions = None  # type: ignore
+    VSPHERE_EXPORT_AVAILABLE = False
 
 try:
     from ..vmware.clients.client import PYVMOMI_AVAILABLE
@@ -38,7 +38,7 @@ class VsphereExporter:
 
     Responsibilities:
     - vSphere VM identification and credential resolution
-    - virt-v2v based export (VDDK/SSH transports)
+    - Direct export based operations (VDDK/SSH transports)
     - download-only mode
     - VDDK raw download mode
     - Snapshot management
@@ -48,10 +48,10 @@ class VsphereExporter:
         self.logger = logger
         self.args = args
 
-    def is_v2v_enabled(self) -> bool:
-        """Check if vSphere virt-v2v export is enabled."""
-        enabled = bool(getattr(self.args, "vs_v2v", False))
-        Log.trace(self.logger, "🌐 _vsphere_v2v_enabled: %s", enabled)
+    def is_export_enabled(self) -> bool:
+        """Check if vSphere export is enabled."""
+        enabled = bool(getattr(self.args, "vs_export", False))
+        Log.trace(self.logger, "🌐 _vsphere_export_enabled: %s", enabled)
         return enabled
 
     def get_vm_names(self) -> list[str]:
@@ -78,7 +78,7 @@ class VsphereExporter:
         Policy (download-first):
           - If vs_download_only:true and vs_transport:vddk => prefer export_mode="vddk_download"
           - Else if vs_download_only:true => export_mode="download_only"
-          - Else => export_mode="v2v" (virt-v2v export)
+          - Else => export_mode="export" (direct export)
 
         Returns:
             List of exported disk image paths
@@ -86,13 +86,13 @@ class VsphereExporter:
         Log.step(self.logger, "vSphere export (sync) initializing…")
         Log.trace(
             self.logger,
-            "🌐 vSphere export: out_root=%s VSPHERE_V2V_AVAILABLE=%s",
+            "🌐 vSphere export: out_root=%s VSPHERE_EXPORT_AVAILABLE=%s",
             out_root,
-            VSPHERE_V2V_AVAILABLE,
+            VSPHERE_EXPORT_AVAILABLE,
         )
 
-        if not VSPHERE_V2V_AVAILABLE:
-            raise Fatal(2, "vSphere export not available (VMwareClient/V2VExportOptions missing)")
+        if not VSPHERE_EXPORT_AVAILABLE:
+            raise Fatal(2, "vSphere export not available (VMwareClient/ExportOptions missing)")
 
         if not PYVMOMI_AVAILABLE:
             raise Fatal(2, "pyvmomi not installed. Install: pip install pyvmomi")
@@ -126,7 +126,7 @@ class VsphereExporter:
         snapshot_moref = getattr(self.args, "vs_snapshot_moref", None)
         create_snapshot = bool(getattr(self.args, "vs_create_snapshot", False))
 
-        extra_args = tuple(getattr(self.args, "vs_v2v_extra_args", []) or ())
+        extra_args = tuple(getattr(self.args, "vs_export_extra_args", []) or ())
         out_format = str(getattr(self.args, "out_format", "qcow2"))
 
         download_only = bool(getattr(self.args, "vs_download_only", False))
@@ -181,10 +181,10 @@ class VsphereExporter:
                         snap_moref = vc.snapshot_moref(snap_obj)
                         self.logger.info("📸 Snapshot created: %s (moref=%s)", vm_name, snap_moref)
 
-                    job_dir = out_root / "vsphere-v2v" / vm_name
+                    job_dir = out_root / "vsphere-export" / vm_name
                     U.ensure_dir(job_dir)
 
-                    export_mode = "v2v"
+                    export_mode = "export"
                     if download_only:
                         if prefer_vddk_download and transport == "vddk":
                             export_mode = "vddk_download"
@@ -193,7 +193,7 @@ class VsphereExporter:
 
                     Log.trace(self.logger, "🧭 export_mode=%s job_dir=%s", export_mode, job_dir)
 
-                    opt = V2VExportOptions(  # type: ignore[misc]
+                    opt = ExportOptions(  # type: ignore[misc]
                         vm_name=vm_name,
                         export_mode=export_mode,
                         datacenter=datacenter,
@@ -226,7 +226,7 @@ class VsphereExporter:
                         self.logger.info("⬇️ vSphere VDDK download OK: %s -> %s", vm_name, out_path)
                         continue
 
-                    # export_mode == "v2v": discover artifacts
+                    # export_mode == "export": discover artifacts
                     pats = ["*.qcow2", "*.raw", "*.img", "*.vmdk", "*.vdi"]
                     imgs: list[Path] = []
                     for pat in pats:
@@ -234,9 +234,9 @@ class VsphereExporter:
                         Log.trace(self.logger, "🔎 vSphere discover: %s/%s -> %d", job_dir, pat, len(found))
                         imgs.extend(found)
                     if not imgs:
-                        self.logger.warning("vSphere v2v export produced no outputs for %s in %s", vm_name, job_dir)
+                        self.logger.warning("vSphere export produced no outputs for %s in %s", vm_name, job_dir)
                     else:
-                        self.logger.info("✅ vSphere v2v export outputs for %s: %d file(s)", vm_name, len(imgs))
+                        self.logger.info("✅ vSphere export outputs for %s: %d file(s)", vm_name, len(imgs))
                     out_images.extend(imgs)
 
                 except Exception as e:

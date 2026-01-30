@@ -349,7 +349,7 @@ sudo python -m hyper2kvm local \
 sudo python -m hyper2kvm local \
   --vmdk vm.vmdk \
   --to-output vm.qcow2 \
-  --use-virt-v2v
+  --use-export
 
 # Or increase resources
 ulimit -v unlimited

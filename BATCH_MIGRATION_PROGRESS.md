@@ -1,7 +1,7 @@
-# V2V-Style Features Implementation Progress
+# Batch Migration Features Implementation Progress
 
 ## Overview
-This document tracks the implementation progress of comprehensive V2V-style features for hyper2kvm, following the detailed plan in the original specification.
+This document tracks the implementation progress of comprehensive batch migration features for hyper2kvm, following the detailed plan in the original specification.
 
 ## Implementation Status
 
@@ -372,7 +372,7 @@ tests/unit/test_validation/
 
 **Files Created**:
 ```
-tests/integration/test_v2v_features/
+tests/integration/test_batch_features/
 └── test_batch_workflow.py ✅ (15+ test scenarios)
 ```
 
@@ -387,7 +387,7 @@ tests/integration/test_v2v_features/
 
 **Files Created**:
 1. ✅ `docs/Batch-Migration-Features-Guide.md` - Comprehensive batch migration guide
-2. ✅ `docs/Batch-Migration-Quick-Reference.md` - Quick reference for all V2V features
+2. ✅ `docs/Batch-Migration-Quick-Reference.md` - Quick reference for all batch migration features
 3. ✅ `hyper2kvm/profiles/README.md` (412 lines) - Profile usage and examples
 4. ✅ `examples/hooks/README.md` (358 lines) - Hook system documentation
 5. ✅ `examples/libvirt-xml/README.md` (297 lines) - Libvirt XML import guide
@@ -403,7 +403,7 @@ tests/integration/test_v2v_features/
 **Files to Modify**:
 1. ⏳ `docs/05-YAML-Examples.md` - Add batch, profile, hook examples
 2. `docs/08-Library-API.md` - Document new APIs (BatchOrchestrator, ProfileLoader, HookRunner)
-3. `README.md` - Update feature list, add v2v-style features section
+3. `README.md` - Update feature list, add batch migration features section
 
 ---
 
@@ -602,7 +602,7 @@ To continue this implementation:
 
 ## Summary
 
-✅ **ALL PHASES COMPLETE** - hyper2kvm now has enterprise-grade V2V migration capabilities:
+✅ **ALL PHASES COMPLETE** - hyper2kvm now has enterprise-grade batch migration capabilities:
 
 - **Phase 1**: Batch Orchestration ✅
 - **Phase 2**: Network & Storage Mapping ✅

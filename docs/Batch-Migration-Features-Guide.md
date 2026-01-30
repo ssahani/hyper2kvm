@@ -1,6 +1,6 @@
-# V2V-Style Features Guide
+# Batch Migration Features Guide
 
-**Complete Guide to hyper2kvm's virt-v2v Compatible Features**
+**Complete Guide to hyper2kvm's Batch Migration Features**
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@
 
 ## Overview
 
-hyper2kvm now includes comprehensive virt-v2v compatible features for enterprise VM migration workflows. These features enable batch processing, configuration reuse, automation hooks, and libvirt integration.
+hyper2kvm now includes comprehensive batch migration features for enterprise VM migration workflows. These features enable batch processing, configuration reuse, automation hooks, and libvirt integration.
 
 ### Implemented Features
 
@@ -942,7 +942,7 @@ sudo hyper2kvm --config manifest.yaml
 
 ## Summary
 
-hyper2kvm now provides enterprise-grade V2V migration capabilities:
+hyper2kvm now provides enterprise-grade batch migration capabilities:
 
 ✅ **83% Implementation Complete** (5 of 6 phases)
 ✅ **Production Ready**: Batch orchestration, profiles, hooks, libvirt import

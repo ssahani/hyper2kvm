@@ -1,6 +1,6 @@
-# V2V Features Quick Reference
+# Batch Migration Quick Reference
 
-**One-page reference for all virt-v2v compatible features**
+**One-page reference for all batch migration features**
 
 ## Feature Matrix
 
@@ -428,13 +428,13 @@ sudo hyper2kvm --config manifest.json -vvv
 
 ## Documentation Links
 
-- **Full Guide**: `docs/V2V-Style-Features-Guide.md`
+- **Full Guide**: `docs/Batch-Migration-Features-Guide.md`
 - **Batch Examples**: `examples/batch/`
 - **Profile Guide**: `hyper2kvm/profiles/README.md`
 - **Hooks Guide**: `examples/hooks/README.md`
 - **Libvirt Guide**: `examples/libvirt-xml/README.md`
-- **Testing Guide**: `tests/V2V_TESTING_GUIDE.md`
-- **Progress Tracker**: `V2V_FEATURES_PROGRESS.md`
+- **Testing Guide**: `tests/BATCH_MIGRATION_TESTING_GUIDE.md`
+- **Progress Tracker**: `BATCH_MIGRATION_PROGRESS.md`
 
 ## Support
 

@@ -81,12 +81,12 @@ enable_recovery: false
 parallel_processing: false
 
 # -----------------------------------------------------------------------------
-# virt-v2v (optional)
+# Batch export (optional)
 # -----------------------------------------------------------------------------
-use_v2v: false
-v2v_parallel: false
-v2v_concurrency: 2
-post_v2v: false
+use_export: false
+export_parallel: false
+export_concurrency: 2
+post_export: false
 
 # -----------------------------------------------------------------------------
 # LUKS knobs (optional)

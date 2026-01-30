@@ -189,7 +189,7 @@ def _add_windows_virtio_definitions(p: argparse.ArgumentParser) -> None:
     )
 
 
-# Removed: virt-v2v support (hyper2kvm uses only internal converters and fixers)
+# Note: hyper2kvm uses only internal converters and fixers
 
 
 def _add_windows_network_override(p: argparse.ArgumentParser) -> None:

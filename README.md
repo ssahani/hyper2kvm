@@ -208,7 +208,7 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
 - **Detailed Reporting:** Comprehensive migration reports and logs 📊
 - **vSphere Integration:** Native API support via govc, pyvmomi, and hyperctl (high-performance provider) ☁️
 
-### V2V-Style Migration Features 🚚
+### Batch Migration Features 🚚
 
 **Enterprise-grade batch migration capabilities for large-scale VM conversions:**
 

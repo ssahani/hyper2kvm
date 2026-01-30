@@ -248,7 +248,7 @@ def create_helpful_error(
         ...     Fatal,
         ...     "VM not found: my-vm",
         ...     solutions=["Verify VM name with: govc ls /DC/vm/"],
-        ...     doc_link="30-vSphere-V2V.md#troubleshooting"
+        ...     doc_link="30-vSphere-Export.md#troubleshooting"
         ... )
     """
     # Add enhanced context

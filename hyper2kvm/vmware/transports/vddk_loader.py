@@ -21,11 +21,11 @@ except Exception:  # pragma: no cover
             pass
 
 
-# Import V2VExportOptions
+# Import ExportOptions
 try:
-    from ..clients.client import V2VExportOptions, _safe_vm_name
+    from ..clients.client import ExportOptions, _safe_vm_name
 except Exception:  # pragma: no cover
-    V2VExportOptions = None  # type: ignore
+    ExportOptions = None  # type: ignore
     _safe_vm_name = None  # type: ignore
 
 # Import pyvmomi (vim)
@@ -103,12 +103,12 @@ def _resolve_esx_host_for_vm(client: Any, vm_obj: Any) -> str:
     return name
 
 
-def _default_vddk_download_path(client: Any, opt: V2VExportOptions, *, disk_index: int) -> Path:
+def _default_vddk_download_path(client: Any, opt: ExportOptions, *, disk_index: int) -> Path:
     out_dir = client._ensure_output_dir(opt.output_dir)
     return out_dir / f"{_safe_vm_name(opt.vm_name)}-disk{disk_index}.vmdk"
 
 
-def vddk_download_disk(client: Any, opt: V2VExportOptions) -> Path:
+def vddk_download_disk(client: Any, opt: ExportOptions) -> Path:
     """
     export_mode="vddk_download" (EXPERIMENTAL)
       - control-plane: pyvmomi finds ESXi host + disk backing path

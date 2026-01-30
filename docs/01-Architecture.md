@@ -204,7 +204,7 @@ Image format transformation via qemu-img:
 - Compression and sparse allocation
 - Disk resizing (expansion/shrinkage)
 
-**Integration:** Optional virt-v2v pre/post-processing hooks.
+**Integration:** Optional direct export pre/post-processing hooks.
 
 #### VALIDATE / TEST
 Ruthless verification:
@@ -483,7 +483,7 @@ The orchestrator was refactored from a single 1,197-line monolithic class into *
 - Error isolation per-disk
 
 #### 4. **VirtV2VConverter** (`orchestrator/virt_v2v_converter.py`)
-**Responsibility:** virt-v2v integration
+**Responsibility:** Export integration
 
 **Features:**
 - Single or parallel conversion
@@ -495,13 +495,13 @@ The orchestrator was refactored from a single 1,197-line monolithic class into *
 **Use Cases:**
 - Pre-conversion for complex formats
 - Post-conversion for additional fixes
-- Standalone virt-v2v mode
+- Standalone export mode
 
 #### 5. **VsphereExporter** (`orchestrator/vsphere_exporter.py`)
 **Responsibility:** vSphere VM export orchestration
 
 **Export Modes:**
-- virt-v2v direct export
+- Direct export
 - Download-only (no conversion)
 - VDDK high-speed transfer
 
@@ -1070,10 +1070,10 @@ Fixers should:
 
 **When to Use:** Multi-disk VMs (e.g., VM with OS disk + data disks)
 
-#### virt-v2v Conversion
+#### Export Conversion
 **Module:** `orchestrator/virt_v2v_converter.py`
 
-**Option:** `args.v2v_parallel = True` + `args.v2v_concurrency = N`
+**Option:** `args.export_parallel = True` + `args.export_concurrency = N`
 
 **Implementation:** ProcessPoolExecutor (avoid GIL for CPU-bound work)
 

@@ -873,7 +873,7 @@ sudo python -m hyper2kvm --config my-migration.yaml
 - `20-live-fix/live-fix-dry-run.yaml` - Preview changes
 
 **Advanced:**
-- `10-local/local-with-virt-v2v-post.yaml` - Hybrid approach
+- `10-local/local-with-batch-export-post.yaml` - Hybrid approach
 - `11-batch/batch-local-many.yaml` - Mass migration
 - `50-daemon/daemon-watch.yaml` - Automated monitoring
 

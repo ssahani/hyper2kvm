@@ -133,9 +133,8 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # Your orchestrator can materialize this YAML object to JSON under workdir and
 # set args.win_net_override automatically (similar to win_net_json behavior).
 #
-# virt-v2v integration:
-# use_v2v: false # use virt-v2v primarily
-# post_v2v: true # run v2v after internal fixes
+# Internal converters and fixers:
+# Note: hyper2kvm uses only internal migration tools
 #
 # Tests:
 # libvirt_test: true
@@ -439,7 +438,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 #   (C) OVF Tool export/deploy (control+data plane via ovftool)
 #       - proprietary, optional
 #
-#   (D) virt-v2v vSphere hook (experimental)
+#   (D) Direct vSphere export (experimental)
 #
 # 6a) pyvmomi mode (list/download/CBT)
 # command: vsphere
@@ -607,13 +606,13 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # ovftool_vm_name: "appliance-restored"
 # ovftool_datastore: "datastore1"
 #
-# 6d) virt-v2v vSphere hook (EXPERIMENTAL scaffold)
+# 6d) Direct vSphere export (EXPERIMENTAL)
 # command: vsphere
 # vcenter: vcenter.example.com
 # vc_user: administrator@vsphere.local
 # vc_password_env: VC_PASSWORD
 # vc_insecure: true
-# vs_v2v: true
+# vs_export: true
 # vm_name: myVM
 # out_format: qcow2
 # compress: true
@@ -621,7 +620,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # vs_transport: vddk
 # vs_vddk_libdir: /opt/vmware-vix-disklib-distrib
 # vs_download_only: true
-# vs_v2v_concurrency: 1
+# vs_export_concurrency: 1
 #
 # 7) CLI examples (copy/paste)
 #
@@ -656,7 +655,7 @@ FEATURE_SUMMARY = """ • Inputs: local VMDK/VHD, remote ESXi fetch, OVA/OVF ext
  • vSphere download-only: VM folder file pull via /folder (no inspection)\n
  • vSphere VDDK raw: single disk direct pull via VDDK client (no inspection)\n
  • vSphere NFC: pyvmomi NFC lease streaming (useful when /folder is blocked)\n
- • vSphere -> virt-v2v: experimental direct export hook\n
+ • vSphere -> direct export: experimental export hook\n
 """
 
 # If you already embed SYSTEMD_UNIT_TEMPLATE elsewhere, keep this as extra human text.

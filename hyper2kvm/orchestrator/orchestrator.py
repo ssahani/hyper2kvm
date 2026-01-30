@@ -45,7 +45,7 @@ class Orchestrator:
         self.disks: list[Path] = []
 
         # Initialize component handlers
-        # Note: virt-v2v support removed - using only internal converters
+        # Note: using only internal converters
         self.vsphere_exporter = VsphereExporter(logger, args)
         self.azure_exporter = AzureExporter(logger, args)
         self.disk_discovery = DiskDiscovery(logger, args)
@@ -140,7 +140,7 @@ class Orchestrator:
             )
 
         # Check if vSphere export (sync) mode enabled
-        if self.vsphere_exporter.is_v2v_enabled():
+        if self.vsphere_exporter.is_export_enabled():
             U.banner(self.logger, "vSphere export (sync)")
             exported = self.vsphere_exporter.export_many_sync(out_root)
             if exported:
@@ -347,7 +347,7 @@ class Orchestrator:
             )
 
         # Process disks through internal pipeline
-        # Note: virt-v2v support removed - using only internal converters and fixers
+        # Note: using only internal converters and fixers
         fixed_images = self._process_disks(out_root)
         out_images = fixed_images
 

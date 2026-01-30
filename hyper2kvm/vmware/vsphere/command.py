@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ...core.exceptions import VMwareError
-from ..clients.client import V2VExportOptions, VMwareClient
+from ..clients.client import ExportOptions, VMwareClient
 
 # Import from split modules
 from .errors import (
@@ -427,7 +427,7 @@ class VsphereCommands:
         include_globs = tuple(getattr(self.args, "vs_include_glob", None) or []) or ("*",)
         exclude_globs = tuple(getattr(self.args, "vs_exclude_glob", None) or []) or ()
 
-        opt = V2VExportOptions(
+        opt = ExportOptions(
             vm_name=vm_name,
             export_mode="download_only",
             output_dir=out_dir_path,
@@ -456,7 +456,7 @@ class VsphereCommands:
         vddk_transports = _arg_any(self.args, "vddk_transports", "vs_vddk_transports2")
         no_verify = bool(_arg_any(self.args, "no_verify", "vs_no_verify2", default=False))
 
-        opt = V2VExportOptions(
+        opt = ExportOptions(
             vm_name=vm_name,
             export_mode="vddk_download",
             output_dir=local_path.parent,
