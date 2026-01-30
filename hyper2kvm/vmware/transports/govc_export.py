@@ -143,7 +143,7 @@ def _warn(logger: Any, msg: str) -> None:
 
 def _ok_line(logger: Any, msg: str) -> None:
     # Prefer printing a clean check line (matches your sample).
-    _info(logger, f"  ✓ {msg}")
+    _info(logger, f" ✓ {msg}")
 
 
 # govc runners
@@ -405,7 +405,7 @@ def _show_vm_info(spec: GovcExportSpec, logger: Any) -> None:
         _print_panel(logger, title, "(No detailed info available)")
         return
 
-    body = "\n".join([f"  {ln}" for ln in lines])
+    body = "\n".join([f" {ln}" for ln in lines])
     _print_panel(logger, title, body)
 
 
@@ -618,7 +618,7 @@ def export_vm_govc(logger: Any, spec: GovcExportSpec) -> None:
             try:
                 _info(logger, "Contents of output directory:")
                 for item in spec.outdir.iterdir():
-                    _info(logger, f"  {item.name}")
+                    _info(logger, f" {item.name}")
             except Exception:
                 pass
 

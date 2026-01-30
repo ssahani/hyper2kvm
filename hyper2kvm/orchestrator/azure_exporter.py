@@ -77,7 +77,7 @@ class AzureExporter:
         # Log summary
         self.logger.info(f"✅ Azure export completed: {len(report.vms)} VM(s), {len(artifacts)} disk(s)")
         for vm in report.vms:
-            self.logger.info(f"  - {vm.name} ({vm.resource_group}): {len(vm.exports)} disk(s)")
+            self.logger.info(f" - {vm.name} ({vm.resource_group}): {len(vm.exports)} disk(s)")
 
         # Return list of local VHD paths
         return [art.local_path for art in artifacts]
@@ -146,7 +146,7 @@ class AzureExporter:
         """Extract tags from args."""
         tags = getattr(self.args, "azure_tags", None) or {}
         if isinstance(tags, str):
-            # Parse "key1=val1,key2=val2" format
+            # Parse "key1=val1, key2=val2" format
             result = {}
             for pair in tags.split(","):
                 if "=" in pair:

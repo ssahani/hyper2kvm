@@ -131,7 +131,7 @@ class VirtV2VConverter:
                 except Exception:
                     Log.trace(
                         self.logger,
-                        "⚠️  v2v_convert: failed to remove temp keyfile=%s",
+                        "⚠️ v2v_convert: failed to remove temp keyfile=%s",
                         keyfile_path,
                         exc_info=True,
                     )
@@ -226,7 +226,7 @@ class VirtV2VConverter:
         def _one(idx: int, disk: Path) -> List[Path]:
             job_dir = out_root / f"v2v-disk{idx}"
             U.ensure_dir(job_dir)
-            self.logger.info("➡️  virt-v2v job %d/%d: %s", idx + 1, len(disks), disk.name)
+            self.logger.info("➡️ virt-v2v job %d/%d: %s", idx + 1, len(disks), disk.name)
             Log.trace(self.logger, "📁 v2v job_dir=%s", job_dir)
             return self.convert(
                 [disk],

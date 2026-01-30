@@ -79,6 +79,14 @@ ipython_config.py
 *.raw
 *.img
 
+# VMware VM directories and files
+win*/
+*.vmx
+*.vmxf
+*.nvram
+*.vmsd
+*.scoreboard
+
 # =================================================
 # Archives / generated bundles
 # =================================================

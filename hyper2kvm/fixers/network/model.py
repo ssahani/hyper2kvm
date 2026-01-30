@@ -102,10 +102,10 @@ class TopologyGraph:
     Minimal topology graph:
       - Nodes: devices (ethX / ens192 / bond0 / br0 / br-ex / vlan100 or eth0.100)
       - Edges:
-          ethernet -> bond   ("slave")
+          ethernet -> bond ("slave")
           ethernet -> bridge ("port")
-          bond     -> bridge ("port")
-          parent   -> vlan   ("vlan")
+          bond -> bridge ("port")
+          parent -> vlan ("vlan")
     """
 
     def __init__(self) -> None:

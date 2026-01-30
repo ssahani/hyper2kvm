@@ -389,7 +389,7 @@ class Log:
 
     @staticmethod
     def step(logger: logging.Logger, msg: str, **ctx: Any) -> None:
-        logger.info("➡️  %s", msg, extra={"ctx": ctx} if ctx else None)
+        logger.info("➡️ %s", msg, extra={"ctx": ctx} if ctx else None)
 
     @staticmethod
     def ok(logger: logging.Logger, msg: str, **ctx: Any) -> None:
@@ -397,7 +397,7 @@ class Log:
 
     @staticmethod
     def warn(logger: logging.Logger, msg: str, **ctx: Any) -> None:
-        logger.warning("⚠️  %s", msg, extra={"ctx": ctx} if ctx else None)
+        logger.warning("⚠️ %s", msg, extra={"ctx": ctx} if ctx else None)
 
     @staticmethod
     def fail(logger: logging.Logger, msg: str, **ctx: Any) -> None:
@@ -424,7 +424,7 @@ class Log:
         if k in _warn_once_keys:
             return False
         _warn_once_keys.add(k)
-        logger.warning("⚠️  %s", msg, extra={"ctx": ctx} if ctx else None)
+        logger.warning("⚠️ %s", msg, extra={"ctx": ctx} if ctx else None)
         return True
 
     @staticmethod
@@ -446,7 +446,7 @@ class Log:
         if (now - last) < float(every_s):
             return False
         _warn_last[k] = now
-        logger.warning("⚠️  %s", msg, extra={"ctx": ctx} if ctx else None)
+        logger.warning("⚠️ %s", msg, extra={"ctx": ctx} if ctx else None)
         return True
 
     @staticmethod

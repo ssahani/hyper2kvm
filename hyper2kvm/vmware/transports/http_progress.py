@@ -166,7 +166,7 @@ class SimpleProgressReporter(ProgressReporter):
             s = f"{pct:.1f}% ({U.human_bytes(self.downloaded)}/{U.human_bytes(self.total)})"
         else:
             s = f"{U.human_bytes(self.downloaded)} (size unknown)"
-        sys.stdout.write(f"Downloading {self.file_name}: {s}   \r")
+        sys.stdout.write(f"Downloading {self.file_name}: {s} \r")
         sys.stdout.flush()
 
     def finish(self) -> None:

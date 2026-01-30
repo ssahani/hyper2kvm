@@ -212,7 +212,7 @@ class FilesystemFixer:
                 if U.to_text(k) == dev_text:
                     fs_type = U.to_text(v).strip()
                     if fs_type:
-                        self._log(logging.DEBUG, "🗺️  list_filesystems: %s -> %s", dev_text, fs_type)
+                        self._log(logging.DEBUG, "🗺️ list_filesystems: %s -> %s", dev_text, fs_type)
                         return fs_type
         except Exception as e:
             self._log(logging.DEBUG, "🫥 list_filesystems failed: %s", str(e))
@@ -539,7 +539,7 @@ class FilesystemFixer:
             return self._run_exfat_check(g, dev, dry_run)
         return None
 
- 
+
     def _init_device_result(self, dev_text: str, dry_run: bool, force_repair: bool) -> Dict[str, Any]:
         return {
             "device": dev_text,
@@ -574,14 +574,14 @@ class FilesystemFixer:
         if not fs_type:
             msg = "Could not detect filesystem type"
             result["errors"].append(msg)
-            self._log(logging.WARNING, "⏭️  skip: %s (%s)", dev_text, msg)
+            self._log(logging.WARNING, "⏭️ skip: %s (%s)", dev_text, msg)
             self._bump_stat("skipped")
             return True
 
         if classification.get("is_dangerous"):
             msg = f"Dangerous filesystem type: {fs_type}"
             result["errors"].append(msg)
-            self._log(logging.WARNING, "☢️  skip dangerous: %s (%s)", dev_text, fs_type)
+            self._log(logging.WARNING, "☢️ skip dangerous: %s (%s)", dev_text, fs_type)
             self._bump_stat("skipped")
             return True
 
@@ -595,7 +595,7 @@ class FilesystemFixer:
         if not classification.get("can_check"):
             msg = f"Cannot check filesystem type: {fs_type}"
             result["warnings"].append(msg)
-            self._log(logging.INFO, "⏭️  skip: %s (%s)", dev_text, msg)
+            self._log(logging.INFO, "⏭️ skip: %s (%s)", dev_text, msg)
             self._bump_stat("skipped")
             return True
 
@@ -715,7 +715,6 @@ class FilesystemFixer:
             stats["total_duration"] = stats["end_time"] - stats["start_time"]
         stats["repairs_attempted"] = stats.get("repairs_attempted", stats.get("repaired", 0))
         return stats
-
 
 
 def _vfs_type(g: guestfs.GuestFS, dev: str) -> str:

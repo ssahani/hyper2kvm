@@ -49,7 +49,7 @@ class VMwareError(HTTPDownloadError):
 try:
     from ...core.exceptions import VMwareError as CoreVMwareError  # type: ignore
 
-    VMwareError = CoreVMwareError  # type: ignore[misc,assignment]
+    VMwareError = CoreVMwareError  # type: ignore[misc, assignment]
 except Exception:
     pass  # Keep our fallback
 

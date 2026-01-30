@@ -373,14 +373,14 @@ class OfflineVmwareToolsRemover:
         if not self.allow_chroot:
             return
 
-        # If you enable this, you *must* have /proc,/sys,/dev bind mounted too.
+        # If you enable this, you *must* have /proc, /sys, /dev bind mounted too.
         # We’ll just sanity-check and refuse if too risky.
         proc_ok = (self.mount_point / "proc").exists()
         sys_ok = (self.mount_point / "sys").exists()
         dev_ok = (self.mount_point / "dev").exists()
         if not (proc_ok and sys_ok and dev_ok):
-            self._result.warnings.append("Chroot mode requested but /proc,/sys,/dev are not present under mount. Skipping.")
-            self.logger.warning("Chroot mode requested but mount_point lacks /proc,/sys,/dev. Skipping chroot removal.")
+            self._result.warnings.append("Chroot mode requested but /proc, /sys, /dev are not present under mount. Skipping.")
+            self.logger.warning("Chroot mode requested but mount_point lacks /proc, /sys, /dev. Skipping chroot removal.")
             return
 
         # We still won’t run it automatically unless you really want it.
