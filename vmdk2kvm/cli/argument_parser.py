@@ -355,13 +355,32 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ------------------------------------------------------------------
     # vSphere control-plane selection: govc vs pyvmomi
+    #
+    # Policy (updated):
+    #   - Always prefer govc/govmomi for control-plane when available.
+    #   - pyvmomi is allowed as a fallback only.
     # ------------------------------------------------------------------
     p.add_argument(
         "--vs-control-plane",
         dest="vs_control_plane",
-        default=None,
+        default="govc",
         choices=["auto", "govc", "pyvmomi"],
         help="vSphere control-plane backend: auto (prefer govc), govc, or pyvmomi.",
+    )
+
+    # ------------------------------------------------------------------
+    # download-only transport (HTTP/HTTPS only)
+    #
+    # Policy (updated):
+    #   - download-only uses /folder over HTTP(S) only.
+    #   - VDDK is NOT used here; any VDDK mode is experimental and separate.
+    # ------------------------------------------------------------------
+    p.add_argument(
+        "--vs-download-transport",
+        dest="vs_download_transport",
+        default="https",
+        choices=["https", "http", "auto"],
+        help="download-only transport preference (default: https). auto behaves like https.",
     )
 
     # govc context knobs (CLI overrides; YAML can carry same keys)
@@ -379,6 +398,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ------------------------------------------------------------------
     # Existing virt-v2v vSphere export knobs, download-only knobs, VDDK knobs...
+    #
+    # Policy (updated):
+    #   - vSphere virt-v2v export is EXPERIMENTAL.
+    #   - Do not default transports to vddk implicitly; require explicit user choice.
     # ------------------------------------------------------------------
     p.add_argument(
         "--vs-v2v",
@@ -389,7 +412,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vs-vm", dest="vs_vm", default=None, help="VM name to export (alternative to --vm-name).")
     p.add_argument("--vs-vms", dest="vs_vms", nargs="*", default=None, help="Multiple VM names to export.")
     p.add_argument("--vs-datacenter", dest="vs_datacenter", default="ha-datacenter", help="Datacenter name (default: ha-datacenter)")
-    p.add_argument("--vs-transport", dest="vs_transport", default="vddk", choices=["vddk", "ssh"], help="virt-v2v input transport (default: vddk)")
+
+    # IMPORTANT: no default here (avoids silently selecting VDDK)
+    p.add_argument(
+        "--vs-transport",
+        dest="vs_transport",
+        default=None,
+        choices=["vddk", "ssh"],
+        help="EXPERIMENTAL virt-v2v input transport (set explicitly).",
+    )
+
     p.add_argument("--vs-vddk-libdir", dest="vs_vddk_libdir", default=None, help="Path to VDDK libdir (if using vddk transport)")
     p.add_argument("--vs-vddk-thumbprint", dest="vs_vddk_thumbprint", default=None, help="vCenter TLS thumbprint for VDDK verification")
     p.add_argument("--vs-snapshot-moref", dest="vs_snapshot_moref", default=None, help="Snapshot MoRef (e.g. snapshot-123) to export from")
@@ -420,10 +452,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p.add_argument("--fail-on-missing", dest="vs_fail_on_missing", action="store_true", help="download-only VM folder: treat any failed/missing download as fatal.")
 
-    p.add_argument("--vddk-libdir", dest="vs_vddk_libdir2", default=None, help="VDDK raw download: directory containing libvixDiskLib.so (or a parent that contains it).")
-    p.add_argument("--vddk-thumbprint", dest="vs_vddk_thumbprint2", default=None, help="VDDK raw download: ESXi/vCenter thumbprint (SHA1 AA:BB:..).")
-    p.add_argument("--no-verify", dest="vs_no_verify2", action="store_true", help="VDDK raw download: disable TLS verification (insecure).")
-    p.add_argument("--vddk-transports", dest="vs_vddk_transports2", default=None, help="VDDK raw download: transport modes string (e.g. 'nbdssl:nbd').")
+    # NOTE: These remain for any separate raw-VDDK download actions you may have.
+    # They are intentionally NOT wired as defaults for download-only.
+    p.add_argument("--vddk-libdir", dest="vs_vddk_libdir2", default=None, help="EXPERIMENTAL: VDDK raw download: directory containing libvixDiskLib.so (or a parent that contains it).")
+    p.add_argument("--vddk-thumbprint", dest="vs_vddk_thumbprint2", default=None, help="EXPERIMENTAL: VDDK raw download: ESXi/vCenter thumbprint (SHA1 AA:BB:..).")
+    p.add_argument("--no-verify", dest="vs_no_verify2", action="store_true", help="EXPERIMENTAL: VDDK raw download: disable TLS verification (insecure).")
+    p.add_argument("--vddk-transports", dest="vs_vddk_transports2", default=None, help="EXPERIMENTAL: VDDK raw download: transport modes string (e.g. 'nbdssl:nbd').")
 
     # vSphere action-scoped params (now global)
     p.add_argument("--json", dest="json", action="store_true", help="Output in JSON format (where supported).")
@@ -583,12 +617,13 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
             raise SystemExit("cmd=vsphere: missing vCenter password. Set `vc_password:` or `vc_password_env:` (or CLI equivalents).")
 
         # Control-plane selection (auto/govc/pyvmomi)
+        # Updated default: govc
         vs_cp = _merged_get(args, conf, "vs_control_plane")
         if not _require(vs_cp):
-            vs_cp = conf.get("vs_control_plane", None) or "auto"
+            vs_cp = conf.get("vs_control_plane", None) or "govc"
         vs_cp = str(vs_cp).strip().lower()
 
-        # govc derived identity (only required if backend=govc)
+        # govc derived identity (required for govc backend; also used for auto since auto prefers govc)
         govc_url = _merged_get(args, conf, "govc_url")
         govc_user = _merged_get(args, conf, "govc_user") or vc_user
         govc_password = _merged_secret(args, conf, "govc_password", "govc_password_env") or vc_password
@@ -596,15 +631,15 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
         if not _require(govc_url) and _require(vcenter):
             govc_url = f"https://{str(vcenter).strip()}/sdk"
 
-        if vs_cp == "govc":
+        if vs_cp in ("govc", "auto"):
             if not _require(govc_url):
-                raise SystemExit("cmd=vsphere: vs_control_plane=govc requires `govc_url:` (or it must be derivable).")
+                raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_url:` (or it must be derivable).")
             if not _require(govc_user):
-                raise SystemExit("cmd=vsphere: vs_control_plane=govc requires `govc_user:` (or `vc_user:`).")
+                raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_user:` (or `vc_user:`).")
             if not _require(govc_password):
-                raise SystemExit("cmd=vsphere: vs_control_plane=govc requires `govc_password:`/`govc_password_env:` (or `vc_password:`).")
+                raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_password:`/`govc_password_env:` (or `vc_password:`).")
 
-        elif vs_cp in ("pyvmomi", "auto"):
+        elif vs_cp == "pyvmomi":
             # pyvmomi uses vc_* keys which are already validated above
             pass
         else:
@@ -614,6 +649,23 @@ def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
         if not _require(act):
             raise SystemExit("cmd=vsphere: missing required `vs_action:` (YAML) or CLI --vs-action")
         act = str(act).strip()
+
+        # download-only transport: HTTP/HTTPS only
+        dl = _merged_get(args, conf, "vs_download_transport")
+        if not _require(dl):
+            dl = conf.get("vs_download_transport", None)
+
+        # Legacy mapping (best-effort): if older configs accidentally used `vs_transport`
+        # as a download preference, accept it ONLY if vs_download_transport is unset.
+        legacy = conf.get("vs_transport", None)
+        if not _require(dl) and _require(legacy):
+            dl = str(legacy).strip().lower()
+
+        dl = (str(dl).strip().lower() if _require(dl) else "https")
+        if dl == "auto":
+            dl = "https"
+        if dl not in ("https", "http"):
+            raise SystemExit(f"cmd=vsphere: invalid vs_download_transport={dl!r} (use https|http|auto)")
 
         # Action-specific args
         vm_name = conf.get("vm_name", None)
