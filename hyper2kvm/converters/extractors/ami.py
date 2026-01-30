@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/converters/ami_extractor.py
+# hyper2kvm/converters/extractors/ami.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
-from ..core.utils import U
+from ...core.utils import U
 
 
 @dataclass
@@ -669,7 +669,7 @@ class AMI:
         log_virt_filesystems: bool = False,
     ) -> List[Path]:
         try:
-            from ..converters.qemu_converter import Convert  # type: ignore
+            from ..qemu.converter import Convert  # type: ignore
         except Exception as e:
             U.die(logger, f"QCOW2 conversion requested but Convert could not be imported: {e}", AMI.EX_CONVERT_FAILED)
             raise

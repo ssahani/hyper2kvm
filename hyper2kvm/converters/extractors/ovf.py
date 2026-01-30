@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# hyper2kvm/converters/ovf_extractor.py
+# hyper2kvm/converters/extractors/ovf.py
 from __future__ import annotations
 
 import logging
@@ -20,7 +20,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
-from ..core.utils import U
+from ...core.utils import U
 
 
 class OVF:
@@ -307,7 +307,7 @@ class OVF:
         Uses the project Convert wrapper if available.
         """
         try:
-            from ..converters.qemu_converter import Convert  # type: ignore
+            from ..qemu.converter import Convert  # type: ignore
         except Exception as e:
             U.die(logger, f"QCOW2 conversion requested but Convert could not be imported: {e}", 1)
             raise  # unreachable

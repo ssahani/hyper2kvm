@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+# hyper2kvm/converters/qemu/converter.py
 from __future__ import annotations
 
 import json
@@ -23,7 +24,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from ..core.utils import U
+from ...core.utils import U
 
 
 class Convert:
