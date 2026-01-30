@@ -49,6 +49,11 @@ from .webserver_analyzer import WebServerAnalyzer
 from .certificate_manager import CertificateManager
 from .container_analyzer import ContainerAnalyzer
 from .compliance_checker import ComplianceChecker
+from .backup_analysis import BackupAnalysis
+from .user_activity import UserActivityAnalyzer
+from .app_framework_detector import AppFrameworkDetector
+from .cloud_detector import CloudDetector
+from .monitoring_detector import MonitoringDetector
 
 
 logger = logging.getLogger(__name__)
@@ -111,6 +116,11 @@ class VMCraft:
         self._certificate_manager: CertificateManager | None = None
         self._container_analyzer: ContainerAnalyzer | None = None
         self._compliance_checker: ComplianceChecker | None = None
+        self._backup_analysis: BackupAnalysis | None = None
+        self._user_activity: UserActivityAnalyzer | None = None
+        self._app_framework_detector: AppFrameworkDetector | None = None
+        self._cloud_detector: CloudDetector | None = None
+        self._monitoring_detector: MonitoringDetector | None = None
 
         # Log backend selection
         self.logger.debug("Using VMCraft backend (qemu-nbd + Linux tools)")
@@ -233,6 +243,11 @@ class VMCraft:
         self._certificate_manager = CertificateManager(self.logger, self._file_ops, self._mount_root)
         self._container_analyzer = ContainerAnalyzer(self.logger, self._file_ops, self._mount_root)
         self._compliance_checker = ComplianceChecker(self.logger, self._file_ops, self._mount_root)
+        self._backup_analysis = BackupAnalysis(self.logger, self._file_ops, self._mount_root)
+        self._user_activity = UserActivityAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._app_framework_detector = AppFrameworkDetector(self.logger, self._file_ops, self._mount_root)
+        self._cloud_detector = CloudDetector(self.logger, self._file_ops, self._mount_root)
+        self._monitoring_detector = MonitoringDetector(self.logger, self._file_ops, self._mount_root)
 
         total_time = time.time() - start_time
         self._perf_metrics['total_launch'] = total_time
@@ -1495,6 +1510,130 @@ class VMCraft:
         if not self._compliance_checker:
             raise RuntimeError("Not launched")
         return self._compliance_checker.get_recommendations(compliance)
+
+    # Backup Analysis (backup_analysis.py)
+
+    def analyze_backup_software(self) -> dict[str, Any]:
+        """Analyze backup software installations."""
+        if not self._backup_analysis:
+            raise RuntimeError("Not launched")
+        return self._backup_analysis.analyze_backup_software()
+
+    def get_backup_summary(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Get backup summary."""
+        if not self._backup_analysis:
+            raise RuntimeError("Not launched")
+        return self._backup_analysis.get_backup_summary(analysis)
+
+    def check_backup_health(self, analysis: dict[str, Any]) -> list[dict[str, Any]]:
+        """Check backup health and configuration."""
+        if not self._backup_analysis:
+            raise RuntimeError("Not launched")
+        return self._backup_analysis.check_backup_health(analysis)
+
+    def list_backup_software(self, analysis: dict[str, Any]) -> list[str]:
+        """List names of detected backup software."""
+        if not self._backup_analysis:
+            raise RuntimeError("Not launched")
+        return self._backup_analysis.list_backup_software(analysis)
+
+    # User Activity Analysis (user_activity.py)
+
+    def analyze_user_activity(self) -> dict[str, Any]:
+        """Analyze user activity comprehensively."""
+        if not self._user_activity:
+            raise RuntimeError("Not launched")
+        return self._user_activity.analyze_user_activity()
+
+    def get_activity_summary(self, activity: dict[str, Any]) -> dict[str, Any]:
+        """Get user activity summary."""
+        if not self._user_activity:
+            raise RuntimeError("Not launched")
+        return self._user_activity.get_activity_summary(activity)
+
+    def detect_suspicious_activity(self, activity: dict[str, Any]) -> list[dict[str, Any]]:
+        """Detect suspicious user activity."""
+        if not self._user_activity:
+            raise RuntimeError("Not launched")
+        return self._user_activity.detect_suspicious_activity(activity)
+
+    def get_top_sudo_users(self, activity: dict[str, Any], limit: int = 10) -> list[dict[str, Any]]:
+        """Get users with most sudo usage."""
+        if not self._user_activity:
+            raise RuntimeError("Not launched")
+        return self._user_activity.get_top_sudo_users(activity, limit)
+
+    # Application Framework Detection (app_framework_detector.py)
+
+    def detect_frameworks(self) -> dict[str, Any]:
+        """Detect application frameworks comprehensively."""
+        if not self._app_framework_detector:
+            raise RuntimeError("Not launched")
+        return self._app_framework_detector.detect_frameworks()
+
+    def get_framework_summary(self, frameworks: dict[str, Any]) -> dict[str, Any]:
+        """Get framework summary."""
+        if not self._app_framework_detector:
+            raise RuntimeError("Not launched")
+        return self._app_framework_detector.get_framework_summary(frameworks)
+
+    def list_web_frameworks(self, frameworks: dict[str, Any]) -> list[str]:
+        """List detected web frameworks."""
+        if not self._app_framework_detector:
+            raise RuntimeError("Not launched")
+        return self._app_framework_detector.list_web_frameworks(frameworks)
+
+    # Cloud Integration Detection (cloud_detector.py)
+
+    def detect_cloud_integration(self) -> dict[str, Any]:
+        """Detect cloud platform integrations comprehensively."""
+        if not self._cloud_detector:
+            raise RuntimeError("Not launched")
+        return self._cloud_detector.detect_cloud_integration()
+
+    def get_cloud_summary(self, cloud: dict[str, Any]) -> dict[str, Any]:
+        """Get cloud integration summary."""
+        if not self._cloud_detector:
+            raise RuntimeError("Not launched")
+        return self._cloud_detector.get_cloud_summary(cloud)
+
+    def is_cloud_vm(self, cloud: dict[str, Any]) -> bool:
+        """Check if VM is running in cloud."""
+        if not self._cloud_detector:
+            raise RuntimeError("Not launched")
+        return self._cloud_detector.is_cloud_vm(cloud)
+
+    def get_cloud_services(self, cloud: dict[str, Any]) -> list[str]:
+        """List detected cloud services."""
+        if not self._cloud_detector:
+            raise RuntimeError("Not launched")
+        return self._cloud_detector.get_cloud_services(cloud)
+
+    # Monitoring Agent Detection (monitoring_detector.py)
+
+    def detect_monitoring_agents(self) -> dict[str, Any]:
+        """Detect monitoring agents comprehensively."""
+        if not self._monitoring_detector:
+            raise RuntimeError("Not launched")
+        return self._monitoring_detector.detect_monitoring_agents()
+
+    def get_monitoring_summary(self, agents: dict[str, Any]) -> dict[str, Any]:
+        """Get monitoring summary."""
+        if not self._monitoring_detector:
+            raise RuntimeError("Not launched")
+        return self._monitoring_detector.get_monitoring_summary(agents)
+
+    def list_agent_vendors(self, agents: dict[str, Any]) -> list[str]:
+        """List unique agent vendors."""
+        if not self._monitoring_detector:
+            raise RuntimeError("Not launched")
+        return self._monitoring_detector.list_agent_vendors(agents)
+
+    def check_monitoring_health(self, agents: dict[str, Any]) -> list[dict[str, Any]]:
+        """Check monitoring health and configuration."""
+        if not self._monitoring_detector:
+            raise RuntimeError("Not launched")
+        return self._monitoring_detector.check_monitoring_health(agents)
 
     # Context manager support
 

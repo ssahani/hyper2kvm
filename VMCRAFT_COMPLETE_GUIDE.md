@@ -2,15 +2,15 @@
 
 ## 🚀 The Ultimate VM Disk Image Manipulation Library
 
-VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **178+ methods** across **32 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, and forensic analysis.
+VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **197+ methods** across **37 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, forensic analysis, and operational intelligence.
 
 ## 📊 At a Glance
 
 | Metric | Value |
 |--------|-------|
-| **Total Methods** | 178+ |
-| **Modules** | 32 |
-| **Lines of Code** | ~12,700 |
+| **Total Methods** | 197+ |
+| **Modules** | 37 |
+| **Lines of Code** | ~15,200 |
 | **Performance** | **5-10x faster** than libguestfs |
 | **Supported OS** | Windows (NT-12), Linux (all major distros) |
 | **Launch Time** | ~1.9s (vs libguestfs: ~10-13s) |
@@ -1037,12 +1037,18 @@ with VMCraft() as g:
   - SSH security analysis
   - Log analysis
   - Hardware detection
-- **v4.0**: Ultimate enterprise platform (**178+ methods, 32 modules, +18 methods**)
+- **v4.0**: Ultimate enterprise platform (178+ methods, 32 modules, +18 methods)
   - Database detection (MySQL, PostgreSQL, MongoDB, Redis, SQLite, Oracle, MS SQL)
   - Web server analysis (Apache, Nginx, IIS, Lighttpd, Tomcat)
   - Certificate management (SSL/TLS, keystores, expiration tracking)
   - Container analysis (Docker, Podman, containerd)
   - Compliance checking (CIS benchmarks, security hardening)
+- **v5.0**: Operational intelligence platform (**197+ methods, 37 modules, +19 methods**)
+  - Backup analysis (Bacula, Amanda, rsnapshot, Duplicity, Borg, Restic, Veeam)
+  - User activity tracking (login history, sudo usage, command history, SSH keys)
+  - Application framework detection (Python, Node.js, Java, PHP, Ruby, Go, .NET)
+  - Cloud integration (AWS, Azure, GCP, cloud-init, monitoring agents)
+  - Monitoring agents (Prometheus, Datadog, ELK Stack, Zabbix, APM tools)
 
 ## 🤝 Contributing
 

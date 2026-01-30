@@ -44,6 +44,11 @@ from .webserver_analyzer import WebServerAnalyzer
 from .certificate_manager import CertificateManager
 from .container_analyzer import ContainerAnalyzer
 from .compliance_checker import ComplianceChecker
+from .backup_analysis import BackupAnalysis
+from .user_activity import UserActivityAnalyzer
+from .app_framework_detector import AppFrameworkDetector
+from .cloud_detector import CloudDetector
+from .monitoring_detector import MonitoringDetector
 
 __all__ = [
     # Main API
@@ -74,4 +79,9 @@ __all__ = [
     "CertificateManager",
     "ContainerAnalyzer",
     "ComplianceChecker",
+    "BackupAnalysis",
+    "UserActivityAnalyzer",
+    "AppFrameworkDetector",
+    "CloudDetector",
+    "MonitoringDetector",
 ]
