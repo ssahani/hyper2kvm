@@ -92,7 +92,7 @@ class VmwareRemovalResult:
 # OfflineFSFix (thin orchestrator)
 class OfflineFSFix:
     """
-    Offline (libguestfs) fix engine (thin orchestrator):
+    Offline guest fix engine (thin orchestrator):
       - robust root detection + safe mount
       - rewrite fstab/crypttab -> stable IDs
       - optional filesystem fixer pass (delegated)
@@ -1102,7 +1102,7 @@ class OfflineFSFix:
 
     # main run
     def run(self) -> None:
-        U.banner(self.logger, "Offline guest fix (libguestfs)")
+        U.banner(self.logger, "Offline guest fix")
         self.logger.info(f"Opening offline image: {self.image}")
 
         if self.recovery_manager:
