@@ -9,7 +9,27 @@ The Migration Tools Suite provides end-to-end support for VMware to KVM migratio
 1. **Pre-Migration Assessment** - Risk analysis and readiness checking
 2. **Migration Orchestration** - Automated execution with multiple strategies
 3. **Post-Migration Validation** - Production readiness verification
-4. **Migration Cookbook** - Recipes for common migration scenarios
+4. **Migration Analytics** - Metrics tracking and dashboard
+5. **Quick Start Scripts** - One-command migration workflows
+6. **Migration Cookbook** - Recipes for common migration scenarios
+
+---
+
+## Quick Start
+
+**Migrate a VM with one command:**
+
+```bash
+./quick_migrate.sh /vmware/rhel9.vmdk /kvm/rhel9.qcow2 enterprise
+```
+
+**Migrate multiple VMs:**
+
+```bash
+./batch_migrate.sh batch_migration_example.json
+```
+
+See [QUICK-START.md](QUICK-START.md) for detailed getting started guide.
 
 ---
 
@@ -263,7 +283,134 @@ python post_migration_validation.py /kvm/vm.qcow2 --verbose
 
 ---
 
-### 4. Migration Cookbook
+### 4. Migration Analytics
+
+**File**: `migration_analytics.py`
+
+**Purpose**: Track migration metrics and generate analytics dashboards.
+
+**Features**:
+- Migration metrics aggregation
+- Success rate tracking
+- Performance trend analysis
+- Risk score trending
+- Production readiness tracking
+- HTML dashboard generation
+- JSON/CSV export
+
+**Usage**:
+```bash
+# Add migration report to analytics database
+python migration_analytics.py add migration_report_12345.json
+
+# Add all reports from directory
+python migration_analytics.py add-batch reports/
+
+# Generate HTML dashboard
+python migration_analytics.py dashboard --output analytics.html
+
+# Show statistics
+python migration_analytics.py stats
+
+# Show 30-day trends
+python migration_analytics.py trends --period 30
+
+# Export metrics to JSON
+python migration_analytics.py export --format json --output metrics.json
+```
+
+**Dashboard Features**:
+- Total migrations count
+- Success rate with progress bars
+- Average duration
+- Strategy breakdown
+- Phase performance statistics
+- Quality metrics (risk scores, production scores)
+- Visual metrics cards with color coding
+
+**Example Dashboard Output**:
+- Success rate: 95.5%
+- Average duration: 12.3 minutes
+- Average production score: 89/100
+- Most common strategy: enterprise (45%)
+
+---
+
+### 5. Quick Start Scripts
+
+**Files**: `quick_migrate.sh`, `batch_migrate.sh`
+
+**Purpose**: One-command migration workflows with automatic assessment and validation.
+
+#### Single VM Migration (`quick_migrate.sh`)
+
+**Features**:
+- Automatic readiness assessment
+- Migration execution
+- Post-migration validation
+- Report generation
+- Analytics integration
+- Color-coded progress output
+
+**Usage**:
+```bash
+./quick_migrate.sh <source.vmdk> <target.qcow2> [strategy]
+
+# Examples
+./quick_migrate.sh /vmware/rhel9.vmdk /kvm/rhel9.qcow2 enterprise
+./quick_migrate.sh /vmware/db.vmdk /kvm/db.qcow2 database
+```
+
+**Workflow**:
+1. Pre-migration readiness assessment
+2. Risk score evaluation (with confirmation prompts)
+3. Migration execution with selected strategy
+4. Post-migration validation
+5. Production readiness evaluation
+6. Comprehensive summary with all report paths
+7. Automatic analytics database update
+
+#### Batch Migration (`batch_migrate.sh`)
+
+**Features**:
+- Multiple VM processing from JSON config
+- Sequential migration execution
+- Per-migration output directories
+- Progress tracking
+- Success/failure summary
+- Batch analytics
+
+**Usage**:
+```bash
+./batch_migrate.sh <config.json>
+
+# Example
+./batch_migrate.sh batch_migration_example.json
+```
+
+**Config Format**:
+```json
+{
+  "migrations": [
+    {
+      "source": "/vmware/web-01.vmdk",
+      "target": "/kvm/web-01.qcow2",
+      "strategy": "web_server",
+      "description": "Web server migration"
+    }
+  ]
+}
+```
+
+**Output**:
+- Individual migration logs
+- Batch summary (successful/failed counts)
+- Success rate calculation
+- All reports added to analytics
+
+---
+
+### 6. Migration Cookbook
 
 **File**: `MIGRATION-COOKBOOK.md`
 
