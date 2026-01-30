@@ -109,9 +109,6 @@ Run migration:
 # Using primary command (recommended)
 h2kvmctl --config migration.yaml
 
-# Or using legacy command (still works)
-hyper2kvm --config migration.yaml
-
 # Import to libvirt
 virsh define /kvm/windows-server.xml
 virsh start windows-server
@@ -186,9 +183,6 @@ Run:
 ```bash
 # Using primary command (recommended)
 h2kvmctl --config live-fix.yaml
-
-# Or using legacy command
-hyper2kvm --config live-fix.yaml
 ```
 
 **See:** [Live Fix Guide](docs/features/live-fix.md)
@@ -215,9 +209,6 @@ Run:
 ```bash
 # Using primary command (recommended)
 h2kvmctl --config db-migration.yaml
-
-# Or using legacy command
-hyper2kvm --config db-migration.yaml
 ```
 
 **Features**:
@@ -256,9 +247,6 @@ Run with automatic testing:
 ```bash
 # Using primary command (recommended)
 h2kvmctl --config migration-with-test.yaml
-
-# Or using legacy command
-hyper2kvm --config migration-with-test.yaml
 ```
 
 **Validation Features**:
@@ -334,9 +322,6 @@ Run batch:
 ```bash
 # Using primary command (recommended)
 h2kvmctl --config batch.yaml
-
-# Or using legacy command
-hyper2kvm --config batch.yaml
 ```
 
 **Features**:
