@@ -905,7 +905,7 @@ Complete documentation is available in the [`docs/`](docs/) directory:
 - **Architecture:** [ARCHITECTURE.md](docs/01-Architecture.md), [orchestrator/README.md](hyper2kvm/orchestrator/README.md)
 - **Platform Guides:** [WINDOWS.md](docs/10-Windows-Guide.md), [PHOTONOS.md](docs/21-Photon-OS.md), [RHEL10.md](docs/20-RHEL-10.md)
 - **Troubleshooting:** [FAILURE_MODES.md](docs/90-Failure-Modes.md), [cookbook.md](docs/06-Cookbook.md)
-- **Development:** [BUILDING.md](BUILDING.md) - Build, test, and development guide
+- **Development:** [BUILDING.md](docs/BUILDING.md) - Build, test, and development guide
 
 ---
 
@@ -937,7 +937,7 @@ make security      # Security scans
 hatch run ci       # Full CI pipeline using Hatch
 ```
 
-See [BUILDING.md](BUILDING.md) for complete build and testing documentation.
+See [BUILDING.md](docs/BUILDING.md) for complete build and testing documentation.
 
 ### Contribution Guidelines
 
