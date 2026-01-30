@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/cli/args/parser.py
 from __future__ import annotations
 
 import argparse
-from typing import Any, Dict, Optional, Sequence, Tuple
+from collections.abc import Sequence
+from typing import Any, Dict, Optional, Tuple
 
 from ...config.config_loader import Config
 from ...core.logger import c
@@ -92,7 +92,7 @@ def _build_preparser() -> argparse.ArgumentParser:
     return pre
 
 
-def _load_merged_config(logger: Any, cfgs: Sequence[str]) -> Dict[str, Any]:
+def _load_merged_config(logger: Any, cfgs: Sequence[str]) -> dict[str, Any]:
     if not cfgs:
         return {}
     expanded = Config.expand_configs(logger, list(cfgs))
@@ -100,9 +100,9 @@ def _load_merged_config(logger: Any, cfgs: Sequence[str]) -> Dict[str, Any]:
 
 
 def parse_args_with_config(
-    argv: Optional[Sequence[str]] = None,
+    argv: Sequence[str] | None = None,
     logger: Any = None,
-) -> Tuple[argparse.Namespace, Dict[str, Any], Any]:
+) -> tuple[argparse.Namespace, dict[str, Any], Any]:
     """
     New-project policy:
       - No CLI subcommands.

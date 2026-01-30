@@ -28,9 +28,9 @@ from rich.progress import (
 )
 
 from hyper2kvm.ssh.ssh_client import SSHClient
+
 from ..core.utils import U
 from ..vmware.utils.vmdk_parser import VMDK
-
 
 # Helpers
 
@@ -49,7 +49,7 @@ class _ProgressPolicy:
     io_poll_s: float = 0.20
 
     # safety rails
-    timeout_s: Optional[float] = None  # hard timeout for qemu-img convert
+    timeout_s: float | None = None  # hard timeout for qemu-img convert
     debug_rate_limit_s: float = 1.0  # rate-limit qemu-img stderr debug spam
 
 
@@ -207,7 +207,7 @@ class Flatten:
         policy = _ProgressPolicy(timeout_s=None)
         attempts = Flatten._flatten_cmd_attempts(src=src, tmp_dst=tmp_dst, fmt=fmt, in_fmt=in_fmt)
 
-        last_err: Optional[subprocess.CalledProcessError] = None
+        last_err: subprocess.CalledProcessError | None = None
         for i, cmd in enumerate(attempts, start=1):
             _unlink_quiet(tmp_dst)
             logger.debug(f"[flatten attempt {i}/{len(attempts)}] {' '.join(cmd)}")
@@ -240,7 +240,7 @@ class Flatten:
 
     # Attempts (NO --target-is-zero)
     @staticmethod
-    def _flatten_cmd_attempts(*, src: Path, tmp_dst: Path, fmt: str, in_fmt: Optional[str]) -> list[list[str]]:
+    def _flatten_cmd_attempts(*, src: Path, tmp_dst: Path, fmt: str, in_fmt: str | None) -> list[list[str]]:
         """
         Build retry commands.
           - Prefer cache-bypass (-t/-T none) first.
@@ -268,7 +268,7 @@ class Flatten:
 
     # Fast FLAT path (descriptor->extent byte copy)
     @staticmethod
-    def _fast_path_flat(logger: logging.Logger, src: Path, outdir: Path, fmt: str) -> Optional[Path]:
+    def _fast_path_flat(logger: logging.Logger, src: Path, outdir: Path, fmt: str) -> Path | None:
         # Only makes sense for tiny VMDK descriptors
         try:
             if src.stat().st_size > 2 * 1024 * 1024:
@@ -331,7 +331,7 @@ class Flatten:
         policy = _ProgressPolicy(timeout_s=None)
         attempts = Flatten._raw_to_fmt_cmd_attempts(raw_src=raw_dst, tmp_dst=tmp_dst, fmt=fmt)
 
-        last_err: Optional[subprocess.CalledProcessError] = None
+        last_err: subprocess.CalledProcessError | None = None
         for i, cmd in enumerate(attempts, start=1):
             _unlink_quiet(tmp_dst)
             logger.debug(f"[raw->fmt attempt {i}/{len(attempts)}] {' '.join(cmd)}")
@@ -373,7 +373,7 @@ class Flatten:
         virt_size: int,
         policy: _ProgressPolicy,
         task_label: str,
-    ) -> Tuple[int, list[str]]:
+    ) -> tuple[int, list[str]]:
         """
         Robust stderr reader:
           - non-blocking reads (avoid readline() stalls)
@@ -408,7 +408,7 @@ class Flatten:
         total = float(virt_size) if use_bytes else 100.0
 
         best_completed = 0.0
-        last_seen_pct: Optional[float] = None
+        last_seen_pct: float | None = None
         last_io_tick = time.monotonic()
 
         last_ui_t = 0.0
@@ -430,7 +430,7 @@ class Flatten:
         saw_any_stderr = False
         last_dbg_t = 0.0
 
-        def parse_progress_pct(line: str) -> Optional[float]:
+        def parse_progress_pct(line: str) -> float | None:
             s = (line or "").strip()
             if not s:
                 return None
@@ -476,7 +476,7 @@ class Flatten:
                 return (pct / 100.0) * float(virt_size)
             return pct
 
-        def size_based_completed() -> Optional[float]:
+        def size_based_completed() -> float | None:
             if not use_bytes or virt_size <= 0:
                 return None
             try:
@@ -754,7 +754,7 @@ class Fetch:
         Fetch._fetch_extent_for_descriptor(logger, sshc, remote_dir, local_desc, outdir)
 
         if fetch_all:
-            seen: Set[str] = set()
+            seen: set[str] = set()
             cur_local_desc = local_desc
             cur_remote_dir = remote_dir
 
@@ -802,7 +802,7 @@ class Fetch:
         remote_dir: str,
         local_desc: Path,
         outdir: Path,
-    ) -> Optional[Path]:
+    ) -> Path | None:
         extent_rel = VMDK.parse_extent(logger, local_desc)
 
         if extent_rel:
@@ -831,7 +831,7 @@ class Fetch:
         return local_extent
 
     @staticmethod
-    def _remote_size_best_effort(logger: logging.Logger, sshc: SSHClient, remote: str) -> Optional[int]:
+    def _remote_size_best_effort(logger: logging.Logger, sshc: SSHClient, remote: str) -> int | None:
         """
         Best-effort remote size. Uses sshc.run() if available; otherwise returns None.
         """
@@ -890,7 +890,7 @@ class Fetch:
         _unlink_quiet(tmp)
 
         max_tries = 4
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
 
         for attempt in range(1, max_tries + 1):
             _unlink_quiet(tmp)

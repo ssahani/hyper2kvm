@@ -6,17 +6,17 @@ import logging
 import os
 import tarfile
 import tempfile
-from pathlib import Path, PurePosixPath
-from typing import List, Optional, Dict, Any, Tuple
 import xml.etree.ElementTree as ET
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.progress import (
-    Progress,
     BarColumn,
+    DownloadColumn,
+    Progress,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-    DownloadColumn,
     TransferSpeedColumn,
 )
 
@@ -32,18 +32,18 @@ class OVF:
         *,
         # --- Enhancement (non-breaking): optional convert stage right after extract ---
         convert_to_qcow2: bool = False,
-        convert_outdir: Optional[Path] = None,
+        convert_outdir: Path | None = None,
         convert_compress: bool = False,
-        convert_compress_level: Optional[int] = None,
+        convert_compress_level: int | None = None,
         # --- Enhancement: optional host-side debug logging ---
         log_virt_filesystems: bool = False,
         # --- Safety rails (optional; defaults keep behavior permissive) ---
         skip_special: bool = True,  # skip symlinks/hardlinks/devices/fifos
-        max_members: Optional[int] = None,
-        max_total_bytes: Optional[int] = None,
-        max_member_bytes: Optional[int] = None,
-        max_files: Optional[int] = None,  # regular files only
-    ) -> List[Path]:
+        max_members: int | None = None,
+        max_total_bytes: int | None = None,
+        max_member_bytes: int | None = None,
+        max_files: int | None = None,  # regular files only
+    ) -> list[Path]:
         """
         Extract an OVA (tar) into outdir, then parse OVF(s) inside and return referenced disk paths.
 
@@ -161,7 +161,7 @@ class OVF:
             U.die(logger, "No OVF found inside OVA.", 1)
 
         # Many OVAs have one OVF; if multiple, parse them all and union disk references.
-        disks: List[Path] = []
+        disks: list[Path] = []
         for ovf in ovfs:
             disks.extend(
                 OVF.extract_ovf(
@@ -174,7 +174,7 @@ class OVF:
 
         # De-dup while preserving order
         seen: set[Path] = set()
-        uniq: List[Path] = []
+        uniq: list[Path] = []
         for d in disks:
             if d not in seen:
                 uniq.append(d)
@@ -212,7 +212,7 @@ class OVF:
         outdir: Path,
         *,
         log_virt_filesystems: bool = False,
-    ) -> List[Path]:
+    ) -> list[Path]:
         """
         Parse an OVF file and return disk paths referenced via <File ... ovf:href="..."> used by <Disk ovf:fileRef="...">.
 
@@ -254,14 +254,14 @@ class OVF:
         ns = {"ovf": ns_uri}
 
         # Build fileRef -> href map from <File ovf:id="..." ovf:href="...">
-        file_map: Dict[str, str] = {}
+        file_map: dict[str, str] = {}
         for f in root.findall(".//ovf:File", ns):
             fid = f.get(f"{{{ns_uri}}}id") or f.get("ovf:id") or f.get("id")
             href = f.get(f"{{{ns_uri}}}href") or f.get("ovf:href") or f.get("href")
             if fid and href:
                 file_map[fid] = href
 
-        disks: List[Path] = []
+        disks: list[Path] = []
         for disk in root.findall(".//ovf:Disk", ns):
             file_id = disk.get(f"{{{ns_uri}}}fileRef") or disk.get("ovf:fileRef") or disk.get("fileRef")
             if not file_id:
@@ -295,13 +295,13 @@ class OVF:
     @staticmethod
     def _convert_disks_to_qcow2(
         logger: logging.Logger,
-        disks: List[Path],
+        disks: list[Path],
         outdir: Path,
         *,
         compress: bool = False,
-        compress_level: Optional[int] = None,
+        compress_level: int | None = None,
         log_virt_filesystems: bool = False,
-    ) -> List[Path]:
+    ) -> list[Path]:
         """
         Convert extracted disks to qcow2 outputs. Keeps order and de-dups.
         Uses the project Convert wrapper if available.
@@ -315,7 +315,7 @@ class OVF:
         U.banner(logger, "Convert extracted disks to QCOW2")
         U.ensure_dir(outdir)
 
-        outputs: List[Path] = []
+        outputs: list[Path] = []
         for idx, disk in enumerate(disks, 1):
             if not disk.exists():
                 logger.warning(f"Skipping missing disk: {disk}")
@@ -360,7 +360,7 @@ class OVF:
 
         # De-dup while preserving order
         seen: set[str] = set()
-        uniq: List[Path] = []
+        uniq: list[Path] = []
         for p in outputs:
             s = str(p)
             if s not in seen:
@@ -376,7 +376,7 @@ class OVF:
         return uniq
 
     @staticmethod
-    def _log_virt_filesystems(logger: logging.Logger, image: Path) -> Dict[str, Any]:
+    def _log_virt_filesystems(logger: logging.Logger, image: Path) -> dict[str, Any]:
         """
         Host-side introspection:
           virt-filesystems -a <image> --all --long -h
@@ -420,7 +420,7 @@ class OVF:
 
         p = PurePosixPath(raw)
 
-        clean_parts: List[str] = []
+        clean_parts: list[str] = []
         for part in p.parts:
             if part in ("", "."):
                 continue
@@ -481,8 +481,8 @@ class OVF:
         outdir: Path,
         *,
         skip_special: bool = True,
-        max_member_bytes: Optional[int] = None,
-    ) -> Tuple[int, str]:
+        max_member_bytes: int | None = None,
+    ) -> tuple[int, str]:
         """
         Extract a single tar member safely.
 
@@ -526,7 +526,7 @@ class OVF:
             return (0, "skipped_other")
 
         wrote = 0
-        tmp_path: Optional[Path] = None
+        tmp_path: Path | None = None
         try:
             # Use a unique temp file in the same directory (avoids collisions; best-effort atomic replace)
             with tempfile.NamedTemporaryFile(

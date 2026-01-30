@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/fixers/report_writer.py
 """
 hyper2kvm report writer.
@@ -53,7 +52,7 @@ def _json_safe(obj: Any) -> Any:
         except Exception:
             return str(obj)
     if isinstance(obj, dict):
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         for k, v2 in obj.items():
             try:
                 ks = str(k)
@@ -166,14 +165,14 @@ def _markdown_path_for_base(base: Path) -> Path:
 
 # Report content helpers
 
-def _extract_validation(validation_payload: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def _extract_validation(validation_payload: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Compatibility:
       - New format: {"results": {...}, "stats": {...}}
       - Old format: flat dict of results
     """
-    validation_results: Dict[str, Any] = {}
-    validation_stats: Dict[str, Any] = {}
+    validation_results: dict[str, Any] = {}
+    validation_stats: dict[str, Any] = {}
     if isinstance(validation_payload, dict):
         if isinstance(validation_payload.get("results"), dict):
             validation_results = validation_payload["results"]
@@ -183,9 +182,9 @@ def _extract_validation(validation_payload: Any) -> Tuple[Dict[str, Any], Dict[s
     return validation_results, validation_stats
 
 
-def _compute_failed_checks(validation_results: Dict[str, Any]) -> Tuple[List[str], List[str]]:
-    failed: List[str] = []
-    critical_failed: List[str] = []
+def _compute_failed_checks(validation_results: dict[str, Any]) -> tuple[list[str], list[str]]:
+    failed: list[str] = []
+    critical_failed: list[str] = []
     for name, r in (validation_results or {}).items():
         if not isinstance(r, dict):
             continue
@@ -196,7 +195,7 @@ def _compute_failed_checks(validation_results: Dict[str, Any]) -> Tuple[List[str
     return failed, critical_failed
 
 
-def _build_run_meta(self) -> Dict[str, Any]:
+def _build_run_meta(self) -> dict[str, Any]:
     return {
         "version": __version__,
         "dry_run": getattr(self, "dry_run", False),
@@ -216,8 +215,8 @@ def _build_run_meta(self) -> Dict[str, Any]:
     }
 
 
-def _build_host_meta() -> Dict[str, Any]:
-    host_meta: Dict[str, Any] = {"uid": None, "user": None, "cwd": None}
+def _build_host_meta() -> dict[str, Any]:
+    host_meta: dict[str, Any] = {"uid": None, "user": None, "cwd": None}
     try:
         host_meta["uid"] = os.geteuid()
     except Exception:
@@ -233,9 +232,9 @@ def _build_host_meta() -> Dict[str, Any]:
     return host_meta
 
 
-def _build_tool_inventory() -> Dict[str, Any]:
+def _build_tool_inventory() -> dict[str, Any]:
     tools = ["qemu-img", "virsh", "qemu-system-x86_64", "sgdisk", "rsync"]
-    tool_inv: Dict[str, Any] = {}
+    tool_inv: dict[str, Any] = {}
     for t in tools:
         tool_inv[t] = {"path": U.which(t)}
     tool_inv["python"] = {
@@ -245,16 +244,16 @@ def _build_tool_inventory() -> Dict[str, Any]:
     return tool_inv
 
 
-def _extract_changes_analysis(self) -> Tuple[Dict[str, Any], Dict[str, Any], Any, Any]:
+def _extract_changes_analysis(self) -> tuple[dict[str, Any], dict[str, Any], Any, Any]:
     report = getattr(self, "report", {}) or {}
-    changes: Dict[str, Any] = report.get("changes", {}) or {}
-    analysis: Dict[str, Any] = report.get("analysis", {}) or {}
+    changes: dict[str, Any] = report.get("changes", {}) or {}
+    analysis: dict[str, Any] = report.get("analysis", {}) or {}
     validation_payload: Any = report.get("validation")
     error_payload: Any = report.get("error")
     return changes, analysis, validation_payload, error_payload
 
 
-def _extract_counts(changes: Dict[str, Any]) -> Tuple[int, int, Dict[str, Any], List[str]]:
+def _extract_counts(changes: dict[str, Any]) -> tuple[int, int, dict[str, Any], list[str]]:
     # fstab count
     fstab_count = int(changes.get("fstab", 0) or 0)
 
@@ -275,7 +274,7 @@ def _extract_counts(changes: Dict[str, Any]) -> Tuple[int, int, Dict[str, Any], 
     return fstab_count, crypttab_count, net, [str(x) for x in net_files]
 
 
-def _extract_analysis_sections(analysis: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_analysis_sections(analysis: dict[str, Any]) -> dict[str, Any]:
     return {
         "fstab_changes": analysis.get("fstab_changes", []) or [],
         "regen": analysis.get("regen", {}) or {},
@@ -286,14 +285,14 @@ def _extract_analysis_sections(analysis: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _extract_feature_flags(changes: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def _extract_feature_flags(changes: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     vmware_rm = changes.get("vmware_tools_removed", {}) or {}
     cloud = changes.get("cloud_init_injected", {}) or {}
     return vmware_rm, cloud
 
 
-def _extract_checkpoints(self) -> List[Dict[str, Any]]:
-    cps: List[Dict[str, Any]] = []
+def _extract_checkpoints(self) -> list[dict[str, Any]]:
+    cps: list[dict[str, Any]] = []
     rm = getattr(self, "recovery_manager", None)
     if rm and getattr(rm, "checkpoints", None):
         try:
@@ -312,22 +311,22 @@ def _extract_checkpoints(self) -> List[Dict[str, Any]]:
 
 def _build_json_report(
     self,
-    run_meta: Dict[str, Any],
-    host_meta: Dict[str, Any],
-    tool_inv: Dict[str, Any],
-    changes: Dict[str, Any],
-    analysis: Dict[str, Any],
+    run_meta: dict[str, Any],
+    host_meta: dict[str, Any],
+    tool_inv: dict[str, Any],
+    changes: dict[str, Any],
+    analysis: dict[str, Any],
     validation_payload: Any,
     error_payload: Any,
-    checkpoints_summary: Optional[List[Dict[str, Any]]],
+    checkpoints_summary: list[dict[str, Any]] | None,
     fstab_count: int,
     crypttab_count: int,
-    net: Dict[str, Any],
-    failed: List[str],
-    critical_failed: List[str],
-    vmware_rm: Dict[str, Any],
-    cloud: Dict[str, Any],
-) -> Dict[str, Any]:
+    net: dict[str, Any],
+    failed: list[str],
+    critical_failed: list[str],
+    vmware_rm: dict[str, Any],
+    cloud: dict[str, Any],
+) -> dict[str, Any]:
     return {
         "schema": "hyper2kvm.report.v1",
         "run": run_meta,
@@ -346,7 +345,7 @@ def _build_json_report(
             "counts": {
                 "fstab": fstab_count,
                 "crypttab": crypttab_count,
-                "network_files": int((net.get("count", 0) or 0)) if isinstance(net, dict) else 0,
+                "network_files": int(net.get("count", 0) or 0) if isinstance(net, dict) else 0,
                 "grub_root": int(changes.get("grub_root", 0) or 0),
                 "grub_device_map_removed": int(changes.get("grub_device_map_removed", 0) or 0),
             },
@@ -359,7 +358,7 @@ def _build_json_report(
     }
 
 
-def _md_append_json_block(md: List[str], title: str, payload: Any) -> None:
+def _md_append_json_block(md: list[str], title: str, payload: Any) -> None:
     md.append(f"## {title}")
     md.append("```json")
     md.append(_dump_json_best_effort(payload))
@@ -369,26 +368,26 @@ def _md_append_json_block(md: List[str], title: str, payload: Any) -> None:
 
 def _build_markdown(
     self,
-    run_meta: Dict[str, Any],
-    host_meta: Dict[str, Any],
-    tool_inv: Dict[str, Any],
-    changes: Dict[str, Any],
-    analysis: Dict[str, Any],
+    run_meta: dict[str, Any],
+    host_meta: dict[str, Any],
+    tool_inv: dict[str, Any],
+    changes: dict[str, Any],
+    analysis: dict[str, Any],
     validation_payload: Any,
-    validation_stats: Dict[str, Any],
-    failed: List[str],
-    critical_failed: List[str],
+    validation_stats: dict[str, Any],
+    failed: list[str],
+    critical_failed: list[str],
     fstab_count: int,
     crypttab_count: int,
-    net: Dict[str, Any],
-    net_files: List[str],
-    sections: Dict[str, Any],
-    vmware_rm: Dict[str, Any],
-    cloud: Dict[str, Any],
+    net: dict[str, Any],
+    net_files: list[str],
+    sections: dict[str, Any],
+    vmware_rm: dict[str, Any],
+    cloud: dict[str, Any],
     error_payload: Any,
-    checkpoints_summary: Optional[List[Dict[str, Any]]],
+    checkpoints_summary: list[dict[str, Any]] | None,
 ) -> str:
-    md: List[str] = []
+    md: list[str] = []
     md.append("# hyper2kvm Report")
     md.append("")
 
@@ -411,7 +410,7 @@ def _build_markdown(
     md.append(f"- Dry-run: `{getattr(self, 'dry_run', False)}`")
     md.append(f"- fstab changes: `{fstab_count}`")
     md.append(f"- crypttab changes: `{crypttab_count}`")
-    md.append(f"- network files updated: `{int((net.get('count', 0) or 0)) if isinstance(net, dict) else 0}`")
+    md.append(f"- network files updated: `{int(net.get('count', 0) or 0) if isinstance(net, dict) else 0}`")
     md.append(f"- grub root updated: `{int(changes.get('grub_root', 0) or 0)}`")
     md.append(f"- stale device.map removed: `{int(changes.get('grub_device_map_removed', 0) or 0)}`")
     md.append(f"- vmware tools removed: `{bool(vmware_rm.get('removed', False))}`")
@@ -550,7 +549,7 @@ def _build_markdown(
 
     # Next actions
     md.append("## Next Actions (hints)")
-    hints: List[str] = []
+    hints: list[str] = []
 
     if critical_failed:
         hints.append(f"- Fix CRITICAL validation failures: `{', '.join(critical_failed)}`")
@@ -604,7 +603,7 @@ def write_report(self) -> None:
     except Exception:
         pass
 
-    base: Optional[Path] = getattr(self, "report_path", None)
+    base: Path | None = getattr(self, "report_path", None)
     if not base:
         return
 

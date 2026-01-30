@@ -12,26 +12,25 @@ from typing import Any, Dict, List, Optional, Tuple
 from ...core.utils import U
 from ...ssh.ssh_client import SSHClient
 
-
 # Report model (JSON-friendly)
 
 @dataclass
 class LiveGrubFixReport:
     distro_id: str = ""
-    distro_like: List[str] = field(default_factory=list)
+    distro_like: list[str] = field(default_factory=list)
     family: str = ""
 
     root_source: str = ""
     root_resolved: str = ""
     stable_root: str = ""
 
-    removed_device_maps: List[str] = field(default_factory=list)
+    removed_device_maps: list[str] = field(default_factory=list)
     updated_default_grub: bool = False
-    updated_files: List[str] = field(default_factory=list)
+    updated_files: list[str] = field(default_factory=list)
 
-    commands_ran: List[Dict[str, str]] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    commands_ran: list[dict[str, str]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 # Live fixer (SSH)
@@ -64,7 +63,7 @@ class LiveGrubFixer:
         no_backup: bool,
         update_grub: bool,
         regen_initramfs: bool,
-        prefer: Tuple[str, ...] = ("UUID", "PARTUUID", "LABEL", "PARTLABEL"),
+        prefer: tuple[str, ...] = ("UUID", "PARTUUID", "LABEL", "PARTLABEL"),
     ):
         self.logger = logger
         self.sshc = sshc
@@ -89,7 +88,7 @@ class LiveGrubFixer:
         self.logger.debug("SSH: %s", cmd)
         return self.sshc.ssh(cmd) or ""
 
-    def _sh(self, cmd: str, *, allow_fail: bool = True) -> Tuple[int, str]:
+    def _sh(self, cmd: str, *, allow_fail: bool = True) -> tuple[int, str]:
         """
         Run a command remotely and capture rc reliably.
 
@@ -147,7 +146,7 @@ exit 0
         _, out = self._sh(f"cat {shlex.quote(path)} 2>/dev/null || true")
         return out
 
-    def _remote_stat_u_g_a(self, path: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _remote_stat_u_g_a(self, path: str) -> tuple[str | None, str | None, str | None]:
         if not self._has_cmd("stat"):
             return None, None, None
         _, out = self._sh(f"stat -c '%u %g %a' -- {shlex.quote(path)} 2>/dev/null || true")
@@ -183,15 +182,15 @@ exit 0
         if not tmp:
             raise RuntimeError("mktemp failed on remote host")
 
-        uid: Optional[str] = None
-        gid: Optional[str] = None
-        orig_mode: Optional[str] = None
+        uid: str | None = None
+        gid: str | None = None
+        orig_mode: str | None = None
         if self._remote_exists(path):
             uid, gid, orig_mode = self._remote_stat_u_g_a(path)
 
         effective_mode = (orig_mode or "").strip() or mode
 
-        lines: List[str] = []
+        lines: list[str] = []
         lines.append("set -e")
         lines.append("umask 022")
         lines.append(f": > {shlex.quote(tmp)}")
@@ -225,7 +224,7 @@ exit 0
         payload = "\n".join(lines) + "\n"
         self._sh("sh -lc " + shlex.quote(payload), allow_fail=False)
 
-    def _backup_remote_file(self, path: str) -> Optional[str]:
+    def _backup_remote_file(self, path: str) -> str | None:
         if self.no_backup or self.dry_run:
             return None
         b = f"{path}.bak.hyper2kvm.{U.now_ts()}"
@@ -245,7 +244,7 @@ exit 0
 
     # detection helpers
 
-    def _read_os_release(self) -> Tuple[str, List[str]]:
+    def _read_os_release(self) -> tuple[str, list[str]]:
         _, out = self._sh(
             r""". /etc/os-release 2>/dev/null || true
 echo "ID=${ID:-}"
@@ -254,7 +253,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
             allow_fail=True,
         )
         did = ""
-        like: List[str] = []
+        like: list[str] = []
         for ln in out.splitlines():
             if ln.startswith("ID="):
                 did = ln.split("=", 1)[1].strip().strip('"').lower()
@@ -263,7 +262,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
                 like = [x.strip().lower() for x in raw.split() if x.strip()]
         return did, like
 
-    def _detect_family(self, did: str, like: List[str]) -> str:
+    def _detect_family(self, did: str, like: list[str]) -> str:
         d = (did or "").lower()
         lk = {x.lower() for x in (like or [])}
 
@@ -333,7 +332,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
         self.report.distro_like = like
         self.report.family = fam
 
-    def _readlink_f(self, path: str) -> Optional[str]:
+    def _readlink_f(self, path: str) -> str | None:
         if not self._has_cmd("readlink"):
             self._warn_once("missing_readlink", "readlink not found on remote; root path resolution may be limited.")
             return None
@@ -345,7 +344,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
         _, out = self._sh(f"test -b {shlex.quote(dev)} && echo OK || echo NO")
         return out.strip() == "OK"
 
-    def _blkid(self, dev: str, key: str) -> Optional[str]:
+    def _blkid(self, dev: str, key: str) -> str | None:
         if not self._has_cmd("blkid"):
             self._warn_once("missing_blkid", "blkid not found on remote; cannot convert devices to UUID/PARTUUID.")
             return None
@@ -534,8 +533,8 @@ echo "ID_LIKE=${ID_LIKE:-}"
 
     # regen logic (capability-first, split initramfs vs bootloader)
 
-    def _detect_grub_cfg_targets(self) -> List[str]:
-        targets: List[str] = []
+    def _detect_grub_cfg_targets(self) -> list[str]:
+        targets: list[str] = []
         if self._remote_exists("/boot/grub2"):
             targets.append("/boot/grub2/grub.cfg")
         if self._remote_exists("/boot/grub"):
@@ -543,7 +542,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
         if not targets:
             targets = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg"]
 
-        out: List[str] = []
+        out: list[str] = []
         seen = set()
         for t in targets:
             if t not in seen:
@@ -551,13 +550,13 @@ echo "ID_LIKE=${ID_LIKE:-}"
                 out.append(t)
         return out
 
-    def _detect_bls_entries_dir(self) -> Optional[str]:
+    def _detect_bls_entries_dir(self) -> str | None:
         for d in ("/boot/loader/entries", "/boot/efi/loader/entries"):
             if self._remote_is_dir(d):
                 return d
         return None
 
-    def _run_best_effort_until_ok(self, label: str, cmds: List[str]) -> None:
+    def _run_best_effort_until_ok(self, label: str, cmds: list[str]) -> None:
         for c in cmds:
             rc, out = self._sh(c, allow_fail=True)
             if rc == 0:
@@ -577,7 +576,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
             self.logger.info("DRY-RUN: would regenerate initramfs.")
             return
 
-        initramfs_cmds: List[str] = []
+        initramfs_cmds: list[str] = []
 
         if self._has_cmd("update-initramfs"):
             initramfs_cmds += [
@@ -620,7 +619,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
             return
 
         grub_targets = self._detect_grub_cfg_targets()
-        boot_cmds: List[str] = []
+        boot_cmds: list[str] = []
 
         if self._has_cmd("update-grub"):
             boot_cmds.append("update-grub 2>/dev/null")
@@ -713,7 +712,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
 
     # main entry
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         U.banner(self.logger, "GRUB fix (SSH)")
 
         try:

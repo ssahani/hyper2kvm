@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/orchestrator/vsphere_exporter.py
 """
 vSphere VM export handler.
@@ -20,7 +19,7 @@ from ..core.utils import U
 
 # Conditional imports
 try:
-    from ..vmware.clients.client import VMwareClient, V2VExportOptions
+    from ..vmware.clients.client import V2VExportOptions, VMwareClient
 
     VSPHERE_V2V_AVAILABLE = True
 except Exception:
@@ -56,9 +55,9 @@ class VsphereExporter:
         Log.trace(self.logger, "🌐 _vsphere_v2v_enabled: %s", enabled)
         return enabled
 
-    def get_vm_names(self) -> List[str]:
+    def get_vm_names(self) -> list[str]:
         """Extract VM names from args (supports multiple sources)."""
-        vms: List[str] = []
+        vms: list[str] = []
         if getattr(self.args, "vs_vm", None):
             vms = [str(self.args.vs_vm)]
         elif getattr(self.args, "vs_vms", None):
@@ -73,7 +72,7 @@ class VsphereExporter:
         Log.trace(self.logger, "🧾 _vsphere_vm_names: %s", out)
         return out
 
-    def export_many_sync(self, out_root: Path) -> List[Path]:
+    def export_many_sync(self, out_root: Path) -> list[Path]:
         """
         SYNC vSphere export path.
 
@@ -156,8 +155,8 @@ class VsphereExporter:
             prefer_vddk_download,
         )
 
-        out_images: List[Path] = []
-        failures: List[str] = []
+        out_images: list[Path] = []
+        failures: list[str] = []
 
         # SYNC context manager (no async-with)
         with VMwareClient(  # type: ignore[misc]
@@ -230,7 +229,7 @@ class VsphereExporter:
 
                     # export_mode == "v2v": discover artifacts
                     pats = ["*.qcow2", "*.raw", "*.img", "*.vmdk", "*.vdi"]
-                    imgs: List[Path] = []
+                    imgs: list[Path] = []
                     for pat in pats:
                         found = sorted(job_dir.glob(pat))
                         Log.trace(self.logger, "🔎 vSphere discover: %s/%s -> %d", job_dir, pat, len(found))
@@ -248,7 +247,7 @@ class VsphereExporter:
 
         # De-dup while preserving order
         seen: set[str] = set()
-        uniq: List[Path] = []
+        uniq: list[Path] = []
         for p in out_images:
             sp = str(p)
             if sp not in seen:

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/__init__.py
 """
 hyper2kvm - Hypervisor to KVM Migration Library
@@ -26,13 +25,12 @@ See docs/08-Library-API.md for detailed usage examples.
 __version__ = "0.1.0"
 
 # High-level orchestration
-from .orchestrator import Orchestrator, DiskProcessor
+# Platform providers
+from .azure import AzureConfig, AzureSourceProvider
 
 # Guest detection
-from .core import GuestIdentity, GuestDetector, GuestType
-
-# Platform providers
-from .azure import AzureSourceProvider, AzureConfig
+from .core import GuestDetector, GuestIdentity, GuestType
+from .orchestrator import DiskProcessor, Orchestrator
 from .vmware import VMwareClient
 
 __all__ = [

@@ -93,26 +93,26 @@ class LiveFixer:
     def _read_remote_file(self, path: str) -> str:
         return self._ssh(f"cat {shlex.quote(path)} 2>/dev/null || true")
 
-    def _readlink_f(self, path: str) -> Optional[str]:
+    def _readlink_f(self, path: str) -> str | None:
         out = self._ssh(f"readlink -f -- {shlex.quote(path)} 2>/dev/null || true").strip()
         return out or None
 
     def _is_remote_blockdev(self, dev: str) -> bool:
         return self._ssh(f"test -b {shlex.quote(dev)} && echo OK || echo NO").strip() == "OK"
 
-    def _blkid(self, dev: str, key: str) -> Optional[str]:
+    def _blkid(self, dev: str, key: str) -> str | None:
         out = self._ssh(
             f"blkid -s {shlex.quote(key)} -o value -- {shlex.quote(dev)} 2>/dev/null || true"
         ).strip()
         return out or None
 
-    def _run_best_effort(self, cmds: List[str]) -> None:
+    def _run_best_effort(self, cmds: list[str]) -> None:
         for c in cmds:
             if not c.strip():
                 continue
             self._ssh(c)
 
-    def _backup(self, path: str) -> Optional[str]:
+    def _backup(self, path: str) -> str | None:
         if self.opts.no_backup or self.opts.dry_run:
             return None
         b = f"{path}.bak.hyper2kvm.{U.now_ts()}"
@@ -123,7 +123,7 @@ class LiveFixer:
         self.logger.warning("Backup failed (best-effort): %s -> %s", path, b)
         return None
 
-    def _remote_stat_u_g_a(self, path: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _remote_stat_u_g_a(self, path: str) -> tuple[str | None, str | None, str | None]:
         """
         Return (uid, gid, mode) as strings, best-effort; None if unavailable.
         Uses one stat call to reduce RTT.
@@ -171,9 +171,9 @@ class LiveFixer:
         if not tmp:
             raise RuntimeError("mktemp failed on remote host")
 
-        uid: Optional[str] = None
-        gid: Optional[str] = None
-        orig_mode: Optional[str] = None
+        uid: str | None = None
+        gid: str | None = None
+        orig_mode: str | None = None
         if preserve_owner_mode and self._remote_exists(path):
             uid, gid, orig_mode = self._remote_stat_u_g_a(path)
 
@@ -181,7 +181,7 @@ class LiveFixer:
         if not effective_mode:
             effective_mode = mode
 
-        payload_lines: List[str] = []
+        payload_lines: list[str] = []
         payload_lines.append("set -e")
         payload_lines.append("umask 022")
         payload_lines.append(f": > {shlex.quote(tmp)}")  # truncate/create
@@ -266,7 +266,7 @@ class LiveFixer:
         return spec
 
     @staticmethod
-    def _split_comment(line: str) -> Tuple[str, str]:
+    def _split_comment(line: str) -> tuple[str, str]:
         s = line.rstrip("\n")
         if not s.strip():
             return s, ""
@@ -278,7 +278,7 @@ class LiveFixer:
         i = m.start()
         return s[:i].rstrip(), s[i:].lstrip()
 
-    def _rewrite_fstab(self, content: str) -> Tuple[str, int, int, List[Dict[str, str]]]:
+    def _rewrite_fstab(self, content: str) -> tuple[str, int, int, list[dict[str, str]]]:
         """
         Returns:
           (new_content, changed_count, seen_bypath_count, changes)
@@ -286,8 +286,8 @@ class LiveFixer:
         """
         changed = 0
         seen = 0
-        changes: List[Dict[str, str]] = []
-        out_lines: List[str] = []
+        changes: list[dict[str, str]] = []
+        out_lines: list[str] = []
 
         for line in content.splitlines(keepends=False):
             if not line.strip() or line.lstrip().startswith("#"):
@@ -402,7 +402,7 @@ class LiveFixer:
 
     # Entrypoint
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         U.banner(self.logger, "Live fix (SSH)")
         self.sshc.check()
 
@@ -441,7 +441,7 @@ class LiveFixer:
                 self._remove_vmware_tools()
 
         # ---- GRUB fixer (owns distro detection + regen logic)
-        grub_report: Optional[Dict[str, Any]] = None
+        grub_report: dict[str, Any] | None = None
         if self.opts.update_grub or self.opts.regen_initramfs:
             self.logger.info("Running LiveGrubFixer...")
             gf = LiveGrubFixer(

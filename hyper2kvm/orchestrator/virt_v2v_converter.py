@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/orchestrator/virt_v2v_converter.py
 """
 virt-v2v conversion wrapper with parallel support.
@@ -36,14 +35,14 @@ class VirtV2VConverter:
 
     def convert(
         self,
-        disks: List[Path],
+        disks: list[Path],
         out_root: Path,
         out_format: str,
         compress: bool,
-        passphrase: Optional[str] = None,
-        passphrase_env: Optional[str] = None,
-        keyfile: Optional[str] = None,
-    ) -> List[Path]:
+        passphrase: str | None = None,
+        passphrase_env: str | None = None,
+        keyfile: str | None = None,
+    ) -> list[Path]:
         """
         Single virt-v2v conversion wrapper.
 
@@ -87,7 +86,7 @@ class VirtV2VConverter:
         if compress:
             cmd += ["--compressed"]
 
-        keyfile_path: Optional[str] = None
+        keyfile_path: str | None = None
         is_temp_keyfile = False
 
         try:
@@ -138,7 +137,7 @@ class VirtV2VConverter:
 
         # virt-v2v output files can vary; capture common ones robustly.
         patterns = ["*.qcow2", "*.raw", "*.img", "*.vmdk", "*.vdi"]
-        out_images: List[Path] = []
+        out_images: list[Path] = []
         for pat in patterns:
             found = sorted(out_root.glob(pat))
             Log.trace(self.logger, "🔎 v2v_convert: glob=%s -> %d", pat, len(found))
@@ -146,7 +145,7 @@ class VirtV2VConverter:
 
         # De-dup while preserving order
         seen: set[str] = set()
-        uniq: List[Path] = []
+        uniq: list[Path] = []
         for p in out_images:
             s = str(p)
             if s not in seen:
@@ -162,16 +161,16 @@ class VirtV2VConverter:
 
     def convert_parallel(
         self,
-        disks: List[Path],
+        disks: list[Path],
         out_root: Path,
         out_format: str,
         compress: bool,
-        passphrase: Optional[str] = None,
-        passphrase_env: Optional[str] = None,
-        keyfile: Optional[str] = None,
+        passphrase: str | None = None,
+        passphrase_env: str | None = None,
+        keyfile: str | None = None,
         *,
         concurrency: int = 2,
-    ) -> List[Path]:
+    ) -> list[Path]:
         """
         Run multiple virt-v2v processes in parallel (bounded).
 
@@ -211,7 +210,7 @@ class VirtV2VConverter:
             )
 
         U.ensure_dir(out_root)
-        results: List[Optional[List[Path]]] = [None] * len(disks)
+        results: list[list[Path] | None] = [None] * len(disks)
 
         concurrency = max(1, int(concurrency))
         concurrency = min(concurrency, len(disks))
@@ -223,7 +222,7 @@ class VirtV2VConverter:
             except Exception:
                 pass
 
-        def _one(idx: int, disk: Path) -> List[Path]:
+        def _one(idx: int, disk: Path) -> list[Path]:
             job_dir = out_root / f"v2v-disk{idx}"
             U.ensure_dir(job_dir)
             self.logger.info("➡️ virt-v2v job %d/%d: %s", idx + 1, len(disks), disk.name)
@@ -251,13 +250,13 @@ class VirtV2VConverter:
                     Log.trace(self.logger, "💥 v2v job exception: idx=%d disk=%s", i, disks[i], exc_info=True)
                     results[i] = []
 
-        out_images: List[Path] = []
+        out_images: list[Path] = []
         for lst in results:
             if lst:
                 out_images.extend(lst)
 
         seen: set[str] = set()
-        uniq: List[Path] = []
+        uniq: list[Path] = []
         for p in out_images:
             sp = str(p)
             if sp not in seen:

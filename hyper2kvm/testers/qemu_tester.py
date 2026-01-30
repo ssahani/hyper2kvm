@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/testers/qemu_tester.py
 from __future__ import annotations
 
@@ -8,12 +7,12 @@ import os
 import shlex
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional, Sequence
+from typing import Literal, Optional
 
 from ..core.utils import U
-
 
 BootMode = Literal["bios", "uefi"]
 DisplayMode = Literal["none", "gtk", "sdl", "vnc"]
@@ -42,7 +41,7 @@ class QemuNet:
     Optionally add SSH port-forward for easy reachability.
     """
     enabled: bool = True
-    ssh_forward_host_port: Optional[int] = 2222  # host:2222 -> guest:22 (if guest runs sshd)
+    ssh_forward_host_port: int | None = 2222  # host:2222 -> guest:22 (if guest runs sshd)
 
 
 @dataclass(frozen=True)
@@ -68,7 +67,7 @@ class GuestProfile:
     """
     os: GuestOS = "linux"
     win_stage: WinStage = "final"
-    driver_iso: Optional[Path] = None
+    driver_iso: Path | None = None
 
     # Windows niceties
     localtime_clock: bool = True
@@ -119,16 +118,16 @@ class QemuTest:
         vcpus: int,
         uefi: bool,
         # New knobs (safe defaults):
-        display: Optional[QemuDisplay] = None,
-        net: Optional[QemuNet] = None,
-        machine: Optional[QemuMachine] = None,
-        timeout_s: Optional[int] = 20,
-        extra_args: Optional[Sequence[str]] = None,
+        display: QemuDisplay | None = None,
+        net: QemuNet | None = None,
+        machine: QemuMachine | None = None,
+        timeout_s: int | None = 20,
+        extra_args: Sequence[str] | None = None,
 
         # ✅ Windows support (default remains Linux)
         guest_os: GuestOS = "linux",
         windows_stage: WinStage = "final",
-        windows_driver_iso: Optional[Path] = None,  # virtio-win.iso (bootstrap)
+        windows_driver_iso: Path | None = None,  # virtio-win.iso (bootstrap)
         windows_hyperv: bool = True,
         windows_localtime_clock: bool = True,
     ) -> None:
@@ -161,7 +160,7 @@ class QemuTest:
         img_fmt = QemuTest._detect_img_format(logger, disk)
 
         # Track temp files so we can clean them.
-        tmp_ovmf_vars: Optional[str] = None
+        tmp_ovmf_vars: str | None = None
 
         # Disk bus selection:
         # - Linux: virtio

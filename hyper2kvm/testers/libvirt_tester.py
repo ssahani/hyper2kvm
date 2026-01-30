@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/testers/libvirt_tester.py
 from __future__ import annotations
 
@@ -7,9 +6,10 @@ import logging
 import os
 import tempfile
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional, Sequence
+from typing import Literal, Optional
 
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
@@ -47,9 +47,9 @@ class GraphicsConfig:
     mode: GraphicsMode = "none"
     listen: str = "127.0.0.1"
     autoport: bool = True
-    port: Optional[int] = None
-    passwd: Optional[str] = None
-    keymap: Optional[str] = None
+    port: int | None = None
+    passwd: str | None = None
+    keymap: str | None = None
 
 
 @dataclass(frozen=True)
@@ -111,7 +111,7 @@ class GuestProfile:
     tpm: bool = False             # needed for Win11 (plus other checks)
     tpm_model: Literal["tpm-tis", "tpm-crb"] = "tpm-crb"
     # Optional: attach virtio driver ISO (virtio-win.iso)
-    driver_iso: Optional[Path] = None
+    driver_iso: Path | None = None
 
 
 # Implementation
@@ -158,7 +158,7 @@ class LibvirtTest:
         # Optional upgrades (safe defaults):
         machine: MachineType = "q35",
         network: str = "default",
-        graphics_mode: Optional[GraphicsMode] = None,  # default derived from headless
+        graphics_mode: GraphicsMode | None = None,  # default derived from headless
         listen: str = "127.0.0.1",
         video_model: str = "qxl",
         video_vram: int = 65536,
@@ -170,7 +170,7 @@ class LibvirtTest:
         windows_stage: WinStage = "final",
         windows_hyperv: bool = True,
         windows_tpm: bool = False,
-        windows_driver_iso: Optional[Path] = None,
+        windows_driver_iso: Path | None = None,
     ) -> None:
         """
         Backward-compatible signature with extra knobs.
@@ -257,7 +257,7 @@ class LibvirtTest:
             prof=prof,
         )
 
-        xml_path: Optional[Path] = None
+        xml_path: Path | None = None
 
         U.banner(logger, "🧪 Libvirt smoke test")
         logger.info("🧾 Domain: %s", dom.name)
@@ -317,7 +317,7 @@ class LibvirtTest:
     # Helpers
 
     @staticmethod
-    def _resolve_ovmf(logger: logging.Logger, fw: FirmwareConfig) -> Optional[OVMFPaths]:
+    def _resolve_ovmf(logger: logging.Logger, fw: FirmwareConfig) -> OVMFPaths | None:
         if not fw.uefi:
             return None
 
@@ -336,8 +336,8 @@ class LibvirtTest:
         disk: Path,
         name: str,
         fw: FirmwareConfig,
-        ovmf: Optional[OVMFPaths],
-    ) -> Optional[Path]:
+        ovmf: OVMFPaths | None,
+    ) -> Path | None:
         if not fw.uefi:
             return None
         if ovmf is None:
@@ -472,7 +472,7 @@ class LibvirtTest:
     </tpm>"""
 
     @staticmethod
-    def _cdrom_xml(logger: logging.Logger, iso: Optional[Path]) -> str:
+    def _cdrom_xml(logger: logging.Logger, iso: Path | None) -> str:
         if not iso:
             return ""
         iso = Path(iso)
@@ -493,8 +493,8 @@ class LibvirtTest:
         disk: Path,
         dom: DomainConfig,
         fw: FirmwareConfig,
-        ovmf: Optional[OVMFPaths],
-        nvram: Optional[Path],
+        ovmf: OVMFPaths | None,
+        nvram: Path | None,
         gfx: GraphicsConfig,
         vid: VideoConfig,
         inp: InputConfig,
@@ -573,7 +573,7 @@ class LibvirtTest:
     @staticmethod
     def _wait_running(logger: logging.Logger, name: str, timeout_s: int) -> None:
         t0 = time.time()
-        last_state: Optional[str] = None
+        last_state: str | None = None
 
         with Progress(
             TextColumn("{task.description}"),

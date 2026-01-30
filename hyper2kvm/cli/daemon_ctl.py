@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/cli/daemon_ctl.py
 """
 CLI tool for controlling hyper2kvm daemon.

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/optional_imports.py
 """
 Centralized optional imports to eliminate duplicate import guards.
@@ -9,7 +8,6 @@ the need for try/except import blocks scattered across 20+ files.
 """
 
 from __future__ import annotations
-
 
 # Rich library (progress bars, panels, console formatting)
 try:

@@ -13,12 +13,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
 
 from rich.progress import (
-    Progress,
     BarColumn,
+    DownloadColumn,
+    Progress,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-    DownloadColumn,
     TransferSpeedColumn,
 )
 
@@ -37,14 +37,14 @@ class ExtractPolicy:
     preserve_timestamps: bool = False
     overwrite: bool = False
     rename_on_collision: bool = False
-    max_total_bytes: Optional[int] = None
+    max_total_bytes: int | None = None
     max_manifest_bytes: int = 5 * 1024 * 1024  # 5 MiB cap for manifest-like files
 
 
 @dataclass(frozen=True)
 class ExtractResult:
     extracted_bytes: int
-    extracted_path: Optional[Path]
+    extracted_path: Path | None
     # stable identity for deterministic naming (normalized tar member name when possible)
     origin_key: str
     # reason for non-extraction when extracted_path is None
@@ -67,7 +67,7 @@ def normalize_tar_name(name: str) -> str:
         raise RuntimeError(f"Blocked unsafe tar absolute path: {name!r}")
 
     pp = PurePosixPath(nm)
-    clean_parts: List[str] = []
+    clean_parts: list[str] = []
     for part in pp.parts:
         if part in ("", "."):
             continue
@@ -158,7 +158,7 @@ def safe_extract_one(
     *,
     policy: ExtractPolicy,
     written_total: int = 0,
-    bytes_budget: Optional[int] = None,
+    bytes_budget: int | None = None,
     is_manifest: bool = False,
 ) -> ExtractResult:
     outdir = Path(outdir).resolve()
@@ -242,7 +242,7 @@ def safe_extract_one(
 
     # Write to temp + atomic replace to avoid deleting/truncating preexisting files on failure
     tmp_path = _atomic_tmp(final_path)
-    fd: Optional[int] = None
+    fd: int | None = None
     try:
         # tmp_path must not already exist, and must not be a symlink
         if tmp_path.exists():
@@ -321,12 +321,12 @@ class RAW:
         outdir: Path,
         *,
         convert_to_qcow2: bool = False,
-        convert_outdir: Optional[Path] = None,
+        convert_outdir: Path | None = None,
         convert_compress: bool = False,
-        convert_compress_level: Optional[int] = None,
+        convert_compress_level: int | None = None,
         log_virt_filesystems: bool = False,
-        max_members: Optional[int] = None,
-        max_total_bytes: Optional[int] = None,
+        max_members: int | None = None,
+        max_total_bytes: int | None = None,
         max_manifest_bytes: int = 5 * 1024 * 1024,
         skip_special: bool = True,
         preserve_permissions: bool = True,
@@ -335,7 +335,7 @@ class RAW:
         overwrite: bool = False,
         rename_on_collision: bool = False,
         preserve_timestamps: bool = False,
-    ) -> List[Path]:
+    ) -> list[Path]:
         src = Path(src)
         outdir = Path(outdir)
         U.ensure_dir(outdir)
@@ -397,12 +397,12 @@ class RAW:
         outdir: Path,
         *,
         convert_to_qcow2: bool,
-        convert_outdir: Optional[Path],
+        convert_outdir: Path | None,
         convert_compress: bool,
-        convert_compress_level: Optional[int],
+        convert_compress_level: int | None,
         log_virt_filesystems: bool,
-        max_members: Optional[int],
-        max_total_bytes: Optional[int],
+        max_members: int | None,
+        max_total_bytes: int | None,
         max_manifest_bytes: int,
         skip_special: bool,
         preserve_permissions: bool,
@@ -411,7 +411,7 @@ class RAW:
         overwrite: bool,
         rename_on_collision: bool,
         preserve_timestamps: bool,
-    ) -> List[Path]:
+    ) -> list[Path]:
         U.banner(logger, "Extract RAW tarball")
         logger.info(f"RAW tarball: {tar_path}")
 
@@ -483,9 +483,9 @@ class RAW:
         use_bytes = planned_regular_bytes > 0
         task_total = planned_regular_bytes if use_bytes else (planned_files + planned_dirs)
 
-        extracted_raw: List[Path] = []
-        extracted_pairs: List[Tuple[Path, str]] = []
-        extracted_other: List[Path] = []
+        extracted_raw: list[Path] = []
+        extracted_pairs: list[tuple[Path, str]] = []
+        extracted_other: list[Path] = []
         written_total = 0
 
         skipped_by_filter = 0
@@ -541,9 +541,9 @@ class RAW:
                     progress.update(task, advance=(res.extracted_bytes if use_bytes else 1))
 
         # Dedup preserving order
-        def _dedup(ps: List[Path]) -> List[Path]:
+        def _dedup(ps: list[Path]) -> list[Path]:
             seen: set[str] = set()
-            out: List[Path] = []
+            out: list[Path] = []
             for p in ps:
                 s = str(p)
                 if s not in seen:
@@ -589,12 +589,12 @@ class RAW:
     @staticmethod
     def _convert_to_qcow2(
         logger: logging.Logger,
-        disks: List[Tuple[Path, str]],
+        disks: list[tuple[Path, str]],
         outdir: Path,
         *,
         compress: bool,
-        compress_level: Optional[int],
-    ) -> List[Path]:
+        compress_level: int | None,
+    ) -> list[Path]:
         try:
             from ..qemu.converter import Convert  # type: ignore
         except Exception as e:
@@ -604,7 +604,7 @@ class RAW:
         U.banner(logger, "Convert extracted RAW image(s) to QCOW2")
         U.ensure_dir(outdir)
 
-        outs: List[Path] = []
+        outs: list[Path] = []
         for disk, origin_key in disks:
             h = short_hash(f"origin:{origin_key}", n=10)
             out = (outdir / f"{disk.stem}-{h}.qcow2").expanduser().resolve()
@@ -622,7 +622,7 @@ class RAW:
         return outs
 
     @staticmethod
-    def _log_virt_filesystems(logger: logging.Logger, image: Path) -> Dict[str, Any]:
+    def _log_virt_filesystems(logger: logging.Logger, image: Path) -> dict[str, Any]:
         cmd = ["virt-filesystems", "-a", str(image), "--all", "--long", "-h"]
         try:
             cp = U.run_cmd(logger, cmd, capture=True, check=False)

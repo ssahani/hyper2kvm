@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...core.utils import U
 
@@ -37,22 +38,22 @@ class BootloaderType(Enum):
 @dataclass
 class BootloaderInfo:
     type: BootloaderType
-    version: Optional[str] = None
-    config_files: List[str] = field(default_factory=list)
-    install_paths: List[str] = field(default_factory=list)
-    efi_path: Optional[str] = None
-    boot_partition: Optional[str] = None
+    version: str | None = None
+    config_files: list[str] = field(default_factory=list)
+    install_paths: list[str] = field(default_factory=list)
+    efi_path: str | None = None
+    boot_partition: str | None = None
     detected: bool = False
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class BootloaderFixResult:
-    bootloaders: List[BootloaderInfo] = field(default_factory=list)
-    active_bootloader: Optional[BootloaderType] = None
-    fixes_applied: Dict[str, Any] = field(default_factory=dict)
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    bootloaders: list[BootloaderInfo] = field(default_factory=list)
+    active_bootloader: BootloaderType | None = None
+    fixes_applied: dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class MultiBootloaderFixer:
@@ -64,7 +65,7 @@ class MultiBootloaderFixer:
           reinstalling boot sectors is high blast-radius. We only tweak config text + add console.
     """
 
-    BOOTLOADER_PATTERNS: Dict[BootloaderType, Dict[str, List[str]]] = {
+    BOOTLOADER_PATTERNS: dict[BootloaderType, dict[str, list[str]]] = {
         BootloaderType.GRUB: {
             "configs": ["/boot/grub/grub.conf", "/boot/grub/menu.lst"],
             "dirs": ["/boot/grub"],
@@ -131,7 +132,7 @@ class MultiBootloaderFixer:
         logger: logging.Logger,
         *,
         dry_run: bool = False,
-        backup_cb: Optional[Callable[[str], None]] = None,
+        backup_cb: Callable[[str], None] | None = None,
     ):
         self.logger = logger
         self.dry_run = dry_run
@@ -190,13 +191,13 @@ class MultiBootloaderFixer:
                 return True
         return False
 
-    def _first_existing_file(self, g, candidates: List[str]) -> Optional[str]:
+    def _first_existing_file(self, g, candidates: list[str]) -> str | None:
         for p in candidates:
             if self._is_file(g, p):
                 return p
         return None
 
-    def _first_existing_dir(self, g, candidates: List[str]) -> Optional[str]:
+    def _first_existing_dir(self, g, candidates: list[str]) -> str | None:
         for p in candidates:
             if self._is_dir(g, p):
                 return p
@@ -239,7 +240,7 @@ class MultiBootloaderFixer:
         result.active_bootloader = self._determine_active_bootloader(g, result.bootloaders)
         return result
 
-    def _get_bootloader_version(self, g, bl_type: BootloaderType) -> Optional[str]:
+    def _get_bootloader_version(self, g, bl_type: BootloaderType) -> str | None:
         version_cmds = {
             BootloaderType.GRUB: "grub --version 2>/dev/null || true",
             BootloaderType.GRUB2: "grub2-install --version 2>/dev/null || grub-install --version 2>/dev/null || true",
@@ -258,7 +259,7 @@ class MultiBootloaderFixer:
         m = re.search(r"(\d+\.\d+(?:\.\d+)?)", out)
         return m.group(1) if m else None
 
-    def _detect_boot_partition(self, g, info: BootloaderInfo) -> Optional[str]:
+    def _detect_boot_partition(self, g, info: BootloaderInfo) -> str | None:
         if self._is_file(g, "/etc/fstab"):
             fstab = self._read_text(g, "/etc/fstab")
             for line in fstab.splitlines():
@@ -280,7 +281,7 @@ class MultiBootloaderFixer:
 
         return None
 
-    def _determine_active_bootloader(self, g, bootloaders: List[BootloaderInfo]) -> Optional[BootloaderType]:
+    def _determine_active_bootloader(self, g, bootloaders: list[BootloaderInfo]) -> BootloaderType | None:
         if not bootloaders:
             return None
 
@@ -306,9 +307,9 @@ class MultiBootloaderFixer:
 
     # Fixes (conservative)
 
-    def apply_kvm_fixes(self, g, *, root_dev: Optional[str] = None) -> BootloaderFixResult:
+    def apply_kvm_fixes(self, g, *, root_dev: str | None = None) -> BootloaderFixResult:
         result = self.detect_bootloaders(g)
-        applied: Dict[str, Any] = {}
+        applied: dict[str, Any] = {}
 
         for bl in result.bootloaders:
             try:
@@ -332,8 +333,8 @@ class MultiBootloaderFixer:
         result.fixes_applied = applied
         return result
 
-    def _ensure_grub_serial_blocks(self, content: str) -> Tuple[str, Dict[str, Any]]:
-        fixes: Dict[str, Any] = {}
+    def _ensure_grub_serial_blocks(self, content: str) -> tuple[str, dict[str, Any]]:
+        fixes: dict[str, Any] = {}
         lines = content.splitlines()
 
         def has_key(k: str) -> bool:
@@ -353,7 +354,7 @@ class MultiBootloaderFixer:
         new = "\n".join(lines) + ("\n" if content.endswith("\n") else "")
         return new, fixes if changed else fixes
 
-    def _append_console_args_to_grub_cmdline(self, content: str) -> Tuple[str, bool]:
+    def _append_console_args_to_grub_cmdline(self, content: str) -> tuple[str, bool]:
         if "GRUB_CMDLINE_LINUX" not in content:
             return content, False
 
@@ -366,7 +367,7 @@ class MultiBootloaderFixer:
         new = re.sub(r"^(GRUB_CMDLINE_LINUX(?:_DEFAULT)?=.*)$", repl, content, flags=re.M)
         return new, (new != content)
 
-    def _append_console_args_to_cmdline_file(self, content: str) -> Tuple[str, bool]:
+    def _append_console_args_to_cmdline_file(self, content: str) -> tuple[str, bool]:
         """
         For files like /etc/kernel/cmdline or /usr/lib/kernel/cmdline:
           - typically a single line of kernel args (comments sometimes appear)
@@ -399,8 +400,8 @@ class MultiBootloaderFixer:
         new = "\n".join(lines) + ("\n" if content.endswith("\n") else "")
         return new, True
 
-    def _fix_grub2(self, g, bl: BootloaderInfo) -> Dict[str, Any]:
-        fixes: Dict[str, Any] = {"changed": False, "files": {}}
+    def _fix_grub2(self, g, bl: BootloaderInfo) -> dict[str, Any]:
+        fixes: dict[str, Any] = {"changed": False, "files": {}}
 
         p = "/etc/default/grub"
         if not self._is_file(g, p):
@@ -431,8 +432,8 @@ class MultiBootloaderFixer:
 
         return fixes
 
-    def _fix_grub_legacy(self, g, bl: BootloaderInfo) -> Dict[str, Any]:
-        fixes: Dict[str, Any] = {"changed": False, "files": {}}
+    def _fix_grub_legacy(self, g, bl: BootloaderInfo) -> dict[str, Any]:
+        fixes: dict[str, Any] = {"changed": False, "files": {}}
         for p in ("/boot/grub/grub.conf", "/boot/grub/menu.lst"):
             if not self._is_file(g, p):
                 continue
@@ -441,7 +442,7 @@ class MultiBootloaderFixer:
                 continue
 
             changed = False
-            out_lines: List[str] = []
+            out_lines: list[str] = []
             for ln in old.splitlines():
                 s = ln.strip()
                 if s.startswith("kernel") and "console=ttyS0" not in ln:
@@ -465,7 +466,7 @@ class MultiBootloaderFixer:
 
     # systemd-boot
 
-    def _fix_systemd_boot(self, g, bl: BootloaderInfo) -> Dict[str, Any]:
+    def _fix_systemd_boot(self, g, bl: BootloaderInfo) -> dict[str, Any]:
         """
         systemd-boot can source kernel cmdline from multiple places depending on distro + tooling:
           - /etc/kernel/cmdline (systemd kernel-install workflow)
@@ -478,7 +479,7 @@ class MultiBootloaderFixer:
           3) Always also patch entry files if present (some setups ignore cmdline files entirely)
           4) loader.conf tweaks: timeout/editor only if missing
         """
-        fixes: Dict[str, Any] = {"changed": False, "files": {}}
+        fixes: dict[str, Any] = {"changed": False, "files": {}}
 
         # ---- loader.conf (support multiple mount layouts) ----
         loader_conf = self._first_existing_file(
@@ -563,7 +564,7 @@ class MultiBootloaderFixer:
                     if "console=ttyS0" in old or "ttyS0," in old:
                         continue
 
-                    out_lines: List[str] = []
+                    out_lines: list[str] = []
                     changed = False
                     for ln in old.splitlines():
                         if ln.strip().startswith("options "):
@@ -588,8 +589,8 @@ class MultiBootloaderFixer:
             fixes.setdefault("note", "No systemd-boot changes needed/applied.")
         return fixes
 
-    def _fix_syslinux_extlinux(self, g, bl: BootloaderInfo) -> Dict[str, Any]:
-        fixes: Dict[str, Any] = {"changed": False, "files": {}}
+    def _fix_syslinux_extlinux(self, g, bl: BootloaderInfo) -> dict[str, Any]:
+        fixes: dict[str, Any] = {"changed": False, "files": {}}
 
         candidates = [
             "/boot/syslinux/syslinux.cfg",
@@ -606,7 +607,7 @@ class MultiBootloaderFixer:
             if not old or ("console=ttyS0" in old or "ttyS0," in old):
                 continue
 
-            out_lines: List[str] = []
+            out_lines: list[str] = []
             changed = False
 
             for ln in old.splitlines():

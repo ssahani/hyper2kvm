@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/orchestrator/azure_exporter.py
 """
 Azure VM export handler.
@@ -20,10 +19,10 @@ from ..core.logger import Log
 try:
     from ..azure import AzureConfig, AzureSourceProvider
     from ..azure.models import (
+        AzureDownloadConfig,
+        AzureExportConfig,
         AzureSelectConfig,
         AzureShutdownConfig,
-        AzureExportConfig,
-        AzureDownloadConfig,
     )
 
     AZURE_AVAILABLE = True
@@ -54,7 +53,7 @@ class AzureExporter:
         Log.trace(self.logger, "☁️ Azure export enabled: %s", enabled)
         return enabled
 
-    def export_vms(self, out_root: Path) -> List[Path]:
+    def export_vms(self, out_root: Path) -> list[Path]:
         """
         Export Azure VMs to local VHD files.
 
@@ -81,7 +80,7 @@ class AzureExporter:
         # Return list of local VHD paths
         return [art.local_path for art in artifacts]
 
-    def _build_config(self, out_root: Path) -> "AzureConfig":
+    def _build_config(self, out_root: Path) -> AzureConfig:
         """Build AzureConfig from args."""
         select = AzureSelectConfig(
             resource_group=getattr(self.args, "azure_resource_group", None),
@@ -134,7 +133,7 @@ class AzureExporter:
             download=download,
         )
 
-    def _get_vm_names(self) -> List[str]:
+    def _get_vm_names(self) -> list[str]:
         """Extract VM names from args."""
         vm_names = getattr(self.args, "azure_vm_names", None) or []
         if isinstance(vm_names, str):

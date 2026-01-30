@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/fixers/cloud_init_injector.py
 from __future__ import annotations
 
-from typing import Dict, Any
 import json
 import os
+from typing import Any, Dict
 
 import guestfs  # type: ignore
 
@@ -77,7 +76,7 @@ def _write_atomic_or_plain(
     g.rename(tmp, path)
 
 
-def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+def inject_cloud_init(self, g: guestfs.GuestFS) -> dict[str, Any]:
     """
     Offline, minimal-risk cloud-init injection.
 
@@ -170,7 +169,7 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             }
         return {"injected": False, "reason": "cloud_init_not_available"}
 
-    results: Dict[str, Any] = {"injected": True, "dry_run": dry, "writes": []}
+    results: dict[str, Any] = {"injected": True, "dry_run": dry, "writes": []}
 
     # 1) Safe config drop-in (DO NOT overwrite /etc/cloud/cloud.cfg)
     dropin_cfg = data.get("dropin_cfg")

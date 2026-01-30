@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/orchestrator/disk_discovery.py
 """
 Disk discovery from various sources.
@@ -13,10 +12,10 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ..converters.fetch import Fetch
 from ..converters.extractors.ovf import OVF
 from ..converters.extractors.raw import RAW
 from ..converters.extractors.vhd import VHD
+from ..converters.fetch import Fetch
 from ..core.exceptions import Fatal
 from ..core.logger import Log
 from ..core.utils import U
@@ -42,7 +41,7 @@ class DiskDiscovery:
         self.args = args
 
     @staticmethod
-    def _normalize_ssh_opts(v) -> Optional[List[str]]:
+    def _normalize_ssh_opts(v) -> list[str] | None:
         """Normalize SSH options from various input formats."""
         if v is None:
             return None
@@ -51,7 +50,7 @@ class DiskDiscovery:
             return out or None
         return [str(v)]
 
-    def discover(self, out_root: Path) -> Tuple[List[Path], Optional[Path]]:
+    def discover(self, out_root: Path) -> tuple[list[Path], Path | None]:
         """
         Discover disks based on args.cmd.
 
@@ -62,8 +61,8 @@ class DiskDiscovery:
             Tuple of (disk_list, temp_dir_to_cleanup)
             temp_dir is None if no cleanup needed or if mode exits early (live-fix, vsphere)
         """
-        temp_dir: Optional[Path] = None
-        disks: List[Path] = []
+        temp_dir: Path | None = None
+        disks: list[Path] = []
         cmd = getattr(self.args, "cmd", None)
 
         Log.trace(self.logger, "🧭 discover_disks: cmd=%r out_root=%s", cmd, out_root)

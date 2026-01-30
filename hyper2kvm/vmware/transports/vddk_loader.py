@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/transports/vddk_loader.py
 """
 VDDK disk download orchestration for VMware
@@ -57,8 +56,8 @@ def _require_vddk_client() -> None:
         )
 
 
-def vm_disks(client: Any, vm_obj: Any) -> List[Any]:
-    disks: List[Any] = []
+def vm_disks(client: Any, vm_obj: Any) -> list[Any]:
+    disks: list[Any] = []
     devices = getattr(getattr(getattr(vm_obj, "config", None), "hardware", None), "device", []) or []
     for dev in devices:
         if isinstance(dev, vim.vm.device.VirtualDisk):  # type: ignore[attr-defined]
@@ -66,7 +65,7 @@ def vm_disks(client: Any, vm_obj: Any) -> List[Any]:
     return disks
 
 
-def select_disk(client: Any, vm_obj: Any, label_or_index: Optional[str]) -> Any:
+def select_disk(client: Any, vm_obj: Any, label_or_index: str | None) -> Any:
     disks = vm_disks(client, vm_obj)
     if not disks:
         raise VMwareError("No virtual disks found on VM")

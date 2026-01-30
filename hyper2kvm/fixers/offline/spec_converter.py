@@ -39,7 +39,7 @@ class SpecConverter:
     def __init__(
         self,
         fstab_mode: FstabMode,
-        root_dev: Optional[str] = None,
+        root_dev: str | None = None,
     ):
         """
         Initialize spec converter.
@@ -51,7 +51,7 @@ class SpecConverter:
         self.fstab_mode = fstab_mode
         self.root_dev = root_dev
 
-    def convert_spec(self, g: guestfs.GuestFS, spec: str) -> Tuple[str, str]:
+    def convert_spec(self, g: guestfs.GuestFS, spec: str) -> tuple[str, str]:
         """
         Convert a device spec to stable identifier if needed.
 
@@ -95,7 +95,7 @@ class SpecConverter:
         g: guestfs.GuestFS,
         spec: str,
         original: str,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """
         Stabilize by-path reference to stable ID.
 
@@ -107,7 +107,7 @@ class SpecConverter:
         Returns:
             Tuple of (converted_spec, reason)
         """
-        mapped: Optional[str] = None
+        mapped: str | None = None
 
         # Try realpath first
         try:
@@ -141,7 +141,7 @@ class SpecConverter:
         g: guestfs.GuestFS,
         spec: str,
         original: str,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """
         Stabilize /dev/* reference to stable ID.
 

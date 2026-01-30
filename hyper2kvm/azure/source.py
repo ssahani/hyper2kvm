@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/azure/source.py
 
 from __future__ import annotations
@@ -25,17 +24,17 @@ from rich.progress import (
 
 from . import cli
 from .cleanup import make_tags
+from .download import download_with_resume
 from .exceptions import AzureCLIError
 from .models import (
     AzureConfig,
     AzureDiskRef,
-    AzureFetchReport,
     AzureExportItem,
+    AzureFetchReport,
     AzureVMRef,
     AzureVMReport,
     DiskArtifact,
 )
-from .download import download_with_resume
 
 
 def _now_tag() -> str:
@@ -46,7 +45,7 @@ def _uniq6() -> str:
     return os.urandom(3).hex()
 
 
-def _guest_hint(os_type: Optional[str]) -> Optional[str]:
+def _guest_hint(os_type: str | None) -> str | None:
     if not os_type:
         return None
     t = os_type.lower()
@@ -61,7 +60,7 @@ def _safe_vm_folder(root: Path, subscription: str, rg: str, vm: str, run_tag: st
     return root / "azure" / subscription / rg / vm / f"run-{run_tag}"
 
 
-def _role_filename(vm: str, is_os: bool, lun: Optional[int]) -> str:
+def _role_filename(vm: str, is_os: bool, lun: int | None) -> str:
     if is_os:
         return f"{vm}-os.vhd"
     if lun is not None:
@@ -69,7 +68,7 @@ def _role_filename(vm: str, is_os: bool, lun: Optional[int]) -> str:
     return f"{vm}-data.vhd"
 
 
-def _match_any(name: str, patterns: List[str]) -> bool:
+def _match_any(name: str, patterns: list[str]) -> bool:
     if not patterns:
         return True
     for p in patterns:
@@ -82,7 +81,7 @@ def _match_any(name: str, patterns: List[str]) -> bool:
     return False
 
 
-def _tags_match(vm_tags: Dict[str, str], want: Dict[str, str]) -> bool:
+def _tags_match(vm_tags: dict[str, str], want: dict[str, str]) -> bool:
     if not want:
         return True
     for k, v in want.items():
@@ -91,7 +90,7 @@ def _tags_match(vm_tags: Dict[str, str], want: Dict[str, str]) -> bool:
     return True
 
 
-def _disk_size_gb(disk_json: Dict) -> int:
+def _disk_size_gb(disk_json: dict) -> int:
     v = disk_json.get("diskSizeGb")
     if v is not None:
         try:
@@ -106,7 +105,7 @@ def _disk_size_gb(disk_json: Dict) -> int:
         return 0
 
 
-def _resolve_vm_disks(vm_show: Dict, *, power_state: str) -> AzureVMRef:
+def _resolve_vm_disks(vm_show: dict, *, power_state: str) -> AzureVMRef:
     rg = vm_show.get("resourceGroup") or ""
     loc = vm_show.get("location") or ""
     vid = vm_show.get("id") or ""
@@ -117,7 +116,7 @@ def _resolve_vm_disks(vm_show: Dict, *, power_state: str) -> AzureVMRef:
     osd = sp.get("osDisk") or {}
     os_type = osd.get("osType")
 
-    disks: List[AzureDiskRef] = []
+    disks: list[AzureDiskRef] = []
 
     md = (osd.get("managedDisk") or {})
     os_disk_id = md.get("id")
@@ -171,7 +170,7 @@ def _resolve_vm_disks(vm_show: Dict, *, power_state: str) -> AzureVMRef:
 
 class AzureSourceProvider:
     @staticmethod
-    def fetch(logger, cfg: AzureConfig) -> Tuple[AzureFetchReport, List[DiskArtifact]]:
+    def fetch(logger, cfg: AzureConfig) -> tuple[AzureFetchReport, list[DiskArtifact]]:
         run_tag = cfg.export.run_tag or _now_tag()
         rep = AzureFetchReport(run_tag=run_tag)
         rep.selection = {
@@ -197,7 +196,7 @@ class AzureSourceProvider:
 
         # Use --show-details to get power state in one batched call (optimization)
         raw_vms = cli.list_vms(cfg.select.resource_group, show_details=True)
-        selected: List[AzureVMRef] = []
+        selected: list[AzureVMRef] = []
 
         for v in raw_vms:
             rg = v.get("resourceGroup") or ""
@@ -229,7 +228,7 @@ class AzureSourceProvider:
         if not selected:
             raise AzureCLIError("No VMs matched selection criteria.")
 
-        vm_reports: Dict[Tuple[str, str], AzureVMReport] = {}
+        vm_reports: dict[tuple[str, str], AzureVMReport] = {}
         for vm in selected:
             vr = AzureVMReport(
                 name=vm.name,
@@ -285,7 +284,7 @@ class AzureSourceProvider:
             for vm in selected:
                 cli.vm_stop_or_deallocate(rg=vm.resource_group, name=vm.name, mode=cfg.shutdown.mode, wait=cfg.shutdown.wait)
 
-        artifacts: List[DiskArtifact] = []
+        artifacts: list[DiskArtifact] = []
 
         with Progress(
             TextColumn("[progress.description]{task.description}"),
@@ -300,7 +299,7 @@ class AzureSourceProvider:
             if chunk_mb != cfg.download.chunk_mb:
                 logger.warning(f"Chunk size adjusted from {cfg.download.chunk_mb}MB to {chunk_mb}MB (valid range: 1-128)")
 
-            def _export_one(vm: AzureVMRef, d: AzureDiskRef) -> Tuple[AzureExportItem, Optional[DiskArtifact], List[str], List[str]]:
+            def _export_one(vm: AzureVMRef, d: AzureDiskRef) -> tuple[AzureExportItem, DiskArtifact | None, list[str], list[str]]:
                 """
                 Export a single disk from Azure VM.
 
@@ -311,8 +310,8 @@ class AzureSourceProvider:
                 Returns:
                     Tuple of (export_item, disk_artifact, created_resource_ids, deleted_resource_ids)
                 """
-                created: List[str] = []
-                deleted: List[str] = []
+                created: list[str] = []
+                deleted: list[str] = []
 
                 item = AzureExportItem(
                     vm_name=vm.name,
@@ -325,9 +324,9 @@ class AzureSourceProvider:
 
                 tags = make_tags(enable=cfg.export.tag_resources, run_tag=run_tag, vm_name=vm.name)
 
-                export_target_kind: Optional[str] = None  # "disk"|"snapshot"
-                export_id: Optional[str] = None
-                sas_url: Optional[str] = None
+                export_target_kind: str | None = None  # "disk"|"snapshot"
+                export_id: str | None = None
+                sas_url: str | None = None
 
                 vm_root = _safe_vm_folder(cfg.output_dir, subscription, vm.resource_group, vm.name, run_tag)
                 disks_dir = vm_root / "disks"
@@ -468,7 +467,7 @@ class AzureSourceProvider:
                         # Progress update errors should not fail the export
                         logger.debug(f"Failed to update progress for {vm.name}/{d.name}: {e}")
 
-            jobs: List[Tuple[AzureVMRef, AzureDiskRef]] = []
+            jobs: list[tuple[AzureVMRef, AzureDiskRef]] = []
             for vm in selected:
                 for d in vm.disks:
                     if cfg.export.disks == "os" and not d.is_os_disk:

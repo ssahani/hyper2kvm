@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/transports/govc_export.py
 from __future__ import annotations
 
@@ -17,14 +16,14 @@ Design: callers pass a GovcExportSpec; this module runs the workflow.
 """
 
 import os
-import time
 import shutil
+import subprocess
 import tarfile
 import tempfile
-import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...core.exceptions import VMwareError
 from ..utils.utils import is_tty as _is_tty
@@ -33,13 +32,13 @@ try:  # pragma: no cover
     from rich.console import Console
     from rich.panel import Panel
     from rich.progress import (
+        BarColumn,
         Progress,
         SpinnerColumn,
-        BarColumn,
+        TaskProgressColumn,
         TextColumn,
         TimeElapsedColumn,
         TransferSpeedColumn,
-        TaskProgressColumn,
     )
     from rich.text import Text
 
@@ -67,7 +66,7 @@ class GovcExportSpec:
 
     # govc configuration
     govc_bin: str = "govc"
-    env: Optional[Dict[str, str]] = None
+    env: dict[str, str] | None = None
 
     # VM preparation
     remove_cdroms: bool = True
@@ -79,7 +78,7 @@ class GovcExportSpec:
 
     # Output handling
     clean_outdir: bool = False
-    ova_filename: Optional[str] = None  # only for mode="ova"
+    ova_filename: str | None = None  # only for mode="ova"
 
     # Progress/UI
     show_progress: bool = True
@@ -91,7 +90,7 @@ class GovcExportError(VMwareError):
 
 
 # UI helpers (Rich if possible, otherwise plain prints)
-def _console(logger: Any) -> Optional[Any]:
+def _console(logger: Any) -> Any | None:
     """Create Rich Console if available and running in TTY. Logger param kept for API compat."""
     if not (RICH_AVAILABLE and _is_tty()):
         return None
@@ -146,8 +145,8 @@ def _ok_line(logger: Any, msg: str) -> None:
 
 # govc runners
 def _run_govc_simple(
-    cmd: List[str],
-    env: Dict[str, str],
+    cmd: list[str],
+    env: dict[str, str],
     logger: Any,
     capture_output: bool = True,
 ) -> subprocess.CompletedProcess:
@@ -155,7 +154,7 @@ def _run_govc_simple(
     full_env = dict(os.environ)
     full_env.update(env)
 
-    _debug(logger, "Running govc: %s" % " ".join(cmd))
+    _debug(logger, "Running govc: {}".format(" ".join(cmd)))
 
     try:
         return subprocess.run(
@@ -175,8 +174,8 @@ def _run_govc_simple(
 
 
 def _run_govc_with_rich_spinner(
-    cmd: List[str],
-    env: Dict[str, str],
+    cmd: list[str],
+    env: dict[str, str],
     logger: Any,
     *,
     title: str,
@@ -201,7 +200,7 @@ def _run_govc_with_rich_spinner(
         universal_newlines=True,
     )
 
-    output_lines: List[str] = []
+    output_lines: list[str] = []
     last_line: str = ""
 
     try:
@@ -259,8 +258,8 @@ def _run_govc_with_rich_spinner(
 
 
 def _run_govc_with_tty_passthrough(
-    cmd: List[str],
-    env: Dict[str, str],
+    cmd: list[str],
+    env: dict[str, str],
     logger: Any,
 ) -> None:
     """
@@ -269,7 +268,7 @@ def _run_govc_with_tty_passthrough(
     full_env = dict(os.environ)
     full_env.update(env)
 
-    _debug(logger, "Running govc (TTY passthrough): %s" % " ".join(cmd))
+    _debug(logger, "Running govc (TTY passthrough): {}".format(" ".join(cmd)))
 
     try:
         subprocess.run(cmd, env=full_env, check=True)
@@ -280,8 +279,8 @@ def _run_govc_with_tty_passthrough(
 
 
 def _run_govc_export(
-    cmd: List[str],
-    env: Dict[str, str],
+    cmd: list[str],
+    env: dict[str, str],
     logger: Any,
     *,
     show_progress: bool,
@@ -312,9 +311,9 @@ def _run_govc_export(
 
 
 # VM prep helpers
-def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> List[str]:
+def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> list[str]:
     """Remove CD/DVD devices from VM before export. Returns removed device names."""
-    removed: List[str] = []
+    removed: list[str] = []
     if not spec.remove_cdroms:
         return removed
 
@@ -327,7 +326,7 @@ def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> List[str]:
             logger,
         )
 
-        cdroms: List[str] = []
+        cdroms: list[str] = []
         for line in (result.stdout or "").splitlines():
             s = line.strip()
             if s and "cdrom" in s.lower():
@@ -367,7 +366,7 @@ def _remove_cdrom_devices(spec: GovcExportSpec, logger: Any) -> List[str]:
     return removed
 
 
-def _get_vm_info_lines(spec: GovcExportSpec, logger: Any) -> List[str]:
+def _get_vm_info_lines(spec: GovcExportSpec, logger: Any) -> list[str]:
     """
     Extract a few useful vm.info lines and return them for printing in a panel.
     """
@@ -382,7 +381,7 @@ def _get_vm_info_lines(spec: GovcExportSpec, logger: Any) -> List[str]:
         return []
 
     want = ("name:", "power state:", "storage:", "path:", "guest os:", "memory:", "cpu:")
-    out: List[str] = []
+    out: list[str] = []
     for line in (result.stdout or "").splitlines():
         s = line.strip()
         if not s:
@@ -523,7 +522,7 @@ def _create_ova_from_ovf(ovf_dir: Path, ova_file: Path, logger: Any) -> None:
         raise GovcExportError(f"Failed to create OVA: {e}") from e
 
 
-def _find_exported_ovf_dir(parent: Path, vm_name: str) -> Optional[Path]:
+def _find_exported_ovf_dir(parent: Path, vm_name: str) -> Path | None:
     """
     govc export.ovf typically creates a subdir named after the VM.
     We try best-effort discovery.
@@ -541,7 +540,7 @@ def _find_exported_ovf_dir(parent: Path, vm_name: str) -> Optional[Path]:
     return None
 
 
-def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
+def _fmt_elapsed(start_time: float) -> tuple[int, int]:
     elapsed = time.time() - start_time
     minutes = int(elapsed // 60)
     seconds = int(elapsed % 60)

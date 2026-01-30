@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/utils/datastore.py
 
 """
@@ -11,8 +10,9 @@ from __future__ import annotations
 import fnmatch
 import re
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Tuple
 
 # Optional: pyvmomi imports (conditional)
 try:
@@ -69,7 +69,7 @@ def _refresh_datacenter_cache(client: Any) -> None:
             pass
 
 
-def list_datacenters(client: Any, *, refresh: bool = False) -> List[str]:
+def list_datacenters(client: Any, *, refresh: bool = False) -> list[str]:
     if refresh or client._dc_name_cache is None:
         _refresh_datacenter_cache(client)
     return list(client._dc_name_cache or [])
@@ -107,7 +107,7 @@ def _refresh_host_cache(client: Any) -> None:
             pass
 
 
-def list_host_names(client: Any, *, refresh: bool = False) -> List[str]:
+def list_host_names(client: Any, *, refresh: bool = False) -> list[str]:
     if refresh or client._host_name_cache is None:
         _refresh_host_cache(client)
     return list(client._host_name_cache or [])
@@ -153,7 +153,7 @@ def vm_to_datacenter(client: Any, vm_obj: Any) -> Any:
     return None
 
 
-def vm_datacenter_name(client: Any, vm_obj: Any) -> Optional[str]:
+def vm_datacenter_name(client: Any, vm_obj: Any) -> str | None:
     dc = vm_to_datacenter(client, vm_obj)
     if dc is None:
         return None
@@ -161,7 +161,7 @@ def vm_datacenter_name(client: Any, vm_obj: Any) -> Optional[str]:
     return str(name) if name else None
 
 
-def resolve_datacenter_for_vm(client: Any, vm_name: str, preferred: Optional[str]) -> str:
+def resolve_datacenter_for_vm(client: Any, vm_name: str, preferred: str | None) -> str:
     pref = (preferred or "").strip()
     if pref and pref.lower() not in ("auto", "detect", "guess") and datacenter_exists(client, pref, refresh=False):
         return pref
@@ -194,7 +194,7 @@ def _vm_runtime_host(client: Any, vm_obj: Any) -> Any:
     return getattr(rt, "host", None) if rt else None
 
 
-def _host_parent_compute_name(client: Any, host_obj: Any) -> Optional[str]:
+def _host_parent_compute_name(client: Any, host_obj: Any) -> str | None:
     try:
         parent = getattr(host_obj, "parent", None)
         if parent is None:
@@ -231,7 +231,7 @@ def resolve_host_system_for_vm(client: Any, vm_name: str) -> str:
     return f"host/{host_name}"
 
 
-def resolve_compute_for_vm(client: Any, vm_name: str, preferred: Optional[str]) -> str:
+def resolve_compute_for_vm(client: Any, vm_name: str, preferred: str | None) -> str:
     pref = (preferred or "").strip()
     if not pref or pref.lower() in ("auto", "detect", "guess"):
         return resolve_host_system_for_vm(client, vm_name)
@@ -244,7 +244,7 @@ def resolve_compute_for_vm(client: Any, vm_name: str, preferred: Optional[str]) 
 # Datastore parsing + HTTPS /folder download
 
 
-def parse_backing_filename(file_name: str) -> Tuple[str, str]:
+def parse_backing_filename(file_name: str) -> tuple[str, str]:
     """
     Parse VMware style backing fileName:
       "[datastore] path/to/file.ext" -> ("datastore", "path/to/file.ext")
@@ -255,7 +255,7 @@ def parse_backing_filename(file_name: str) -> Tuple[str, str]:
     return m.group(1), m.group(2)
 
 
-def _split_ds_path(path: str) -> Tuple[str, str, str]:
+def _split_ds_path(path: str) -> tuple[str, str, str]:
     """
     "[ds] folder/file" -> (ds, "folder", "file")
     """
@@ -266,7 +266,7 @@ def _split_ds_path(path: str) -> Tuple[str, str, str]:
     return ds, folder, base
 
 
-def _resolve_datacenter_for_download(client: Any, dc_name: Optional[str]) -> str:
+def _resolve_datacenter_for_download(client: Any, dc_name: str | None) -> str:
     """
     Resolve a usable datacenter name for /folder URL construction.
     """
@@ -292,8 +292,8 @@ def download_datastore_file(
     datastore: str,
     ds_path: str,
     local_path: Path,
-    dc_name: Optional[str] = None,
-    on_bytes: Optional[Any] = None,
+    dc_name: str | None = None,
+    on_bytes: Any | None = None,
     chunk_size: int = 1024 * 1024,
     force_https: bool = False,
 ) -> None:
@@ -371,7 +371,7 @@ def _vmx_pathname(client: Any, vm_obj: Any) -> str:
     return str(vmx)
 
 
-def _list_vm_directory_files(client: Any, vm_obj: Any) -> Tuple[str, str, List[str]]:
+def _list_vm_directory_files(client: Any, vm_obj: Any) -> tuple[str, str, list[str]]:
     """
     Returns: (datastore_name, folder_rel, [files...]) where files are relative to folder_rel.
     Uses DatastoreBrowser.SearchDatastoreSubFolders_Task against the VM folder.
@@ -395,7 +395,7 @@ def _list_vm_directory_files(client: Any, vm_obj: Any) -> Tuple[str, str, List[s
     wait_for_task(client, task)
 
     results = getattr(task.info, "result", None) or []
-    files: List[str] = []
+    files: list[str] = []
     for r in results:
         for fi in (getattr(r, "file", None) or []):
             name = str(getattr(fi, "path", "") or "")
@@ -417,8 +417,8 @@ def _filter_download_only_files(
     include_globs: Sequence[str],
     exclude_globs: Sequence[str],
     max_files: int,
-) -> List[str]:
-    out: List[str] = []
+) -> list[str]:
+    out: list[str] = []
     for f in files:
         if include_globs and not _glob_any(f, include_globs):
             continue
@@ -445,7 +445,7 @@ def _download_selected_files(
     fail_on_missing: bool,
     log_prefix: str,
 ) -> None:
-    failures: List[str] = []
+    failures: list[str] = []
     for name in selected:
         ds_path = f"{folder_rel}/{name}" if folder_rel else name
         local_path = out_dir / name

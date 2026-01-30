@@ -6,13 +6,14 @@ Network configuration fixer for VMware to KVM migration.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import guestfs  # type: ignore
 
-from .discovery import NetworkDiscovery
 from .backend import NetworkFixersBackend
+from .discovery import NetworkDiscovery
 from .model import FixLevel, FixResult, NetworkConfig, NetworkConfigType
 from .topology import NetworkTopology
 from .validation import NetworkValidation
@@ -56,7 +57,7 @@ class NetworkFixer:
         fix_level: FixLevel = FixLevel.MODERATE,
         *,
         dry_run: bool = False,
-        backup_suffix: Optional[str] = None,
+        backup_suffix: str | None = None,
     ):
         """
         Initialize network fixer orchestrator.
@@ -88,8 +89,8 @@ class NetworkFixer:
     def fix_network_config(
         self,
         g: guestfs.GuestFS,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None,
-    ) -> Dict[str, Any]:
+        progress_callback: Callable[[int, int, str], None] | None = None,
+    ) -> dict[str, Any]:
         """
         Main orchestration method - coordinates all network fixing operations.
 
@@ -232,7 +233,7 @@ class NetworkFixer:
         self,
         config: NetworkConfig,
         topo,
-        rename_map: Dict[str, str],
+        rename_map: dict[str, str],
     ) -> FixResult:
         """
         Route config to appropriate backend-specific fixer.
@@ -337,7 +338,7 @@ class NetworkFixer:
 
     # Summary and recommendations
 
-    def generate_recommendations(self, stats: Dict[str, Any]) -> List[str]:
+    def generate_recommendations(self, stats: dict[str, Any]) -> list[str]:
         """
         Generate user-facing recommendations based on fix results.
 
@@ -347,7 +348,7 @@ class NetworkFixer:
         Returns:
             List of recommendation strings
         """
-        recommendations: List[str] = []
+        recommendations: list[str] = []
 
         if stats.get("dry_run"):
             recommendations.append("Dry-run enabled: no files were written. Review details and rerun with dry_run=False.")

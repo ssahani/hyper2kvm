@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/ssh/ssh_client.py
 from __future__ import annotations
 
@@ -8,9 +7,10 @@ import posixpath
 import shlex
 import subprocess
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Optional
 
 from ..core.utils import U
 from .ssh_config import SSHConfig
@@ -21,7 +21,7 @@ class SSHResult:
     rc: int
     stdout: str
     stderr: str
-    argv: List[str]
+    argv: list[str]
     seconds: float
 
 
@@ -55,8 +55,8 @@ class SSHClient:
 
     # argv builders
 
-    def _common(self) -> List[str]:
-        opts: List[str] = [
+    def _common(self) -> list[str]:
+        opts: list[str] = [
             "-o",
             "BatchMode=yes",
             "-o",
@@ -82,20 +82,20 @@ class SSHClient:
 
         return opts
 
-    def _ssh_args(self) -> List[str]:
+    def _ssh_args(self) -> list[str]:
         return ["-p", str(self.cfg.port)] + self._common()
 
-    def _scp_args(self) -> List[str]:
+    def _scp_args(self) -> list[str]:
         # -p preserves times
         return ["-P", str(self.cfg.port), "-p"] + self._common()
 
-    def _rsync_args(self) -> List[str]:
+    def _rsync_args(self) -> list[str]:
         # rsync over ssh; prefer resume-friendly behavior for large images/artifacts
-        shell_parts: List[str] = ["ssh"] + self._common()
+        shell_parts: list[str] = ["ssh"] + self._common()
         if self.cfg.port != 22:
             shell_parts += ["-p", str(self.cfg.port)]
 
-        args: List[str] = [
+        args: list[str] = [
             "-a",
             "-H",
             "--numeric-ids",
@@ -138,7 +138,7 @@ class SSHClient:
         argv: Sequence[str],
         *,
         capture: bool,
-        timeout: Optional[int],
+        timeout: int | None,
     ) -> SSHResult:
         """
         Execute a local ssh/scp/rsync command. Never raises on rc!=0.
@@ -155,7 +155,7 @@ class SSHClient:
             seconds=dt,
         )
 
-    def _looks_transient_ssh(self, res: Optional[SSHResult], exc: Optional[BaseException]) -> bool:
+    def _looks_transient_ssh(self, res: SSHResult | None, exc: BaseException | None) -> bool:
         """
         Decide whether to retry.
 
@@ -204,7 +204,7 @@ class SSHClient:
         cmd: str,
         *,
         capture: bool = True,
-        timeout: Optional[int] = None,
+        timeout: int | None = None,
         check: bool = True,
     ) -> SSHResult:
         """
@@ -220,8 +220,8 @@ class SSHClient:
         argv = ["ssh"] + self._ssh_args() + [self._target(), remote]
 
         attempts = 1 + self._retries
-        last_res: Optional[SSHResult] = None
-        last_exc: Optional[BaseException] = None
+        last_res: SSHResult | None = None
+        last_exc: BaseException | None = None
 
         for attempt in range(1, attempts + 1):
             try:
@@ -261,7 +261,7 @@ class SSHClient:
             return last_res
         raise RuntimeError("ssh failed with no result and no exception (unexpected)")
 
-    def ssh(self, cmd: str, *, capture: bool = True, timeout: Optional[int] = None) -> str:
+    def ssh(self, cmd: str, *, capture: bool = True, timeout: int | None = None) -> str:
         """Backwards-compatible: returns stdout string, raises on failure."""
         res = self.run(cmd, capture=capture, timeout=timeout, check=True)
         return res.stdout.strip()

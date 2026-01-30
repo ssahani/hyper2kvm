@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/transports/http_progress.py
 """
 Progress reporter implementations for HTTP downloads.
@@ -20,7 +19,8 @@ from typing import Any, Optional
 
 # Import from sibling module
 from ...core.utils import U
-from ..utils.utils import is_tty as _is_tty, create_console as _console
+from ..utils.utils import create_console as _console
+from ..utils.utils import is_tty as _is_tty
 
 # Optional: Rich UI
 try:
@@ -75,7 +75,7 @@ class ProgressReporter(ABC):
     """Abstract base class for progress reporters."""
 
     @abstractmethod
-    def start(self, description: str, total: Optional[int] = None) -> None:
+    def start(self, description: str, total: int | None = None) -> None:
         """Start progress tracking."""
         ...
 
@@ -96,10 +96,10 @@ class RichProgressReporter(ProgressReporter):
     def __init__(self, console: Any, refresh_hz: float = 10.0):
         self.console = console
         self.refresh_hz = refresh_hz
-        self.progress: Optional[Any] = None
-        self.task_id: Optional[int] = None
+        self.progress: Any | None = None
+        self.task_id: int | None = None
 
-    def start(self, description: str, total: Optional[int] = None) -> None:
+    def start(self, description: str, total: int | None = None) -> None:
         # Build columns with version-safe constructors
         spinner = _rich_construct(SpinnerColumn, style="bright_green")
         desc = _rich_construct(TextColumn, "[progress.description]{task.description}", style="bold cyan")
@@ -150,9 +150,9 @@ class SimpleProgressReporter(ProgressReporter):
     def __init__(self, file_name: str):
         self.file_name = file_name
         self.downloaded = 0
-        self.total: Optional[int] = None
+        self.total: int | None = None
 
-    def start(self, description: str, total: Optional[int] = None) -> None:
+    def start(self, description: str, total: int | None = None) -> None:
         self.total = total
         self._update_display()
 
@@ -181,11 +181,11 @@ class LoggingProgressReporter(ProgressReporter):
         self.logger = logger
         self.log_every_bytes = log_every_bytes
         self.downloaded = 0
-        self.total: Optional[int] = None
+        self.total: int | None = None
         self.last_log_mark = 0
         self.description = ""
 
-    def start(self, description: str, total: Optional[int] = None) -> None:
+    def start(self, description: str, total: int | None = None) -> None:
         self.description = description
         self.total = total
         self.logger.info("Starting download: %s", description)
@@ -222,7 +222,7 @@ class LoggingProgressReporter(ProgressReporter):
 class NoopProgressReporter(ProgressReporter):
     """No-op progress reporter (silent)."""
 
-    def start(self, description: str, total: Optional[int] = None) -> None:
+    def start(self, description: str, total: int | None = None) -> None:
         pass
 
     def update(self, delta: int) -> None:

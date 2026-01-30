@@ -40,7 +40,7 @@ class OfflineValidationManager:
         self.logger = logger
 
     @staticmethod
-    def normalize_validation_results(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    def normalize_validation_results(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """
         Normalize validation results to consistent format.
 
@@ -50,7 +50,7 @@ class OfflineValidationManager:
         Returns:
             Normalized dict with format: {check_name: {passed, critical, details}}
         """
-        norm: Dict[str, Dict[str, Any]] = {}
+        norm: dict[str, dict[str, Any]] = {}
 
         for name, v in (raw or {}).items():
             if isinstance(v, dict):
@@ -72,7 +72,7 @@ class OfflineValidationManager:
         return norm
 
     @staticmethod
-    def summarize_validation(norm: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    def summarize_validation(norm: dict[str, dict[str, Any]]) -> dict[str, Any]:
         """
         Summarize normalized validation results.
 
@@ -95,7 +95,7 @@ class OfflineValidationManager:
             "ok": failed == 0,
         }
 
-    def analyze_disk_space(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def analyze_disk_space(self, g: guestfs.GuestFS) -> dict[str, Any]:
         """
         Analyze root filesystem disk space usage.
 

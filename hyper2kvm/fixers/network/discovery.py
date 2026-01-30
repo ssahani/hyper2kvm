@@ -84,7 +84,7 @@ class NetworkDiscovery:
 
     # Safe file I/O operations
 
-    def _get_mode_safe(self, g: guestfs.GuestFS, path: str) -> Optional[int]:
+    def _get_mode_safe(self, g: guestfs.GuestFS, path: str) -> int | None:
         """
         Get file mode (permissions) safely.
 
@@ -143,7 +143,7 @@ class NetworkDiscovery:
         path: str,
         content: str,
         *,
-        prefer_mode: Optional[int] = None,
+        prefer_mode: int | None = None,
     ) -> None:
         """
         Write file content while preserving mode.
@@ -220,7 +220,7 @@ class NetworkDiscovery:
         path: str,
         content: str,
         *,
-        suffix: Optional[str] = None,
+        suffix: str | None = None,
     ) -> str:
         """
         Create backup of file before modifying.
@@ -274,7 +274,7 @@ class NetworkDiscovery:
 
     # Configuration file discovery
 
-    def read_config_file(self, g: guestfs.GuestFS, path: str) -> Optional[NetworkConfig]:
+    def read_config_file(self, g: guestfs.GuestFS, path: str) -> NetworkConfig | None:
         """
         Read and parse network configuration file.
 
@@ -302,7 +302,7 @@ class NetworkDiscovery:
             self.logger.error("Failed to read config file %s: %s", path, e)
             return None
 
-    def find_network_configs(self, g: guestfs.GuestFS) -> List[NetworkConfig]:
+    def find_network_configs(self, g: guestfs.GuestFS) -> list[NetworkConfig]:
         """
         Find all network configuration files on guest filesystem.
 
@@ -312,8 +312,8 @@ class NetworkDiscovery:
         Returns:
             List of NetworkConfig objects
         """
-        configs: List[NetworkConfig] = []
-        seen: Set[str] = set()
+        configs: list[NetworkConfig] = []
+        seen: set[str] = set()
 
         # Search using known patterns for each config type
         for _config_type, patterns in CONFIG_PATTERNS.items():

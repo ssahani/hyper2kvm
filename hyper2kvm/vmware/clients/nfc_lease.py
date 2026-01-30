@@ -33,7 +33,9 @@ Docs/refs:
 
 from __future__ import annotations
 
+import logging
 import os
+import random
 import re
 import shlex
 import shutil
@@ -41,11 +43,10 @@ import signal
 import subprocess
 import tempfile
 import time
-import random
-import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Callable
+from typing import Dict, List, Optional, Tuple
 
 
 class NFCLeaseError(RuntimeError):
@@ -69,27 +70,27 @@ class GovcSessionSpec:
     You can supply either explicit fields below, or rely on existing GOVC_* env
     already exported in the process environment.
     """
-    url: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
+    url: str | None = None
+    username: str | None = None
+    password: str | None = None
 
     # govc -k / GOVC_INSECURE
-    insecure: Optional[bool] = None
+    insecure: bool | None = None
 
     # Optional extras
-    ca_certs: Optional[str] = None           # GOVC_TLS_CA_CERTS
-    thumbprint: Optional[str] = None         # GOVC_THUMBPRINT
-    token: Optional[str] = None              # GOVC_TOKEN (if you use it)
-    debug: Optional[bool] = None             # GOVC_DEBUG (very noisy)
-    persist_session: Optional[bool] = None   # GOVC_PERSIST_SESSION
+    ca_certs: str | None = None           # GOVC_TLS_CA_CERTS
+    thumbprint: str | None = None         # GOVC_THUMBPRINT
+    token: str | None = None              # GOVC_TOKEN (if you use it)
+    debug: bool | None = None             # GOVC_DEBUG (very noisy)
+    persist_session: bool | None = None   # GOVC_PERSIST_SESSION
 
     # Optional inventory context
-    datacenter: Optional[str] = None         # GOVC_DATACENTER
-    datastore: Optional[str] = None          # GOVC_DATASTORE
-    folder: Optional[str] = None             # GOVC_FOLDER
-    resource_pool: Optional[str] = None      # GOVC_RESOURCE_POOL
-    host: Optional[str] = None               # GOVC_HOST
-    cluster: Optional[str] = None            # GOVC_CLUSTER
+    datacenter: str | None = None         # GOVC_DATACENTER
+    datastore: str | None = None          # GOVC_DATASTORE
+    folder: str | None = None             # GOVC_FOLDER
+    resource_pool: str | None = None      # GOVC_RESOURCE_POOL
+    host: str | None = None               # GOVC_HOST
+    cluster: str | None = None            # GOVC_CLUSTER
 
 
 @dataclass(frozen=True)
@@ -105,15 +106,15 @@ class GovcExportSpec:
 
     # export options
     export_ova: bool = False  # if True, uses `govc export.ova`; else `govc export.ovf`
-    name: Optional[str] = None  # optional target base name under out_dir (see OVA note below)
+    name: str | None = None  # optional target base name under out_dir (see OVA note below)
 
     # Pass-through flags (used only if set)
-    dc: Optional[str] = None
-    ds: Optional[str] = None
-    folder: Optional[str] = None
-    pool: Optional[str] = None
-    host: Optional[str] = None
-    cluster: Optional[str] = None
+    dc: str | None = None
+    ds: str | None = None
+    folder: str | None = None
+    pool: str | None = None
+    host: str | None = None
+    cluster: str | None = None
 
     # govc binary path (default: resolve from PATH)
     govc_bin: str = "govc"
@@ -125,14 +126,14 @@ class GovcExportSpec:
 
 # Helpers
 
-def _env_apply(session: GovcSessionSpec, base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+def _env_apply(session: GovcSessionSpec, base: dict[str, str] | None = None) -> dict[str, str]:
     env = dict(base or os.environ)
 
-    def set_if(k: str, v: Optional[str]) -> None:
+    def set_if(k: str, v: str | None) -> None:
         if v is not None:
             env[k] = v
 
-    def set_bool(k: str, v: Optional[bool]) -> None:
+    def set_bool(k: str, v: bool | None) -> None:
         if v is not None:
             env[k] = "1" if v else "0"
 
@@ -182,7 +183,7 @@ def _best_effort_publish_dir(tmp_dir: Path, final_dir: Path) -> None:
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def _parse_govc_progress(line: str) -> Optional[Tuple[int, int, float]]:
+def _parse_govc_progress(line: str) -> tuple[int, int, float] | None:
     """
     Best-effort parsing of govc progress output.
     govc output formats vary by command/version; we keep it permissive.
@@ -239,10 +240,10 @@ class GovcNfcExporter:
         spec: GovcExportSpec,
         *,
         resume: bool = True,
-        progress: Optional[ProgressFn] = None,
+        progress: ProgressFn | None = None,
         progress_interval_s: float = 0.5,
-        cancel: Optional[CancelFn] = None,
-        heartbeat: Optional[LeaseHeartbeatFn] = None,  # accepted for signature compatibility; ignored
+        cancel: CancelFn | None = None,
+        heartbeat: LeaseHeartbeatFn | None = None,  # accepted for signature compatibility; ignored
         max_retries: int = 5,
         base_backoff_s: float = 1.0,
         max_backoff_s: float = 20.0,
@@ -290,7 +291,7 @@ class GovcNfcExporter:
                     return final_path
 
         # Build base command (NFC export path)
-        cmd: List[str] = [spec.govc_bin]
+        cmd: list[str] = [spec.govc_bin]
         if spec.export_ova:
             cmd += ["export.ova", "-vm", spec.vm]
         else:
@@ -410,7 +411,7 @@ class GovcNfcExporter:
         except Exception:
             return
 
-    def _preflight(self, *, env: Dict[str, str], govc_bin: str, vm: str, do_vm_info: bool) -> None:
+    def _preflight(self, *, env: dict[str, str], govc_bin: str, vm: str, do_vm_info: bool) -> None:
         """
         Fail fast if govc can't talk to vCenter or VM isn't resolvable.
         This avoids spending minutes exporting before discovering auth/env issues.
@@ -427,7 +428,7 @@ class GovcNfcExporter:
             except Exception as e:
                 raise NFCLeaseError(f"govc preflight failed (vm.info -vm {vm!r}): {e}") from e
 
-    def _run_quick(self, cmd: List[str], *, env: Dict[str, str]) -> None:
+    def _run_quick(self, cmd: list[str], *, env: dict[str, str]) -> None:
         p = subprocess.run(
             cmd,
             env=env,
@@ -483,13 +484,13 @@ class GovcNfcExporter:
 
     def _run_govc(
         self,
-        cmd: List[str],
+        cmd: list[str],
         *,
-        env: Dict[str, str],
-        cancel: Optional[CancelFn],
-        progress: Optional[ProgressFn],
+        env: dict[str, str],
+        cancel: CancelFn | None,
+        progress: ProgressFn | None,
         progress_interval_s: float,
-        last_cb_holder: List[float],
+        last_cb_holder: list[float],
     ) -> None:
         p = subprocess.Popen(
             cmd,
@@ -541,15 +542,15 @@ def export_with_govc(
     out_dir: Path,
     *,
     export_ova: bool = False,
-    name: Optional[str] = None,
+    name: str | None = None,
     preflight: bool = True,
     preflight_vm_info: bool = True,
     # Compat knobs
     resume: bool = True,
-    progress: Optional[ProgressFn] = None,
+    progress: ProgressFn | None = None,
     progress_interval_s: float = 0.5,
-    cancel: Optional[CancelFn] = None,
-    heartbeat: Optional[LeaseHeartbeatFn] = None,  # ignored
+    cancel: CancelFn | None = None,
+    heartbeat: LeaseHeartbeatFn | None = None,  # ignored
     max_retries: int = 5,
 ) -> Path:
     spec = GovcExportSpec(

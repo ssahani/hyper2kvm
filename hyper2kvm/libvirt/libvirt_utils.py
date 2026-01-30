@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/libvirt/libvirt_utils.py
 """Shared libvirt utility functions
 
@@ -9,7 +8,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._+-]+")
 _DEFAULT_IMAGES_DIR = Path("/var/lib/libvirt/images")

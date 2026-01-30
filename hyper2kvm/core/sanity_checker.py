@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/sanity_checker.py
 from __future__ import annotations
 
@@ -10,10 +9,11 @@ import shutil
 import socket
 import sys
 import tempfile
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from rich.progress import (
     BarColumn,
@@ -61,14 +61,14 @@ class SanityIssue:
 
 @dataclass
 class SanityReport:
-    missing_required: List[str] = field(default_factory=list)
-    missing_optional: List[str] = field(default_factory=list)
+    missing_required: list[str] = field(default_factory=list)
+    missing_optional: list[str] = field(default_factory=list)
 
-    errors: List[SanityIssue] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    notes: Dict[str, str] = field(default_factory=dict)
+    errors: list[SanityIssue] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    notes: dict[str, str] = field(default_factory=dict)
 
-    checks_ran: List[str] = field(default_factory=list)
+    checks_ran: list[str] = field(default_factory=list)
 
     def ok(self) -> bool:
         return not self.missing_required and not self.errors
@@ -102,7 +102,7 @@ class SanityReport:
 
         return int(ExitCode.INTERNAL)
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         """
         Machine-friendly representation (JSON-serializable).
         """
@@ -218,7 +218,7 @@ class SanityChecker:
 
         return False
 
-    def _same_filesystem(self, a: Path, b: Path) -> Optional[bool]:
+    def _same_filesystem(self, a: Path, b: Path) -> bool | None:
         """
         True if a and b are on the same filesystem (st_dev).
         Returns None if we cannot determine.
@@ -261,10 +261,10 @@ class SanityChecker:
         mode = self._args_mode()
 
         # Always required
-        required_tools: List[str] = ["qemu-img"]
+        required_tools: list[str] = ["qemu-img"]
 
         # Optional baseline
-        optional_tools: List[str] = ["sgdisk"]
+        optional_tools: list[str] = ["sgdisk"]
 
         fetch_like = mode in ("fetch", "fetch-and-fix", "remote")
         if fetch_like:
@@ -335,7 +335,7 @@ class SanityChecker:
             if v:
                 yield Path(v)
 
-    def _dir_size_bytes(self, root: Path, max_files: int = 20000) -> Tuple[Optional[int], Optional[str]]:
+    def _dir_size_bytes(self, root: Path, max_files: int = 20000) -> tuple[int | None, str | None]:
         """
         Best-effort directory sizing (bounded).
         Returns (size_bytes, note). If too large/unknown, returns (None, note).
@@ -357,9 +357,9 @@ class SanityChecker:
         except Exception as e:
             return None, f"directory size failed: {e!s}"
 
-    def _sum_existing_sizes(self, paths: Sequence[Path]) -> Tuple[int, bool, List[str]]:
+    def _sum_existing_sizes(self, paths: Sequence[Path]) -> tuple[int, bool, list[str]]:
         total = 0
-        missing: List[str] = []
+        missing: list[str] = []
         unknown = False
 
         for p in paths:
@@ -531,7 +531,7 @@ class SanityChecker:
 
     # orchestration
 
-    def _run_checks(self, checks: Sequence[Tuple[str, callable]]) -> None:
+    def _run_checks(self, checks: Sequence[tuple[str, callable]]) -> None:
         if self._is_tty():
             with Progress(
                 TextColumn("{task.description}"),
@@ -573,7 +573,7 @@ class SanityChecker:
             self.logger.debug("Sanity notes: %s", self.report.notes)
 
     def check_all(self) -> SanityReport:
-        checks: List[Tuple[str, callable]] = [
+        checks: list[tuple[str, callable]] = [
             ("args", self.check_args),
             ("tools", self.check_tools),
             ("disk space", self.check_disk_space),

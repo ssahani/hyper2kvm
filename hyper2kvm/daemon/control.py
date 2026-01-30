@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/daemon/control.py
 """
 Control interface for daemon mode.
@@ -12,8 +11,9 @@ import json
 import logging
 import socket
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable
+from typing import Any, Dict, Optional
 
 
 class DaemonControl:
@@ -30,7 +30,7 @@ class DaemonControl:
     """
 
     def __init__(self, logger: logging.Logger, socket_path: Path,
-                 get_stats_callback: Callable[[], Dict[str, Any]],
+                 get_stats_callback: Callable[[], dict[str, Any]],
                  pause_callback: Callable[[], None],
                  resume_callback: Callable[[], None],
                  stop_callback: Callable[[], None]):
@@ -41,9 +41,9 @@ class DaemonControl:
         self.resume_callback = resume_callback
         self.stop_callback = stop_callback
 
-        self.socket: Optional[socket.socket] = None
+        self.socket: socket.socket | None = None
         self.running = False
-        self.thread: Optional[threading.Thread] = None
+        self.thread: threading.Thread | None = None
 
         self.paused = False
         self.draining = False
@@ -92,7 +92,7 @@ class DaemonControl:
             try:
                 try:
                     conn, _ = self.socket.accept()
-                except socket.timeout:
+                except TimeoutError:
                     continue
 
                 with conn:
@@ -115,7 +115,7 @@ class DaemonControl:
             except Exception as e:
                 self.logger.error(f"Control socket error: {e}")
 
-    def _handle_command(self, command: str, request: Dict) -> Dict:
+    def _handle_command(self, command: str, request: dict) -> dict:
         """Handle control command."""
         try:
             if command == 'status':
@@ -177,7 +177,7 @@ class DaemonControlClient:
     def __init__(self, socket_path: Path):
         self.socket_path = socket_path
 
-    def send_command(self, command: str, timeout: float = 5.0) -> Dict:
+    def send_command(self, command: str, timeout: float = 5.0) -> dict:
         """Send command to daemon."""
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
@@ -195,7 +195,7 @@ class DaemonControlClient:
                 'status': 'error',
                 'message': f'Daemon not running (socket not found: {self.socket_path})'
             }
-        except socket.timeout:
+        except TimeoutError:
             return {
                 'status': 'error',
                 'message': 'Command timeout'

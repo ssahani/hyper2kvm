@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/logging_utils.py
 """
 Shared logging utilities for hyper2kvm.
@@ -10,8 +9,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 
 def safe_logger(instance: Any, default_name: str = "hyper2kvm") -> logging.Logger:

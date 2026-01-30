@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/validation_suite.py
 from __future__ import annotations
 
@@ -9,15 +8,15 @@ import os
 import pickle
 import time
 import traceback
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, Tuple
-
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 # Types
 
-CheckFunc = Callable[[Dict[str, Any]], Any]
-SkipIfFunc = Callable[[Dict[str, Any]], bool]
-ContextSanitizer = Callable[[Dict[str, Any]], Dict[str, Any]]
+CheckFunc = Callable[[dict[str, Any]], Any]
+SkipIfFunc = Callable[[dict[str, Any]], bool]
+ContextSanitizer = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 class SupportsRichConsole(Protocol):
@@ -45,7 +44,7 @@ class ExitCodes:
     INVALID = 4
 
     @staticmethod
-    def from_payload(payload: Dict[str, Any]) -> int:
+    def from_payload(payload: dict[str, Any]) -> int:
         if not isinstance(payload, dict):
             return ExitCodes.INTERNAL
         stats = payload.get("stats") or {}
@@ -95,14 +94,14 @@ class CheckSpec:
 
     # semantics
     critical: bool = False
-    description: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
+    description: str | None = None
+    tags: list[str] = field(default_factory=list)
 
     # execution controls
-    timeout_s: Optional[float] = None          # hard in subprocess, soft in-process
+    timeout_s: float | None = None          # hard in subprocess, soft in-process
     run_in_process: bool = False               # prefer subprocess
-    skip_if: Optional[SkipIfFunc] = None       # extra skip predicate
-    depends_on: List[str] = field(default_factory=list)
+    skip_if: SkipIfFunc | None = None       # extra skip predicate
+    depends_on: list[str] = field(default_factory=list)
 
     # reliability controls
     retries: int = 0
@@ -120,7 +119,7 @@ class CheckSpec:
     max_result_repr_len: int = 20000
 
     # redaction
-    redact_keys: List[str] = field(default_factory=list)  # extra per-check redact keys
+    redact_keys: list[str] = field(default_factory=list)  # extra per-check redact keys
 
 
 @dataclass
@@ -132,14 +131,14 @@ class CheckResult:
 
     # payload
     result: Any = None
-    error: Optional[str] = None
-    traceback: Optional[str] = None
+    error: str | None = None
+    traceback: str | None = None
 
     # meta
     skipped: bool = False
-    skip_reason: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
-    description: Optional[str] = None
+    skip_reason: str | None = None
+    tags: list[str] = field(default_factory=list)
+    description: str | None = None
     timed_out: bool = False
     terminated: bool = False
     mode: str = "inprocess"  # "inprocess" | "subprocess" | "parallel" | "skipped"
@@ -159,14 +158,14 @@ def _is_sequence(x: Any) -> bool:
     return isinstance(x, (list, tuple))
 
 
-def _redact_in_obj(obj: Any, redact_tokens: "set[str]") -> Any:
+def _redact_in_obj(obj: Any, redact_tokens: set[str]) -> Any:
     """
     Best-effort recursive redaction.
     Redacts if any token appears as a substring in the key (case-insensitive).
     """
     try:
         if _is_mapping(obj):
-            out: Dict[Any, Any] = {}
+            out: dict[Any, Any] = {}
             for k, v in obj.items():
                 key_s = str(k).lower()
                 if any(tok in key_s for tok in redact_tokens):
@@ -189,7 +188,7 @@ def _shrink_obj(
     max_list_items: int,
     max_dict_items: int,
     max_string_len: int,
-) -> Tuple[Any, bool]:
+) -> tuple[Any, bool]:
     """
     Structured shrink: preserves shape where possible.
     Returns (shrunk_obj, truncated_flag).
@@ -210,7 +209,7 @@ def _shrink_obj(
             return obj, False
 
         if _is_mapping(obj):
-            out: Dict[Any, Any] = {}
+            out: dict[Any, Any] = {}
             items = list(obj.items())
             if len(items) > max_dict_items:
                 truncated = True
@@ -236,7 +235,7 @@ def _shrink_obj(
             if len(seq) > max_list_items:
                 truncated = True
                 seq = seq[:max_list_items]
-            out_list: List[Any] = []
+            out_list: list[Any] = []
             for v in seq:
                 vv, tt = _shrink_obj(
                     v,
@@ -265,7 +264,7 @@ def _shrink_obj(
             return {"_truncated": True, "_repr": "<unreprable>"}, True
 
 
-def _cap_repr(obj: Any, max_repr_len: int) -> Tuple[Any, bool]:
+def _cap_repr(obj: Any, max_repr_len: int) -> tuple[Any, bool]:
     """
     Final safeguard: cap repr if needed.
     """
@@ -292,7 +291,7 @@ def _sleep_with_backoff(base_delay: float, backoff: float, attempt_idx: int) -> 
 
 # Multiprocessing child plumbing (top-level for spawn)
 
-def _child_run_check(func: CheckFunc, context: Dict[str, Any], conn: Any) -> None:
+def _child_run_check(func: CheckFunc, context: dict[str, Any], conn: Any) -> None:
     """
     Child process entry: run func(context), send ("ok", result) or ("err", (err, tb)).
     One-shot Pipe.
@@ -310,7 +309,7 @@ def _child_run_check(func: CheckFunc, context: Dict[str, Any], conn: Any) -> Non
             pass
 
 
-def _exitcode_hint(exitcode: Optional[int]) -> str:
+def _exitcode_hint(exitcode: int | None) -> str:
     if exitcode is None:
         return "exitcode=None"
     if exitcode < 0:
@@ -318,7 +317,7 @@ def _exitcode_hint(exitcode: Optional[int]) -> str:
     return f"exitcode={exitcode}"
 
 
-def _can_pickle(obj: Any) -> Tuple[bool, Optional[str]]:
+def _can_pickle(obj: Any) -> tuple[bool, str | None]:
     try:
         pickle.dumps(obj)
         return True, None
@@ -354,14 +353,14 @@ class ValidationSuite:
         self,
         logger: logging.Logger,
         *,
-        console: Optional[SupportsRichConsole] = None,
+        console: SupportsRichConsole | None = None,
         default_use_processes: bool = False,
         mp_start_method: str = "spawn",
-        context_sanitizer: Optional[ContextSanitizer] = None,
+        context_sanitizer: ContextSanitizer | None = None,
     ):
         self.logger = logger
         self.console = console
-        self.checks: List[CheckSpec] = []
+        self.checks: list[CheckSpec] = []
         self.default_use_processes = bool(default_use_processes)
         self.mp_start_method = mp_start_method
         self.context_sanitizer = context_sanitizer
@@ -373,12 +372,12 @@ class ValidationSuite:
         check_func: CheckFunc,
         critical: bool = False,
         *,
-        description: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        timeout_s: Optional[float] = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        timeout_s: float | None = None,
         run_in_process: bool = False,
-        skip_if: Optional[SkipIfFunc] = None,
-        depends_on: Optional[List[str]] = None,
+        skip_if: SkipIfFunc | None = None,
+        depends_on: list[str] | None = None,
         retries: int = 0,
         retry_delay_s: float = 0.0,
         retry_backoff: float = 1.0,
@@ -388,7 +387,7 @@ class ValidationSuite:
         max_dict_items: int = 50,
         max_string_len: int = 4000,
         max_result_repr_len: int = 20000,
-        redact_keys: Optional[List[str]] = None,
+        redact_keys: list[str] | None = None,
     ) -> None:
         self.checks.append(
             CheckSpec(
@@ -416,7 +415,7 @@ class ValidationSuite:
 
     # Skip + dependency logic
 
-    def _should_skip(self, spec: CheckSpec, context: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    def _should_skip(self, spec: CheckSpec, context: dict[str, Any]) -> tuple[bool, str | None]:
         # Supported skip mechanisms:
         #   context["skip_checks"] = {"name1", "name2"}
         #   context["skip_tags"]   = {"network", "slow"}
@@ -436,7 +435,7 @@ class ValidationSuite:
                 self.logger.debug("skip_if predicate errored for %s: %s", spec.name, e)
         return False, None
 
-    def _dependency_ok(self, spec: CheckSpec, results_json: Dict[str, Dict[str, Any]]) -> Tuple[bool, Optional[str]]:
+    def _dependency_ok(self, spec: CheckSpec, results_json: dict[str, dict[str, Any]]) -> tuple[bool, str | None]:
         if not spec.depends_on:
             return True, None
         for dep in spec.depends_on:
@@ -451,10 +450,10 @@ class ValidationSuite:
 
     # Context narrowing/sanitization + redaction keys
 
-    def _sanitize_context_for_child(self, context: Dict[str, Any], *, allow_keys: Optional[Sequence[str]]) -> Dict[str, Any]:
+    def _sanitize_context_for_child(self, context: dict[str, Any], *, allow_keys: Sequence[str] | None) -> dict[str, Any]:
         ctx = context
         if allow_keys:
-            out: Dict[str, Any] = {}
+            out: dict[str, Any] = {}
             for k in allow_keys:
                 if k in ctx:
                     out[k] = ctx[k]
@@ -468,7 +467,7 @@ class ValidationSuite:
 
         return ctx
 
-    def _effective_redact_tokens(self, spec: CheckSpec, context: Dict[str, Any]) -> "set[str]":
+    def _effective_redact_tokens(self, spec: CheckSpec, context: dict[str, Any]) -> set[str]:
         base = set(str(k).lower() for k in (context.get("redact_keys", []) or []))
         extra = set(str(k).lower() for k in (spec.redact_keys or []))
         # sensible defaults
@@ -488,7 +487,7 @@ class ValidationSuite:
 
     # Result post-processing
 
-    def _postprocess_result(self, spec: CheckSpec, context: Dict[str, Any], r: CheckResult) -> CheckResult:
+    def _postprocess_result(self, spec: CheckSpec, context: dict[str, Any], r: CheckResult) -> CheckResult:
         if r.skipped or (not r.passed):
             return r
 
@@ -511,7 +510,7 @@ class ValidationSuite:
 
     # Execution: in-process (soft timeout) + subprocess (hard timeout)
 
-    def _run_check_inprocess_once(self, spec: CheckSpec, context: Dict[str, Any], *, show_tracebacks: bool) -> CheckResult:
+    def _run_check_inprocess_once(self, spec: CheckSpec, context: dict[str, Any], *, show_tracebacks: bool) -> CheckResult:
         t0 = time.monotonic()
         try:
             out = spec.func(context)
@@ -558,11 +557,11 @@ class ValidationSuite:
     def _run_check_subprocess_once(
         self,
         spec: CheckSpec,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         *,
         show_tracebacks: bool,
         strict_process_checks: bool,
-        allow_context_keys: Optional[Sequence[str]],
+        allow_context_keys: Sequence[str] | None,
         mode_override: str = "subprocess",
     ) -> CheckResult:
         t0 = time.monotonic()
@@ -645,8 +644,8 @@ class ValidationSuite:
             )
 
         # not timed out => read result
-        err_s: Optional[str] = None
-        tb_s: Optional[str] = None
+        err_s: str | None = None
+        tb_s: str | None = None
         result: Any = None
         passed = False
 
@@ -697,7 +696,7 @@ class ValidationSuite:
         max_attempts = 1 + max(0, int(spec.retries or 0))
         allow_retry = (not spec.critical) or bool(spec.retry_critical)
 
-        last: Optional[CheckResult] = None
+        last: CheckResult | None = None
         for i in range(max_attempts):
             attempts += 1
             r = exec_once()
@@ -723,15 +722,15 @@ class ValidationSuite:
 
     def _run_parallel_checks(
         self,
-        specs: List[CheckSpec],
-        context: Dict[str, Any],
+        specs: list[CheckSpec],
+        context: dict[str, Any],
         *,
         show_tracebacks: bool,
         strict_process_checks: bool,
-        allow_context_keys: Optional[Sequence[str]],
+        allow_context_keys: Sequence[str] | None,
         max_workers: int,
         use_hard_timeout: bool,
-    ) -> Dict[str, CheckResult]:
+    ) -> dict[str, CheckResult]:
         """
         Run parallel-safe checks with bounded concurrency using processes directly.
         Hard timeouts enforced by killing the worker process.
@@ -753,13 +752,13 @@ class ValidationSuite:
             ctx = mp.get_context("spawn")
 
         # Task state
-        pending: List[Tuple[float, CheckSpec, int]] = []  # (ready_time, spec, attempt_index starting at 1)
+        pending: list[tuple[float, CheckSpec, int]] = []  # (ready_time, spec, attempt_index starting at 1)
         now = time.monotonic()
         for s in specs:
             pending.append((now, s, 1))
 
-        running: Dict[str, Dict[str, Any]] = {}
-        finished: Dict[str, CheckResult] = {}
+        running: dict[str, dict[str, Any]] = {}
+        finished: dict[str, CheckResult] = {}
 
         def start_one(spec: CheckSpec, attempt: int) -> None:
             # One process per check attempt; parent enforces timeout by termination.
@@ -830,7 +829,7 @@ class ValidationSuite:
                 start_one(spec, attempt)
 
             # poll running procs
-            done_names: List[str] = []
+            done_names: list[str] = []
             for name, st in list(running.items()):
                 spec: CheckSpec = st["spec"]
                 p: mp.Process = st["proc"]
@@ -892,8 +891,8 @@ class ValidationSuite:
                         pass
 
                     result: Any = None
-                    err_s: Optional[str] = None
-                    tb_s: Optional[str] = None
+                    err_s: str | None = None
+                    tb_s: str | None = None
                     passed = False
 
                     try:
@@ -958,8 +957,8 @@ class ValidationSuite:
     # JSON serialization + stats
 
     @staticmethod
-    def _result_to_json(r: CheckResult, *, show_tracebacks: bool) -> Dict[str, Any]:
-        d: Dict[str, Any] = {
+    def _result_to_json(r: CheckResult, *, show_tracebacks: bool) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "passed": bool(r.passed) and (not r.skipped),
             "critical": r.critical,
             "duration_s": round(r.duration_s, 3),
@@ -982,8 +981,8 @@ class ValidationSuite:
                 d["traceback"] = r.traceback
         return d
 
-    def _compute_tag_stats(self, results_json: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
-        out: Dict[str, Dict[str, int]] = {}
+    def _compute_tag_stats(self, results_json: dict[str, dict[str, Any]]) -> dict[str, dict[str, int]]:
+        out: dict[str, dict[str, int]] = {}
         for _, r in results_json.items():
             tags = r.get("tags") or []
             if not tags:
@@ -1001,8 +1000,8 @@ class ValidationSuite:
                         d["failed"] += 1
         return out
 
-    def _compute_slowest(self, results_json: Dict[str, Dict[str, Any]], top_n: int = 10) -> List[Dict[str, Any]]:
-        items: List[Tuple[str, float, str]] = []
+    def _compute_slowest(self, results_json: dict[str, dict[str, Any]], top_n: int = 10) -> list[dict[str, Any]]:
+        items: list[tuple[str, float, str]] = []
         for name, r in results_json.items():
             if bool(r.get("skipped", False)):
                 continue
@@ -1020,16 +1019,16 @@ class ValidationSuite:
 
     def run_all(
         self,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         *,
         stop_on_critical: bool = True,
         show_tracebacks: bool = False,
         log_summary: bool = True,
-        use_processes: Optional[bool] = None,
+        use_processes: bool | None = None,
         parallel: bool = False,
-        max_workers: Optional[int] = None,
+        max_workers: int | None = None,
         top_slowest: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Returns JSON-friendly payload:
           {
@@ -1090,7 +1089,7 @@ class ValidationSuite:
             self.logger.debug("ValidationSuite multiprocessing start method: %s", method)
             self._logged_mp_start_method = True
 
-        results_json: Dict[str, Dict[str, Any]] = {}
+        results_json: dict[str, dict[str, Any]] = {}
         failed_critical = False
         passed_count = 0
         failed_count = 0
@@ -1254,7 +1253,7 @@ class ValidationSuite:
         # Phase B: parallel-safe checks (spawn-safe scheduler)
         if parallel:
             # gather candidates still not done
-            candidates: List[CheckSpec] = []
+            candidates: list[CheckSpec] = []
             for spec in self.checks:
                 if already_done(spec.name):
                     continue
@@ -1384,7 +1383,7 @@ class ValidationSuite:
 
     # Logging
 
-    def _log_summary(self, payload: Dict[str, Any]) -> None:
+    def _log_summary(self, payload: dict[str, Any]) -> None:
         stats = payload.get("stats", {}) or {}
         self.logger.info(
             "Validation summary: total=%s passed=%s failed=%s skipped=%s duration=%.2fs ok=%s exit_code=%s",

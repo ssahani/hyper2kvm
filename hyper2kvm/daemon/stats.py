@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/daemon/stats.py
 """
 Statistics tracking for daemon mode.
@@ -12,7 +11,7 @@ import json
 import logging
 import threading
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -25,10 +24,10 @@ class JobStats:
     file_type: str
     file_size_mb: float
     start_time: str
-    end_time: Optional[str]
-    duration_seconds: Optional[float]
+    end_time: str | None
+    duration_seconds: float | None
     status: str  # 'processing', 'success', 'failed', 'retrying'
-    error: Optional[str] = None
+    error: str | None = None
     retry_count: int = 0
 
 
@@ -49,12 +48,12 @@ class DaemonStatistics:
         self.total_processed = 0
         self.total_failed = 0
         self.total_retried = 0
-        self.current_jobs: Dict[str, JobStats] = {}
-        self.completed_jobs: List[JobStats] = []
+        self.current_jobs: dict[str, JobStats] = {}
+        self.completed_jobs: list[JobStats] = []
 
         # Performance tracking
         self.total_processing_time = 0.0
-        self.by_file_type: Dict[str, Dict[str, int]] = {}
+        self.by_file_type: dict[str, dict[str, int]] = {}
 
         # Periodic save
         self._last_save = time.time()
@@ -69,7 +68,7 @@ class DaemonStatistics:
             return
 
         try:
-            with open(self.stats_file, 'r') as f:
+            with open(self.stats_file) as f:
                 data = json.load(f)
 
             self.total_processed = data.get('total_processed', 0)
@@ -97,7 +96,7 @@ class DaemonStatistics:
             self.current_jobs[filename] = job
             self.logger.debug(f"📊 Job started: {filename}")
 
-    def job_completed(self, filename: str, success: bool, error: Optional[str] = None) -> None:
+    def job_completed(self, filename: str, success: bool, error: str | None = None) -> None:
         """Record job completion."""
         with self.lock:
             if filename not in self.current_jobs:
@@ -153,7 +152,7 @@ class DaemonStatistics:
                 self.current_jobs[filename].retry_count += 1
                 self.current_jobs[filename].status = 'retrying'
 
-    def get_summary(self) -> Dict:
+    def get_summary(self) -> dict:
         """Get statistics summary."""
         with self.lock:
             uptime_seconds = (datetime.now() - self.start_time).total_seconds()
@@ -176,7 +175,7 @@ class DaemonStatistics:
                 'recent_completed': [asdict(job) for job in self.completed_jobs[-10:]],
             }
 
-    def _get_type_summary(self) -> Dict:
+    def _get_type_summary(self) -> dict:
         """Get summary by file type."""
         summary = {}
         for file_type, stats in self.by_file_type.items():

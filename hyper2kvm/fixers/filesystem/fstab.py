@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/fixers/filesystem/fstab.py
 from __future__ import annotations
 
@@ -7,8 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Tuple, TYPE_CHECKING
-
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 if TYPE_CHECKING:  # pragma: no cover
     import guestfs  # type: ignore
@@ -20,7 +18,7 @@ IGNORE_MOUNTPOINTS = {"/proc", "/sys", "/dev", "/run", "/dev/pts", "/dev/shm", "
 _LOG = logging.getLogger("hyper2kvm.fstab")
 
 
-def parse_btrfsvol_spec(spec: str) -> Tuple[str, Optional[str]]:
+def parse_btrfsvol_spec(spec: str) -> tuple[str, str | None]:
     """
     Parse libguestfs inspection btrfsvol: hints.
     Examples:
@@ -68,7 +66,7 @@ class Ident:
         return stable
 
     @staticmethod
-    def g_blkid_map(g: "guestfs.GuestFS", dev: str) -> Dict[str, str]:
+    def g_blkid_map(g: guestfs.GuestFS, dev: str) -> dict[str, str]:
         _LOG.debug("🔎 blkid: probing dev=%r", dev)
         try:
             d = g.blkid(dev)
@@ -81,7 +79,7 @@ class Ident:
             return {}
 
     @staticmethod
-    def choose_stable(blk: Dict[str, str]) -> Optional[str]:
+    def choose_stable(blk: dict[str, str]) -> str | None:
         # Order is intentional: preserve existing preference behavior.
         if blk.get("UUID"):
             chosen = f"UUID={blk['UUID']}"
@@ -103,7 +101,7 @@ class Ident:
         return None
 
     @staticmethod
-    def root_dev_base(root_dev: Optional[str]) -> Optional[str]:
+    def root_dev_base(root_dev: str | None) -> str | None:
         _LOG.debug("🧱 root_dev_base: input=%r", root_dev)
         if not root_dev:
             return None
@@ -124,7 +122,7 @@ class Ident:
         return None
 
     @staticmethod
-    def infer_partition_from_bypath(spec: str, root_dev: Optional[str]) -> Optional[str]:
+    def infer_partition_from_bypath(spec: str, root_dev: str | None) -> str | None:
         _LOG.debug("🧭 infer_partition_from_bypath: spec=%r root_dev=%r", spec, root_dev)
 
         if not root_dev or not spec.startswith(_BYPATH_PREFIX):

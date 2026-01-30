@@ -7,14 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# Optional: reuse your existing building blocks (present in your tree)
+from ..converters.fetch import Fetch
 from ..core.exceptions import Fatal
 from ..core.utils import U
 from ..ssh.ssh_client import SSHClient
 from ..ssh.ssh_config import SSHConfig
 from ..vmware.clients.client import PYVMOMI_AVAILABLE, REQUESTS_AVAILABLE
-
-# Optional: reuse your existing building blocks (present in your tree)
-from ..converters.fetch import Fetch
 from ..vmware.utils.vmdk_parser import VMDK
 
 
@@ -23,7 +22,7 @@ class Risk:
     severity: str  # "low"|"medium"|"high"
     code: str
     message: str
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 
 
 class InventoryMode:
@@ -77,7 +76,7 @@ class InventoryMode:
             p = Path(str(selector)).expanduser()
             source = "dir" if p.is_dir() else "local"
 
-        inv: Dict[str, Any] = {
+        inv: dict[str, Any] = {
             "mode": "inventory",
             "source": source,
             "output_dir": str(out_root),
@@ -86,9 +85,9 @@ class InventoryMode:
             "risks": [],
             "summary": {},
         }
-        artifacts: Dict[str, Any] = {"downloaded": [], "notes": []}
+        artifacts: dict[str, Any] = {"downloaded": [], "notes": []}
 
-        risks: List[Risk] = []
+        risks: list[Risk] = []
 
         if source in ("local", "dir"):
             items = self._scan_local(source=source, selector=selector)
@@ -132,7 +131,7 @@ class InventoryMode:
         self.logger.info(f"Artifacts written: {artifacts_out}")
         self.logger.info(f"Markdown written: {md_out}")
 
-    def _scan_local(self, source: str, selector: Optional[str]) -> List[Dict[str, Any]]:
+    def _scan_local(self, source: str, selector: str | None) -> list[dict[str, Any]]:
         p = Path(str(selector)).expanduser().resolve()
         if source == "local":
             if not p.exists():
@@ -148,7 +147,7 @@ class InventoryMode:
         follow = bool(getattr(self.args, "follow_symlinks", False))
         max_items = int(getattr(self.args, "max_items", 0) or 0)
 
-        paths: List[Path] = []
+        paths: list[Path] = []
         it = p.rglob("*") if recursive else p.glob("*")
         for x in it:
             try:
@@ -168,7 +167,7 @@ class InventoryMode:
 
         return [self._describe_path(x) for x in sorted(paths)]
 
-    def _scan_esxi(self, out_root: Path) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    def _scan_esxi(self, out_root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         host = getattr(self.args, "esxi_host", None)
         remote = getattr(self.args, "esxi_remote", None)
         if not host or not remote:
@@ -205,8 +204,8 @@ class InventoryMode:
         downloaded = [{"type": "vmdk_descriptor", "path": str(desc)}]
         return [item], downloaded
 
-    def _describe_path(self, p: Path) -> Dict[str, Any]:
-        d: Dict[str, Any] = {"path": str(p), "name": p.name, "type": self._classify(p)}
+    def _describe_path(self, p: Path) -> dict[str, Any]:
+        d: dict[str, Any] = {"path": str(p), "name": p.name, "type": self._classify(p)}
         try:
             st = p.stat()
             d["size_bytes"] = st.st_size
@@ -238,8 +237,8 @@ class InventoryMode:
             return "tarball"
         return "file"
 
-    def _risk_checks(self, items: List[Dict[str, Any]]) -> List[Risk]:
-        risks: List[Risk] = []
+    def _risk_checks(self, items: list[dict[str, Any]]) -> list[Risk]:
+        risks: list[Risk] = []
         for it in items:
             t = it.get("type")
             if t == "vmdk":
@@ -249,14 +248,14 @@ class InventoryMode:
                 risks.append(Risk("medium", "ARCHIVE_INPUT", f"Archive input requires extraction: {it.get('path')}"))
         return risks
 
-    def _summarize(self, items: List[Dict[str, Any]], risks: List[Risk]) -> Dict[str, Any]:
-        counts: Dict[str, int] = {}
+    def _summarize(self, items: list[dict[str, Any]], risks: list[Risk]) -> dict[str, Any]:
+        counts: dict[str, int] = {}
         total_size = 0
         for it in items:
             counts[it.get("type", "unknown")] = counts.get(it.get("type", "unknown"), 0) + 1
             total_size += int(it.get("size_bytes", 0) or 0)
 
-        sev_counts: Dict[str, int] = {"low": 0, "medium": 0, "high": 0}
+        sev_counts: dict[str, int] = {"low": 0, "medium": 0, "high": 0}
         for r in risks:
             sev_counts[r.severity] = sev_counts.get(r.severity, 0) + 1
 
@@ -268,8 +267,8 @@ class InventoryMode:
             "risks": sev_counts,
         }
 
-    def _to_markdown(self, inv: Dict[str, Any]) -> str:
-        lines: List[str] = []
+    def _to_markdown(self, inv: dict[str, Any]) -> str:
+        lines: list[str] = []
         lines.append("# hyper2kvm inventory\n")
         lines.append(f"- Source: `{inv.get('source')}`")
         lines.append(f"- Output dir: `{inv.get('output_dir')}`")
@@ -297,7 +296,7 @@ class InventoryMode:
         lines.append("")
         return "\n".join(lines)
 
-    def _maybe_fail(self, risks: List[Risk], fail_on: str) -> None:
+    def _maybe_fail(self, risks: list[Risk], fail_on: str) -> None:
         order = {"none": 999, "low": 0, "medium": 1, "high": 2}
         threshold = order.get(fail_on, 2)
         worst = -1
@@ -307,7 +306,7 @@ class InventoryMode:
             raise Fatal(3, f"inventory: failing due to risk severity >= {fail_on}")
 
     @staticmethod
-    def _normalize_ssh_opt(v) -> Optional[List[str]]:
+    def _normalize_ssh_opt(v) -> list[str] | None:
         if v is None:
             return None
         if isinstance(v, (list, tuple)):

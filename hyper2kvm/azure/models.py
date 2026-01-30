@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/azure/models.py
 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -18,9 +17,9 @@ class AzureDiskRef:
     location: str
     size_gb: int
     sku: str = ""
-    os_type: Optional[str] = None
+    os_type: str | None = None
     is_os_disk: bool = False
-    lun: Optional[int] = None
+    lun: int | None = None
 
 
 @dataclass(frozen=True)
@@ -30,19 +29,19 @@ class AzureVMRef:
     resource_group: str
     location: str
     power_state: str = "unknown"
-    os_type: Optional[str] = None
-    tags: Dict[str, str] = field(default_factory=dict)
-    disks: List[AzureDiskRef] = field(default_factory=list)
+    os_type: str | None = None
+    tags: dict[str, str] = field(default_factory=dict)
+    disks: list[AzureDiskRef] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class DiskArtifact:
     role: str           # "os"|"data"
-    lun: Optional[int]
+    lun: int | None
     src: str            # source disk id
     local_path: Path
     format: str         # "vhd"
-    guest_hint: Optional[str] = None
+    guest_hint: str | None = None
 
 
 @dataclass
@@ -52,20 +51,20 @@ class AzureExportItem:
     disk_id: str
     disk_name: str
     is_os: bool
-    lun: Optional[int] = None
+    lun: int | None = None
 
-    snapshot_id: Optional[str] = None
-    temp_disk_id: Optional[str] = None
+    snapshot_id: str | None = None
+    temp_disk_id: str | None = None
 
-    sas_hash10: Optional[str] = None
-    local_path: Optional[str] = None
+    sas_hash10: str | None = None
+    local_path: str | None = None
 
-    expected_bytes: Optional[int] = None
-    bytes_downloaded: Optional[int] = None
+    expected_bytes: int | None = None
+    bytes_downloaded: int | None = None
 
     ok: bool = False
-    warnings: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -74,46 +73,46 @@ class AzureVMReport:
     resource_group: str
     location: str
     power_state: str
-    os_type: Optional[str]
-    tags: Dict[str, str] = field(default_factory=dict)
-    disks: List[Dict[str, Any]] = field(default_factory=list)
-    exports: List[AzureExportItem] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    os_type: str | None
+    tags: dict[str, str] = field(default_factory=dict)
+    disks: list[dict[str, Any]] = field(default_factory=list)
+    exports: list[AzureExportItem] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
-    def to_jsonable(self) -> Dict[str, Any]:
+    def to_jsonable(self) -> dict[str, Any]:
         return asdict(self)
 
 
 @dataclass
 class AzureFetchReport:
-    subscription: Optional[str] = None
-    tenant: Optional[str] = None
+    subscription: str | None = None
+    tenant: str | None = None
     run_tag: str = ""
-    selection: Dict[str, Any] = field(default_factory=dict)
+    selection: dict[str, Any] = field(default_factory=dict)
 
-    vms: List[AzureVMReport] = field(default_factory=list)
+    vms: list[AzureVMReport] = field(default_factory=list)
 
-    created_resource_ids: List[str] = field(default_factory=list)
-    deleted_resource_ids: List[str] = field(default_factory=list)
+    created_resource_ids: list[str] = field(default_factory=list)
+    deleted_resource_ids: list[str] = field(default_factory=list)
 
-    warnings: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     def sas_hash10(self, sas_url: str) -> str:
         """Return first 10 chars of SHA256 hash for audit preview (not cryptographically secure)."""
         return hashlib.sha256(sas_url.encode("utf-8")).hexdigest()[:10]
 
-    def to_jsonable(self) -> Dict[str, Any]:
+    def to_jsonable(self) -> dict[str, Any]:
         return asdict(self)
 
 
 @dataclass
 class AzureSelectConfig:
-    resource_group: Optional[str] = None
-    vm_names: List[str] = field(default_factory=list)
-    tags: Dict[str, str] = field(default_factory=dict)
-    power_state: Optional[str] = None
+    resource_group: str | None = None
+    vm_names: list[str] = field(default_factory=list)
+    tags: dict[str, str] = field(default_factory=dict)
+    power_state: str | None = None
     list_only: bool = False
     allow_all_rgs: bool = False
 
@@ -133,7 +132,7 @@ class AzureExportConfig:
     keep_temp_disks: bool = False
     sas_duration_s: int = 3600
     tag_resources: bool = True
-    run_tag: Optional[str] = None
+    run_tag: str | None = None
     consistency: str = "crash_consistent"  # crash_consistent|best_effort_quiesce
     disks: str = "all"          # os|data|all
 
@@ -157,8 +156,8 @@ class AzureDownloadConfig:
 
 @dataclass
 class AzureConfig:
-    subscription: Optional[str] = None
-    tenant: Optional[str] = None
+    subscription: str | None = None
+    tenant: str | None = None
     select: AzureSelectConfig = field(default_factory=AzureSelectConfig)
     shutdown: AzureShutdownConfig = field(default_factory=AzureShutdownConfig)
     export: AzureExportConfig = field(default_factory=AzureExportConfig)

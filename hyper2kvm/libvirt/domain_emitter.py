@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/libvirt/domain_emitter.py
 from __future__ import annotations
 
@@ -8,11 +7,9 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
+from ..core.guest_identity import GuestDetector, GuestType, emit_guest_identity_log
 from ..core.logger import Log
 from ..core.utils import U
-
-from ..core.guest_identity import GuestDetector, GuestType, emit_guest_identity_log
-
 
 try:
     from .linux_domain import emit_linux_domain  # type: ignore
@@ -103,8 +100,8 @@ def emit_from_args(
     args: argparse.Namespace,
     *,
     out_root: Path,
-    out_images: List[Path],
-) -> Optional[Path]:
+    out_images: list[Path],
+) -> Path | None:
     """
     Policy: emit ONE domain (first image).
 

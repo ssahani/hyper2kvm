@@ -17,7 +17,6 @@ from ..core.utils import U
 from ..ssh.ssh_client import SSHClient
 from ..vmware.utils.vmdk_parser import VMDK
 
-
 # Path + naming helpers
 
 # allow subdirs; sanitize other chars
@@ -98,7 +97,7 @@ def _safe_local_rel_from_remote(remote_abs_or_norm: str) -> str:
 
 # SSH subprocess helpers (no threads)
 
-def _ssh_params_from_client(sshc: SSHClient) -> Tuple[str, str, int, Optional[Path], List[str]]:
+def _ssh_params_from_client(sshc: SSHClient) -> tuple[str, str, int, Path | None, list[str]]:
     """
     Extract connection info from SSHClient.
     Adjust this ONE function if your SSHClient differs.
@@ -124,12 +123,12 @@ def _build_ssh_base_args(
     host: str,
     user: str,
     port: int,
-    identity: Optional[Path],
-    ssh_opts: List[str],
+    identity: Path | None,
+    ssh_opts: list[str],
     *,
     hostkey_policy: str = "accept-new",  # "yes" | "accept-new" | "no"
-) -> List[str]:
-    args: List[str] = ["ssh", "-p", str(port)]
+) -> list[str]:
+    args: list[str] = ["ssh", "-p", str(port)]
     if identity:
         args += ["-i", str(identity)]
 
@@ -155,7 +154,7 @@ def _build_ssh_base_args(
     return args
 
 
-async def _run_capture(argv: List[str]) -> Tuple[int, str]:
+async def _run_capture(argv: list[str]) -> tuple[int, str]:
     proc = await asyncio.create_subprocess_exec(
         *argv,
         stdout=asyncio.subprocess.PIPE,
@@ -166,19 +165,19 @@ async def _run_capture(argv: List[str]) -> Tuple[int, str]:
     return rc, out_b.decode("utf-8", errors="replace")
 
 
-async def _ssh_check(logger: logging.Logger, ssh_base: List[str]) -> None:
+async def _ssh_check(logger: logging.Logger, ssh_base: list[str]) -> None:
     rc, out = await _run_capture(ssh_base + ["true"])
     if rc != 0:
         raise RuntimeError(f"SSH check failed (rc={rc}). Output:\n{out}")
 
 
-async def _ssh_exists(logger: logging.Logger, ssh_base: List[str], remote_path: str) -> bool:
+async def _ssh_exists(logger: logging.Logger, ssh_base: list[str], remote_path: str) -> bool:
     cmd = f"test -e {shlex.quote(remote_path)}"
     rc, _ = await _run_capture(ssh_base + ["sh", "-lc", cmd])
     return rc == 0
 
 
-async def _ssh_size_bytes_best_effort(logger: logging.Logger, ssh_base: List[str], remote_path: str) -> Optional[int]:
+async def _ssh_size_bytes_best_effort(logger: logging.Logger, ssh_base: list[str], remote_path: str) -> int | None:
     cmd = f"wc -c < {shlex.quote(remote_path)}"
     rc, out = await _run_capture(ssh_base + ["sh", "-lc", cmd])
     if rc != 0:
@@ -194,7 +193,7 @@ async def _ssh_size_bytes_best_effort(logger: logging.Logger, ssh_base: List[str
 
 async def _ssh_stream_fetch_with_progress(
     logger: logging.Logger,
-    ssh_base: List[str],
+    ssh_base: list[str],
     remote_path: str,
     local: Path,
     *,
@@ -308,7 +307,7 @@ class Fetch:
         outdir: Path,
         fetch_all: bool,
         *,
-        remote_sandbox_root: Optional[str] = None,
+        remote_sandbox_root: str | None = None,
         hostkey_policy: str = "accept-new",
     ) -> Path:
         """
@@ -428,12 +427,12 @@ class Fetch:
     async def _fetch_extent_for_descriptor(
         *,
         logger: logging.Logger,
-        ssh_base: List[str],
+        ssh_base: list[str],
         remote_dir: str,
         local_desc: Path,
         outdir: Path,
         sandbox_root: str,
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """
         Parse extent path from local descriptor and fetch it.
         Returns local extent path if found.

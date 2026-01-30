@@ -22,16 +22,14 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
-
-import re
 
 import guestfs  # type: ignore
 
 from ...core.utils import U, guest_has_cmd
 from ..filesystem.fstab import Ident, parse_btrfsvol_spec
-
 
 # tiny helpers
 
@@ -61,9 +59,9 @@ def _log_debug(self, msg: str) -> None:
         lg.debug(msg)
 
 
-def _dedup_keep_order(xs: List[str]) -> List[str]:
+def _dedup_keep_order(xs: list[str]) -> list[str]:
     seen = set()
-    out: List[str] = []
+    out: list[str] = []
     for x in xs:
         s = (x or "").strip()
         if not s or s in seen:
@@ -117,14 +115,14 @@ def _dir_exists(g: guestfs.GuestFS, p: str) -> bool:
         return False
 
 
-def _glob(g: guestfs.GuestFS, pattern: str) -> List[str]:
+def _glob(g: guestfs.GuestFS, pattern: str) -> list[str]:
     try:
         return [U.to_text(x) for x in g.glob_expand(pattern)]
     except Exception:
         return []
 
 
-def _run_guestfs_cmd(self, g: guestfs.GuestFS, cmd: List[str]) -> Tuple[bool, str]:
+def _run_guestfs_cmd(self, g: guestfs.GuestFS, cmd: list[str]) -> tuple[bool, str]:
     """
     Best-effort command execution via libguestfs appliance.
     Not a perfect chroot, but works for many boot tools.
@@ -139,7 +137,7 @@ def _run_guestfs_cmd(self, g: guestfs.GuestFS, cmd: List[str]) -> Tuple[bool, st
 
 # distro / family hints
 
-def _inspect_distro_major(self, g: guestfs.GuestFS) -> Tuple[str, int]:
+def _inspect_distro_major(self, g: guestfs.GuestFS) -> tuple[str, int]:
     distro = ""
     major = 0
     try:
@@ -243,7 +241,7 @@ def _guest_has_bls(g: guestfs.GuestFS) -> bool:
 
 # root= stabilization
 
-def _stable_root_id(self, g: guestfs.GuestFS) -> Optional[str]:
+def _stable_root_id(self, g: guestfs.GuestFS) -> str | None:
     """
     Compute a stable root identifier usable as kernel cmdline root=...
     Returns UUID=... / PARTUUID=... / LABEL=... best-effort.
@@ -332,7 +330,7 @@ def _update_bls_root(self, g: guestfs.GuestFS, new_root_token: str) -> int:
             if not old:
                 continue
             lines = old.splitlines(True)
-            out: List[str] = []
+            out: list[str] = []
             did = False
             for ln in lines:
                 if ln.lstrip().startswith("options "):
@@ -475,7 +473,7 @@ def remove_stale_device_map(self, g: guestfs.GuestFS) -> int:
 
 # initramfs driver injection (boot-relevant, keep here)
 
-def _get_initramfs_add_drivers(self) -> List[str]:
+def _get_initramfs_add_drivers(self) -> list[str]:
     """
     Knob sources (highest → lowest):
       1) self.initramfs_add_drivers (list[str] or "a b c")
@@ -508,7 +506,7 @@ def _get_initramfs_add_drivers(self) -> List[str]:
     )
 
 
-def _write_modules_linefile(self, g: guestfs.GuestFS, path: str, drivers: List[str]) -> Dict[str, Any]:
+def _write_modules_linefile(self, g: guestfs.GuestFS, path: str, drivers: list[str]) -> dict[str, Any]:
     drivers = _dedup_keep_order(drivers)
     if not drivers:
         return {"path": path, "changed": False, "reason": "no_drivers"}
@@ -531,7 +529,7 @@ def _write_modules_linefile(self, g: guestfs.GuestFS, path: str, drivers: List[s
     return {"path": path, "changed": True, "added": missing}
 
 
-def _patch_mkinitcpio_modules(self, g: guestfs.GuestFS, drivers: List[str]) -> Dict[str, Any]:
+def _patch_mkinitcpio_modules(self, g: guestfs.GuestFS, drivers: list[str]) -> dict[str, Any]:
     path = "/etc/mkinitcpio.conf"
     drivers = _dedup_keep_order(drivers)
     if not drivers:
@@ -564,7 +562,7 @@ def _patch_mkinitcpio_modules(self, g: guestfs.GuestFS, drivers: List[str]) -> D
     return {"path": path, "changed": True, "added": [d for d in drivers if d not in cur]}
 
 
-def _patch_suse_sysconfig_initrd_modules(self, g: guestfs.GuestFS, drivers: List[str]) -> Dict[str, Any]:
+def _patch_suse_sysconfig_initrd_modules(self, g: guestfs.GuestFS, drivers: list[str]) -> dict[str, Any]:
     path = "/etc/sysconfig/kernel"
     drivers = _dedup_keep_order(drivers)
     if not drivers:
@@ -595,7 +593,7 @@ def _patch_suse_sysconfig_initrd_modules(self, g: guestfs.GuestFS, drivers: List
     return {"path": path, "changed": True, "note": "suse_sysconfig"}
 
 
-def _patch_modules_load_d(self, g: guestfs.GuestFS, drivers: List[str]) -> Dict[str, Any]:
+def _patch_modules_load_d(self, g: guestfs.GuestFS, drivers: list[str]) -> dict[str, Any]:
     """
     Cross-distro fallback: ensure modules are loaded at boot via modules-load.d.
     This does NOT guarantee availability in early initramfs, but helps for some guests.
@@ -624,7 +622,7 @@ def _patch_modules_load_d(self, g: guestfs.GuestFS, drivers: List[str]) -> Dict[
     return {"path": path, "changed": True, "added": missing, "note": "modules_load_d_fallback"}
 
 
-def _maybe_add_dracut_drivers(cmd: List[str], drivers: List[str]) -> List[str]:
+def _maybe_add_dracut_drivers(cmd: list[str], drivers: list[str]) -> list[str]:
     if not cmd or cmd[0] != "dracut":
         return cmd
     if not drivers:
@@ -645,9 +643,9 @@ class _MountSpec:
     options: str
 
 
-def _parse_fstab_mounts(g: guestfs.GuestFS) -> List[_MountSpec]:
+def _parse_fstab_mounts(g: guestfs.GuestFS) -> list[_MountSpec]:
     txt = _read_text(g, "/etc/fstab")
-    out: List[_MountSpec] = []
+    out: list[_MountSpec] = []
     for ln in txt.splitlines():
         s = ln.strip()
         if not s or s.startswith("#"):
@@ -659,7 +657,7 @@ def _parse_fstab_mounts(g: guestfs.GuestFS) -> List[_MountSpec]:
     return out
 
 
-def _resolve_spec_to_dev(self, g: guestfs.GuestFS, spec: str) -> Optional[str]:
+def _resolve_spec_to_dev(self, g: guestfs.GuestFS, spec: str) -> str | None:
     """
     Convert fstab spec to a /dev/... node (best-effort):
       - /dev/* direct
@@ -705,7 +703,7 @@ def _resolve_spec_to_dev(self, g: guestfs.GuestFS, spec: str) -> Optional[str]:
 
     if kind == "PARTUUID":
         # brute-force: scan candidates from list_filesystems + partitions, match PARTUUID
-        candidates: List[str] = []
+        candidates: list[str] = []
         try:
             candidates.extend([U.to_text(p) for p in (g.list_partitions() or [])])
         except Exception:
@@ -730,12 +728,12 @@ def _resolve_spec_to_dev(self, g: guestfs.GuestFS, spec: str) -> Optional[str]:
     return None
 
 
-def _mount_boot_partitions_best_effort(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+def _mount_boot_partitions_best_effort(self, g: guestfs.GuestFS) -> dict[str, Any]:
     """
     Mount /boot and /boot/efi (or /efi) from fstab if present.
     Returns audit + list of mounted mountpoints to unmount later.
     """
-    audit: Dict[str, Any] = {"attempted": True, "mounted": [], "errors": []}
+    audit: dict[str, Any] = {"attempted": True, "mounted": [], "errors": []}
     if not _file_exists(g, "/etc/fstab"):
         audit["attempted"] = False
         audit["reason"] = "no_fstab"
@@ -780,7 +778,7 @@ def _mount_boot_partitions_best_effort(self, g: guestfs.GuestFS) -> Dict[str, An
     return audit
 
 
-def _umount_boot_partitions_best_effort(self, g: guestfs.GuestFS, mounted: List[Dict[str, Any]]) -> None:
+def _umount_boot_partitions_best_effort(self, g: guestfs.GuestFS, mounted: list[dict[str, Any]]) -> None:
     # Unmount in reverse: EFI first, then /boot
     mps = [x.get("mountpoint") for x in mounted if x.get("mountpoint")]
     for mp in sorted(mps, key=len, reverse=True):
@@ -792,7 +790,7 @@ def _umount_boot_partitions_best_effort(self, g: guestfs.GuestFS, mounted: List[
 
 # initramfs + bootloader regeneration
 
-def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
     """
     Linux-only initramfs + bootloader regen.
 
@@ -819,7 +817,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     looks_uefi = _guest_looks_uefi(g)
     has_bls = _guest_has_bls(g)
 
-    info: Dict[str, Any] = {
+    info: dict[str, Any] = {
         "enabled": True,
         "distro": distro,
         "major": major,
@@ -845,8 +843,8 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     info["initramfs_add_drivers"] = add_drivers
 
     # Mount /boot, /boot/efi for correct output location (critical)
-    boot_mount_audit: Dict[str, Any] = {"attempted": False}
-    mounted_boot: List[Dict[str, Any]] = []
+    boot_mount_audit: dict[str, Any] = {"attempted": False}
+    mounted_boot: list[dict[str, Any]] = []
     try:
         boot_mount_audit = _mount_boot_partitions_best_effort(self, g)
         mounted_boot = boot_mount_audit.get("mounted", []) or []
@@ -862,7 +860,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         return info
 
     # Driver injection edits (best-effort; these are boot-related config changes)
-    inject_audit: Dict[str, Any] = {"drivers": add_drivers, "actions": [], "warnings": []}
+    inject_audit: dict[str, Any] = {"drivers": add_drivers, "actions": [], "warnings": []}
     try:
         # Debian/Ubuntu initramfs-tools
         if guest_has_cmd(g, "update-initramfs") and _dir_exists(g, "/etc/initramfs-tools"):
@@ -900,7 +898,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     info["initramfs_driver_injection"] = inject_audit
 
     # Determine guest kernels
-    guest_kvers: List[str] = []
+    guest_kvers: list[str] = []
     try:
         if _dir_exists(g, "/lib/modules"):
             guest_kvers = sorted([U.to_text(x) for x in g.ls("/lib/modules") if U.to_text(x).strip()])
@@ -909,7 +907,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     info["guest_kernels"] = guest_kvers
 
     # Initramfs regen attempts (highest success probability first)
-    initramfs_attempts: List[List[str]] = []
+    initramfs_attempts: list[list[str]] = []
 
     if guest_has_cmd(g, "update-initramfs"):
         initramfs_attempts += [["update-initramfs", "-u", "-k", "all"], ["update-initramfs", "-u"]]
@@ -953,7 +951,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
     # Dedup attempts
     seen = set()
-    deduped: List[List[str]] = []
+    deduped: list[list[str]] = []
     for c in initramfs_attempts:
         t = tuple(c)
         if t not in seen:
@@ -961,7 +959,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             deduped.append(c)
     initramfs_attempts = deduped
 
-    initramfs_ran: List[Dict[str, Any]] = []
+    initramfs_ran: list[dict[str, Any]] = []
     did_initramfs = False
     for cmd in initramfs_attempts:
         ok, out = _run_guestfs_cmd(self, g, cmd)
@@ -972,12 +970,12 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     info["initramfs"] = {"attempts": initramfs_ran, "success": did_initramfs}
 
     # Bootloader regen attempts
-    boot_attempts: List[List[str]] = []
+    boot_attempts: list[list[str]] = []
 
     if guest_has_cmd(g, "update-grub"):
         boot_attempts.append(["update-grub"])
 
-    grub_cfg_targets: List[str] = []
+    grub_cfg_targets: list[str] = []
     if _dir_exists(g, "/boot/grub2"):
         grub_cfg_targets.append("/boot/grub2/grub.cfg")
     if _dir_exists(g, "/boot/grub"):
@@ -1029,7 +1027,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             deduped.append(c)
     boot_attempts = deduped
 
-    boot_ran: List[Dict[str, Any]] = []
+    boot_ran: list[dict[str, Any]] = []
     did_boot = False
     for cmd in boot_attempts:
         ok, out = _run_guestfs_cmd(self, g, cmd)
@@ -1050,7 +1048,7 @@ def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         pass
 
     # Sanity listing
-    sanity: Dict[str, Any] = {"boot": {}}
+    sanity: dict[str, Any] = {"boot": {}}
     try:
         if _dir_exists(g, "/boot"):
             sanity["boot"]["boot_ls"] = sorted([U.to_text(x) for x in g.ls("/boot")])[-80:]

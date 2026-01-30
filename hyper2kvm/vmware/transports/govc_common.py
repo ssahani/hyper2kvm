@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/transports/govc_common.py
 from __future__ import annotations
 
@@ -22,9 +21,10 @@ import logging
 import os
 import re
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...core.exceptions import VMwareError
 
@@ -48,7 +48,7 @@ except Exception:  # pragma: no cover
 _DS_BACKING_RE = re.compile(r"^\[(?P<ds>[^\]]+)\]\s*(?P<path>.+)$")
 
 
-def normalize_ds_path(datastore: str, ds_path: str) -> Tuple[str, str]:
+def normalize_ds_path(datastore: str, ds_path: str) -> tuple[str, str]:
     """
     Normalize datastore paths for govc.
 
@@ -76,12 +76,12 @@ def normalize_ds_path(datastore: str, ds_path: str) -> Tuple[str, str]:
 # Resilient parsing for `govc datastore.ls -json`
 
 
-def _flatten_any(obj: Any) -> List[Any]:
+def _flatten_any(obj: Any) -> list[Any]:
     """Flatten nested dict/list structures into a list of candidate file entries."""
     if obj is None:
         return []
     if isinstance(obj, list):
-        out: List[Any] = []
+        out: list[Any] = []
         for v in obj:
             out.extend(_flatten_any(v))
         return out
@@ -99,7 +99,7 @@ def _flatten_any(obj: Any) -> List[Any]:
     return []
 
 
-def _extract_path(ent: Any) -> Optional[str]:
+def _extract_path(ent: Any) -> str | None:
     if ent is None:
         return None
     if isinstance(ent, str):
@@ -113,7 +113,7 @@ def _extract_path(ent: Any) -> Optional[str]:
     return None
 
 
-def extract_paths_from_datastore_ls_json(data: Any) -> List[str]:
+def extract_paths_from_datastore_ls_json(data: Any) -> list[str]:
     """
     Extract file paths from govc datastore.ls -json output.
 
@@ -128,7 +128,7 @@ def extract_paths_from_datastore_ls_json(data: Any) -> List[str]:
       Callers may further normalize relative-to-folder behavior.
     """
     raw = _flatten_any(data)
-    out: List[str] = []
+    out: list[str] = []
     for ent in raw:
         p = _extract_path(ent)
         if not p:
@@ -137,7 +137,7 @@ def extract_paths_from_datastore_ls_json(data: Any) -> List[str]:
 
     # De-dup while preserving order
     seen = set()
-    uniq: List[str] = []
+    uniq: list[str] = []
     for p in out:
         if p in seen:
             continue
@@ -151,12 +151,12 @@ class GovcConfig:
     govc_bin: str = "govc"
     disable: bool = False  # user requested no govmomi/govc
 
-    vcenter: Optional[str] = None
-    vc_user: Optional[str] = None
-    vc_password: Optional[str] = None
-    vc_password_env: Optional[str] = None
+    vcenter: str | None = None
+    vc_user: str | None = None
+    vc_password: str | None = None
+    vc_password_env: str | None = None
     vc_insecure: bool = False
-    dc_name: Optional[str] = None
+    dc_name: str | None = None
 
 
 def _looks_like_govc_usage(text: str) -> bool:
@@ -176,7 +176,7 @@ def _looks_like_govc_usage(text: str) -> bool:
     return any(re.search(p, t, re.IGNORECASE) for p in usage_patterns)
 
 
-def _extract_vm_info_with_regex(text: str) -> Dict[str, str]:
+def _extract_vm_info_with_regex(text: str) -> dict[str, str]:
     """Extract VM info using regex patterns."""
     patterns = {
         "name": r"^Name:\s*(.+)$",
@@ -190,7 +190,7 @@ def _extract_vm_info_with_regex(text: str) -> Dict[str, str]:
         "bios_uuid": r"BIOS\s+UUID:\s*(.+)$",
     }
 
-    info: Dict[str, str] = {}
+    info: dict[str, str] = {}
     for key, pattern in patterns.items():
         match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
@@ -199,7 +199,7 @@ def _extract_vm_info_with_regex(text: str) -> Dict[str, str]:
     return info
 
 
-def _mask_secret(v: Optional[str]) -> str:
+def _mask_secret(v: str | None) -> str:
     if not v:
         return "<unset>"
     vv = str(v)
@@ -255,7 +255,7 @@ def _json_loads_best_effort(text: str) -> Any:
     return json.loads(text)
 
 
-def _normalize_runner_env(env: Dict[str, str]) -> Dict[str, str]:
+def _normalize_runner_env(env: dict[str, str]) -> dict[str, str]:
     """
     IMPORTANT FIX:
       We must pass a *complete* environment to subprocess calls (inherit os.environ),
@@ -285,7 +285,7 @@ def _format_export_exception(e: BaseException) -> str:
     This is the main fix for the useless 'VMwareError: error' symptom.
     """
     # If govc_export.py defines a rich exception, harvest common fields.
-    parts: List[str] = []
+    parts: list[str] = []
 
     etype = type(e).__name__
     msg = str(e).strip()
@@ -347,8 +347,7 @@ class GovcRunner:
         try:
             p = subprocess.run(
                 [self.govc_bin, "version"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 check=False,
                 text=True,
                 env=_normalize_runner_env({}),
@@ -372,7 +371,7 @@ class GovcRunner:
 
     # -------- env + execution
 
-    def env(self) -> Dict[str, str]:
+    def env(self) -> dict[str, str]:
         env = dict(os.environ)
 
         vc_host = getattr(self.args, "vcenter", None)
@@ -423,8 +422,7 @@ class GovcRunner:
 
         p = subprocess.run(
             full,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             env=env,
             text=True,
         )
@@ -475,7 +473,7 @@ class GovcRunner:
             return self.run_json(cmd)
         return self.run_text(cmd)
 
-    def datastore_ls_text(self, datastore: str, ds_dir: str) -> List[str]:
+    def datastore_ls_text(self, datastore: str, ds_dir: str) -> list[str]:
         ds, rel = normalize_ds_path(datastore, ds_dir)
         rel = rel.rstrip("/") + "/"
         _log(self.logger, "debug", "datastore_ls_text: ds=%s ds_dir=%s -> rel=%s", ds, ds_dir, rel)
@@ -485,7 +483,7 @@ class GovcRunner:
         _log(self.logger, "debug", "datastore_ls_text: lines=%d sample=%s", len(lines), lines[:8])
         return lines
 
-    def datastore_ls_json(self, datastore: str, ds_dir: str) -> List[str]:
+    def datastore_ls_json(self, datastore: str, ds_dir: str) -> list[str]:
         """Returns paths from `govc datastore.ls -json` (relative to ds_dir when possible)."""
         ds, rel = normalize_ds_path(datastore, ds_dir)
         rel = rel.rstrip("/") + "/"
@@ -502,7 +500,7 @@ class GovcRunner:
         base = rel.lstrip("/")
         prefix = base.rstrip("/") + "/"
 
-        cleaned: List[str] = []
+        cleaned: list[str] = []
         stripped = 0
         for p in paths:
             pp = p.lstrip("/")
@@ -525,7 +523,7 @@ class GovcRunner:
 
     # VM info extraction with regex
 
-    def get_vm_info(self, vm: str) -> Dict[str, str]:
+    def get_vm_info(self, vm: str) -> dict[str, str]:
         """Get VM information using regex parsing."""
         try:
             output = self.run_text(["vm.info", vm])
@@ -541,10 +539,10 @@ class GovcRunner:
         *,
         vm: str,
         out_dir: str,
-        snapshot: Optional[str] = None,  # currently unused by govc_export.py
+        snapshot: str | None = None,  # currently unused by govc_export.py
         power_off: bool = False,
-        disk_mode: Optional[str] = None,  # currently unused by govc_export.py
-        extra_args: Optional[Sequence[str]] = None,  # currently unused by govc_export.py
+        disk_mode: str | None = None,  # currently unused by govc_export.py
+        extra_args: Sequence[str] | None = None,  # currently unused by govc_export.py
         remove_cdroms: bool = True,
         show_vm_info: bool = True,
         shutdown: bool = False,
@@ -609,10 +607,10 @@ class GovcRunner:
         *,
         vm: str,
         out_file: str,
-        snapshot: Optional[str] = None,  # currently unused by govc_export.py
+        snapshot: str | None = None,  # currently unused by govc_export.py
         power_off: bool = False,
-        disk_mode: Optional[str] = None,  # currently unused by govc_export.py
-        extra_args: Optional[Sequence[str]] = None,  # currently unused by govc_export.py
+        disk_mode: str | None = None,  # currently unused by govc_export.py
+        extra_args: Sequence[str] | None = None,  # currently unused by govc_export.py
         remove_cdroms: bool = True,
         show_vm_info: bool = True,
         shutdown: bool = False,
@@ -679,14 +677,14 @@ class GovcRunner:
 
     # CD/DVD device management
 
-    def get_cdrom_devices(self, vm: str) -> List[str]:
+    def get_cdrom_devices(self, vm: str) -> list[str]:
         """Get list of CD/DVD devices for a VM."""
         try:
             output = self.run_text(["device.ls", "-vm", vm])
             lines = output.splitlines()
 
             cdrom_pattern = re.compile(r"^(cdrom-\w+)", re.IGNORECASE)
-            devices: List[str] = []
+            devices: list[str] = []
 
             for line in lines:
                 line = line.strip()
@@ -699,7 +697,7 @@ class GovcRunner:
                         devices.append(parts[0])
 
             # De-dup keep order
-            unique_devices: List[str] = []
+            unique_devices: list[str] = []
             seen = set()
             for dev in devices:
                 if dev not in seen:

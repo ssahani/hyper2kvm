@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/libvirt/linux_domain.py
 
 
@@ -14,7 +13,6 @@ from typing import Literal, Optional
 
 from ..core.xml_utils import xml_escape as _xml
 from .libvirt_utils import sanitize_name as _sanitize_name
-
 
 Firmware = Literal["bios", "uefi"]
 Graphics = Literal["none", "vnc", "spice"]
@@ -63,7 +61,7 @@ def copy_disk_for_libvirt(
     *,
     src: Path,
     name: str,
-    dest_dir: Optional[Path] = None,
+    dest_dir: Path | None = None,
     overwrite: bool = False,
 ) -> Path:
     """
@@ -118,7 +116,7 @@ class LinuxDomainSpec:
     # Firmware
     firmware: Firmware = "bios"
     ovmf_code: str = "/usr/share/edk2/ovmf/OVMF_CODE.fd"
-    ovmf_vars_template: Optional[str] = None
+    ovmf_vars_template: str | None = None
     nvram_vars: str = "/var/tmp/VM_VARS.fd"
 
     # Compute
@@ -132,10 +130,10 @@ class LinuxDomainSpec:
     disk_bus: str = "virtio"
     disk_dev: str = "vda"
     disk_type: str = "qcow2"
-    disk_cache: Optional[str] = None  # None => omit cache attr (matches your working XML)
-    disk_io: Optional[str] = None
-    disk_discard: Optional[str] = None
-    disk_boot_order: Optional[int] = None
+    disk_cache: str | None = None  # None => omit cache attr (matches your working XML)
+    disk_io: str | None = None
+    disk_discard: str | None = None
+    disk_boot_order: int | None = None
 
     # Network
     network: str = "default"
@@ -145,7 +143,7 @@ class LinuxDomainSpec:
     graphics: Graphics = "vnc"
     graphics_listen: str = "127.0.0.1"
     video: str = "vga"
-    video_heads: Optional[int] = None
+    video_heads: int | None = None
     usb_tablet: bool = True
 
     # Console (default profile only)
@@ -153,7 +151,7 @@ class LinuxDomainSpec:
     console_pty: bool = True
 
     # Optional cloud-init seed ISO (default profile only)
-    cloudinit_iso: Optional[str] = None
+    cloudinit_iso: str | None = None
 
     # Clock (default profile only)
     clock: ClockOffset = "utc"
@@ -229,7 +227,7 @@ def _render_minimal_bios_gui_xml(spec: LinuxDomainSpec) -> str:
 """
 
 
-def _default_ovmf_vars_template() -> Optional[Path]:
+def _default_ovmf_vars_template() -> Path | None:
     candidates = [
         "/usr/share/edk2/ovmf/OVMF_VARS.fd",
         "/usr/share/OVMF/OVMF_VARS.fd",
@@ -403,17 +401,17 @@ def render_linux_domain_xml(spec: LinuxDomainSpec) -> str:
 class LinuxDomainPaths:
     out_dir: Path
     xml_path: Path
-    nvram_path: Optional[Path] = None
-    disk_path: Optional[Path] = None
+    nvram_path: Path | None = None
+    disk_path: Path | None = None
 
 
 def write_linux_domain_xml(
     *,
     spec: LinuxDomainSpec,
     out_dir: Path,
-    filename: Optional[str] = None,
+    filename: str | None = None,
     overwrite: bool = True,
-    disk_path: Optional[Path] = None,
+    disk_path: Path | None = None,
 ) -> LinuxDomainPaths:
     out_dir = out_dir.expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -426,7 +424,7 @@ def write_linux_domain_xml(
 
     xml_path.write_text(xml_text, encoding="utf-8")
 
-    nvram_path: Optional[Path] = Path(spec.nvram_vars) if spec.firmware == "uefi" else None
+    nvram_path: Path | None = Path(spec.nvram_vars) if spec.firmware == "uefi" else None
     return LinuxDomainPaths(out_dir=out_dir, xml_path=xml_path, nvram_path=nvram_path, disk_path=disk_path)
 
 
@@ -466,36 +464,36 @@ def emit_linux_domain(
     memory_mib: int = 4096,
     vcpus: int = 2,
     # machine (default depends on profile/firmware)
-    machine: Optional[str] = None,
+    machine: str | None = None,
     # disk/network/display knobs (some ignored in minimal-bios-gui)
     disk_bus: str = "virtio",
     disk_dev: str = "vda",
     disk_type: str = "qcow2",
-    disk_cache: Optional[str] = None,
-    disk_io: Optional[str] = None,
-    disk_discard: Optional[str] = None,
-    disk_boot_order: Optional[int] = None,
+    disk_cache: str | None = None,
+    disk_io: str | None = None,
+    disk_discard: str | None = None,
+    disk_boot_order: int | None = None,
     network: str = "default",
     net_model: str = "virtio",
     graphics: Graphics = "vnc",
     graphics_listen: str = "127.0.0.1",
     video: str = "vga",
-    video_heads: Optional[int] = None,
+    video_heads: int | None = None,
     usb_tablet: bool = True,
     serial_pty: bool = True,
     console_pty: bool = True,
-    cloudinit_iso: Optional[str] = None,
+    cloudinit_iso: str | None = None,
     clock: ClockOffset = "utc",
     # uefi-specific
     ovmf_code: str = "/usr/share/edk2/ovmf/OVMF_CODE.fd",
-    nvram_vars: Optional[str] = None,
-    ovmf_vars_template: Optional[str] = None,
+    nvram_vars: str | None = None,
+    ovmf_vars_template: str | None = None,
     # actions
     write_xml: bool = True,
     virsh_define: bool = False,
     # storage policy
-    copy_to_libvirt_images: Optional[bool] = None,  # default True if virsh_define else False
-    libvirt_images_dir: Optional[str] = None,
+    copy_to_libvirt_images: bool | None = None,  # default True if virsh_define else False
+    libvirt_images_dir: str | None = None,
     overwrite_disk_copy: bool = False,
 ) -> LinuxDomainPaths:
     image_path = image_path.expanduser().resolve()

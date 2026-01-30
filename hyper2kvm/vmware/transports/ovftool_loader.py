@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/transports/ovftool_loader.py
 
 """
@@ -19,15 +18,15 @@ except Exception:  # pragma: no cover
 # OVF Tool client
 try:
     from .ovftool_client import (
-        find_ovftool,
-        ovftool_version,
-        export_to_ova,
-        deploy_ovf_or_ova,
-        OvfExportOptions,
         OvfDeployOptions,
-        OvfToolPaths,
+        OvfExportOptions,
         OvfToolError,
         OvfToolNotFound,
+        OvfToolPaths,
+        deploy_ovf_or_ova,
+        export_to_ova,
+        find_ovftool,
+        ovftool_version,
     )
 except Exception:  # pragma: no cover
     find_ovftool = None  # type: ignore
@@ -52,7 +51,9 @@ except Exception:  # pragma: no cover
             pass
 
 
-from ..utils.utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path, ensure_output_dir as _ensure_output_dir
+from ..utils.utils import ensure_output_dir as _ensure_output_dir
+from ..utils.utils import quote_inventory_path as _quote_inventory_path
+from ..utils.utils import safe_vm_name as _safe_vm_name
 
 
 def govc_export_ovf(client: Any, opt: Any) -> Path:
@@ -105,7 +106,7 @@ def _vm_inventory_path_under_vmfolder(client: Any, vm_obj: Any, dc_obj: Any) -> 
     if vm_folder is None:
         raise VMwareError("Datacenter has no vmFolder (unexpected)")
 
-    parts: List[str] = []
+    parts: list[str] = []
     obj = vm_obj
     for _ in range(0, 96):
         if obj is None:

@@ -51,7 +51,7 @@ def _is_secret_key(k: str) -> bool:
     return any(p in ks for p in _SECRET_KEY_PARTS)
 
 
-def _format_context_compact(ctx: Dict[str, Any]) -> str:
+def _format_context_compact(ctx: dict[str, Any]) -> str:
     # Stable order, redaction, single-line.
     parts = []
     for k in sorted(ctx.keys()):
@@ -89,8 +89,8 @@ class Hyper2KvmError(Exception):
     """
     code: int = 1
     msg: str = "error"
-    cause: Optional[BaseException] = None
-    context: Optional[Dict[str, Any]] = None
+    cause: BaseException | None = None
+    context: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         self.code = _clamp_exit_code(_safe_int(self.code, default=1))
@@ -101,7 +101,7 @@ class Hyper2KvmError(Exception):
         # Some tooling inspects Exception.args directly.
         self.args = (self.msg,)
 
-    def with_context(self, **ctx: Any) -> "Hyper2KvmError":
+    def with_context(self, **ctx: Any) -> Hyper2KvmError:
         if self.context is None:
             self.context = {}
         self.context.update(ctx)
@@ -126,8 +126,8 @@ class Hyper2KvmError(Exception):
         # Default string should be clean and user-facing
         return self.user_message(include_context=False, include_cause=False)
 
-    def to_dict(self, *, include_cause: bool = False) -> Dict[str, Any]:
-        d: Dict[str, Any] = {
+    def to_dict(self, *, include_cause: bool = False) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "type": self.__class__.__name__,
             "code": self.code,
             "message": self.msg,
@@ -155,11 +155,11 @@ class VMwareError(Hyper2KvmError):
     """
 
 
-def wrap_fatal(msg: str, exc: Optional[BaseException] = None, code: int = 1, **context: Any) -> Fatal:
+def wrap_fatal(msg: str, exc: BaseException | None = None, code: int = 1, **context: Any) -> Fatal:
     return Fatal(code=code, msg=msg, cause=exc, context=context or None)
 
 
-def wrap_vmware(msg: str, exc: Optional[BaseException] = None, code: int = 50, **context: Any) -> VMwareError:
+def wrap_vmware(msg: str, exc: BaseException | None = None, code: int = 50, **context: Any) -> VMwareError:
     return VMwareError(code=code, msg=msg, cause=exc, context=context or None)
 
 

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/azure/cli.py
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ import subprocess
 import time
 from typing import Any, Dict, List, Optional
 
-from .exceptions import AzureCLIError, AzureAuthError
+from .exceptions import AzureAuthError, AzureCLIError
 
 LOG = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ def _backoff_sleep(attempt: int, base: float, cap: float) -> None:
     time.sleep(t)
 
 
-def run_az_json(args: List[str], *, timeout_s: int = 300, retries: int = 3) -> Any:
+def run_az_json(args: list[str], *, timeout_s: int = 300, retries: int = 3) -> Any:
     """
     Run 'az <args> --output json --only-show-errors' and parse JSON.
     Retries transient failures.
@@ -83,7 +82,7 @@ def run_az_json(args: List[str], *, timeout_s: int = 300, retries: int = 3) -> A
     raise AzureCLIError(f"az failed: {' '.join(args)} :: {last_err}")
 
 
-def validate_account(subscription: Optional[str], tenant: Optional[str]) -> Dict[str, Any]:
+def validate_account(subscription: str | None, tenant: str | None) -> dict[str, Any]:
     # Verify logged in
     try:
         acct = run_az_json(["account", "show"], timeout_s=30, retries=2)
@@ -100,7 +99,7 @@ def validate_account(subscription: Optional[str], tenant: Optional[str]) -> Dict
     return acct
 
 
-def list_vms(resource_group: Optional[str], *, show_details: bool = False) -> List[Dict[str, Any]]:
+def list_vms(resource_group: str | None, *, show_details: bool = False) -> list[dict[str, Any]]:
     """
     List VMs, optionally with instance details (including power state).
 
@@ -120,11 +119,11 @@ def list_vms(resource_group: Optional[str], *, show_details: bool = False) -> Li
     return list(data or [])
 
 
-def get_vm_show(rg: str, name: str) -> Dict[str, Any]:
+def get_vm_show(rg: str, name: str) -> dict[str, Any]:
     return run_az_json(["vm", "show", "--resource-group", rg, "--name", name], timeout_s=120, retries=3)
 
 
-def extract_power_state_from_vm_dict(vm: Dict[str, Any]) -> Optional[str]:
+def extract_power_state_from_vm_dict(vm: dict[str, Any]) -> str | None:
     """
     Extract power state from VM dictionary (requires --show-details in list_vms).
 
@@ -167,11 +166,11 @@ def get_vm_power_state(rg: str, name: str) -> str:
     return "unknown"
 
 
-def disk_show_by_id(disk_id: str) -> Dict[str, Any]:
+def disk_show_by_id(disk_id: str) -> dict[str, Any]:
     return run_az_json(["disk", "show", "--ids", disk_id], timeout_s=120, retries=3)
 
 
-def snapshot_create(*, rg: str, name: str, source_disk_id: str, location: str, tags: Dict[str, str]) -> Dict[str, Any]:
+def snapshot_create(*, rg: str, name: str, source_disk_id: str, location: str, tags: dict[str, str]) -> dict[str, Any]:
     args = [
         "snapshot",
         "create",
@@ -189,7 +188,7 @@ def snapshot_create(*, rg: str, name: str, source_disk_id: str, location: str, t
     return run_az_json(args, timeout_s=600, retries=5)
 
 
-def disk_create_from_snapshot(*, rg: str, name: str, snapshot_id: str, location: str, tags: Dict[str, str]) -> Dict[str, Any]:
+def disk_create_from_snapshot(*, rg: str, name: str, snapshot_id: str, location: str, tags: dict[str, str]) -> dict[str, Any]:
     args = [
         "disk",
         "create",
@@ -271,7 +270,7 @@ def vm_stop_or_deallocate(*, rg: str, name: str, mode: str, wait: bool) -> None:
         raise AzureCLIError(f"VM did not reach expected power state after {mode}: {rg}/{name}")
 
 
-def best_effort_quiesce_vm(rg: str, name: str, guest_hint: Optional[str]) -> None:
+def best_effort_quiesce_vm(rg: str, name: str, guest_hint: str | None) -> None:
     # Stub: leave this as best-effort hook.
     # In practice you may implement:
     # - Linux: fsfreeze via run-command

@@ -12,17 +12,17 @@ from typing import Any, Dict, List, Optional, Tuple
 import guestfs  # type: ignore
 
 from ...core.utils import U, guest_has_cmd
-from ..filesystem.fstab import parse_btrfsvol_spec
 from ..filesystem import fixer as filesystem_fixer  # type: ignore
+from ..filesystem.fstab import parse_btrfsvol_spec
 
 
 @dataclass
 class RootMountResult:
-    inspect_root: Optional[str]
-    root_dev: Optional[str]
-    root_btrfs_subvol: Optional[str]
+    inspect_root: str | None
+    root_dev: str | None
+    root_btrfs_subvol: str | None
     method: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
 
 
 class OfflineMountEngine:
@@ -101,9 +101,9 @@ class OfflineMountEngine:
         dry_run: bool,
         # LUKS config
         luks_enable: bool = False,
-        luks_passphrase: Optional[str] = None,
-        luks_passphrase_env: Optional[str] = None,
-        luks_keyfile: Optional[Path] = None,
+        luks_passphrase: str | None = None,
+        luks_passphrase_env: str | None = None,
+        luks_keyfile: Path | None = None,
         luks_mapper_prefix: str = "hyper2kvm-crypt",
     ):
         self.logger = logger
@@ -115,7 +115,7 @@ class OfflineMountEngine:
         self.luks_keyfile = Path(luks_keyfile) if luks_keyfile else None
         self.luks_mapper_prefix = luks_mapper_prefix
 
-        self._luks_opened: Dict[str, str] = {}  # luks_dev -> /dev/mapper/name
+        self._luks_opened: dict[str, str] = {}  # luks_dev -> /dev/mapper/name
 
     # safe helpers
 
@@ -128,7 +128,7 @@ class OfflineMountEngine:
 
     # LUKS / LVM
 
-    def _read_luks_key_bytes(self) -> Optional[bytes]:
+    def _read_luks_key_bytes(self) -> bytes | None:
         try:
             if self.luks_keyfile and self.luks_keyfile.exists():
                 return self.luks_keyfile.read_bytes()
@@ -142,8 +142,8 @@ class OfflineMountEngine:
             return pw.encode("utf-8")
         return None
 
-    def activate_lvm(self, g: guestfs.GuestFS) -> Dict[str, Any]:
-        audit: Dict[str, Any] = {"attempted": False, "ok": False, "error": None}
+    def activate_lvm(self, g: guestfs.GuestFS) -> dict[str, Any]:
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None}
         if not hasattr(g, "vgscan") or not hasattr(g, "vgchange_activate_all"):
             audit["error"] = "guestfs_missing:lvm"
             return audit
@@ -160,8 +160,8 @@ class OfflineMountEngine:
             audit["error"] = str(e)
             return audit
 
-    def unlock_luks_devices(self, g: guestfs.GuestFS) -> Dict[str, Any]:
-        audit: Dict[str, Any] = {
+    def unlock_luks_devices(self, g: guestfs.GuestFS) -> dict[str, Any]:
+        audit: dict[str, Any] = {
             "attempted": False,
             "configured": False,
             "enabled": bool(self.luks_enable),
@@ -225,8 +225,8 @@ class OfflineMountEngine:
         except Exception:
             return False
 
-    def activate_mdraid(self, g: guestfs.GuestFS) -> Dict[str, Any]:
-        audit: Dict[str, Any] = {"attempted": False, "ok": False, "details": "", "error": None}
+    def activate_mdraid(self, g: guestfs.GuestFS) -> dict[str, Any]:
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "details": "", "error": None}
         if not self._guestfs_can_run(g, "mdadm"):
             audit["details"] = "mdadm_not_available_in_appliance"
             return audit
@@ -241,10 +241,10 @@ class OfflineMountEngine:
             audit["details"] = "mdadm_assemble_scan_failed"
             return audit
 
-    def activate_zfs(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def activate_zfs(self, g: guestfs.GuestFS) -> dict[str, Any]:
         if not self._guestfs_can_run(g, "zpool"):
             return {"attempted": False, "ok": False, "reason": "zpool_not_available_in_appliance"}
-        audit: Dict[str, Any] = {"attempted": True, "ok": False, "pools": [], "error": None}
+        audit: dict[str, Any] = {"attempted": True, "ok": False, "pools": [], "error": None}
         try:
             out = g.command(["sh", "-lc", "ZPOOL_VDEV_NAME_PATH=1 zpool import 2>/dev/null || true"])
             text = U.to_text(out).strip()
@@ -259,8 +259,8 @@ class OfflineMountEngine:
             audit["error"] = str(e)
             return audit
 
-    def pre_mount_activate_storage_stack(self, g: guestfs.GuestFS) -> Dict[str, Any]:
-        audit: Dict[str, Any] = {"mdraid": None, "zfs": None, "lvm": None}
+    def pre_mount_activate_storage_stack(self, g: guestfs.GuestFS) -> dict[str, Any]:
+        audit: dict[str, Any] = {"mdraid": None, "zfs": None, "lvm": None}
         audit["mdraid"] = self.activate_mdraid(g)
         audit["zfs"] = self.activate_zfs(g)
         audit["lvm"] = self.activate_lvm(g)
@@ -268,7 +268,7 @@ class OfflineMountEngine:
 
     # mount logic
 
-    def _try_mount_root(self, g: guestfs.GuestFS, dev: str, subvol: Optional[str], mode: str) -> None:
+    def _try_mount_root(self, g: guestfs.GuestFS, dev: str, subvol: str | None, mode: str) -> None:
         # mode: "rw" | "ro" | "opts:<csv>"
         if subvol:
             # SECURITY: Validate subvolume path to prevent path traversal and option injection
@@ -302,7 +302,7 @@ class OfflineMountEngine:
 
         g.mount_ro(dev, "/")
 
-    def mount_root_direct(self, g: guestfs.GuestFS, dev: str, subvol: Optional[str]) -> None:
+    def mount_root_direct(self, g: guestfs.GuestFS, dev: str, subvol: str | None) -> None:
         """
         Mount ladder:
           1) rw/ro (original)
@@ -396,8 +396,8 @@ class OfflineMountEngine:
             pass
         return score
 
-    def _candidate_root_devices(self, g: guestfs.GuestFS) -> List[str]:
-        candidates: List[str] = []
+    def _candidate_root_devices(self, g: guestfs.GuestFS) -> list[str]:
+        candidates: list[str] = []
 
         try:
             candidates.extend([U.to_text(p) for p in (g.list_partitions() or [])])
@@ -446,7 +446,7 @@ class OfflineMountEngine:
             pass
 
         seen: set[str] = set()
-        out: List[str] = []
+        out: list[str] = []
         for d in candidates:
             if d and d not in seen:
                 seen.add(d)
@@ -458,9 +458,9 @@ class OfflineMountEngine:
         if not candidates:
             raise RuntimeError("Failed to list partitions/filesystems for brute-force mount")
 
-        mount_failures: List[Dict[str, str]] = []
+        mount_failures: list[dict[str, str]] = []
 
-        best: Tuple[int, Optional[str]] = (-10**9, None)
+        best: tuple[int, str | None] = (-10**9, None)
         for dev in candidates:
             self.safe_umount_all(g)
             try:
@@ -492,7 +492,7 @@ class OfflineMountEngine:
                 details={"score": best[0], "failures": mount_failures[:200]},
             )
 
-        best_btrfs: Tuple[int, Optional[str], Optional[str]] = (-10**9, None, None)
+        best_btrfs: tuple[int, str | None, str | None] = (-10**9, None, None)
         for dev in candidates:
             for sv in self._BTRFS_COMMON_SUBVOLS:
                 self.safe_umount_all(g)
@@ -543,7 +543,7 @@ class OfflineMountEngine:
             return r
 
         # Pick best-looking root (avoid roots[0] roulette)
-        best_root: Optional[str] = None
+        best_root: str | None = None
         best_score = -10**9
         for r in roots:
             rr = U.to_text(r)
@@ -580,12 +580,12 @@ class OfflineMountEngine:
             return self.mount_root_bruteforce(g)
 
         root_dev = root_spec
-        subvol: Optional[str] = None
+        subvol: str | None = None
         if root_spec.startswith("btrfsvol:"):
             root_dev, subvol = parse_btrfsvol_spec(root_spec)
             root_dev = root_dev.strip()
 
-        real: Optional[str] = None
+        real: str | None = None
         if root_dev.startswith("/dev/disk/by-"):
             try:
                 rp = U.to_text(g.realpath(root_dev)).strip()

@@ -20,15 +20,14 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from ...config.config_loader import YAML_AVAILABLE, yaml
-
 from .model import (
     DeviceKind,
     FixLevel,
     FixResult,
     IfcfgKV,
     NetworkConfig,
-    TopologyGraph,
     TopoEdge,
+    TopologyGraph,
     ifcfg_kind_and_links,
 )
 
@@ -45,8 +44,8 @@ class NetworkFixersBackend:
         self,
         logger: logging.Logger,
         fix_level: FixLevel,
-        vmware_drivers: Dict[str, str],
-        mac_pinning_patterns: List[tuple[str, str]],
+        vmware_drivers: dict[str, str],
+        mac_pinning_patterns: list[tuple[str, str]],
     ):
         """
         Initialize the backend fixers.
@@ -77,7 +76,7 @@ class NetworkFixersBackend:
         """
         return e.kind in ("slave", "port", "vlan") and self._edge_touches(e, name)
 
-    def _is_lower_layer_member(self, name: str, edges: List[TopoEdge]) -> bool:
+    def _is_lower_layer_member(self, name: str, edges: list[TopoEdge]) -> bool:
         """Check if interface is a lower-layer member (slave/port/vlan)."""
         return any(self._is_lower_layer_member_edge(e, name) for e in edges)
 
@@ -110,7 +109,7 @@ class NetworkFixersBackend:
         bp = (ifcfg.get("BOOTPROTO") or "").strip().lower()
         return bp in ("static",)
 
-    def _netplan_iface_has_static_intent(self, iface_cfg: Dict[str, Any]) -> bool:
+    def _netplan_iface_has_static_intent(self, iface_cfg: dict[str, Any]) -> bool:
         """
         Check if netplan interface config has static IP configuration intent.
 
@@ -120,13 +119,13 @@ class NetworkFixersBackend:
 
     # Netplan helpers
 
-    def _netplan_collect_member_refs(self, nw: Dict[str, Any]) -> Set[str]:
+    def _netplan_collect_member_refs(self, nw: dict[str, Any]) -> set[str]:
         """
         Collect all interface names that are members of bonds/bridges/vlans.
 
         Returns a set of interface names that should not have L3 config.
         """
-        members: Set[str] = set()
+        members: set[str] = set()
 
         bonds = nw.get("bonds")
         if isinstance(bonds, dict):
@@ -158,13 +157,13 @@ class NetworkFixersBackend:
 
         return members
 
-    def _netplan_collect_setname_aliases(self, nw: Dict[str, Any]) -> Dict[str, str]:
+    def _netplan_collect_setname_aliases(self, nw: dict[str, Any]) -> dict[str, str]:
         """
         Collect set-name aliases from netplan ethernet configs.
 
         Returns a dict mapping match-name -> set-name for renamed interfaces.
         """
-        aliases: Dict[str, str] = {}
+        aliases: dict[str, str] = {}
         eths = nw.get("ethernets")
         if isinstance(eths, dict):
             for ifname, icfg in eths.items():
@@ -176,7 +175,7 @@ class NetworkFixersBackend:
 
     # Interfaces helper
 
-    def _interfaces_block_has_address(self, block_lines: List[str]) -> bool:
+    def _interfaces_block_has_address(self, block_lines: list[str]) -> bool:
         """
         Check if an interfaces(5) block has an address directive.
 
@@ -193,8 +192,8 @@ class NetworkFixersBackend:
         self,
         config: NetworkConfig,
         *,
-        topo: Optional[TopologyGraph] = None,
-        rename_map: Optional[Dict[str, str]] = None,
+        topo: TopologyGraph | None = None,
+        rename_map: dict[str, str] | None = None,
     ) -> FixResult:
         """
         Fix ifcfg files (RHEL-ish and SUSE-ish).
@@ -217,8 +216,8 @@ class NetworkFixersBackend:
         Returns:
             FixResult with new content and applied fixes
         """
-        fixes_applied: List[str] = []
-        warnings: List[str] = []
+        fixes_applied: list[str] = []
+        warnings: list[str] = []
         ifcfg = IfcfgKV.parse(config.content)
 
         dev = (ifcfg.get("DEVICE") or "").strip()
@@ -228,8 +227,8 @@ class NetworkFixersBackend:
         kind, edges = self._ifcfg_kind_and_links(ifcfg)
         topo_kind = topo.infer_kind(dev) if topo else kind
 
-        topo_edges: List[TopoEdge] = topo.edges if topo else []
-        local_edges: List[TopoEdge] = list(edges) if edges else []
+        topo_edges: list[TopoEdge] = topo.edges if topo else []
+        local_edges: list[TopoEdge] = list(edges) if edges else []
 
         # --- remove MAC pinning keys
         if self.fix_level in (FixLevel.MODERATE, FixLevel.AGGRESSIVE):
@@ -239,7 +238,7 @@ class NetworkFixersBackend:
                     fixes_applied.append(f"removed-mac-pinning-{k.lower()}")
 
         # --- VMware driver token cleanup
-        new_lines: List[str] = []
+        new_lines: list[str] = []
         for ln in ifcfg.lines:
             changed = False
             for driver_name, pattern in self.vmware_drivers.items():
@@ -257,7 +256,7 @@ class NetworkFixersBackend:
 
         # --- VMware-ish params
         vmware_params = ["VMWARE_", "VMXNET_", "SCSIDEVICE", "SUBCHANNELS"]
-        new_lines2: List[str] = []
+        new_lines2: list[str] = []
         for ln in ifcfg.lines:
             u = ln.upper()
             if any(p in u for p in vmware_params) and not ln.lstrip().startswith("#"):
@@ -310,7 +309,7 @@ class NetworkFixersBackend:
             topo_kind = topo.infer_kind(dev) if topo else kind
             local_edges = list(edges) if edges else []
 
-        all_edges: List[TopoEdge] = topo_edges + local_edges
+        all_edges: list[TopoEdge] = topo_edges + local_edges
 
         # --- DHCP normalization (careful!)
         is_lower_member = self._is_lower_layer_member(dev, all_edges)
@@ -340,8 +339,8 @@ class NetworkFixersBackend:
         self,
         config: NetworkConfig,
         *,
-        topo: Optional[TopologyGraph] = None,
-        rename_map: Optional[Dict[str, str]] = None,
+        topo: TopologyGraph | None = None,
+        rename_map: dict[str, str] | None = None,
     ) -> FixResult:
         """
         Fix netplan YAML configuration files.
@@ -369,8 +368,8 @@ class NetworkFixersBackend:
                 validation_errors=["YAML support not available"],
             )
 
-        fixes_applied: List[str] = []
-        warnings: List[str] = []
+        fixes_applied: list[str] = []
+        warnings: list[str] = []
         rm = rename_map or {}
 
         try:
@@ -390,7 +389,7 @@ class NetworkFixersBackend:
 
             netplan_members = self._netplan_collect_member_refs(nw)
             setname_alias = self._netplan_collect_setname_aliases(nw)
-            topo_edges: List[TopoEdge] = topo.edges if topo else []
+            topo_edges: list[TopoEdge] = topo.edges if topo else []
 
             def is_member(name: str) -> bool:
                 if name in netplan_members:
@@ -403,7 +402,7 @@ class NetworkFixersBackend:
                         return True
                 return self._is_lower_layer_member(name, topo_edges)
 
-            def scrub_mac(d: Dict[str, Any], *, prefix: str) -> None:
+            def scrub_mac(d: dict[str, Any], *, prefix: str) -> None:
                 if self.fix_level in (FixLevel.MODERATE, FixLevel.AGGRESSIVE):
                     match_cfg = d.get("match")
                     if isinstance(match_cfg, dict) and "macaddress" in match_cfg:
@@ -421,7 +420,7 @@ class NetworkFixersBackend:
             def rename_list(lst: Any) -> Any:
                 if not isinstance(lst, list):
                     return lst
-                out: List[Any] = []
+                out: list[Any] = []
                 changed = False
                 for x in lst:
                     if isinstance(x, str) and x in rm:
@@ -544,14 +543,14 @@ class NetworkFixersBackend:
             FixResult with new content and applied fixes
         """
         content = config.content
-        fixes_applied: List[str] = []
-        warnings: List[str] = []
+        fixes_applied: list[str] = []
+        warnings: list[str] = []
 
         lines = content.split("\n")
-        new_lines: List[str] = []
+        new_lines: list[str] = []
 
-        current_iface: Optional[str] = None
-        iface_block_lines: List[str] = []
+        current_iface: str | None = None
+        iface_block_lines: list[str] = []
         in_iface_block = False
 
         def flush_block() -> None:
@@ -621,7 +620,7 @@ class NetworkFixersBackend:
         self,
         config: NetworkConfig,
         *,
-        rename_map: Optional[Dict[str, str]] = None,
+        rename_map: dict[str, str] | None = None,
     ) -> FixResult:
         """
         Fix systemd-networkd .network files.
@@ -641,12 +640,12 @@ class NetworkFixersBackend:
             FixResult with new content and applied fixes
         """
         content = config.content
-        fixes_applied: List[str] = []
-        warnings: List[str] = []
+        fixes_applied: list[str] = []
+        warnings: list[str] = []
         rm = rename_map or {}
 
         lines = content.split("\n")
-        new_lines: List[str] = []
+        new_lines: list[str] = []
 
         sec = None
         saw_network_section = False
@@ -684,7 +683,7 @@ class NetworkFixersBackend:
                         val = m.group(1).strip()
                         parts = re.split(r"\s+", val)
                         changed = False
-                        out_parts: List[str] = []
+                        out_parts: list[str] = []
                         for p in parts:
                             if p in rm and not any(ch in p for ch in "*?[]"):
                                 out_parts.append(rm[p])
@@ -718,7 +717,7 @@ class NetworkFixersBackend:
                 new_lines.append(line)
 
         if self.fix_level == FixLevel.AGGRESSIVE and saw_network_section and not saw_dhcp and not saw_static:
-            out: List[str] = []
+            out: list[str] = []
             inserted = False
             for ln in new_lines:
                 out.append(ln)
@@ -735,7 +734,7 @@ class NetworkFixersBackend:
         self,
         config: NetworkConfig,
         *,
-        rename_map: Optional[Dict[str, str]] = None,
+        rename_map: dict[str, str] | None = None,
     ) -> FixResult:
         """
         Fix NetworkManager connection profiles (.nmconnection).
@@ -754,12 +753,12 @@ class NetworkFixersBackend:
             FixResult with new content and applied fixes
         """
         content = config.content
-        fixes_applied: List[str] = []
-        warnings: List[str] = []
+        fixes_applied: list[str] = []
+        warnings: list[str] = []
         rm = rename_map or {}
 
         lines = content.split("\n")
-        new_lines: List[str] = []
+        new_lines: list[str] = []
         sec = None
 
         def has_vmware_token(val: str) -> bool:
@@ -826,7 +825,7 @@ class NetworkFixersBackend:
             FixResult with new content and applied fixes
         """
         content = config.content
-        fixes_applied: List[str] = []
+        fixes_applied: list[str] = []
 
         if self.fix_level not in (FixLevel.MODERATE, FixLevel.AGGRESSIVE):
             return FixResult(config=config, new_content=content, applied_fixes=[])

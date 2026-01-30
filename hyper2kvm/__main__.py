@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/__main__.py
 from __future__ import annotations
+
 import sys
+
 from .cli.argument_parser import parse_args_with_config
-from .orchestrator.orchestrator import Orchestrator
 from .core.exceptions import Fatal
+from .orchestrator.orchestrator import Orchestrator
+
+
 def main() -> None:
     args, _conf, logger = parse_args_with_config()
     try:

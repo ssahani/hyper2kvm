@@ -42,9 +42,10 @@ import socket
 import ssl
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Optional, Tuple
 
 
 class VDDKError(RuntimeError):
@@ -110,7 +111,7 @@ class _VixDiskLibInfo(ctypes.Structure):
     ]
 
 
-def _as_cstr(s: Optional[str]) -> Optional[bytes]:
+def _as_cstr(s: str | None) -> bytes | None:
     if s is None:
         return None
     s2 = str(s).strip()
@@ -152,7 +153,7 @@ def compute_server_thumbprint_sha1(host: str, port: int = 443, timeout: float = 
     return ":".join(sha1[i : i + 2] for i in range(0, 40, 2))
 
 
-def _peek_tls_cert_sha1(host: str, port: int, timeout: float) -> Tuple[Optional[str], Optional[str]]:
+def _peek_tls_cert_sha1(host: str, port: int, timeout: float) -> tuple[str | None, str | None]:
     """
     Best-effort: fetch peer cert and return (sha1_thumbprint, subject_str).
     Returns (None, None) on failure.
@@ -178,7 +179,7 @@ def _peek_tls_cert_sha1(host: str, port: int, timeout: float) -> Tuple[Optional[
         return None, None
 
 
-def _tcp_probe(host: str, port: int, timeout: float) -> Tuple[bool, str]:
+def _tcp_probe(host: str, port: int, timeout: float) -> tuple[bool, str]:
     """Best-effort TCP connect probe. Returns (ok, detail)."""
     try:
         t0 = time.time()
@@ -189,7 +190,7 @@ def _tcp_probe(host: str, port: int, timeout: float) -> Tuple[bool, str]:
         return False, f"{type(e).__name__}: {e}"
 
 
-def _resolve_host(host: str) -> Tuple[bool, str]:
+def _resolve_host(host: str) -> tuple[bool, str]:
     """Best-effort DNS resolution. Returns (ok, detail string)."""
     try:
         infos = socket.getaddrinfo(host, None)
@@ -280,7 +281,7 @@ def _setup_crash_handler(logger: logging.Logger) -> None:
 # Dynamic loading & symbol binding
 
 
-def _candidate_lib_names() -> Tuple[str, ...]:
+def _candidate_lib_names() -> tuple[str, ...]:
     return (
         "libvixDiskLib.so",
         "libvixDiskLib.so.9",
@@ -291,7 +292,7 @@ def _candidate_lib_names() -> Tuple[str, ...]:
 
 
 def _load_vddk_cdll(
-    vddk_libdir: Optional[Path],
+    vddk_libdir: Path | None,
     *,
     mutate_env: bool = True,
 ) -> ctypes.CDLL:
@@ -326,7 +327,7 @@ def _load_vddk_cdll(
         logger.debug("VDDK: Set LD_LIBRARY_PATH=%s", new_ld_path)
         logger.debug("VDDK: Set VDDK_HOME=%s", vddk_path)
 
-    last_error: Optional[Exception] = None
+    last_error: Exception | None = None
 
     if vddk_libdir:
         vddk_path = Path(vddk_libdir).expanduser().resolve()
@@ -508,9 +509,9 @@ def _is_likely_transient_error(msg: str) -> bool:
 
 _VDDK_LOG_CB_SIMPLE = ctypes.CFUNCTYPE(None, ctypes.c_char_p)
 
-_g_vddk_log_cb: Optional[_VDDK_LOG_CB_SIMPLE] = None
-_g_vddk_warn_cb: Optional[_VDDK_LOG_CB_SIMPLE] = None
-_g_vddk_panic_cb: Optional[_VDDK_LOG_CB_SIMPLE] = None
+_g_vddk_log_cb: _VDDK_LOG_CB_SIMPLE | None = None
+_g_vddk_warn_cb: _VDDK_LOG_CB_SIMPLE | None = None
+_g_vddk_panic_cb: _VDDK_LOG_CB_SIMPLE | None = None
 
 
 def _mk_vddk_log_cb_simple(logger: logging.Logger, level: str) -> _VDDK_LOG_CB_SIMPLE:
@@ -557,7 +558,7 @@ def _mk_dummy_callback() -> _VDDK_LOG_CB_SIMPLE:
 _vddk_inited = False
 
 
-def vddk_init_once(logger: logging.Logger, lib: ctypes.CDLL, *, vddk_libdir: Optional[Path]) -> None:
+def vddk_init_once(logger: logging.Logger, lib: ctypes.CDLL, *, vddk_libdir: Path | None) -> None:
     """
     Initialize VDDK once per process.
 
@@ -668,10 +669,10 @@ class VDDKConnectionSpec:
     user: str
     password: str
     port: int = 443
-    thumbprint: Optional[str] = None
+    thumbprint: str | None = None
     insecure: bool = False
-    transport_modes: Optional[str] = None # e.g. "nbdssl:nbd"
-    vddk_libdir: Optional[Path] = None
+    transport_modes: str | None = None # e.g. "nbdssl:nbd"
+    vddk_libdir: Path | None = None
     tls_thumbprint_timeout: float = 10.0
     mutate_ld_library_path: bool = True
 
@@ -696,11 +697,11 @@ class VDDKESXClient:
         self.logger = logger
         self.spec = spec
 
-        self._lib: Optional[ctypes.CDLL] = None
+        self._lib: ctypes.CDLL | None = None
         self._conn: _VixDiskLibConnection = _VixDiskLibConnection()
-        self._connect_strings: dict[str, Optional[bytes]] = {}
+        self._connect_strings: dict[str, bytes | None] = {}
 
-    def __enter__(self) -> "VDDKESXClient":
+    def __enter__(self) -> VDDKESXClient:
         self.connect()
         return self
 
@@ -986,7 +987,7 @@ class VDDKESXClient:
         base_backoff_s: float,
         max_backoff_s: float,
         jitter_s: float,
-        cancel: Optional[CancelFn],
+        cancel: CancelFn | None,
     ) -> None:
         """Read sectors with retry/backoff on likely transient errors."""
         if self._lib is None:
@@ -1035,13 +1036,13 @@ class VDDKESXClient:
         local_path: Path,
         *,
         sectors_per_read: int = 2048, # 1 MiB (2048 * 512)
-        progress: Optional[ProgressFn] = None,
+        progress: ProgressFn | None = None,
         progress_interval_s: float = 0.5,
         log_every_bytes: int = 256 * 1024 * 1024,
         resume: bool = True,
         durable: bool = False,
         allow_flat: bool = False,
-        cancel: Optional[CancelFn] = None,
+        cancel: CancelFn | None = None,
         max_read_retries: int = 6,
         base_backoff_s: float = 0.25,
         max_backoff_s: float = 8.0,
@@ -1080,7 +1081,7 @@ class VDDKESXClient:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = local_path.with_suffix(local_path.suffix + ".part")
 
-        h: Optional[_VixDiskLibHandle] = None
+        h: _VixDiskLibHandle | None = None
         sha256 = hashlib.sha256() if compute_sha256 else None
 
         try:

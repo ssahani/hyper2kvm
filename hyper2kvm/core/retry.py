@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/retry.py
 """
 Retry utilities with exponential backoff.
@@ -13,8 +12,9 @@ from __future__ import annotations
 import logging
 import random
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Optional, Tuple, Type, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -24,8 +24,8 @@ def retry_with_backoff(
     base_backoff_s: float = 2.0,
     max_backoff_s: float = 60.0,
     jitter_s: float = 1.0,
-    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
-    logger: Optional[logging.Logger] = None,
+    exceptions: type[Exception] | tuple[type[Exception], ...] = Exception,
+    logger: logging.Logger | None = None,
     log_level: int = logging.WARNING,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
@@ -53,7 +53,7 @@ def retry_with_backoff(
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
-            last_exception: Optional[Exception] = None
+            last_exception: Exception | None = None
 
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -111,9 +111,9 @@ def retry_operation(
     base_backoff_s: float = 2.0,
     max_backoff_s: float = 60.0,
     jitter_s: float = 1.0,
-    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
+    exceptions: type[Exception] | tuple[type[Exception], ...] = Exception,
     operation_name: str = "operation",
-    logger: Optional[logging.Logger] = None,
+    logger: logging.Logger | None = None,
     log_level: int = logging.WARNING,
 ) -> T:
     """
@@ -143,7 +143,7 @@ def retry_operation(
             logger=my_logger,
         )
     """
-    last_exception: Optional[Exception] = None
+    last_exception: Exception | None = None
 
     for attempt in range(1, max_attempts + 1):
         try:

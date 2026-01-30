@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/daemon/daemon_watcher.py
 """
 Enhanced daemon mode file watcher with all improvements.
@@ -29,19 +28,19 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from queue import Queue, Empty
+from queue import Empty, Queue
 from threading import Event, Lock
-from typing import Optional, Set, Dict, Any
+from typing import Any, Dict, Optional, Set
 
+from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
 from ..core.logger import Log
 from ..core.utils import U
-from .stats import DaemonStatistics
-from .notifier import DaemonNotifier
-from .deduplicator import FileDeduplicator
 from .control import DaemonControl
+from .deduplicator import FileDeduplicator
+from .notifier import DaemonNotifier
+from .stats import DaemonStatistics
 
 
 class VMFileHandler(FileSystemEventHandler):
@@ -59,7 +58,7 @@ class VMFileHandler(FileSystemEventHandler):
     SUPPORTED_EXTENSIONS = {'.vmdk', '.ova', '.ovf', '.vhd', '.vhdx', '.raw', '.img', '.ami'}
 
     def __init__(self, logger: logging.Logger, queue: Queue, watch_dir: Path,
-                 deduplicator: Optional[FileDeduplicator] = None,
+                 deduplicator: FileDeduplicator | None = None,
                  file_stable_timeout: int = 30):
         super().__init__()
         self.logger = logger
@@ -67,8 +66,8 @@ class VMFileHandler(FileSystemEventHandler):
         self.watch_dir = watch_dir
         self.deduplicator = deduplicator
         self.file_stable_timeout = file_stable_timeout
-        self.processing: Set[str] = set()
-        self.processed: Set[str] = set()
+        self.processing: set[str] = set()
+        self.processed: set[str] = set()
         self.lock = Lock()
 
     def _is_valid_file(self, path: Path) -> bool:
@@ -181,7 +180,7 @@ class RetryManager:
         self.max_retries = max_retries
         self.initial_delay = initial_delay
         self.backoff_multiplier = backoff_multiplier
-        self.retry_queue: Dict[str, Dict[str, Any]] = {}
+        self.retry_queue: dict[str, dict[str, Any]] = {}
         self.lock = Lock()
 
     def should_retry(self, filename: str, error: str) -> bool:
@@ -226,7 +225,7 @@ class RetryManager:
 
             return retry_count
 
-    def get_pending_retries(self) -> list[tuple[str, Dict]]:
+    def get_pending_retries(self) -> list[tuple[str, dict]]:
         """Get files ready for retry."""
         with self.lock:
             now = time.time()
@@ -267,9 +266,9 @@ class DaemonWatcher:
         self.stop_event = Event()
         self.pause_event = Event()  # For pause/resume
         self.drain_mode = False
-        self.observer: Optional[Observer] = None
-        self.handler: Optional[VMFileHandler] = None
-        self.executor: Optional[ThreadPoolExecutor] = None
+        self.observer: Observer | None = None
+        self.handler: VMFileHandler | None = None
+        self.executor: ThreadPoolExecutor | None = None
 
         # Configuration
         self.max_workers = getattr(args, 'max_concurrent_jobs', 3)
@@ -283,7 +282,7 @@ class DaemonWatcher:
         self.stats = DaemonStatistics(logger, stats_dir / 'stats.json')
 
         # Deduplication
-        self.deduplicator: Optional[FileDeduplicator] = None
+        self.deduplicator: FileDeduplicator | None = None
         if self.enable_deduplication:
             db_path = stats_dir / 'deduplication.db'
             self.deduplicator = FileDeduplicator(logger, db_path, self.deduplication_use_md5)
@@ -354,7 +353,7 @@ class DaemonWatcher:
             U.die(self.logger, f"Output path is not a directory: {self.output_dir}", 1)
 
     def _save_error_context(self, file_path: Path, error: str, phase: str,
-                           exception_info: Optional[str] = None) -> None:
+                           exception_info: str | None = None) -> None:
         """Save detailed error context to JSON file."""
         error_dir = self.watch_dir / '.errors'
         U.ensure_dir(error_dir)

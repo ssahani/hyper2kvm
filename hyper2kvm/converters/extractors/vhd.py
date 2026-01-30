@@ -10,17 +10,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
 
 from rich.progress import (
-    Progress,
     BarColumn,
+    DownloadColumn,
+    Progress,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-    DownloadColumn,
     TransferSpeedColumn,
 )
 
 from ...core.utils import U
-
 
 _ALLOWED_MANIFEST_EXTS = {".txt", ".json", ".yaml", ".yml"}
 
@@ -34,14 +33,14 @@ class VHD:
         *,
         # --- Enhancement (non-breaking): optional convert stage right after extract ---
         convert_to_qcow2: bool = False,
-        convert_outdir: Optional[Path] = None,
+        convert_outdir: Path | None = None,
         convert_compress: bool = False,
-        convert_compress_level: Optional[int] = None,
+        convert_compress_level: int | None = None,
         # --- Enhancement: optional host-side debug logging ---
         log_virt_filesystems: bool = False,
         # --- Safety rails (non-breaking) ---
-        max_members: Optional[int] = None,
-        max_total_bytes: Optional[int] = None,
+        max_members: int | None = None,
+        max_total_bytes: int | None = None,
         skip_special: bool = True,
         preserve_permissions: bool = True,
         # --- Extraction policy ---
@@ -51,7 +50,7 @@ class VHD:
         rename_on_collision: bool = False,
         # --- Optional timestamp preservation (off by default) ---
         preserve_timestamps: bool = False,
-    ) -> List[Path]:
+    ) -> list[Path]:
         """
         Accepts either:
           - a plain .vhd / .vhdx
@@ -153,12 +152,12 @@ class VHD:
         outdir: Path,
         *,
         convert_to_qcow2: bool = False,
-        convert_outdir: Optional[Path] = None,
+        convert_outdir: Path | None = None,
         convert_compress: bool = False,
-        convert_compress_level: Optional[int] = None,
+        convert_compress_level: int | None = None,
         log_virt_filesystems: bool = False,
-        max_members: Optional[int] = None,
-        max_total_bytes: Optional[int] = None,
+        max_members: int | None = None,
+        max_total_bytes: int | None = None,
         skip_special: bool = True,
         preserve_permissions: bool = True,
         extract_all: bool = False,
@@ -166,7 +165,7 @@ class VHD:
         overwrite: bool = False,
         rename_on_collision: bool = False,
         preserve_timestamps: bool = False,
-    ) -> List[Path]:
+    ) -> list[Path]:
         U.banner(logger, "Extract VHD tarball")
         logger.info(f"VHD tarball: {vhd_tar}")
 
@@ -194,8 +193,8 @@ class VHD:
         bytes_budget = max_total_bytes
         written_total = 0
 
-        extracted_vhds: List[Path] = []
-        extracted_other: List[Path] = []
+        extracted_vhds: list[Path] = []
+        extracted_other: list[Path] = []
 
         skipped_by_filter = 0
         skipped_special = 0
@@ -318,9 +317,9 @@ class VHD:
                         progress.update(task, advance=1)
 
         # De-dup while preserving order
-        def _dedup(paths: List[Path]) -> List[Path]:
+        def _dedup(paths: list[Path]) -> list[Path]:
             seen: set[str] = set()
-            out: List[Path] = []
+            out: list[Path] = []
             for p in paths:
                 s = str(p)
                 if s not in seen:
@@ -377,13 +376,13 @@ class VHD:
     @staticmethod
     def _convert_disks_to_qcow2(
         logger: logging.Logger,
-        disks: List[Path],
+        disks: list[Path],
         outdir: Path,
         *,
         compress: bool = False,
-        compress_level: Optional[int] = None,
+        compress_level: int | None = None,
         log_virt_filesystems: bool = False,
-    ) -> List[Path]:
+    ) -> list[Path]:
         try:
             from ..qemu.converter import Convert  # type: ignore
         except Exception as e:
@@ -393,7 +392,7 @@ class VHD:
         U.banner(logger, "Convert extracted VHD(s) to QCOW2")
         U.ensure_dir(outdir)
 
-        outputs: List[Path] = []
+        outputs: list[Path] = []
         for idx, disk in enumerate(disks, 1):
             if not disk.exists():
                 logger.warning(f"Skipping missing disk: {disk}")
@@ -437,7 +436,7 @@ class VHD:
 
         # De-dup preserving order
         seen: set[str] = set()
-        uniq: List[Path] = []
+        uniq: list[Path] = []
         for p in outputs:
             s = str(p)
             if s not in seen:
@@ -453,7 +452,7 @@ class VHD:
         return uniq
 
     @staticmethod
-    def _log_virt_filesystems(logger: logging.Logger, image: Path) -> Dict[str, Any]:
+    def _log_virt_filesystems(logger: logging.Logger, image: Path) -> dict[str, Any]:
         cmd = ["virt-filesystems", "-a", str(image), "--all", "--long", "-h"]
         try:
             cp = U.run_cmd(logger, cmd, capture=True, check=False)
@@ -504,7 +503,7 @@ class VHD:
             raise RuntimeError(f"Blocked unsafe tar absolute path: {name}")
 
         pp = PurePosixPath(nm)
-        clean_parts: List[str] = []
+        clean_parts: list[str] = []
         for part in pp.parts:
             if part in ("", "."):
                 continue
@@ -544,11 +543,11 @@ class VHD:
         skip_special: bool = True,
         preserve_permissions: bool = True,
         preserve_timestamps: bool = False,
-        bytes_budget: Optional[int] = None,
+        bytes_budget: int | None = None,
         written_total: int = 0,
         overwrite: bool = False,
         rename_on_collision: bool = False,
-    ) -> Tuple[int, Optional[Path]]:
+    ) -> tuple[int, Path | None]:
         """
         Safely extract a single tar member into outdir.
 

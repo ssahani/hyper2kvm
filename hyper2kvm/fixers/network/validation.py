@@ -59,7 +59,7 @@ class NetworkValidation:
         original: str,
         fixed: str,
         config_type: NetworkConfigType,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Validate that fix didn't corrupt configuration.
 
@@ -71,7 +71,7 @@ class NetworkValidation:
         Returns:
             List of validation error messages (empty if valid)
         """
-        errors: List[str] = []
+        errors: list[str] = []
 
         # Check for empty result
         if not fixed.strip():

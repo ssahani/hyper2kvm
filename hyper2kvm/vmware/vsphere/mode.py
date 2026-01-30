@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/vsphere/mode.py
 from __future__ import annotations
 
@@ -9,8 +8,9 @@ import json
 import logging
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 import requests
@@ -19,9 +19,9 @@ from pyVmomi import vim, vmodl  # noqa: F401
 # Optional: Rich progress UI (TTY friendly). Falls back to plain logs if Rich not available.
 try:  # pragma: no cover
     from rich.progress import (
+        BarColumn,
         Progress,
         SpinnerColumn,
-        BarColumn,
         TextColumn,
         TimeElapsedColumn,
         TransferSpeedColumn,
@@ -60,16 +60,16 @@ from ..transports.govc_common import GovcRunner
 
 # Import the OVF Tool client module
 from ..transports.ovftool_client import (
-    find_ovftool,
-    ovftool_version,
-    export_to_ova,
-    deploy_ovf_or_ova,
-    OvfExportOptions,
     OvfDeployOptions,
+    OvfExportOptions,
+    OvfToolAuthError,
     OvfToolError,
     OvfToolNotFound,
-    OvfToolAuthError,
     OvfToolSslError,
+    deploy_ovf_or_ova,
+    export_to_ova,
+    find_ovftool,
+    ovftool_version,
 )
 
 _DEFAULT_HTTP_TIMEOUT = (10, 300)  # (connect, read) seconds
@@ -152,7 +152,7 @@ def _norm_export_mode(v: Any) -> str:
     return aliases.get(s, s)
 
 
-def _parse_vm_datastore_dir(vmx_path: str) -> Tuple[str, str]:
+def _parse_vm_datastore_dir(vmx_path: str) -> tuple[str, str]:
     """Parse VM datastore directory from VMX path."""
     s = (vmx_path or "").strip()
     if not s.startswith("[") or "]" not in s:
@@ -166,7 +166,7 @@ def _parse_vm_datastore_dir(vmx_path: str) -> Tuple[str, str]:
     return ds, folder
 
 
-def _parse_datastore_dir_override(s: str, *, default_ds: Optional[str] = None) -> Tuple[str, str]:
+def _parse_datastore_dir_override(s: str, *, default_ds: str | None = None) -> tuple[str, str]:
     """Parse datastore directory override."""
     t = (s or "").strip()
     if not t:
@@ -235,7 +235,7 @@ def _get_transport_preference(args: argparse.Namespace) -> str:
     return "https"
 
 
-def _get_http_timeout(args: argparse.Namespace) -> Tuple[int, int]:
+def _get_http_timeout(args: argparse.Namespace) -> tuple[int, int]:
     """Get HTTP timeout configuration."""
     timeout = getattr(args, "vs_http_timeout", None)
     if timeout is None:
@@ -269,7 +269,7 @@ def _get_http_retries(args: argparse.Namespace) -> int:
 
 # HTTPS Download Functions
 def _download_one_folder_file(
-    client: "VMwareClient",
+    client: VMwareClient,
     vc_host: str,
     dc_name: str,
     ds_name: str,
@@ -278,7 +278,7 @@ def _download_one_folder_file(
     verify_tls: bool,
     args: argparse.Namespace,
     *,
-    on_bytes: Optional[Callable[[int, int], None]] = None,
+    on_bytes: Callable[[int, int], None] | None = None,
     chunk_size: int = _DEFAULT_CHUNK_SIZE,
 ) -> None:
     """Download a single file via HTTPS /folder endpoint using HTTPDownloadClient."""
@@ -363,7 +363,7 @@ def _download_one_folder_file(
         raise  # Re-raise the VMwareError from HTTPDownloadClient
 
 
-def _get_session_cookie(client: "VMwareClient") -> str:
+def _get_session_cookie(client: VMwareClient) -> str:
     """Get session cookie from VMwareClient."""
     # Prefer a public helper if your VMwareClient provides it.
     fn = getattr(client, "get_session_cookie", None)
@@ -385,7 +385,7 @@ def _get_session_cookie(client: "VMwareClient") -> str:
     raise VMwareError("Cannot get session cookie: VMwareClient is not properly connected or returned empty cookie")
 
 
-def _get_response_status(e: requests.RequestException) -> Optional[int]:
+def _get_response_status(e: requests.RequestException) -> int | None:
     """Extract status code from request exception."""
     try:
         resp = getattr(e, "response", None)
@@ -398,7 +398,7 @@ def _get_response_status(e: requests.RequestException) -> Optional[int]:
 
 # File Download Policy Functions
 def _download_one_file_with_policy(
-    client: "VMwareClient",
+    client: VMwareClient,
     args: argparse.Namespace,
     *,
     vc_host: str,
@@ -407,7 +407,7 @@ def _download_one_file_with_policy(
     ds_path: str,
     local_path: Path,
     verify_tls: bool,
-    on_bytes: Optional[Callable[[int, int], None]] = None,
+    on_bytes: Callable[[int, int], None] | None = None,
     chunk_size: int = _DEFAULT_CHUNK_SIZE,
 ) -> None:
     """
@@ -449,13 +449,13 @@ def _download_one_file_with_policy(
 
 def _try_vddk_download(
     *,
-    client: "VMwareClient",
+    client: VMwareClient,
     ds_name: str,
     ds_path: str,
     local_path: Path,
     dc_name: str,
     chunk_size: int,
-    on_bytes: Optional[Callable[[int, int], None]],
+    on_bytes: Callable[[int, int], None] | None,
     args: argparse.Namespace,
 ) -> bool:
     """
@@ -493,7 +493,7 @@ def _try_vddk_download(
 
 
 # Progress UI Functions
-def _create_progress_ui(args: argparse.Namespace, total_files: int) -> Tuple[Optional["Progress"], Optional[Any], Optional[Any]]:
+def _create_progress_ui(args: argparse.Namespace, total_files: int) -> tuple[Progress | None, Any | None, Any | None]:
     """Create Rich progress UI for downloads."""
     if Progress is None or bool(getattr(args, "json", False)):
         return None, None, None
@@ -515,10 +515,10 @@ def _create_progress_ui(args: argparse.Namespace, total_files: int) -> Tuple[Opt
 
 
 def _update_progress(
-    progress: Optional["Progress"],
-    files_task: Optional[Any],
-    bytes_task: Optional[Any],
-    description: Optional[str] = None,
+    progress: Progress | None,
+    files_task: Any | None,
+    bytes_task: Any | None,
+    description: str | None = None,
     bytes_advance: int = 0,
     files_advance: int = 0,
 ) -> None:
@@ -538,13 +538,13 @@ def _update_progress(
 
 # File Filtering Functions
 def _filter_files_by_glob(
-    files: List[str],
-    include_glob: List[str],
-    exclude_glob: List[str],
+    files: list[str],
+    include_glob: list[str],
+    exclude_glob: list[str],
     max_files: int,
-) -> List[str]:
+) -> list[str]:
     """Filter files based on glob patterns."""
-    filtered: List[str] = []
+    filtered: list[str] = []
     for rel in files:
         if not rel:
             continue
@@ -568,10 +568,10 @@ def _get_vm_files_from_govc(
     govc: GovcRunner,
     ds_name: str,
     folder: str,
-    include_glob: List[str],
-    exclude_glob: List[str],
+    include_glob: list[str],
+    exclude_glob: list[str],
     max_files: int,
-) -> List[str]:
+) -> list[str]:
     """
     Get VM files using govc datastore.ls -json (via GovcRunner) with filtering.
 
@@ -582,7 +582,7 @@ def _get_vm_files_from_govc(
     rels = govc.datastore_ls_json(ds_name, folder)
     base = (folder or "").strip().strip("/")
 
-    files: List[str] = []
+    files: list[str] = []
     for name in rels:
         nm = str(name or "").lstrip("/").strip()
         if not nm:
@@ -599,7 +599,7 @@ def _export_vm_with_fallback(
     args: argparse.Namespace,
     vm_name: str,
     out_dir: Path,
-    client: "VMwareClient",
+    client: VMwareClient,
     vc_host: str,
     dc_name: str,
 ) -> int:
@@ -662,7 +662,7 @@ def _export_vm_with_fallback(
 
 
 def _export_vm_via_https(
-    client: "VMwareClient",
+    client: VMwareClient,
     govc: GovcRunner,
     args: argparse.Namespace,
     vm_name: str,
@@ -716,9 +716,9 @@ def _export_vm_via_https(
 
 
 def _download_files_with_progress(
-    client: "VMwareClient",
+    client: VMwareClient,
     args: argparse.Namespace,
-    files: List[str],
+    files: list[str],
     ds_name: str,
     vc_host: str,
     dc_name: str,
@@ -766,7 +766,7 @@ def _download_files_with_progress(
 
 # OVF Tool Helper Functions
 def _build_ovftool_source_url(
-    client: "VMwareClient",
+    client: VMwareClient,
     vm_name: str,
     args: argparse.Namespace,
     dc_name: str,
@@ -792,7 +792,7 @@ def _build_ovftool_source_url(
 
 def _get_vim_inventory_path(vm: vim.VirtualMachine, dc_name: str) -> str:
     """Build inventory path for ovftool: <dc>/vm/<folder1>/<folder2>/<vmname>"""
-    parts: List[str] = []
+    parts: list[str] = []
     obj: Any = vm
 
     while obj is not None:
@@ -876,7 +876,7 @@ class VsphereMode:
                 raise Fatal(2, f"OVF Tool is required but not found: {e}")
 
     # govc helpers (public GovcRunner methods)
-    def _govc_list_vm_names(self) -> List[Dict[str, Any]]:
+    def _govc_list_vm_names(self) -> list[dict[str, Any]]:
         """
         Inventory via govc.
 
@@ -899,7 +899,7 @@ class VsphereMode:
                 self.logger.debug("govc: list_vm_names (names-only) took %s", _fmt_duration(time.monotonic() - t0))
             return out
 
-        detailed: List[Dict[str, Any]] = []
+        detailed: list[dict[str, Any]] = []
         for pth in vms:
             try:
                 info = self.govc.run_json(["vm.info", "-json", str(pth)]) or {}
@@ -935,7 +935,7 @@ class VsphereMode:
         return detailed
 
     # OVF Tool helpers
-    def _ovftool_export_vm(self, client: "VMwareClient", vm_name: str, out_dir: Path) -> None:
+    def _ovftool_export_vm(self, client: VMwareClient, vm_name: str, out_dir: Path) -> None:
         self._require_ovftool()
 
         source_url = _build_ovftool_source_url(client, vm_name, self.args, _get_dc_name(self.args))
@@ -967,7 +967,7 @@ class VsphereMode:
 
         self.logger.info("OVF Tool export completed in %s", _fmt_duration(time.monotonic() - t0))
 
-    def _ovftool_deploy_ova(self, source_ova: Path, target_vm_name: Optional[str] = None) -> None:
+    def _ovftool_deploy_ova(self, source_ova: Path, target_vm_name: str | None = None) -> None:
         self._require_ovftool()
 
         if not source_ova.exists():
@@ -993,7 +993,7 @@ class VsphereMode:
         p = quote(str(vc_pass), safe="")
         target_url = f"vi://{u}:{p}@{vc_host}/{target_path}"
 
-        network_map: List[Tuple[str, str]] = []
+        network_map: list[tuple[str, str]] = []
         net_mapping_str = getattr(self.args, "ovftool_network_map", None)
         if net_mapping_str:
             for mapping in str(net_mapping_str).split(","):
@@ -1099,7 +1099,7 @@ class VsphereMode:
             except Exception as e:
                 self.logger.warning("Failed to disconnect: %s", e)
 
-    def _handle_action(self, action: str, client: "VMwareClient", vc_host: str) -> int:
+    def _handle_action(self, action: str, client: VMwareClient, vc_host: str) -> int:
         dc_name = _get_dc_name(self.args)
 
         if action == "list_vm_names":
@@ -1132,7 +1132,7 @@ class VsphereMode:
                 print(vm.get("name", "Unnamed VM"))
         return 0
 
-    def _handle_export_vm(self, client: "VMwareClient", vc_host: str, dc_name: str) -> int:
+    def _handle_export_vm(self, client: VMwareClient, vc_host: str, dc_name: str) -> int:
         vm_name = getattr(self.args, "vm_name", None) or getattr(self.args, "name", None)
         if not vm_name:
             raise Fatal(2, "vsphere export_vm: --vm_name is required")
@@ -1142,7 +1142,7 @@ class VsphereMode:
 
         return _export_vm_with_fallback(self.govc, self.args, str(vm_name), out_dir, client, vc_host, dc_name)
 
-    def _handle_ovftool_export(self, client: "VMwareClient") -> int:
+    def _handle_ovftool_export(self, client: VMwareClient) -> int:
         vm_name = getattr(self.args, "vm_name", None) or getattr(self.args, "name", None)
         if not vm_name:
             raise Fatal(2, "vsphere ovftool_export: --vm_name is required")
@@ -1176,7 +1176,7 @@ class VsphereMode:
             self.logger.exception("ovftool_deploy: unexpected error")
             raise Fatal(2, f"OVF Tool deployment failed with unexpected error: {e}")
 
-    def _handle_download_datastore_file(self, client: "VMwareClient", dc_name: str) -> int:
+    def _handle_download_datastore_file(self, client: VMwareClient, dc_name: str) -> int:
         if not all([getattr(self.args, "datastore", None), getattr(self.args, "ds_path", None), getattr(self.args, "local_path", None)]):
             raise Fatal(2, "vsphere download_datastore_file: --datastore, --ds-path, --local-path are required")
 
@@ -1212,7 +1212,7 @@ class VsphereMode:
             print(f"Downloaded [{self.args.datastore}] {ds_path} to {local_path}")
         return 0
 
-    def _handle_download_only_vm(self, client: "VMwareClient", vc_host: str, dc_name: str) -> int:
+    def _handle_download_only_vm(self, client: VMwareClient, vc_host: str, dc_name: str) -> int:
         vm_name = getattr(self.args, "vm_name", None)
         if not vm_name:
             raise Fatal(2, "vsphere download_only_vm: --vm_name is required")
@@ -1324,17 +1324,17 @@ class VsphereMode:
     def _download_vm_files_with_progress(
         self,
         *,
-        client: "VMwareClient",
-        files: List[str],
+        client: VMwareClient,
+        files: list[str],
         ds_name: str,
         vc_host: str,
         dc_name: str,
         verify_tls: bool,
         out_dir: Path,
         fail_on_missing: bool,
-    ) -> Tuple[List[str], List[str]]:
-        downloaded: List[str] = []
-        errors: List[str] = []
+    ) -> tuple[list[str], list[str]]:
+        downloaded: list[str] = []
+        errors: list[str] = []
 
         progress, files_task, bytes_task = _create_progress_ui(self.args, len(files))
 
@@ -1415,11 +1415,11 @@ class VsphereMode:
         ds_name: str,
         folder: str,
         out_dir: Path,
-        files: List[str],
-        downloaded: List[str],
-        errors: List[str],
-        override: Optional[str],
-    ) -> Dict[str, Any]:
+        files: list[str],
+        downloaded: list[str],
+        errors: list[str],
+        override: str | None,
+    ) -> dict[str, Any]:
         dc_name = _get_dc_name(self.args)
         verify_tls = not bool(getattr(self.args, "vc_insecure", False))
 

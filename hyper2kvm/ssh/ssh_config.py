@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/ssh/ssh_config.py
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Optional
 
 
 def _is_probably_ipv6(host: str) -> bool:
@@ -43,8 +43,8 @@ class SSHConfig:
     host: str
     user: str = "root"
     port: int = 22
-    identity: Optional[Path] = None
-    ssh_opts: List[str] = field(default_factory=list)
+    identity: Path | None = None
+    ssh_opts: list[str] = field(default_factory=list)
 
     # behavior
     sudo: bool = False
@@ -53,7 +53,7 @@ class SSHConfig:
     keepalive_count: int = 3
 
     # advanced
-    jump_host: Optional[str] = None          # ProxyJump
+    jump_host: str | None = None          # ProxyJump
     strict_host_key_checking: bool = False   # automation-safe default
 
     # explicit non-interactive behavior (CI-safe)
@@ -61,13 +61,13 @@ class SSHConfig:
     request_tty: bool = False
 
     # host key policy knobs
-    known_hosts_file: Optional[Path] = None
+    known_hosts_file: Path | None = None
     accept_new_host_keys: bool = False       # semantic intent; may not be emitted on old ssh
     force_accept_new: bool = False           # if True, emit accept-new even if ssh might be old
 
     # performance / multiplexing knobs
     control_master: bool = False
-    control_path: Optional[Path] = None
+    control_path: Path | None = None
     control_persist_s: int = 60
 
     def __post_init__(self) -> None:
@@ -92,7 +92,7 @@ class SSHConfig:
             object.__setattr__(self, "jump_host", j or None)
 
         if self.ssh_opts:
-            cleaned: List[str] = []
+            cleaned: list[str] = []
             seen = set()
             for opt in self.ssh_opts:
                 o = _clean_opt(opt)
@@ -124,7 +124,7 @@ class SSHConfig:
     def scp_target(self) -> str:
         return f"{self.user}@{_scp_host(self.host)}"
 
-    def _append_hostkey_policy(self, cmd: List[str]) -> None:
+    def _append_hostkey_policy(self, cmd: list[str]) -> None:
         if self.strict_host_key_checking:
             if self.accept_new_host_keys and self.force_accept_new:
                 cmd += ["-o", "StrictHostKeyChecking=accept-new"]
@@ -139,7 +139,7 @@ class SSHConfig:
             if not self.strict_host_key_checking:
                 cmd += ["-o", "UserKnownHostsFile=/dev/null"]
 
-    def _append_mux(self, cmd: List[str]) -> None:
+    def _append_mux(self, cmd: list[str]) -> None:
         if not self.control_master:
             return
         cmd += ["-o", "ControlMaster=auto"]
@@ -150,8 +150,8 @@ class SSHConfig:
             # Hash-based path avoids length limits.
             cmd += ["-o", "ControlPath=~/.ssh/cm-%C"]
 
-    def base_cmd(self) -> List[str]:
-        cmd: List[str] = [
+    def base_cmd(self) -> list[str]:
+        cmd: list[str] = [
             "ssh",
             "-p", str(self.port),
             "-o", f"ConnectTimeout={self.connect_timeout}",
@@ -179,7 +179,7 @@ class SSHConfig:
         cmd.append(self.target())
         return cmd
 
-    def remote_cmd(self, argv: Sequence[str]) -> List[str]:
+    def remote_cmd(self, argv: Sequence[str]) -> list[str]:
         args = list(argv)
         if self.sudo:
             args = ["sudo", "-n", "--"] + args
@@ -188,8 +188,8 @@ class SSHConfig:
     def scp_src(self, remote_path: str) -> str:
         return f"{self.scp_target()}:{remote_path}"
 
-    def scp_base_cmd(self) -> List[str]:
-        cmd: List[str] = ["scp", "-P", str(self.port)]
+    def scp_base_cmd(self) -> list[str]:
+        cmd: list[str] = ["scp", "-P", str(self.port)]
         if self.identity:
             cmd += ["-i", str(self.identity)]
         if self.batch_mode:

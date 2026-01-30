@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import fnmatch
 import subprocess
+from collections.abc import Iterable
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...core.exceptions import VMwareError
 from ...core.utils import U
@@ -25,13 +26,13 @@ except ImportError:
 # Small generic helpers
 
 
-def _p(s: Optional[str]) -> Optional[Path]:
+def _p(s: str | None) -> Path | None:
     if not s:
         return None
     return Path(s).expanduser()
 
 
-def _normalize_ds_path(datastore: str, ds_path: str) -> Tuple[str, str]:
+def _normalize_ds_path(datastore: str, ds_path: str) -> tuple[str, str]:
     """Backwards-compatible wrapper; real logic lives in govc_common.normalize_ds_path()."""
     return normalize_ds_path(datastore, ds_path)
 
@@ -63,12 +64,12 @@ def _require(args: Any, name: str) -> Any:
     return v
 
 
-def _merged_cfg(args: Any, conf: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _merged_cfg(args: Any, conf: dict[str, Any] | None) -> dict[str, Any]:
     """
     Merge CLI + YAML config into a single dict for VMwareClient.from_config().
     CLI overrides config. We also populate vs_* aliases for compat.
     """
-    cfg: Dict[str, Any] = dict(conf or {})
+    cfg: dict[str, Any] = dict(conf or {})
 
     vcenter = getattr(args, "vcenter", None)
     vc_user = getattr(args, "vc_user", None)
@@ -129,8 +130,8 @@ class _Emitter:
         self,
         payload: Any,
         *,
-        human: Optional[Iterable[str]] = None,
-        human_msg: Optional[str] = None,
+        human: Iterable[str] | None = None,
+        human_msg: str | None = None,
     ) -> None:
         payload = _as_payload(payload)
         if self.json_enabled():
@@ -168,7 +169,7 @@ class GovmomiCLI(GovcRunner):
     def __init__(self, args: Any, logger: Any):
         super().__init__(logger=logger, args=args)
 
-    def _run_text(self, argv: List[str]) -> str:
+    def _run_text(self, argv: list[str]) -> str:
         """
         Centralized subprocess runner for text output.
         We intentionally do NOT scatter subprocess.run across the file.
@@ -181,8 +182,7 @@ class GovmomiCLI(GovcRunner):
 
         p = subprocess.run(
             full,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             env=self.env(),
             text=True,
         )
@@ -190,7 +190,7 @@ class GovmomiCLI(GovcRunner):
             raise VMwareError(f"govc failed ({p.returncode}): {p.stderr.strip()}")
         return p.stdout or ""
 
-    def list_vm_names(self) -> List[str]:
+    def list_vm_names(self) -> list[str]:
         """
         Prefer: govc find -type m -json .
         Returns VM *names* (basename of inventory paths).
@@ -214,12 +214,12 @@ class GovmomiCLI(GovcRunner):
 
         self._run_text(["datastore.download", "-ds", str(ds), remote, str(local_path)])
 
-    def _extract_names_from_ls_json(self, files: Any) -> List[str]:
+    def _extract_names_from_ls_json(self, files: Any) -> list[str]:
         """
         Robust extraction of leaf names from govc datastore.ls -json output.
         Shapes vary across govc versions and flags.
         """
-        out: List[str] = []
+        out: list[str] = []
         if files is None:
             return out
 
@@ -251,14 +251,14 @@ class GovmomiCLI(GovcRunner):
             out.append(Path(str(it)).name)
 
         seen = set()
-        uniq: List[str] = []
+        uniq: list[str] = []
         for n in out:
             if n and n not in seen:
                 uniq.append(n)
                 seen.add(n)
         return uniq
 
-    def datastore_ls_names(self, datastore: str, ds_dir: str) -> List[str]:
+    def datastore_ls_names(self, datastore: str, ds_dir: str) -> list[str]:
         """
         govc datastore.ls -json -ds <datastore> <dir/>
         Returns *leaf names* (non-recursive).
@@ -272,10 +272,10 @@ class GovmomiCLI(GovcRunner):
         ds_dir: str,
         local_dir: Path,
         *,
-        include_globs: Tuple[str, ...] = ("*",),
-        exclude_globs: Tuple[str, ...] = (),
+        include_globs: tuple[str, ...] = ("*",),
+        exclude_globs: tuple[str, ...] = (),
         max_files: int = 5000,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Non-recursive directory download using:
           - govc datastore.ls -json
@@ -287,7 +287,7 @@ class GovmomiCLI(GovcRunner):
 
         names = self.datastore_ls_names(ds, rel_dir)
 
-        picked: List[str] = []
+        picked: list[str] = []
         for n in names:
             ok = True
             if include_globs:
@@ -316,6 +316,6 @@ class GovmomiCLI(GovcRunner):
         }
 
 
-def _prefer_govc(args: Any, logger: Any) -> Optional[GovmomiCLI]:
+def _prefer_govc(args: Any, logger: Any) -> GovmomiCLI | None:
     g = GovmomiCLI(args=args, logger=logger)
     return g if g.enabled() else None

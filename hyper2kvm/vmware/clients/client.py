@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/clients/client.py
 from __future__ import annotations
 
@@ -10,11 +9,12 @@ vSphere / vCenter client for hyper2kvm.
 import logging
 import os
 import re
-import ssl
 import socket
+import ssl
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 # Optional: Rich progress UI (TTY friendly). Falls back to plain logs if Rich not available.
@@ -49,15 +49,15 @@ except Exception:  # pragma: no cover
 # OVF Tool client
 try:
     from ..transports.ovftool_client import (
-        find_ovftool,
-        ovftool_version,
-        export_to_ova,
-        deploy_ovf_or_ova,
-        OvfExportOptions,
         OvfDeployOptions,
-        OvfToolPaths,
+        OvfExportOptions,
         OvfToolError,
         OvfToolNotFound,
+        OvfToolPaths,
+        deploy_ovf_or_ova,
+        export_to_ova,
+        find_ovftool,
+        ovftool_version,
     )
 except Exception:  # pragma: no cover
     find_ovftool = None  # type: ignore
@@ -130,7 +130,8 @@ except Exception:  # pragma: no cover
     VDDK_CLIENT_AVAILABLE = False
 
 
-from ..utils.utils import safe_vm_name as _safe_vm_name, quote_inventory_path as _quote_inventory_path
+from ..utils.utils import quote_inventory_path as _quote_inventory_path
+from ..utils.utils import safe_vm_name as _safe_vm_name
 
 _BACKING_RE = re.compile(r"\[(.+?)\]\s+(.*)")
 
@@ -166,35 +167,35 @@ class V2VExportOptions:
     # virt-v2v options
     transport: str = "vddk"  # virt-v2v transport: vddk|ssh
     no_verify: bool = False
-    vddk_libdir: Optional[Path] = None  # passed to virt-v2v -io vddk-libdir
-    vddk_thumbprint: Optional[str] = None  # passed to virt-v2v vddk-thumbprint (if provided)
-    vddk_snapshot_moref: Optional[str] = None
-    vddk_transports: Optional[str] = None
+    vddk_libdir: Path | None = None  # passed to virt-v2v -io vddk-libdir
+    vddk_thumbprint: str | None = None  # passed to virt-v2v vddk-thumbprint (if provided)
+    vddk_snapshot_moref: str | None = None
+    vddk_transports: str | None = None
     output_dir: Path = Path("./out")
     output_format: str = "qcow2"  # qcow2|raw
-    extra_args: Tuple[str, ...] = ()
+    extra_args: tuple[str, ...] = ()
 
     # OVF Tool options
-    ovftool_path: Optional[str] = None
+    ovftool_path: str | None = None
     ovftool_no_ssl_verify: bool = True
-    ovftool_thumbprint: Optional[str] = None
+    ovftool_thumbprint: str | None = None
     ovftool_accept_all_eulas: bool = True
     ovftool_quiet: bool = False
     ovftool_verbose: bool = False
     ovftool_overwrite: bool = False
-    ovftool_disk_mode: Optional[str] = None
+    ovftool_disk_mode: str | None = None
     ovftool_retries: int = 0
     ovftool_retry_backoff_s: float = 2.0
-    ovftool_extra_args: Tuple[str, ...] = ()
+    ovftool_extra_args: tuple[str, ...] = ()
 
     # Inventory printing (opt-in)
-    print_vm_names: Tuple[str, ...] = ()
+    print_vm_names: tuple[str, ...] = ()
     vm_list_limit: int = 120
     vm_list_columns: int = 3
 
     # download-only options
-    download_only_include_globs: Tuple[str, ...] = ("*",)
-    download_only_exclude_globs: Tuple[str, ...] = (
+    download_only_include_globs: tuple[str, ...] = ("*",)
+    download_only_exclude_globs: tuple[str, ...] = (
         "*.lck",
         "*.log",
         "*.scoreboard",
@@ -208,13 +209,13 @@ class V2VExportOptions:
     download_only_fail_on_missing: bool = False
 
     # govc export options
-    govc_export_snapshot: Optional[str] = None
+    govc_export_snapshot: str | None = None
     govc_export_power_off: bool = False
-    govc_export_disk_mode: Optional[str] = None  # "thin"|"thick" etc.
+    govc_export_disk_mode: str | None = None  # "thin"|"thick" etc.
 
     # vddk_download options (experimental)
-    vddk_download_disk: Optional[str] = None
-    vddk_download_output: Optional[Path] = None
+    vddk_download_disk: str | None = None
+    vddk_download_output: Path | None = None
     vddk_download_sectors_per_read: int = 2048  # 1 MiB (2048 * 512)
     vddk_download_log_every_bytes: int = 256 * 1024 * 1024
 
@@ -222,47 +223,90 @@ class V2VExportOptions:
 # Import all functions from split modules
 
 # Import datastore operations
+from ..transports.ovftool_loader import (
+    govc_export_ova as _ovftool_govc_export_ova,
+)
+
+# Import ovftool operations
+from ..transports.ovftool_loader import (
+    govc_export_ovf as _ovftool_govc_export_ovf,
+)
+from ..transports.ovftool_loader import (
+    ovftool_deploy_ova as _ovftool_ovftool_deploy_ova,
+)
+from ..transports.ovftool_loader import (
+    ovftool_export_vm as _ovftool_ovftool_export_vm,
+)
+from ..transports.vddk_loader import (
+    select_disk as _vddk_select_disk,
+)
+
+# Import vddk operations
+from ..transports.vddk_loader import (
+    vddk_download_disk as _vddk_download_disk,
+)
+from ..transports.vddk_loader import (
+    vm_disks as _vddk_vm_disks,
+)
+from ..utils.datastore import (
+    _download_only_vm_force_https as _datastore_download_only_vm_force_https,
+)
+from ..utils.datastore import (
+    _refresh_datacenter_cache as _datastore_refresh_datacenter_cache,
+)
+from ..utils.datastore import (
+    _refresh_host_cache as _datastore_refresh_host_cache,
+)
+from ..utils.datastore import (
+    _vm_runtime_host as _datastore_vm_runtime_host,
+)
+from ..utils.datastore import (
+    datacenter_exists as _datastore_datacenter_exists,
+)
+from ..utils.datastore import (
+    download_datastore_file as _datastore_download_datastore_file,
+)
+from ..utils.datastore import (
+    download_only_vm as _datastore_download_only_vm,
+)
+from ..utils.datastore import (
+    get_datacenter_by_name as _datastore_get_datacenter_by_name,
+)
+from ..utils.datastore import (
+    get_vm_by_name as _datastore_get_vm_by_name,
+)
 from ..utils.datastore import (
     list_datacenters as _datastore_list_datacenters,
-    get_datacenter_by_name as _datastore_get_datacenter_by_name,
-    datacenter_exists as _datastore_datacenter_exists,
+)
+from ..utils.datastore import (
     list_host_names as _datastore_list_host_names,
-    get_vm_by_name as _datastore_get_vm_by_name,
-    vm_to_datacenter as _datastore_vm_to_datacenter,
-    vm_datacenter_name as _datastore_vm_datacenter_name,
-    resolve_datacenter_for_vm as _datastore_resolve_datacenter_for_vm,
-    resolve_compute_for_vm as _datastore_resolve_compute_for_vm,
+)
+from ..utils.datastore import (
     parse_backing_filename as _datastore_parse_backing_filename,
-    download_datastore_file as _datastore_download_datastore_file,
-    download_only_vm as _datastore_download_only_vm,
-    _download_only_vm_force_https as _datastore_download_only_vm_force_https,
-    _refresh_datacenter_cache as _datastore_refresh_datacenter_cache,
-    _refresh_host_cache as _datastore_refresh_host_cache,
+)
+from ..utils.datastore import (
+    resolve_compute_for_vm as _datastore_resolve_compute_for_vm,
+)
+from ..utils.datastore import (
+    resolve_datacenter_for_vm as _datastore_resolve_datacenter_for_vm,
+)
+from ..utils.datastore import (
     resolve_host_system_for_vm as _datastore_resolve_host_system_for_vm,
+)
+from ..utils.datastore import (
+    vm_datacenter_name as _datastore_vm_datacenter_name,
+)
+from ..utils.datastore import (
+    vm_to_datacenter as _datastore_vm_to_datacenter,
+)
+from ..utils.datastore import (
     wait_for_task as _datastore_wait_for_task,
-    _vm_runtime_host as _datastore_vm_runtime_host,
 )
 
 # Import v2v operations
 from ..utils.v2v import (
     v2v_export_vm as _v2v_export_vm,
 )
-
-# Import ovftool operations
-from ..transports.ovftool_loader import (
-    govc_export_ovf as _ovftool_govc_export_ovf,
-    govc_export_ova as _ovftool_govc_export_ova,
-    ovftool_export_vm as _ovftool_ovftool_export_vm,
-    ovftool_deploy_ova as _ovftool_ovftool_deploy_ova,
-)
-
-# Import vddk operations
-from ..transports.vddk_loader import (
-    vddk_download_disk as _vddk_download_disk,
-    vm_disks as _vddk_vm_disks,
-    select_disk as _vddk_select_disk,
-)
-
 
 # Client
 
@@ -281,7 +325,7 @@ class VMwareClient:
         *,
         port: int = 443,
         insecure: bool = False,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> None:
         self.logger = logger
         self.host = (host or "").strip()
@@ -294,23 +338,23 @@ class VMwareClient:
         self.si: Any = None
 
         # HTTP download client
-        self._http_client: Optional[HTTPDownloadClient] = None
+        self._http_client: HTTPDownloadClient | None = None
 
         # caches
-        self._dc_cache: Optional[List[Any]] = None
-        self._dc_name_cache: Optional[List[str]] = None
-        self._host_name_cache: Optional[List[str]] = None
-        self._vm_obj_by_name_cache: Dict[str, Any] = {}
-        self._vm_name_cache: Optional[List[str]] = None
+        self._dc_cache: list[Any] | None = None
+        self._dc_name_cache: list[str] | None = None
+        self._host_name_cache: list[str] | None = None
+        self._vm_obj_by_name_cache: dict[str, Any] = {}
+        self._vm_name_cache: list[str] | None = None
 
         # govc knobs
         self.govc_bin = os.environ.get("GOVC_BIN", "govc")
         self.no_govmomi = False
-        self._govc_client: Optional[GovmomiCLI] = None
+        self._govc_client: GovmomiCLI | None = None
 
         # OVF Tool knobs
-        self.ovftool_path: Optional[str] = None
-        self._ovftool_paths: Optional[OvfToolPaths] = None
+        self.ovftool_path: str | None = None
+        self._ovftool_paths: OvfToolPaths | None = None
 
         self._rich_console = Console(stderr=True) if (RICH_AVAILABLE and Console is not None) else None
 
@@ -320,12 +364,12 @@ class VMwareClient:
     def from_config(
         cls,
         logger: logging.Logger,
-        cfg: Dict[str, Any],
+        cfg: dict[str, Any],
         *,
-        port: Optional[int] = None,
-        insecure: Optional[bool] = None,
-        timeout: Optional[float] = None,
-    ) -> "VMwareClient":
+        port: int | None = None,
+        insecure: bool | None = None,
+        timeout: float | None = None,
+    ) -> VMwareClient:
         if resolve_vsphere_creds is None:
             raise VMwareError(
                 "resolve_vsphere_creds not importable. Fix import: from ..core.cred(s) import resolve_vsphere_creds"
@@ -350,7 +394,7 @@ class VMwareClient:
 
     # Internal helpers: tool handles
 
-    def _govc(self) -> Optional[GovmomiCLI]:
+    def _govc(self) -> GovmomiCLI | None:
         """
         Return govc wrapper if available and not disabled.
         """
@@ -406,7 +450,7 @@ class VMwareClient:
 
     # Context managers
 
-    def __enter__(self) -> "VMwareClient":
+    def __enter__(self) -> VMwareClient:
         self.connect()
         return self
 
@@ -521,7 +565,7 @@ class VMwareClient:
     def _refresh_datacenter_cache(self) -> None:
         return _datastore_refresh_datacenter_cache(self)
 
-    def list_datacenters(self, *, refresh: bool = False) -> List[str]:
+    def list_datacenters(self, *, refresh: bool = False) -> list[str]:
         return _datastore_list_datacenters(self, refresh=refresh)
 
     def get_datacenter_by_name(self, name: str, *, refresh: bool = False) -> Any:
@@ -533,7 +577,7 @@ class VMwareClient:
     def _refresh_host_cache(self) -> None:
         return _datastore_refresh_host_cache(self)
 
-    def list_host_names(self, *, refresh: bool = False) -> List[str]:
+    def list_host_names(self, *, refresh: bool = False) -> list[str]:
         return _datastore_list_host_names(self, refresh=refresh)
 
     # VM lookup - Delegate to vmware_datastore
@@ -544,16 +588,16 @@ class VMwareClient:
     def vm_to_datacenter(self, vm_obj: Any) -> Any:
         return _datastore_vm_to_datacenter(self, vm_obj)
 
-    def vm_datacenter_name(self, vm_obj: Any) -> Optional[str]:
+    def vm_datacenter_name(self, vm_obj: Any) -> str | None:
         return _datastore_vm_datacenter_name(self, vm_obj)
 
-    def resolve_datacenter_for_vm(self, vm_name: str, preferred: Optional[str]) -> str:
+    def resolve_datacenter_for_vm(self, vm_name: str, preferred: str | None) -> str:
         return _datastore_resolve_datacenter_for_vm(self, vm_name, preferred)
 
     def _vm_runtime_host(self, vm_obj: Any) -> Any:
         return _datastore_vm_runtime_host(self, vm_obj)
 
-    def _host_parent_compute_name(self, host_obj: Any) -> Optional[str]:
+    def _host_parent_compute_name(self, host_obj: Any) -> str | None:
         try:
             parent = getattr(host_obj, "parent", None)
             if parent is None:
@@ -566,7 +610,7 @@ class VMwareClient:
     def resolve_host_system_for_vm(self, vm_name: str) -> str:
         return _datastore_resolve_host_system_for_vm(self, vm_name)
 
-    def resolve_compute_for_vm(self, vm_name: str, preferred: Optional[str]) -> str:
+    def resolve_compute_for_vm(self, vm_name: str, preferred: str | None) -> str:
         return _datastore_resolve_compute_for_vm(self, vm_name, preferred)
 
     # govc export (stable) - Delegate to vmware_ovftool
@@ -597,7 +641,7 @@ class VMwareClient:
         if vm_folder is None:
             raise VMwareError("Datacenter has no vmFolder (unexpected)")
 
-        parts: List[str] = []
+        parts: list[str] = []
         obj = vm_obj
         for _ in range(0, 96):
             if obj is None:
@@ -686,7 +730,7 @@ class VMwareClient:
     # Datastore parsing + HTTPS /folder download - Delegate to vmware_datastore
 
     @staticmethod
-    def parse_backing_filename(file_name: str) -> Tuple[str, str]:
+    def parse_backing_filename(file_name: str) -> tuple[str, str]:
         """
         Parse VMware style backing fileName:
           "[datastore] path/to/file.ext" -> ("datastore", "path/to/file.ext")
@@ -694,7 +738,7 @@ class VMwareClient:
         return _datastore_parse_backing_filename(file_name)
 
     @staticmethod
-    def _split_ds_path(path: str) -> Tuple[str, str, str]:
+    def _split_ds_path(path: str) -> tuple[str, str, str]:
         """
         "[ds] folder/file" -> (ds, "folder", "file")
         """
@@ -704,7 +748,7 @@ class VMwareClient:
         base = rel.rsplit("/", 1)[1] if "/" in rel else rel
         return ds, folder, base
 
-    def _resolve_datacenter_for_download(self, dc_name: Optional[str]) -> str:
+    def _resolve_datacenter_for_download(self, dc_name: str | None) -> str:
         """
         Resolve a usable datacenter name for /folder URL construction.
         """
@@ -729,8 +773,8 @@ class VMwareClient:
         datastore: str,
         ds_path: str,
         local_path: Path,
-        dc_name: Optional[str] = None,
-        on_bytes: Optional[Any] = None,
+        dc_name: str | None = None,
+        on_bytes: Any | None = None,
         chunk_size: int = 1024 * 1024,
         force_https: bool = False,
     ) -> None:
@@ -780,7 +824,7 @@ class VMwareClient:
             raise VMwareError("Could not determine VMX path (summary.config.vmPathName missing)")
         return str(vmx)
 
-    def _list_vm_directory_files(self, vm_obj: Any) -> Tuple[str, str, List[str]]:
+    def _list_vm_directory_files(self, vm_obj: Any) -> tuple[str, str, list[str]]:
         """
         Returns: (datastore_name, folder_rel, [files...]) where files are relative to folder_rel.
         Uses DatastoreBrowser.SearchDatastoreSubFolders_Task against the VM folder.
@@ -804,7 +848,7 @@ class VMwareClient:
         self.wait_for_task(task)
 
         results = getattr(task.info, "result", None) or []
-        files: List[str] = []
+        files: list[str] = []
         for r in results:
             for fi in (getattr(r, "file", None) or []):
                 name = str(getattr(fi, "path", "") or "")
@@ -826,8 +870,8 @@ class VMwareClient:
         include_globs: Sequence[str],
         exclude_globs: Sequence[str],
         max_files: int,
-    ) -> List[str]:
-        out: List[str] = []
+    ) -> list[str]:
+        out: list[str] = []
         for f in files:
             if include_globs and not self._glob_any(f, include_globs):
                 continue
@@ -853,7 +897,7 @@ class VMwareClient:
         fail_on_missing: bool,
         log_prefix: str,
     ) -> None:
-        failures: List[str] = []
+        failures: list[str] = []
         for name in selected:
             ds_path = f"{folder_rel}/{name}" if folder_rel else name
             local_path = out_dir / name
@@ -918,7 +962,7 @@ class VMwareClient:
             os.close(fd)
         return pwfile
 
-    def _build_virt_v2v_cmd(self, opt: V2VExportOptions, *, password_file: Path) -> List[str]:
+    def _build_virt_v2v_cmd(self, opt: V2VExportOptions, *, password_file: Path) -> list[str]:
         if not opt.vm_name:
             raise VMwareError("V2VExportOptions.vm_name is required")
         if not self.si:
@@ -931,7 +975,7 @@ class VMwareClient:
         if transport not in ("vddk", "ssh"):
             raise VMwareError(f"Unsupported virt-v2v transport: {transport!r} (expected 'vddk' or 'ssh')")
 
-        argv: List[str] = [
+        argv: list[str] = [
             "virt-v2v",
             "-i",
             "libvirt",
@@ -959,9 +1003,9 @@ class VMwareClient:
         argv += list(opt.extra_args)
         return argv
 
-    def _popen_text(self, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> Any:
-        import subprocess
+    def _popen_text(self, argv: Sequence[str], *, env: dict[str, str] | None = None) -> Any:
         import shlex
+        import subprocess
 
         self.logger.info("Running: %s", " ".join(shlex.quote(a) for a in argv))
         proc = subprocess.Popen(
@@ -982,10 +1026,10 @@ class VMwareClient:
                 pass
         return proc
 
-    def _pump_lines_blocking(self, proc: Any) -> List[str]:
+    def _pump_lines_blocking(self, proc: Any) -> list[str]:
         if proc.stdout is None or proc.stderr is None:
             raise RuntimeError("Process stdout/stderr unexpectedly None")
-        lines: List[str] = []
+        lines: list[str] = []
         out_line = proc.stdout.readline()
         err_line = proc.stderr.readline()
         if out_line:
@@ -994,7 +1038,7 @@ class VMwareClient:
             lines.append(err_line.rstrip("\n"))
         return lines
 
-    def _pump_lines_select(self, proc: Any, *, timeout_s: float = 0.20) -> List[str]:
+    def _pump_lines_select(self, proc: Any, *, timeout_s: float = 0.20) -> list[str]:
         if proc.stdout is None or proc.stderr is None:
             raise RuntimeError("Process stdout/stderr unexpectedly None")
         rlist = [proc.stdout, proc.stderr]
@@ -1003,7 +1047,7 @@ class VMwareClient:
         except Exception:
             ready = rlist
 
-        lines: List[str] = []
+        lines: list[str] = []
         for s in ready:
             try:
                 chunk = s.read()
@@ -1037,10 +1081,10 @@ class VMwareClient:
                 if s:
                     self.logger.info("%s", s)
 
-    def _run_logged_subprocess(self, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> int:
+    def _run_logged_subprocess(self, argv: Sequence[str], *, env: dict[str, str] | None = None) -> int:
         proc = self._popen_text(argv, env=env)
 
-        def pump() -> List[str]:
+        def pump() -> list[str]:
             if SELECT_AVAILABLE:
                 return self._pump_lines_select(proc)
             return self._pump_lines_blocking(proc)
@@ -1101,10 +1145,10 @@ class VMwareClient:
                 "Ensure hyper2kvm/vsphere/vddk_client.py exists and imports cleanly."
             )
 
-    def vm_disks(self, vm_obj: Any) -> List[Any]:
+    def vm_disks(self, vm_obj: Any) -> list[Any]:
         return _vddk_vm_disks(self, vm_obj)
 
-    def select_disk(self, vm_obj: Any, label_or_index: Optional[str]) -> Any:
+    def select_disk(self, vm_obj: Any, label_or_index: str | None) -> Any:
         return _vddk_select_disk(self, vm_obj, label_or_index)
 
     def _vm_disk_backing_filename(self, disk_obj: Any) -> str:
@@ -1133,26 +1177,26 @@ class VMwareClient:
     # Unified entrypoint (policy) - refactored into smaller handlers
 
     @staticmethod
-    def _normalize_export_mode(mode: Optional[str]) -> str:
+    def _normalize_export_mode(mode: str | None) -> str:
         return (mode or "ovf_export").strip().lower()
 
-    def _handle_mode_vddk(self, mode: str, opt: V2VExportOptions) -> Optional[Path]:
+    def _handle_mode_vddk(self, mode: str, opt: V2VExportOptions) -> Path | None:
         if mode in ("vddk_download", "vddk-download", "vddkdownload"):
             return self.vddk_download_disk(opt)
         return None
 
-    def _handle_mode_v2v(self, mode: str, opt: V2VExportOptions) -> Optional[Path]:
+    def _handle_mode_v2v(self, mode: str, opt: V2VExportOptions) -> Path | None:
         if mode in ("v2v", "virt-v2v", "virt_v2v"):
             return self.v2v_export_vm(opt)
         return None
 
-    def _handle_mode_ovftool(self, mode: str, opt: V2VExportOptions) -> Optional[Path]:
+    def _handle_mode_ovftool(self, mode: str, opt: V2VExportOptions) -> Path | None:
         if mode in ("ovftool_export", "ovftool", "ovftool-export"):
             self.logger.info("Export mode=OVF Tool: attempting OVF Tool export for VM=%s", opt.vm_name)
             return self.ovftool_export_vm(opt)
         return None
 
-    def _handle_mode_download_only(self, mode: str, opt: V2VExportOptions) -> Optional[Path]:
+    def _handle_mode_download_only(self, mode: str, opt: V2VExportOptions) -> Path | None:
         if mode in ("download_only", "download-only", "download"):
             return self.download_only_vm(opt)
         return None

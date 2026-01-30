@@ -44,7 +44,7 @@ class PlanMode:
             raise Fatal(2, f"plan: inventory json not found: {inv_path}")
 
         inv = json.loads(inv_path.read_text(encoding="utf-8"))
-        items: List[Dict[str, Any]] = list(inv.get("items", []))
+        items: list[dict[str, Any]] = list(inv.get("items", []))
 
         name_prefix = getattr(self.args, "name_prefix", None) or ""
         profile = getattr(self.args, "profile", "auto")
@@ -56,8 +56,8 @@ class PlanMode:
         if default_uefi and default_bios:
             raise Fatal(2, "plan: cannot set both --default-uefi and --default-bios")
 
-        plan_index: List[Dict[str, Any]] = []
-        batch_vms: List[Dict[str, Any]] = []
+        plan_index: list[dict[str, Any]] = []
+        batch_vms: list[dict[str, Any]] = []
 
         for idx, it in enumerate(items):
             p = it.get("path")
@@ -68,7 +68,7 @@ class PlanMode:
             vm_name = f"{name_prefix}{Path(p).stem}".strip("-") or f"{name_prefix}vm{idx}"
             to_output = f"{vm_name}.qcow2"
 
-            plan: Dict[str, Any] = {
+            plan: dict[str, Any] = {
                 "command": "local",
                 "vmdk": p if str(p).lower().endswith(".vmdk") else p,
                 "output_dir": str(out_root),
@@ -139,8 +139,8 @@ class PlanMode:
         self.logger.info(f"Summary written: {summary_md}")
 
 
-    def _summary_md(self, plan_index: List[Dict[str, Any]], inv_path: Path) -> str:
-        lines: List[str] = []
+    def _summary_md(self, plan_index: list[dict[str, Any]], inv_path: Path) -> str:
+        lines: list[str] = []
         lines.append("# hyper2kvm migration plan\n")
         lines.append(f"- Inventory: `{inv_path}`")
         lines.append(f"- Plans: **{len(plan_index)}**\n")
@@ -150,7 +150,7 @@ class PlanMode:
         lines.append("")
         return "\n".join(lines)
 
-    def _to_yaml(self, data: Dict[str, Any]) -> str:
+    def _to_yaml(self, data: dict[str, Any]) -> str:
         # Prefer PyYAML if you already ship it; else simple fallback.
         try:
             import yaml as _yaml  # type: ignore

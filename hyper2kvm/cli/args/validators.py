@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/cli/args/validators.py
 from __future__ import annotations
 
@@ -15,7 +14,7 @@ def _validate_json_object_file(path: str, flag: str) -> None:
     if not os.path.isfile(path):
         raise SystemExit(f"{flag} file not found: {path}")
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             parsed = json.load(f)
         if not isinstance(parsed, dict):
             raise ValueError("top-level JSON must be an object")
@@ -32,7 +31,7 @@ def _validate_json_object_inline(js: str, flag: str) -> None:
         raise SystemExit(f"{flag} is not valid JSON object: {e}")
 
 
-def _validate_win_net_override_inputs(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_win_net_override_inputs(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     """
     Validate Windows network override knobs without doing any filesystem writes.
 
@@ -51,7 +50,7 @@ def _validate_win_net_override_inputs(args: argparse.Namespace, conf: Dict[str, 
         _validate_json_object_inline(str(js), "--win-net-json")
 
 
-def _validate_virtio_config_inputs(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_virtio_config_inputs(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     """
     Validate VirtIO driver-definition config knobs.
 
@@ -74,7 +73,7 @@ def _validate_virtio_config_inputs(args: argparse.Namespace, conf: Dict[str, Any
         _validate_json_object_inline(str(js), "--virtio-config-json")
 
 
-def _pick_vsphere_vm_name(args: argparse.Namespace, conf: Dict[str, Any]) -> Optional[str]:
+def _pick_vsphere_vm_name(args: argparse.Namespace, conf: dict[str, Any]) -> str | None:
     vm_name = conf.get("vm_name", None)
     if not _require(vm_name):
         vm_name = getattr(args, "vm_name_vsphere", None)
@@ -84,44 +83,44 @@ def _pick_vsphere_vm_name(args: argparse.Namespace, conf: Dict[str, Any]) -> Opt
     return str(vm_name) if _require(vm_name) else None
 
 
-def _validate_cmd_local(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_local(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     if not _require(_merged_get(args, conf, "vmdk")):
         raise SystemExit("cmd=local: missing required `vmdk:` (YAML) or CLI override --vmdk")
 
 
-def _validate_cmd_fetch_and_fix(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_fetch_and_fix(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     if not _require(_merged_get(args, conf, "host")):
         raise SystemExit("cmd=fetch-and-fix: missing required `host:` (YAML) or CLI --host")
     if not _require(_merged_get(args, conf, "remote")):
         raise SystemExit("cmd=fetch-and-fix: missing required `remote:` (YAML) or CLI --remote")
 
 
-def _validate_cmd_ova(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_ova(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     if not _require(_merged_get(args, conf, "ova")):
         raise SystemExit("cmd=ova: missing required `ova:` (YAML) or CLI --ova")
 
 
-def _validate_cmd_ovf(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_ovf(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     if not _require(_merged_get(args, conf, "ovf")):
         raise SystemExit("cmd=ovf: missing required `ovf:` (YAML) or CLI --ovf")
 
 
-def _validate_cmd_vhd(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_vhd(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     if not _require(_merged_get(args, conf, "vhd")):
         raise SystemExit("cmd=vhd: missing required `vhd:` (YAML) or CLI --vhd")
 
 
-def _validate_cmd_ami(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_ami(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     if not _require(_merged_get(args, conf, "ami")):
         raise SystemExit("cmd=ami: missing required `ami:` (YAML) or CLI --ami")
 
 
-def _validate_cmd_live_fix(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_live_fix(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     if not _require(_merged_get(args, conf, "host")):
         raise SystemExit("cmd=live-fix: missing required `host:` (YAML) or CLI --host")
 
 
-def _validate_vsphere_identity(args: argparse.Namespace, conf: Dict[str, Any]) -> Tuple[str, str, str]:
+def _validate_vsphere_identity(args: argparse.Namespace, conf: dict[str, Any]) -> tuple[str, str, str]:
     vcenter = _merged_get(args, conf, "vcenter")
     vc_user = _merged_get(args, conf, "vc_user")
     vc_password = _merged_secret(args, conf, "vc_password", "vc_password_env")
@@ -136,7 +135,7 @@ def _validate_vsphere_identity(args: argparse.Namespace, conf: Dict[str, Any]) -
     return str(vcenter), str(vc_user), str(vc_password)
 
 
-def _validate_vsphere_control_plane(args: argparse.Namespace, conf: Dict[str, Any], vcenter: str, vc_user: str, vc_password: str) -> None:
+def _validate_vsphere_control_plane(args: argparse.Namespace, conf: dict[str, Any], vcenter: str, vc_user: str, vc_password: str) -> None:
     vs_cp = _merged_get(args, conf, "vs_control_plane")
     if not _require(vs_cp):
         vs_cp = conf.get("vs_control_plane", None) or "govc"
@@ -163,7 +162,7 @@ def _validate_vsphere_control_plane(args: argparse.Namespace, conf: Dict[str, An
         raise SystemExit(f"cmd=vsphere: invalid vs_control_plane={vs_cp!r} (use auto|govc|pyvmomi)")
 
 
-def _validate_vsphere_download_transport(args: argparse.Namespace, conf: Dict[str, Any]) -> str:
+def _validate_vsphere_download_transport(args: argparse.Namespace, conf: dict[str, Any]) -> str:
     dl = _merged_get(args, conf, "vs_download_transport")
     if not _require(dl):
         dl = conf.get("vs_download_transport", None)
@@ -180,7 +179,7 @@ def _validate_vsphere_download_transport(args: argparse.Namespace, conf: Dict[st
     return dl
 
 
-def _validate_vsphere_action_requirements(args: argparse.Namespace, conf: Dict[str, Any], act: str) -> None:
+def _validate_vsphere_action_requirements(args: argparse.Namespace, conf: dict[str, Any], act: str) -> None:
     vm_name = _pick_vsphere_vm_name(args, conf)
 
     name = conf.get("name", None)
@@ -247,7 +246,7 @@ def _validate_vsphere_action_requirements(args: argparse.Namespace, conf: Dict[s
             raise SystemExit("cmd=vsphere vs_action=ovftool_deploy: missing required `source_path:` (YAML) or CLI --source-path")
 
 
-def _validate_cmd_vsphere(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_vsphere(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     from .helpers import _merged_vs_action
 
     vcenter, vc_user, vc_password = _validate_vsphere_identity(args, conf)
@@ -262,7 +261,7 @@ def _validate_cmd_vsphere(args: argparse.Namespace, conf: Dict[str, Any]) -> Non
     _validate_vsphere_action_requirements(args, conf, act)
 
 
-def _validate_cmd_azure(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def _validate_cmd_azure(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     """
     Validate Azure command requirements.
 
@@ -280,7 +279,7 @@ def _validate_cmd_azure(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
         )
 
 
-def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+def validate_args(args: argparse.Namespace, conf: dict[str, Any]) -> None:
     """
     New-project policy:
       - No CLI subcommands.

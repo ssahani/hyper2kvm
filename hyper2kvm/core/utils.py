@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/utils.py
 from __future__ import annotations
 
@@ -10,8 +9,9 @@ import logging
 import os
 import shlex
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, Iterable, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from .exceptions import Fatal
 
@@ -20,8 +20,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
 try:
     from rich.progress import (
-        Progress,
         BarColumn,
+        Progress,
         TextColumn,
         TimeElapsedColumn,
         TimeRemainingColumn,
@@ -42,7 +42,7 @@ class U:
         p.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def which(prog: str) -> Optional[str]:
+    def which(prog: str) -> str | None:
         from shutil import which as _which
         return _which(prog)
 
@@ -58,7 +58,7 @@ class U:
             return repr(obj)
 
     @staticmethod
-    def human_bytes(n: Optional[int]) -> str:
+    def human_bytes(n: int | None) -> str:
         if n is None:
             return "unknown"
         x = float(n)
@@ -76,20 +76,20 @@ class U:
         logger.info(line)
 
     @staticmethod
-    def _pretty_cmd(cmd: List[str]) -> str:
+    def _pretty_cmd(cmd: list[str]) -> str:
         return " ".join(shlex.quote(x) for x in cmd)
 
     @staticmethod
     def run_cmd(
         logger: logging.Logger,
-        cmd: List[str],
+        cmd: list[str],
         *,
         check: bool = True,
         capture: bool = False,
-        env: Optional[Dict[str, str]] = None,
-        timeout: Optional[int] = None,
-        cwd: Optional[Union[str, Path]] = None,
-        input_text: Optional[str] = None,
+        env: dict[str, str] | None = None,
+        timeout: int | None = None,
+        cwd: str | Path | None = None,
+        input_text: str | None = None,
         stream: bool = False,
         fatal: bool = False,
     ) -> subprocess.CompletedProcess:
@@ -116,7 +116,7 @@ class U:
                 )
                 if proc.stdout is None:
                     raise RuntimeError("Process stdout unexpectedly None")
-                out_lines: List[str] = []
+                out_lines: list[str] = []
                 for line in proc.stdout:
                     line = line.rstrip("\n")
                     out_lines.append(line)
@@ -281,7 +281,7 @@ class U:
         return int(float(num) * multipliers[suf])
 
 
-def guest_has_cmd(g: "guestfs.GuestFS", cmd: str) -> bool:
+def guest_has_cmd(g: guestfs.GuestFS, cmd: str) -> bool:
     """
     Replacement for g.available() checks.
     Uses a shell inside the appliance in a way that avoids injection.
@@ -298,7 +298,7 @@ def guest_has_cmd(g: "guestfs.GuestFS", cmd: str) -> bool:
         return False
 
 
-def guest_ls_glob(g: "guestfs.GuestFS", pattern: str) -> List[str]:
+def guest_ls_glob(g: guestfs.GuestFS, pattern: str) -> list[str]:
     """
     Replacement for g.glob().
     Uses shell glob expansion but passes pattern as an argument to avoid injection.
@@ -322,7 +322,7 @@ done
         out = g.command(["sh", "-lc", script, "sh", pattern])
         lines = [ln.strip() for ln in U.to_text(out).splitlines() if ln.strip()]
         # extra paranoia: verify inside guestfs API
-        res: List[str] = []
+        res: list[str] = []
         for p in lines:
             try:
                 if g.is_file(p) or g.is_dir(p):

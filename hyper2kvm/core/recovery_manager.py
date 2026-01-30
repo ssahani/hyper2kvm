@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/recovery_manager.py
 from __future__ import annotations
 
@@ -10,9 +9,10 @@ import os
 import re
 import socket
 import tempfile
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
@@ -55,8 +55,8 @@ def _atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> Non
     """
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    fd: Optional[int] = None
-    tmp_name: Optional[str] = None
+    fd: int | None = None
+    tmp_name: str | None = None
     try:
         fd, tmp_name = tempfile.mkstemp(
             prefix=path.name + ".",
@@ -96,7 +96,7 @@ def _atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> Non
                 pass
 
 
-def _read_text_best_effort(p: Path, *, encoding: str = "utf-8") -> Optional[str]:
+def _read_text_best_effort(p: Path, *, encoding: str = "utf-8") -> str | None:
     try:
         return p.read_text(encoding=encoding)
     except Exception:
@@ -122,9 +122,9 @@ class RecoveryError(RuntimeError):
         message: str,
         *,
         code: int,
-        stage: Optional[str] = None,
-        checkpoint_id: Optional[str] = None,
-        path: Optional[Path] = None,
+        stage: str | None = None,
+        checkpoint_id: str | None = None,
+        path: Path | None = None,
     ):
         super().__init__(message)
         self.code = code
@@ -142,7 +142,7 @@ class StageDef:
     safe_to_resume: bool = True
     requires_network: bool = False
     requires_guestfs: bool = False
-    description: Optional[str] = None
+    description: str | None = None
 
 
 # Run manifest (audit trail)
@@ -153,18 +153,18 @@ class RunManifest:
     created_ts: str
     host: str
     pid: int
-    tool_version: Optional[str] = None
-    args_hash: Optional[str] = None
-    input_id: Optional[str] = None  # e.g. VM name, image path hash, etc.
+    tool_version: str | None = None
+    args_hash: str | None = None
+    input_id: str | None = None  # e.g. VM name, image path hash, etc.
     status: str = "running"  # running|success|failed
-    ended_ts: Optional[str] = None
-    error: Optional[str] = None
+    ended_ts: str | None = None
+    error: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @staticmethod
-    def from_dict(d: Dict[str, Any]) -> "RunManifest":
+    def from_dict(d: dict[str, Any]) -> RunManifest:
         return RunManifest(
             run_id=str(d.get("run_id", "")),
             created_ts=str(d.get("created_ts", "")),
@@ -186,27 +186,27 @@ class Checkpoint:
     id: str
     stage: str
     timestamp: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
 
     # Optional “sub-stage” / scope support
-    step: Optional[str] = None          # e.g. "inject_storage"
-    scope: Optional[str] = None         # e.g. "windows_fix"
-    parent_id: Optional[str] = None     # links step checkpoints to a parent checkpoint id
+    step: str | None = None          # e.g. "inject_storage"
+    scope: str | None = None         # e.g. "windows_fix"
+    parent_id: str | None = None     # links step checkpoints to a parent checkpoint id
 
     # State + compatibility
     completed: bool = False
     version: int = 3
-    run_id: Optional[str] = None
+    run_id: str | None = None
 
     # Safety flags (can be overridden by StageDef)
     resumable: bool = True
     safe_to_resume: bool = True
 
     # Integrity checks
-    sha256: Optional[str] = None
-    bytes_len: Optional[int] = None
+    sha256: str | None = None
+    bytes_len: int | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     def _canonical_json(self) -> str:
@@ -227,7 +227,7 @@ class Checkpoint:
         return _json_dumps(self.to_dict(), indent=indent)
 
     @staticmethod
-    def from_dict(d: Dict[str, Any]) -> "Checkpoint":
+    def from_dict(d: dict[str, Any]) -> Checkpoint:
         stage = str(d.get("stage", ""))
         ts = str(d.get("timestamp", ""))
         cid = str(d.get("id") or f"{_safe_stage(stage)}_{ts}")
@@ -251,7 +251,7 @@ class Checkpoint:
         return cp
 
     @staticmethod
-    def from_json(text: str) -> "Checkpoint":
+    def from_json(text: str) -> Checkpoint:
         return Checkpoint.from_dict(json.loads(text))
 
     def validate_integrity(self) -> bool:
@@ -271,8 +271,8 @@ class RecoveryDecision:
     checkpoint_id: str
     checkpoint_path: Path
     resume_stage: str
-    resume_step: Optional[str]
-    resume_scope: Optional[str]
+    resume_step: str | None
+    resume_scope: str | None
     reason: str
 
 
@@ -304,12 +304,12 @@ class RecoveryManager:
         show_progress: bool = False,
         enable_index: bool = True,
         enable_lock: bool = True,
-        run_id: Optional[str] = None,
-        tool_version: Optional[str] = None,
-        args_hash: Optional[str] = None,
-        input_id: Optional[str] = None,
-        stage_order: Optional[Sequence[str]] = None,
-        stage_defs: Optional[Sequence[StageDef]] = None,
+        run_id: str | None = None,
+        tool_version: str | None = None,
+        args_hash: str | None = None,
+        input_id: str | None = None,
+        stage_order: Sequence[str] | None = None,
+        stage_defs: Sequence[StageDef] | None = None,
     ):
         self.logger = logger
         self.workdir = workdir
@@ -324,14 +324,14 @@ class RecoveryManager:
         self.args_hash = args_hash
         self.input_id = input_id
 
-        self.checkpoints: List[Checkpoint] = []
+        self.checkpoints: list[Checkpoint] = []
 
         self.stage_order = list(stage_order) if stage_order else None
-        self._stage_rank: Optional[Dict[str, int]] = None
+        self._stage_rank: dict[str, int] | None = None
         if self.stage_order:
             self._stage_rank = {_safe_stage(s): i for i, s in enumerate(self.stage_order)}
 
-        self.stage_defs: Dict[str, StageDef] = {}
+        self.stage_defs: dict[str, StageDef] = {}
         if stage_defs:
             for sd in stage_defs:
                 self.stage_defs[_safe_stage(sd.name)] = sd
@@ -367,7 +367,7 @@ class RecoveryManager:
     def _latest_completed_path(self) -> Path:
         return self.workdir / "latest_completed.json"
 
-    def _checkpoint_id(self, stage: str, timestamp: str, *, scope: Optional[str], step: Optional[str]) -> str:
+    def _checkpoint_id(self, stage: str, timestamp: str, *, scope: str | None, step: str | None) -> str:
         parts = [_safe_stage(stage), timestamp]
         if scope:
             parts.insert(0, _safe_stage(scope))
@@ -455,7 +455,7 @@ class RecoveryManager:
 
     # Index (JSONL event log)
 
-    def _append_index_event(self, event: Dict[str, Any]) -> None:
+    def _append_index_event(self, event: dict[str, Any]) -> None:
         if not self.enable_index:
             return
         p = self._index_path()
@@ -487,15 +487,15 @@ class RecoveryManager:
 
     # Stage safety helpers
 
-    def _stage_def(self, stage: str) -> Optional[StageDef]:
+    def _stage_def(self, stage: str) -> StageDef | None:
         return self.stage_defs.get(_safe_stage(stage))
 
-    def _rank(self, stage: str) -> Optional[int]:
+    def _rank(self, stage: str) -> int | None:
         if not self._stage_rank:
             return None
         return self._stage_rank.get(_safe_stage(stage))
 
-    def assert_stage_order(self, prev_stage: Optional[str], next_stage: str) -> None:
+    def assert_stage_order(self, prev_stage: str | None, next_stage: str) -> None:
         """
         Optional invariant: if stage_order provided, disallow “going backwards” unless caller opts out.
         """
@@ -517,13 +517,13 @@ class RecoveryManager:
     def save_checkpoint(
         self,
         stage: str,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         *,
-        scope: Optional[str] = None,
-        step: Optional[str] = None,
-        parent_id: Optional[str] = None,
-        resumable: Optional[bool] = None,
-        safe_to_resume: Optional[bool] = None,
+        scope: str | None = None,
+        step: str | None = None,
+        parent_id: str | None = None,
+        resumable: bool | None = None,
+        safe_to_resume: bool | None = None,
     ) -> Checkpoint:
         stage = (stage or "").strip() or "unknown"
         ts = U.now_ts()
@@ -569,7 +569,7 @@ class RecoveryManager:
         self.logger.debug("Checkpoint saved: stage=%s id=%s file=%s", stage, cp.id, cp_file.name)
         return cp
 
-    def mark_checkpoint_complete(self, stage: str, *, scope: Optional[str] = None, step: Optional[str] = None) -> Optional[Checkpoint]:
+    def mark_checkpoint_complete(self, stage: str, *, scope: str | None = None, step: str | None = None) -> Checkpoint | None:
         """
         Marks newest matching checkpoint as completed.
         Filters by run_id, and optionally scope/step.
@@ -653,7 +653,7 @@ class RecoveryManager:
 
     # Query helpers
 
-    def list_checkpoints(self, *, completed_only: bool = False) -> List[Checkpoint]:
+    def list_checkpoints(self, *, completed_only: bool = False) -> list[Checkpoint]:
         cps = [cp for _, cp in self._load_all_checkpoint_files()]
         if completed_only:
             cps = [cp for cp in cps if cp.completed]
@@ -662,11 +662,11 @@ class RecoveryManager:
     def latest_checkpoint(
         self,
         *,
-        stage: Optional[str] = None,
-        scope: Optional[str] = None,
-        step: Optional[str] = None,
+        stage: str | None = None,
+        scope: str | None = None,
+        step: str | None = None,
         completed_only: bool = True,
-    ) -> Optional[Checkpoint]:
+    ) -> Checkpoint | None:
         cps = self._load_all_checkpoint_files()
         for _p, cp in reversed(cps):  # newest first by filename sort inside loader
             if completed_only and not cp.completed:
@@ -685,10 +685,10 @@ class RecoveryManager:
     def _find_checkpoint_files(
         self,
         *,
-        stage: Optional[str] = None,
-        scope: Optional[str] = None,
-        step: Optional[str] = None,
-    ) -> List[Path]:
+        stage: str | None = None,
+        scope: str | None = None,
+        step: str | None = None,
+    ) -> list[Path]:
         # Files are named: checkpoint_<runid>_<scope?>_<stage>_<timestamp>_<step?>.json
         rid = _safe_stage(self.run_id)
         files = sorted(self.workdir.glob(f"checkpoint_{rid}_*.json"))
@@ -709,9 +709,9 @@ class RecoveryManager:
 
         return [p for p in files if ok_name(p)]
 
-    def _load_all_checkpoint_files(self) -> List[Tuple[Path, Checkpoint]]:
+    def _load_all_checkpoint_files(self) -> list[tuple[Path, Checkpoint]]:
         files = self._find_checkpoint_files()
-        out: List[Tuple[Path, Checkpoint]] = []
+        out: list[tuple[Path, Checkpoint]] = []
         if not files:
             return out
 
@@ -753,7 +753,7 @@ class RecoveryManager:
         out.sort(key=lambda x: x[0].name)
         return out
 
-    def _read_latest_completed_pointer(self) -> Optional[Tuple[Path, Checkpoint]]:
+    def _read_latest_completed_pointer(self) -> tuple[Path, Checkpoint] | None:
         p = self._latest_completed_path()
         txt = _read_text_best_effort(p)
         if not txt:
@@ -786,12 +786,12 @@ class RecoveryManager:
         self,
         stage: str,
         *,
-        scope: Optional[str] = None,
-        step: Optional[str] = None,
+        scope: str | None = None,
+        step: str | None = None,
         allow_same_stage: bool = False,
         allow_later_stage: bool = False,
         prefer_pointer: bool = True,
-    ) -> Optional[RecoveryDecision]:
+    ) -> RecoveryDecision | None:
         """
         Returns a RecoveryDecision without mutating anything.
         """
@@ -884,12 +884,12 @@ class RecoveryManager:
         self,
         stage: str,
         *,
-        scope: Optional[str] = None,
-        step: Optional[str] = None,
+        scope: str | None = None,
+        step: str | None = None,
         allow_same_stage: bool = False,
         allow_later_stage: bool = False,
         prefer_pointer: bool = True,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Perform recovery (returns cp.data) using the same policy as describe_recovery().
         """
@@ -951,7 +951,7 @@ class RecoveryManager:
         keep_newest_total: int = 50,
         keep_last_completed_per_stage: int = 1,
         keep_last_failed_run: bool = True,
-        ttl_days: Optional[int] = None,
+        ttl_days: int | None = None,
         also_prune_index: bool = False,
     ) -> None:
         """
@@ -985,7 +985,7 @@ class RecoveryManager:
 
         # 2) keep last completed per stage
         if keep_last_completed_per_stage > 0:
-            per_stage: Dict[str, int] = {}
+            per_stage: dict[str, int] = {}
             for p, cp in cps_sorted:
                 if not cp.completed:
                     continue
@@ -1013,7 +1013,7 @@ class RecoveryManager:
         # Delete those not kept, also applying TTL if possible
         cutoff = self._compute_cutoff_ts_days(ttl_days) if (ttl_days is not None and ttl_days > 0) else None
 
-        to_delete: List[Path] = []
+        to_delete: list[Path] = []
         for p, cp in cps_sorted:
             if p in keep:
                 continue
@@ -1062,7 +1062,7 @@ class RecoveryManager:
         except Exception:
             pass
 
-    def _read_manifest(self) -> Optional[RunManifest]:
+    def _read_manifest(self) -> RunManifest | None:
         txt = _read_text_best_effort(self._manifest_path())
         if not txt:
             return None
@@ -1071,7 +1071,7 @@ class RecoveryManager:
         except Exception:
             return None
 
-    def _compute_cutoff_ts_days(self, days: Optional[int]) -> Optional[str]:
+    def _compute_cutoff_ts_days(self, days: int | None) -> str | None:
         if days is None or days <= 0:
             return None
         # Best-effort: if U has a function, use it; otherwise we cannot reliably compute.

@@ -14,9 +14,10 @@ import tempfile
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 import guestfs  # type: ignore
 
@@ -24,25 +25,24 @@ from .. import __version__
 from ..core.recovery_manager import RecoveryManager
 from ..core.utils import U, blinking_progress, guest_has_cmd
 from ..core.validation_suite import ValidationSuite
+from . import network_fixer  # type: ignore
+from .bootloader import grub as grub_fixer  # type: ignore
+
+# Delegated fixers (keep OfflineFSFix "thin")
+from .filesystem import fixer as filesystem_fixer  # type: ignore
 from .filesystem.fstab import (
     Change,
     FstabMode,
     parse_btrfsvol_spec,
 )
-from .report_writer import write_report
-
-# Delegated fixers (keep OfflineFSFix "thin")
-from .filesystem import fixer as filesystem_fixer  # type: ignore
-from . import network_fixer  # type: ignore
-from .bootloader import grub as grub_fixer  # type: ignore
-from .windows import fixer as windows_fixer  # type: ignore
-from .offline.vmware_tools_remover import OfflineVmwareToolsRemover
+from .offline.config_rewriter import FstabCrypttabRewriter
 
 # Extracted modules for focused functionality
 from .offline.spec_converter import SpecConverter
-from .offline.config_rewriter import FstabCrypttabRewriter
 from .offline.validation import OfflineValidationManager
-
+from .offline.vmware_tools_remover import OfflineVmwareToolsRemover
+from .report_writer import write_report
+from .windows import fixer as windows_fixer  # type: ignore
 
 _T = TypeVar("_T")
 
@@ -51,16 +51,16 @@ _T = TypeVar("_T")
 @dataclass
 class VmwareRemovalResult:
     enabled: bool = True
-    removed_paths: List[str] = field(default_factory=list)
-    removed_services: List[str] = field(default_factory=list)
-    removed_symlinks: List[str] = field(default_factory=list)
-    package_hints: List[str] = field(default_factory=list)
-    touched_files: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    notes: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    removed_paths: list[str] = field(default_factory=list)
+    removed_services: list[str] = field(default_factory=list)
+    removed_symlinks: list[str] = field(default_factory=list)
+    package_hints: list[str] = field(default_factory=list)
+    touched_files: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "enabled": self.enabled,
             "removed_paths": self.removed_paths,
@@ -119,17 +119,17 @@ class OfflineFSFix:
         update_grub: bool,
         regen_initramfs: bool,
         fstab_mode: str,
-        report_path: Optional[Path],
+        report_path: Path | None,
         remove_vmware_tools: bool = False,
-        inject_cloud_init: Optional[Dict[str, Any]] = None,
-        recovery_manager: Optional[RecoveryManager] = None,
-        resize: Optional[str] = None,
-        virtio_drivers_dir: Optional[str] = None,
+        inject_cloud_init: dict[str, Any] | None = None,
+        recovery_manager: RecoveryManager | None = None,
+        resize: str | None = None,
+        virtio_drivers_dir: str | None = None,
         # ---- LUKS support (FULLY WIRED) ----
         luks_enable: bool = False,
-        luks_passphrase: Optional[str] = None,
-        luks_passphrase_env: Optional[str] = None,
-        luks_keyfile: Optional[Path] = None,
+        luks_passphrase: str | None = None,
+        luks_passphrase_env: str | None = None,
+        luks_keyfile: Path | None = None,
         luks_mapper_prefix: str = "hyper2kvm-crypt",
         # ---- filesystem fixer (delegated) ----
         filesystem_repair_enable: bool = False,
@@ -155,16 +155,16 @@ class OfflineFSFix:
         self.luks_passphrase_env = luks_passphrase_env
         self.luks_keyfile = Path(luks_keyfile) if luks_keyfile else None
         self.luks_mapper_prefix = luks_mapper_prefix
-        self._luks_opened: Dict[str, str] = {}  # luks_dev -> /dev/mapper/name
+        self._luks_opened: dict[str, str] = {}  # luks_dev -> /dev/mapper/name
 
         # Filesystem fixer flag (avoid shadowing method name)
         self.filesystem_repair_enable = bool(filesystem_repair_enable)
 
-        self.inspect_root: Optional[str] = None
-        self.root_dev: Optional[str] = None
-        self.root_btrfs_subvol: Optional[str] = None
+        self.inspect_root: str | None = None
+        self.root_dev: str | None = None
+        self.root_btrfs_subvol: str | None = None
 
-        self.report: Dict[str, Any] = {
+        self.report: dict[str, Any] = {
             "tool": "hyper2kvm",
             "version": __version__,
             "image": str(self.image),
@@ -175,7 +175,7 @@ class OfflineFSFix:
         }
 
         # Timings/metrics stash
-        self._timings: Dict[str, float] = {}
+        self._timings: dict[str, float] = {}
 
         # Initialize helper modules (composition over inheritance)
         self._spec_converter = SpecConverter(
@@ -214,7 +214,7 @@ class OfflineFSFix:
         fn: Callable[[], _T],
         *,
         critical: bool = False,
-        default: Optional[_T] = None,
+        default: _T | None = None,
     ) -> _T:
         """
         Run a stage, capture duration, and write a structured entry into report.
@@ -247,7 +247,7 @@ class OfflineFSFix:
                 return default  # type: ignore[return-value]
 
     def _stash_guestfs_info(self, g: guestfs.GuestFS) -> None:
-        info: Dict[str, Any] = {}
+        info: dict[str, Any] = {}
         try:
             if hasattr(g, "version"):
                 info["version"] = g.version()
@@ -285,7 +285,7 @@ class OfflineFSFix:
             pass
 
     # LUKS / LVM
-    def _read_luks_key_bytes(self) -> Optional[bytes]:
+    def _read_luks_key_bytes(self) -> bytes | None:
         # Keyfile wins
         try:
             if self.luks_keyfile and self.luks_keyfile.exists():
@@ -314,8 +314,8 @@ class OfflineFSFix:
             except Exception:
                 pass
 
-    def _unlock_luks_devices(self, g: guestfs.GuestFS) -> Dict[str, Any]:
-        audit: Dict[str, Any] = {
+    def _unlock_luks_devices(self, g: guestfs.GuestFS) -> dict[str, Any]:
+        audit: dict[str, Any] = {
             "attempted": False,
             "configured": False,
             "enabled": bool(self.luks_enable),
@@ -377,12 +377,12 @@ class OfflineFSFix:
         except Exception:
             return False
 
-    def _activate_mdraid(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def _activate_mdraid(self, g: guestfs.GuestFS) -> dict[str, Any]:
         """
         Best-effort mdraid assembly inside the guestfs appliance.
         Helps when root lives on /dev/mdX or PV-on-md.
         """
-        audit: Dict[str, Any] = {"attempted": False, "ok": False, "details": "", "error": None}
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "details": "", "error": None}
         if not self._guestfs_can_run(g, "mdadm"):
             audit["details"] = "mdadm_not_available_in_appliance"
             return audit
@@ -397,14 +397,14 @@ class OfflineFSFix:
             audit["details"] = "mdadm_assemble_scan_failed"
             return audit
 
-    def _activate_zfs(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def _activate_zfs(self, g: guestfs.GuestFS) -> dict[str, Any]:
         """
         Best-effort ZFS import. Harmless on non-ZFS guests.
         Depends on guestfs appliance having zpool.
         """
         if not self._guestfs_can_run(g, "zpool"):
             return {"attempted": False, "ok": False, "reason": "zpool_not_available_in_appliance"}
-        audit: Dict[str, Any] = {"attempted": True, "ok": False, "pools": [], "error": None}
+        audit: dict[str, Any] = {"attempted": True, "ok": False, "pools": [], "error": None}
         try:
             out = g.command(["sh", "-lc", "ZPOOL_VDEV_NAME_PATH=1 zpool import 2>/dev/null || true"])
             text = U.to_text(out).strip()
@@ -420,14 +420,14 @@ class OfflineFSFix:
             audit["error"] = str(e)
             return audit
 
-    def _pre_mount_activate_storage_stack(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def _pre_mount_activate_storage_stack(self, g: guestfs.GuestFS) -> dict[str, Any]:
         """
         Additive activation pipeline (best-effort, do-no-harm):
           - mdraid assemble
           - zfs import
           - lvm activate
         """
-        audit: Dict[str, Any] = {"mdraid": None, "zfs": None, "lvm": None}
+        audit: dict[str, Any] = {"mdraid": None, "zfs": None, "lvm": None}
         audit["mdraid"] = self._activate_mdraid(g)
         audit["zfs"] = self._activate_zfs(g)
         try:
@@ -438,7 +438,7 @@ class OfflineFSFix:
         return audit
 
     # mount logic (safe + robust)
-    def _mount_root_direct(self, g: guestfs.GuestFS, dev: str, subvol: Optional[str]) -> None:
+    def _mount_root_direct(self, g: guestfs.GuestFS, dev: str, subvol: str | None) -> None:
         """
         Enhanced (non-breaking): keep original behavior, but add a safe mount fallback ladder
         and a best-effort fsck pass for ext4/xfs when mount fails.
@@ -487,7 +487,7 @@ class OfflineFSFix:
 
         # 2) fallback ladder
         tries = ["ro", "opts:noload", "opts:ro, noload", "opts:ro, norecovery"]
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
         for t in tries:
             self._safe_umount_all(g)
             try:
@@ -595,7 +595,7 @@ class OfflineFSFix:
             return
 
         # Pick best-looking root (avoid roots[0] roulette)
-        best_root: Optional[str] = None
+        best_root: str | None = None
         best_score = -10**9
         for r in roots:
             rr = U.to_text(r)
@@ -657,12 +657,12 @@ class OfflineFSFix:
             return
 
         root_dev = root_spec
-        subvol: Optional[str] = None
+        subvol: str | None = None
         if root_spec.startswith("btrfsvol:"):
             root_dev, subvol = parse_btrfsvol_spec(root_spec)
             root_dev = root_dev.strip()
 
-        real: Optional[str] = None
+        real: str | None = None
         if root_dev.startswith("/dev/disk/by-"):
             try:
                 rp = U.to_text(g.realpath(root_dev)).strip()
@@ -691,13 +691,13 @@ class OfflineFSFix:
             self.logger.warning(f"{e}; brute-force mounting.")
             self.mount_root_bruteforce(g)
 
-    def _candidate_root_devices(self, g: guestfs.GuestFS) -> List[str]:
+    def _candidate_root_devices(self, g: guestfs.GuestFS) -> list[str]:
         """
         Build a *better-than-list_partitions()* candidate list:
           - after LUKS open + mdraid assemble + LVM activation, new mountables appear
           - list_filesystems() often includes LV paths
         """
-        candidates: List[str] = []
+        candidates: list[str] = []
 
         # 1) partitions
         try:
@@ -752,7 +752,7 @@ class OfflineFSFix:
 
         # Unique + stable-ish order (preserve first-seen)
         seen: set[str] = set()
-        out: List[str] = []
+        out: list[str] = []
         for d in candidates:
             if d and d not in seen:
                 seen.add(d)
@@ -764,10 +764,10 @@ class OfflineFSFix:
         if not candidates:
             U.die(self.logger, "Failed to list partitions/filesystems for brute-force mount.", 1)
 
-        mount_failures: List[Dict[str, str]] = []
+        mount_failures: list[dict[str, str]] = []
 
         # Try normal mounts first, but score candidates and pick best
-        best: Tuple[int, Optional[str]] = (-10**9, None)
+        best: tuple[int, str | None] = (-10**9, None)
         for dev in candidates:
             self._safe_umount_all(g)
             try:
@@ -807,7 +807,7 @@ class OfflineFSFix:
                 mount_failures.append({"device": dev, "error": f"best_root_mount_failed:{e}"})
 
         # Then attempt btrfs common subvols (also scored)
-        best_btrfs: Tuple[int, Optional[str], Optional[str]] = (-10**9, None, None)
+        best_btrfs: tuple[int, str | None, str | None] = (-10**9, None, None)
         for dev in candidates:
             for sv in self._BTRFS_COMMON_SUBVOLS:
                 self._safe_umount_all(g)
@@ -861,12 +861,12 @@ class OfflineFSFix:
 
     # normalize validation results (bool/dict compatibility)
     @staticmethod
-    def _normalize_validation_results(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    def _normalize_validation_results(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """Delegate to validation manager."""
         return OfflineValidationManager.normalize_validation_results(raw)
 
     @staticmethod
-    def _summarize_validation(norm: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    def _summarize_validation(norm: dict[str, dict[str, Any]]) -> dict[str, Any]:
         """Delegate to validation manager."""
         return OfflineValidationManager.summarize_validation(norm)
 
@@ -875,14 +875,14 @@ class OfflineFSFix:
         """Delegate to config rewriter."""
         self._config_rewriter.backup_file(g, path)
 
-    def convert_spec(self, g: guestfs.GuestFS, spec: str) -> Tuple[str, str]:
+    def convert_spec(self, g: guestfs.GuestFS, spec: str) -> tuple[str, str]:
         """Delegate to spec converter."""
         # Update root_dev in spec_converter if it's been detected
         if self.root_dev and self._spec_converter.root_dev != self.root_dev:
             self._spec_converter.root_dev = self.root_dev
         return self._spec_converter.convert_spec(g, spec)
 
-    def rewrite_fstab(self, g: guestfs.GuestFS) -> Tuple[int, List[Change], Dict[str, Any]]:
+    def rewrite_fstab(self, g: guestfs.GuestFS) -> tuple[int, list[Change], dict[str, Any]]:
         """Delegate to config rewriter."""
         return self._config_rewriter.rewrite_fstab(g)
 
@@ -891,11 +891,11 @@ class OfflineFSFix:
         return self._config_rewriter.rewrite_crypttab(g)
 
     # Filesystem fixer (delegated)
-    def fix_filesystems(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def fix_filesystems(self, g: guestfs.GuestFS) -> dict[str, Any]:
         return filesystem_fixer.fix_filesystems(self, g)
 
     # Delegated fixers (explicit wrappers; no monkey-patching)
-    def fix_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def fix_network_config(self, g: guestfs.GuestFS) -> dict[str, Any]:
         return network_fixer.fix_network_config(self, g)
 
     def remove_stale_device_map(self, g: guestfs.GuestFS) -> int:
@@ -904,17 +904,17 @@ class OfflineFSFix:
     def update_grub_root(self, g: guestfs.GuestFS) -> int:
         return grub_fixer.update_grub_root(self, g)
 
-    def regen(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def regen(self, g: guestfs.GuestFS) -> dict[str, Any]:
         return grub_fixer.regen(self, g)
 
     # Windows delegation
     def is_windows(self, g: guestfs.GuestFS) -> bool:
         return windows_fixer.is_windows(self, g)
 
-    def windows_bcd_actual_fix(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def windows_bcd_actual_fix(self, g: guestfs.GuestFS) -> dict[str, Any]:
         return windows_fixer.windows_bcd_actual_fix(self, g)
 
-    def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def inject_virtio_drivers(self, g: guestfs.GuestFS) -> dict[str, Any]:
         return windows_fixer.inject_virtio_drivers(self, g)
 
     # VMware tools removal (mounted tree remover)
@@ -924,7 +924,7 @@ class OfflineFSFix:
         mountpoint: Path,
         *,
         ready_timeout_s: float = 15.0,
-    ) -> Tuple[bool, Optional[str], Optional[threading.Thread], List[str]]:
+    ) -> tuple[bool, str | None, threading.Thread | None, list[str]]:
         """
         guestfs.mount_local_run() is a blocking FUSE loop.
         Pattern:
@@ -935,7 +935,7 @@ class OfflineFSFix:
 
         Returns any mount_local_run() exceptions collected in the background thread.
         """
-        err: List[str] = []
+        err: list[str] = []
 
         try:
             g.mount_local(str(mountpoint))
@@ -967,7 +967,7 @@ class OfflineFSFix:
             pass
         return False, "mount_local_ready_timeout", t, err
 
-    def remove_vmware_tools_func(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def remove_vmware_tools_func(self, g: guestfs.GuestFS) -> dict[str, Any]:
         """
         Exposes the mounted guest filesystem via mount_local + background mount_local_run(),
         then runs OfflineVmwareToolsRemover against that host-visible tree.
@@ -990,8 +990,8 @@ class OfflineFSFix:
 
         mnt = Path(tempfile.mkdtemp(prefix="hyper2kvm.guestfs.mnt."))
         mounted_local = False
-        t: Optional[threading.Thread] = None
-        thread_errs: List[str] = []
+        t: threading.Thread | None = None
+        thread_errs: list[str] = []
 
         try:
             ok, why, t, thread_errs = self._mount_local_run_threaded(g, mnt)
@@ -1040,7 +1040,7 @@ class OfflineFSFix:
                 pass
 
     # disk usage analysis
-    def analyze_disk_space(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    def analyze_disk_space(self, g: guestfs.GuestFS) -> dict[str, Any]:
         """Delegate to validation manager."""
         return self._validation_manager.analyze_disk_space(g)
 
@@ -1049,7 +1049,7 @@ class OfflineFSFix:
         return self._validation_manager.create_validation_suite(g)
 
     # resizing (image-level)
-    def _resize_image_container(self) -> Optional[Dict[str, Any]]:
+    def _resize_image_container(self) -> dict[str, Any] | None:
         if not self.resize:
             return None
         if self.dry_run:
@@ -1141,7 +1141,7 @@ class OfflineFSFix:
             }
 
             # validation (bool/dict compatible)
-            def _do_validation() -> Dict[str, Any]:
+            def _do_validation() -> dict[str, Any]:
                 suite = self.create_validation_suite(g)
                 ctx = {"image": str(self.image), "root_dev": self.root_dev, "subvol": self.root_btrfs_subvol}
                 raw = suite.run_all(ctx)
@@ -1225,7 +1225,7 @@ class OfflineFSFix:
                 default={"enabled": False, "error": "failed"},
             )
 
-            regen_info: Dict[str, Any]
+            regen_info: dict[str, Any]
             if self.regen_initramfs:
                 regen_info = self._run_stage(
                     "regen_initramfs_and_bootloader",

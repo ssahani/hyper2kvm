@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/orchestrator/orchestrator.py
 
 from __future__ import annotations
@@ -18,11 +17,11 @@ from ..libvirt.domain_emitter import emit_from_args
 from ..testers.libvirt_tester import LibvirtTest
 from ..testers.qemu_tester import QemuTest
 from ..vmware.vsphere.mode import VsphereMode
+from .azure_exporter import AzureExporter
 from .disk_discovery import DiskDiscovery
 from .disk_processor import DiskProcessor
 from .virt_v2v_converter import VirtV2VConverter
 from .vsphere_exporter import VsphereExporter
-from .azure_exporter import AzureExporter
 
 # Check availability
 try:
@@ -44,15 +43,15 @@ class Orchestrator:
     def __init__(self, logger: logging.Logger, args: argparse.Namespace):
         self.logger = logger
         self.args = args
-        self.recovery_manager: Optional[RecoveryManager] = None
-        self.disks: List[Path] = []
+        self.recovery_manager: RecoveryManager | None = None
+        self.disks: list[Path] = []
 
         # Initialize component handlers
         self.v2v_converter = VirtV2VConverter(logger)
         self.vsphere_exporter = VsphereExporter(logger, args)
         self.azure_exporter = AzureExporter(logger, args)
         self.disk_discovery = DiskDiscovery(logger, args)
-        self.disk_processor: Optional[DiskProcessor] = None  # Created after recovery setup
+        self.disk_processor: DiskProcessor | None = None  # Created after recovery setup
 
         Log.trace(
             self.logger,
@@ -125,7 +124,7 @@ class Orchestrator:
             return False  # Exit
         return True  # Not Azure mode, continue
 
-    def _discover_disks(self, out_root: Path) -> Optional[Path]:
+    def _discover_disks(self, out_root: Path) -> Path | None:
         """
         Discover disks from various sources.
 
@@ -152,7 +151,7 @@ class Orchestrator:
 
         return None
 
-    def _run_pre_v2v(self, out_root: Path) -> List[Path]:
+    def _run_pre_v2v(self, out_root: Path) -> list[Path]:
         """Run virt-v2v before internal processing if requested."""
         if not getattr(self.args, "use_v2v", False):
             return []
@@ -182,7 +181,7 @@ class Orchestrator:
                 getattr(self.args, "luks_keyfile", None),
             )
 
-    def _run_post_v2v(self, fixed_images: List[Path], out_root: Path) -> List[Path]:
+    def _run_post_v2v(self, fixed_images: list[Path], out_root: Path) -> list[Path]:
         """Run virt-v2v after internal processing if requested."""
         if not getattr(self.args, "post_v2v", False) or not fixed_images:
             return fixed_images
@@ -217,7 +216,7 @@ class Orchestrator:
 
         return v2v_images if v2v_images else fixed_images
 
-    def _process_disks(self, out_root: Path) -> List[Path]:
+    def _process_disks(self, out_root: Path) -> list[Path]:
         """Process disks through internal pipeline."""
         if not self.disk_processor:
             raise RuntimeError("DiskProcessor not initialized (call _setup_recovery first)")
@@ -233,7 +232,7 @@ class Orchestrator:
             return self.disk_processor.process_disks_parallel(self.disks, out_root)
 
         # Sequential processing
-        fixed_images: List[Path] = []
+        fixed_images: list[Path] = []
         for idx, disk in enumerate(self.disks):
             if not disk.exists():
                 U.die(self.logger, f"🔥 Disk not found: {disk}", 1)
@@ -242,7 +241,7 @@ class Orchestrator:
         Log.trace(self.logger, "📦 _process_disks: produced=%d", len(fixed_images))
         return fixed_images
 
-    def _run_tests(self, out_images: List[Path]) -> None:
+    def _run_tests(self, out_images: list[Path]) -> None:
         """Run validation tests if requested."""
         if not out_images:
             return
@@ -275,7 +274,7 @@ class Orchestrator:
             )
             Log.ok(self.logger, "QEMU test complete")
 
-    def _emit_domain_xml(self, out_root: Path, out_images: List[Path]) -> None:
+    def _emit_domain_xml(self, out_root: Path, out_images: list[Path]) -> None:
         """Emit libvirt domain XML if requested."""
         if not out_images:
             return

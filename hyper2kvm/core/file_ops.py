@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/file_ops.py
 """
 Atomic file operation utilities.
@@ -12,9 +11,10 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Optional
 
 
 @contextmanager
@@ -23,7 +23,7 @@ def atomic_write(
     *,
     mode: str = "wb",
     suffix: str = ".part",
-    dir: Optional[Path] = None,
+    dir: Path | None = None,
     delete_on_error: bool = True,
 ) -> Generator[Path, None, None]:
     """

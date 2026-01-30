@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/azure/exceptions.py
 
 from __future__ import annotations
@@ -45,16 +44,16 @@ class AzureDownloadError(AzureError):
 
 # Convenience wrapper functions (following core/exceptions.py pattern)
 
-def wrap_azure_cli_error(msg: str, exc: Optional[BaseException] = None, code: int = 60, **context: Any) -> AzureCLIError:
+def wrap_azure_cli_error(msg: str, exc: BaseException | None = None, code: int = 60, **context: Any) -> AzureCLIError:
     """Wrap Azure CLI errors with context."""
     return AzureCLIError(code=code, msg=msg, cause=exc, context=context or None)
 
 
-def wrap_azure_auth_error(msg: str, exc: Optional[BaseException] = None, code: int = 61, **context: Any) -> AzureAuthError:
+def wrap_azure_auth_error(msg: str, exc: BaseException | None = None, code: int = 61, **context: Any) -> AzureAuthError:
     """Wrap Azure authentication errors with context."""
     return AzureAuthError(code=code, msg=msg, cause=exc, context=context or None)
 
 
-def wrap_azure_download_error(msg: str, exc: Optional[BaseException] = None, code: int = 62, **context: Any) -> AzureDownloadError:
+def wrap_azure_download_error(msg: str, exc: BaseException | None = None, code: int = 62, **context: Any) -> AzureDownloadError:
     """Wrap Azure download errors with context."""
     return AzureDownloadError(code=code, msg=msg, cause=exc, context=context or None)

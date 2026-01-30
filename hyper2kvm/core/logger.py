@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/logger.py
 from __future__ import annotations
 
@@ -10,9 +9,10 @@ import multiprocessing as _mp
 import os
 import sys
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..vmware.utils.utils import is_tty
 
@@ -75,8 +75,8 @@ def _supports_unicode() -> bool:
 
 def c(
     text: str,
-    color: Optional[str] = None,
-    attrs: Optional[List[str]] = None,
+    color: str | None = None,
+    attrs: list[str] | None = None,
     *,
     enable: bool = True,
 ) -> str:
@@ -105,8 +105,8 @@ def _safe_str(v: Any, *, max_len: int = 240) -> str:
     return s
 
 
-def _merge_ctx(base: Optional[Ctx], extra: Optional[Ctx]) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
+def _merge_ctx(base: Ctx | None, extra: Ctx | None) -> dict[str, Any]:
+    out: dict[str, Any] = {}
     if base:
         out.update(dict(base))
     if extra:
@@ -114,14 +114,14 @@ def _merge_ctx(base: Optional[Ctx], extra: Optional[Ctx]) -> Dict[str, Any]:
     return out
 
 
-def _format_ctx_kv(ctx: Optional[Ctx]) -> str:
+def _format_ctx_kv(ctx: Ctx | None) -> str:
     if not ctx:
         return ""
     try:
         items = sorted(ctx.items(), key=lambda kv: str(kv[0]))
     except Exception:
         items = list(ctx.items())
-    parts: List[str] = []
+    parts: list[str] = []
     for k, v in items:
         key = _safe_str(k, max_len=80)
         parts.append(f"{key}={_safe_str(v)}")
@@ -139,10 +139,10 @@ class ContextLoggerAdapter(logging.LoggerAdapter):
       log.error("Failed", extra={"ctx": {"disk": 2}})
     """
 
-    def __init__(self, logger: logging.Logger, ctx: Optional[Ctx] = None):
+    def __init__(self, logger: logging.Logger, ctx: Ctx | None = None):
         super().__init__(logger, extra={"ctx": dict(ctx or {})})
 
-    def process(self, msg: Any, kwargs: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+    def process(self, msg: Any, kwargs: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         extra = kwargs.get("extra") or {}
         call_ctx = extra.get("ctx")
         merged = _merge_ctx(self.extra.get("ctx"), call_ctx)
@@ -150,7 +150,7 @@ class ContextLoggerAdapter(logging.LoggerAdapter):
         kwargs["extra"] = extra
         return msg, kwargs
 
-    def bind(self, **ctx: Any) -> "ContextLoggerAdapter":
+    def bind(self, **ctx: Any) -> ContextLoggerAdapter:
         merged = _merge_ctx(self.extra.get("ctx"), ctx)
         return ContextLoggerAdapter(self.logger, merged)
 
@@ -193,7 +193,7 @@ class EmojiFormatter(logging.Formatter):
         return _LEVEL_EMOJI.get(levelname, "•")
 
     def _prefix_bits(self, record: logging.LogRecord) -> str:
-        bits: List[str] = []
+        bits: list[str] = []
 
         if self._style.show_pid:
             bits.append(f"pid={os.getpid()}")
@@ -226,7 +226,7 @@ class EmojiFormatter(logging.Formatter):
         if not exc_text and not stack_text:
             return ""
 
-        parts: List[str] = []
+        parts: list[str] = []
         if exc_text:
             parts.append(exc_text)
         if stack_text:
@@ -298,7 +298,7 @@ class JsonFormatter(logging.Formatter):
         except Exception:
             ppid = None
 
-        obj: Dict[str, Any] = {
+        obj: dict[str, Any] = {
             "ts": self._iso(record.created),
             "level": record.levelname,
             "logger": record.name,
@@ -338,10 +338,10 @@ class JsonFormatter(logging.Formatter):
 # Once / rate-limited warnings (per-process, by design)
 
 _warn_once_keys: set[str] = set()
-_warn_last: Dict[str, float] = {}
+_warn_last: dict[str, float] = {}
 
 
-def _warn_key(key: Union[str, Tuple[Any, ...]]) -> str:
+def _warn_key(key: str | tuple[Any, ...]) -> str:
     if isinstance(key, str):
         return key
     try:
@@ -415,7 +415,7 @@ class Log:
         Log.trace(logger, msg, **kv)
 
     @staticmethod
-    def warn_once(logger: logging.Logger, key: Union[str, Tuple[Any, ...]], msg: str, **ctx: Any) -> bool:
+    def warn_once(logger: logging.Logger, key: str | tuple[Any, ...], msg: str, **ctx: Any) -> bool:
         """
         Log a warning only once per-process for `key`.
         Returns True if it logged, False if suppressed.
@@ -430,7 +430,7 @@ class Log:
     @staticmethod
     def warn_rl(
         logger: logging.Logger,
-        key: Union[str, Tuple[Any, ...]],
+        key: str | tuple[Any, ...],
         msg: str,
         *,
         every_s: float = 60.0,
@@ -452,10 +452,10 @@ class Log:
     @staticmethod
     def setup(
         verbose: int = 0,
-        log_file: Optional[str] = None,
+        log_file: str | None = None,
         *,
         quiet: int = 0,
-        color: Optional[bool] = None,
+        color: bool | None = None,
         show_ms: bool = False,
         utc: bool = False,
         show_pid: bool = False,

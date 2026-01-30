@@ -90,7 +90,7 @@ class FstabCrypttabRewriter:
         except Exception as e:
             self.logger.warning(f"Backup failed for {path}: {e}")
 
-    def rewrite_fstab(self, g: guestfs.GuestFS) -> Tuple[int, List[Change], Dict[str, Any]]:
+    def rewrite_fstab(self, g: guestfs.GuestFS) -> tuple[int, list[Change], dict[str, Any]]:
         """
         Rewrite /etc/fstab with stable device identifiers.
 
@@ -122,8 +122,8 @@ class FstabCrypttabRewriter:
             print("\n--- /etc/fstab (before) ---\n" + before)
 
         lines = before.splitlines()
-        out_lines: List[str] = []
-        changes: List[Change] = []
+        out_lines: list[str] = []
+        changes: list[Change] = []
         total = 0
         entries = 0
         bypath = 0
@@ -265,7 +265,7 @@ class FstabCrypttabRewriter:
             return 0
 
         before = U.to_text(g.read_file(path))
-        out: List[str] = []
+        out: list[str] = []
         changed = 0
         lines = before.splitlines()
 

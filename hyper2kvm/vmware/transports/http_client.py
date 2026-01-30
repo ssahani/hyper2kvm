@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/transports/http_client.py
 """
 HTTP/HTTPS datastore file download client for vSphere.
@@ -12,10 +11,11 @@ import logging
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 # Optional: silence urllib3 TLS warnings when verify=False
@@ -108,7 +108,7 @@ def _warn_line(msg: str) -> None:
     print(f"WARNING: {msg}")
 
 
-def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
+def _fmt_elapsed(start_time: float) -> tuple[int, int]:
     elapsed = max(0.0, time.time() - start_time)
     minutes = int(elapsed // 60)
     seconds = int(elapsed % 60)
@@ -151,8 +151,8 @@ class HTTPDownloadClient:
         host: str,
         port: int = 443,
         insecure: bool = False,
-        timeout: Optional[float] = None,
-        http_client: Optional[Any] = None,  # For testing/mocking
+        timeout: float | None = None,
+        http_client: Any | None = None,  # For testing/mocking
     ) -> None:
         if not host:
             raise ValueError("Host cannot be empty")
@@ -170,10 +170,10 @@ class HTTPDownloadClient:
         self.insecure = insecure
         self.timeout = timeout
 
-        self._session_cookie_raw: Optional[str] = None
-        self._cookie_header_value: Optional[str] = None
+        self._session_cookie_raw: str | None = None
+        self._cookie_header_value: str | None = None
 
-        self._session_pool: Optional[Any] = None
+        self._session_pool: Any | None = None
         self._http_client = http_client or requests
 
         self._disable_tls_warnings()
@@ -258,7 +258,7 @@ class HTTPDownloadClient:
             f"?dcPath={dc_name_encoded}&dsName={datastore_encoded}"
         )
 
-    def get_file_size(self, datastore: str, ds_path: str, dc_name: str) -> Optional[int]:
+    def get_file_size(self, datastore: str, ds_path: str, dc_name: str) -> int | None:
         """
         Get the size of a datastore file using HEAD.
         Returns None if unknown / cannot retrieve.
@@ -283,11 +283,11 @@ class HTTPDownloadClient:
         *,
         url: str,
         out_path: Path,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         chunk_size: int,
         reporter: ProgressReporter,
         expect_partial: bool,
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """
         Stream response body into out_path (already opened/created).
         Returns: (downloaded_bytes, http_status)
@@ -332,8 +332,8 @@ class HTTPDownloadClient:
         ds_path: str,
         local_path: Path,
         dc_name: str,
-        on_bytes: Optional[ProgressCallback] = None,
-        options: Optional[HTTPDownloadOptions] = None,
+        on_bytes: ProgressCallback | None = None,
+        options: HTTPDownloadOptions | None = None,
     ) -> None:
         """
         Download a single datastore file via HTTP/HTTPS with correct resume capability.
@@ -348,7 +348,7 @@ class HTTPDownloadClient:
         start_time = time.time()
 
         # Decide resume
-        headers: Dict[str, str] = {"Cookie": self.get_session_cookie()}
+        headers: dict[str, str] = {"Cookie": self.get_session_cookie()}
         start_byte = 0
         remote_size = self.get_file_size(datastore, ds_path, dc_name)
 
@@ -363,7 +363,7 @@ class HTTPDownloadClient:
                 self.logger.info("Resuming download from byte %d", existing_size)
 
         # For progress totals, show "remaining" if resuming, else full size.
-        total_remaining: Optional[int] = None
+        total_remaining: int | None = None
         if remote_size is not None:
             total_remaining = max(0, remote_size - start_byte)
 
@@ -393,10 +393,10 @@ class HTTPDownloadClient:
         reporter.start(f"Downloading {file_name}", total_remaining)
 
         max_attempts = opt.retries + 1
-        last_exception: Optional[Exception] = None
+        last_exception: Exception | None = None
 
         for attempt in range(1, max_attempts + 1):
-            temp_path: Optional[Path] = None
+            temp_path: Path | None = None
             try:
                 # Choose output target for this attempt
                 # - atomic=False: write directly to local (with correct resume append)
@@ -561,12 +561,12 @@ class HTTPDownloadManager:
         *,
         datastore: str,
         dc_name: str,
-        files: List[Tuple[str, Path]],
+        files: list[tuple[str, Path]],
         fail_on_error: bool = False,
         max_retries: int = 1,
         retry_delay: float = 2.0,
-        options: Optional[HTTPDownloadOptions] = None,
-    ) -> List[Tuple[bool, str, str]]:
+        options: HTTPDownloadOptions | None = None,
+    ) -> list[tuple[bool, str, str]]:
         opt = options or HTTPDownloadOptions()
 
         if opt.max_workers > 1:
@@ -594,12 +594,12 @@ class HTTPDownloadManager:
         *,
         datastore: str,
         dc_name: str,
-        files: List[Tuple[str, Path]],
+        files: list[tuple[str, Path]],
         fail_on_error: bool,
         max_retries: int,
         retry_delay: float,
         options: HTTPDownloadOptions,
-    ) -> List[Tuple[bool, str, str]]:
+    ) -> list[tuple[bool, str, str]]:
         start = time.time()
         is_batch = len(files) > 1
 
@@ -628,7 +628,7 @@ class HTTPDownloadManager:
                 atomic=options.atomic,
             )
 
-        results: List[Tuple[bool, str, str]] = []
+        results: list[tuple[bool, str, str]] = []
         ok = 0
         fail = 0
 
@@ -691,12 +691,12 @@ class HTTPDownloadManager:
         *,
         datastore: str,
         dc_name: str,
-        files: List[Tuple[str, Path]],
+        files: list[tuple[str, Path]],
         fail_on_error: bool,
         max_retries: int,
         retry_delay: float,
         options: HTTPDownloadOptions,
-    ) -> List[Tuple[bool, str, str]]:
+    ) -> list[tuple[bool, str, str]]:
         start = time.time()
 
         if options.show_panels:
@@ -722,12 +722,12 @@ class HTTPDownloadManager:
             atomic=options.atomic,
         )
 
-        results: List[Tuple[bool, str, str]] = []
+        results: list[tuple[bool, str, str]] = []
         ok = 0
         fail = 0
 
         with ThreadPoolExecutor(max_workers=options.max_workers) as executor:
-            future_to_file: Dict[Any, Tuple[str, Path]] = {}
+            future_to_file: dict[Any, tuple[str, Path]] = {}
             for ds_path, local_path in files:
                 future = executor.submit(
                     self._download_file_with_retry,
@@ -768,7 +768,7 @@ class HTTPDownloadManager:
         max_retries: int,
         retry_delay: float,
     ) -> None:
-        last_exception: Optional[Exception] = None
+        last_exception: Exception | None = None
 
         for attempt in range(max_retries + 1):
             try:
@@ -802,7 +802,7 @@ class HTTPDownloadManager:
         ok: int,
         fail: int,
         datastore: str,
-        results: List[Tuple[bool, str, str]],
+        results: list[tuple[bool, str, str]],
         options: HTTPDownloadOptions,
     ) -> None:
         m, s = _fmt_elapsed(start_time)

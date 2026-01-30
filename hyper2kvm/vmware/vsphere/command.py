@@ -6,8 +6,9 @@ vSphere command orchestration for hyper2kvm.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ...core.exceptions import VMwareError
 from ..clients.client import V2VExportOptions, VMwareClient
@@ -19,19 +20,18 @@ from .errors import (
 )
 from .govc import (
     GovmomiCLI,
-    _Emitter,
     _arg_any,
+    _Emitter,
     _merged_cfg,
     _p,
     _prefer_govc,
     _require,
 )
 
-
 # Snapshot helpers (normalize snapshot object type)
 
 
-def _find_snapshot_tree_by_name(vm_obj: Any, name: str) -> Optional[Any]:
+def _find_snapshot_tree_by_name(vm_obj: Any, name: str) -> Any | None:
     target = (name or "").strip()
     if not target:
         return None
@@ -71,10 +71,10 @@ class VsphereCommands:
             raise VMwareError(f"VM not found: {vm_name!r}")
         return vm
 
-    def _govc(self) -> Optional[GovmomiCLI]:
+    def _govc(self) -> GovmomiCLI | None:
         return _prefer_govc(self.args, self.logger)
 
-    def _govc_try(self, op: Callable[[GovmomiCLI], Any], *, warn: str) -> Tuple[bool, Any]:
+    def _govc_try(self, op: Callable[[GovmomiCLI], Any], *, warn: str) -> tuple[bool, Any]:
         g = self._govc()
         if not g:
             return (False, None)
@@ -84,7 +84,7 @@ class VsphereCommands:
             self.logger.warning("%s: %s", warn, e)
             return (False, None)
 
-    def _vm_summary_payload(self, vm: Any) -> Dict[str, Any]:
+    def _vm_summary_payload(self, vm: Any) -> dict[str, Any]:
         s = getattr(vm, "summary", None)
         cfg = getattr(s, "config", None) if s else None
         runtime = getattr(s, "runtime", None) if s else None
@@ -102,7 +102,7 @@ class VsphereCommands:
             "esx_host": getattr(getattr(getattr(vm, "runtime", None), "host", None), "name", None),
         }
 
-    def _disk_payload(self, device: Any, index: int) -> Dict[str, Any]:
+    def _disk_payload(self, device: Any, index: int) -> dict[str, Any]:
         label = getattr(getattr(device, "deviceInfo", None), "label", None)
         key = getattr(device, "key", None)
         cap = getattr(device, "capacityInKB", None)
@@ -116,7 +116,7 @@ class VsphereCommands:
             "backing_file": str(fname) if fname else None,
         }
 
-    def _selected_disk_payload(self, vm_name: str, selector: Any, device: Any) -> Dict[str, Any]:
+    def _selected_disk_payload(self, vm_name: str, selector: Any, device: Any) -> dict[str, Any]:
         label = getattr(getattr(device, "deviceInfo", None), "label", None)
         key = getattr(device, "key", None)
         backing = getattr(device, "backing", None)
@@ -485,7 +485,7 @@ class _ArgsShim:
 # Router
 
 
-_ACTIONS: Dict[str, str] = {
+_ACTIONS: dict[str, str] = {
     "list_vm_names": "list_vm_names",
     "get_vm_by_name": "get_vm_by_name",
     "vm_disks": "vm_disks",
@@ -513,7 +513,7 @@ def _get_action_or_raise(args: Any) -> str:
     return action
 
 
-def _build_client(args: Any, conf: Optional[Dict[str, Any]], logger: Any) -> VMwareClient:
+def _build_client(args: Any, conf: dict[str, Any] | None, logger: Any) -> VMwareClient:
     cfg = _merged_cfg(args, conf)
     return VMwareClient.from_config(
         logger=logger,
@@ -524,7 +524,7 @@ def _build_client(args: Any, conf: Optional[Dict[str, Any]], logger: Any) -> VMw
     )
 
 
-def run_vsphere_command(args: Any, conf: Optional[Dict[str, Any]], logger: Any) -> int:
+def run_vsphere_command(args: Any, conf: dict[str, Any] | None, logger: Any) -> int:
     """
     Entry point for: hyper2kvm.py vsphere <action> ...
     Returns structured exit codes suitable for shell/CI.

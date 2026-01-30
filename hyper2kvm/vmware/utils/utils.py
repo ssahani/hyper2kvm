@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/utils/utils.py
 """
 Shared utility functions for VMware operations.
@@ -15,7 +14,7 @@ from typing import Optional
 from urllib.parse import quote
 
 
-def safe_vm_name(name: Optional[str]) -> str:
+def safe_vm_name(name: str | None) -> str:
     """
     Sanitize VM name for use in filenames and paths.
 

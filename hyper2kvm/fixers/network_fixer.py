@@ -37,7 +37,7 @@ __all__ = ["NetworkFixer", "fix_network_config", "fix_network_config_compat"]
 # Optional compatibility wrapper (for project style)
 
 
-def fix_network_config(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+def fix_network_config(self, g: guestfs.GuestFS) -> dict[str, Any]:
     """
     Compatibility entrypoint: call NetworkFixer directly.
 

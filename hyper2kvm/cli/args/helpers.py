@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/cli/args/helpers.py
 from __future__ import annotations
 
@@ -23,7 +22,7 @@ def _require2(v: Any) -> bool:
     return _require(v)
 
 
-def _merged_get(args: argparse.Namespace, conf: Dict[str, Any], key: str) -> Any:
+def _merged_get(args: argparse.Namespace, conf: dict[str, Any], key: str) -> Any:
     """
     Prefer CLI override if present (non-empty), else config.
     Supports both snake_case keys in conf and argparse dest keys.
@@ -34,7 +33,7 @@ def _merged_get(args: argparse.Namespace, conf: Dict[str, Any], key: str) -> Any
     return conf.get(key)
 
 
-def _merged_secret(args: argparse.Namespace, conf: Dict[str, Any], value_key: str, env_key: str) -> Optional[str]:
+def _merged_secret(args: argparse.Namespace, conf: dict[str, Any], value_key: str, env_key: str) -> str | None:
     """
     Resolve a secret from (CLI value) or (CLI env var name) or (YAML value) or (YAML env var name).
     Example: (vc_password, vc_password_env)
@@ -50,7 +49,7 @@ def _merged_secret(args: argparse.Namespace, conf: Dict[str, Any], value_key: st
     return None
 
 
-def _merged_cmd(args: argparse.Namespace, conf: Dict[str, Any]) -> Optional[str]:
+def _merged_cmd(args: argparse.Namespace, conf: dict[str, Any]) -> str | None:
     v = getattr(args, "cmd", None)
     if _require(v):
         return str(v).strip()
@@ -63,7 +62,7 @@ def _merged_cmd(args: argparse.Namespace, conf: Dict[str, Any]) -> Optional[str]
     return None
 
 
-def _merged_vs_action(args: argparse.Namespace, conf: Dict[str, Any]) -> Optional[str]:
+def _merged_vs_action(args: argparse.Namespace, conf: dict[str, Any]) -> str | None:
     v = getattr(args, "vs_action", None)
     if _require(v):
         return str(v).strip()
@@ -76,14 +75,14 @@ def _merged_vs_action(args: argparse.Namespace, conf: Dict[str, Any]) -> Optiona
     return None
 
 
-def _resolve_workdir(args: argparse.Namespace, conf: Dict[str, Any]) -> str:
+def _resolve_workdir(args: argparse.Namespace, conf: dict[str, Any]) -> str:
     out_dir = _merged_get(args, conf, "output_dir") or "./out"
     wd = getattr(args, "workdir", None) or os.path.join(str(out_dir), "work")
     os.makedirs(wd, exist_ok=True)
     return str(wd)
 
 
-def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: Dict[str, Any], logger: Any) -> None:
+def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: dict[str, Any], logger: Any) -> None:
     """
     If user provided inline win_net_json and did NOT provide win_net_override,
     write the JSON to a stable file under workdir, and set args.win_net_override.
@@ -118,7 +117,7 @@ def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: Dict[str
         pass
 
 
-def _materialize_virtio_config_json_if_needed(args: argparse.Namespace, conf: Dict[str, Any], logger: Any) -> None:
+def _materialize_virtio_config_json_if_needed(args: argparse.Namespace, conf: dict[str, Any], logger: Any) -> None:
     """
     If user provided inline virtio_config_json and did NOT provide virtio_config_path,
     write it under workdir and set args.virtio_config_path.

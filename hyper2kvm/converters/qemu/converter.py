@@ -10,9 +10,10 @@ import selectors
 import subprocess
 import sys
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple
+from typing import Optional, Tuple
 
 from rich.progress import (
     BarColumn,
@@ -55,10 +56,10 @@ class Convert:
     @dataclass(frozen=True)
     class ConvertOptions:
         cache_mode: str = "none"  # none|writeback|unsafe|"" (disabled)
-        threads: Optional[int] = None  # -m N
-        compression_type: Optional[str] = "zstd"  # zstd|zlib|None (omit)
-        compression_level: Optional[int] = None  # compression_level=...
-        preallocation: Optional[str] = None  # preallocation=metadata, ...
+        threads: int | None = None  # -m N
+        compression_type: str | None = "zstd"  # zstd|zlib|None (omit)
+        compression_level: int | None = None  # compression_level=...
+        preallocation: str | None = None  # preallocation=metadata, ...
 
         def short(self) -> str:
             return (
@@ -79,14 +80,14 @@ class Convert:
         *,
         out_format: str,
         compress: bool,
-        compress_level: Optional[int] = None,
-        compression_type: Optional[str] = "zstd",
-        progress_callback: Optional[Callable[[float], None]] = None,
-        in_format: Optional[str] = None,
-        preallocation: Optional[str] = None,
+        compress_level: int | None = None,
+        compression_type: str | None = "zstd",
+        progress_callback: Callable[[float], None] | None = None,
+        in_format: str | None = None,
+        preallocation: str | None = None,
         atomic: bool = True,
         cache_mode: str = "none",
-        threads: Optional[int] = None,
+        threads: int | None = None,
         ui_poll_s: float = 0.20,
         max_stderr_tail: int = 200,
     ) -> None:
@@ -125,7 +126,7 @@ class Convert:
             f"(in_format={in_format or 'auto'}, out_format={out_format}, compress={compress}, atomic={atomic})"
         )
 
-        last_error: Optional[subprocess.CalledProcessError] = None
+        last_error: subprocess.CalledProcessError | None = None
 
         for attempt_no, opt in enumerate(plan, start=1):
             if atomic and tmp_dst.exists():
@@ -201,8 +202,8 @@ class Convert:
         *,
         out_format: str,
         compress: bool,
-        compress_level: Optional[int] = None,
-        in_format: Optional[str] = None,
+        compress_level: int | None = None,
+        in_format: str | None = None,
     ) -> None:
         Convert.convert_image_with_progress(
             logger,
@@ -330,8 +331,7 @@ class Convert:
             )
         )
 
-        for o in ordered:
-            yield o
+        yield from ordered
 
     # Core runner (progress + stderr capture)
 
@@ -343,7 +343,7 @@ class Convert:
         tmp_dst: Path,
         virt_size: int,
         ui_poll_s: float,
-        progress_callback: Optional[Callable[[float], None]],
+        progress_callback: Callable[[float], None] | None,
         callback_min_delta: float = 0.001,  # 0.1%
         size_poll_s: float = 0.50,
         log_every_s: float = 30.0,  # liveness logging even if % flat (non-interactive)
@@ -409,7 +409,7 @@ class Convert:
                 push_line(buf)
                 buf = b""
 
-        last_seen_pct: Optional[float] = None
+        last_seen_pct: float | None = None
         best_pct = 0.0
         processed_lines = 0
         last_io_tick = time.time()
@@ -429,7 +429,7 @@ class Convert:
             if pct > best_pct:
                 best_pct = pct
 
-        def parse_progress_pct(line: str) -> Optional[float]:
+        def parse_progress_pct(line: str) -> float | None:
             s = (line or "").strip()
             if not s:
                 return None
@@ -506,7 +506,7 @@ class Convert:
                 else:
                     update_best(pct)
 
-        def tmp_written_bytes() -> Optional[int]:
+        def tmp_written_bytes() -> int | None:
             try:
                 if not tmp_dst.exists():
                     return None
@@ -514,7 +514,7 @@ class Convert:
             except Exception:
                 return None
 
-        def maybe_advance_pct_from_written(written_b: Optional[int]) -> None:
+        def maybe_advance_pct_from_written(written_b: int | None) -> None:
             nonlocal best_pct
             if last_seen_pct is not None:
                 return
@@ -542,7 +542,7 @@ class Convert:
                 Convert._safe_progress_callback(progress_callback, frac, logger=logger)
 
         last_size_poll = 0.0
-        cached_written: Optional[int] = None
+        cached_written: int | None = None
 
         # --- dynamic log throttling (prevents spam while Rich is live) ---
         last_emit_t = start
@@ -769,7 +769,7 @@ class Convert:
         *,
         src: Path,
         dst: Path,
-        in_format: Optional[str],
+        in_format: str | None,
         out_format: str,
         compress: bool,
         opt: ConvertOptions,
@@ -816,7 +816,7 @@ class Convert:
         return src
 
     @staticmethod
-    def _qemu_img_info(logger: logging.Logger, src: Path) -> Tuple[int, Optional[str]]:
+    def _qemu_img_info(logger: logging.Logger, src: Path) -> tuple[int, str | None]:
         info_cmd = ["qemu-img", "info", "--output=json", str(src)]
         logger.debug(f"Executing info command: {' '.join(info_cmd)}")
         try:
@@ -846,7 +846,7 @@ class Convert:
 
     @staticmethod
     def _safe_progress_callback(
-        cb: Optional[Callable[[float], None]],
+        cb: Callable[[float], None] | None,
         frac: float,
         *,
         logger: logging.Logger,

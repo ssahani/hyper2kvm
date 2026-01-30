@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/guest_utils.py
 """Shared utility functions for guestfs operations
 
@@ -18,7 +17,7 @@ except ImportError:  # pragma: no cover
     GUESTFS_AVAILABLE = False
 
 
-def guest_mkdir_p(g: "guestfs.GuestFS", path: str, *, dry_run: bool = False) -> None:
+def guest_mkdir_p(g: guestfs.GuestFS, path: str, *, dry_run: bool = False) -> None:
     """Create directory and parent directories in guest filesystem.
 
     Args:
@@ -38,7 +37,7 @@ def guest_mkdir_p(g: "guestfs.GuestFS", path: str, *, dry_run: bool = False) -> 
         g.mkdir_p(path)
 
 
-def guest_write_text(g: "guestfs.GuestFS", path: str, content: str, *, dry_run: bool = False) -> None:
+def guest_write_text(g: guestfs.GuestFS, path: str, content: str, *, dry_run: bool = False) -> None:
     """Write text content to a file in guest filesystem.
 
     Args:
@@ -55,7 +54,7 @@ def guest_write_text(g: "guestfs.GuestFS", path: str, content: str, *, dry_run: 
     g.write(path, content.encode("utf-8", errors="ignore"))
 
 
-def deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Deep merge two dictionaries recursively.
 
     Args:
@@ -75,7 +74,7 @@ def deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str,
         >>> deep_merge_dict(base, override)
         {'a': {'b': 1, 'c': 99}, 'd': 3, 'e': 4}
     """
-    out: Dict[str, Any] = dict(base)
+    out: dict[str, Any] = dict(base)
     for k, v in override.items():
         if k in out and isinstance(out[k], dict) and isinstance(v, dict):
             out[k] = deep_merge_dict(out[k], v)

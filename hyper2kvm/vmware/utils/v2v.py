@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/utils/v2v.py
 from __future__ import annotations
 
@@ -11,8 +10,9 @@ import os
 import shlex
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 # Optional: Rich progress UI (TTY friendly). Falls back to plain logs if Rich not available.
@@ -64,13 +64,13 @@ except Exception:  # pragma: no cover
         compute: str = "auto"
         transport: str = "vddk"
         no_verify: bool = False
-        vddk_libdir: Optional[Path] = None
-        vddk_thumbprint: Optional[str] = None
-        vddk_snapshot_moref: Optional[str] = None
-        vddk_transports: Optional[str] = None
+        vddk_libdir: Path | None = None
+        vddk_thumbprint: str | None = None
+        vddk_snapshot_moref: str | None = None
+        vddk_transports: str | None = None
         output_dir: Path = Path("./out")
         output_format: str = "qcow2"
-        extra_args: Tuple[str, ...] = ()
+        extra_args: tuple[str, ...] = ()
 
 
 def _vpx_uri(client: Any, *, datacenter: str, compute: str, no_verify: bool) -> str:
@@ -107,7 +107,7 @@ def _write_password_file(client: Any, base_dir: Path) -> Path:
     return pwfile
 
 
-def _build_virt_v2v_cmd(client: Any, opt: V2VExportOptions, *, password_file: Path) -> List[str]:
+def _build_virt_v2v_cmd(client: Any, opt: V2VExportOptions, *, password_file: Path) -> list[str]:
     if not opt.vm_name:
         raise VMwareError("V2VExportOptions.vm_name is required")
     if not client.si:
@@ -120,7 +120,7 @@ def _build_virt_v2v_cmd(client: Any, opt: V2VExportOptions, *, password_file: Pa
     if transport not in ("vddk", "ssh"):
         raise VMwareError(f"Unsupported virt-v2v transport: {transport!r} (expected 'vddk' or 'ssh')")
 
-    argv: List[str] = [
+    argv: list[str] = [
         "virt-v2v",
         "-i",
         "libvirt",
@@ -149,7 +149,7 @@ def _build_virt_v2v_cmd(client: Any, opt: V2VExportOptions, *, password_file: Pa
     return argv
 
 
-def _popen_text(client: Any, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
+def _popen_text(client: Any, argv: Sequence[str], *, env: dict[str, str] | None = None) -> subprocess.Popen:
     client.logger.info("Running: %s", " ".join(shlex.quote(a) for a in argv))
     proc = subprocess.Popen(
         list(argv),
@@ -170,10 +170,10 @@ def _popen_text(client: Any, argv: Sequence[str], *, env: Optional[Dict[str, str
     return proc
 
 
-def _pump_lines_blocking(client: Any, proc: subprocess.Popen) -> List[str]:
+def _pump_lines_blocking(client: Any, proc: subprocess.Popen) -> list[str]:
     if proc.stdout is None or proc.stderr is None:
         raise RuntimeError("Process stdout/stderr unexpectedly None")
-    lines: List[str] = []
+    lines: list[str] = []
     out_line = proc.stdout.readline()
     err_line = proc.stderr.readline()
     if out_line:
@@ -183,7 +183,7 @@ def _pump_lines_blocking(client: Any, proc: subprocess.Popen) -> List[str]:
     return lines
 
 
-def _pump_lines_select(client: Any, proc: subprocess.Popen, *, timeout_s: float = 0.20) -> List[str]:
+def _pump_lines_select(client: Any, proc: subprocess.Popen, *, timeout_s: float = 0.20) -> list[str]:
     if proc.stdout is None or proc.stderr is None:
         raise RuntimeError("Process stdout/stderr unexpectedly None")
     rlist = [proc.stdout, proc.stderr]
@@ -192,7 +192,7 @@ def _pump_lines_select(client: Any, proc: subprocess.Popen, *, timeout_s: float 
     except Exception:
         ready = rlist
 
-    lines: List[str] = []
+    lines: list[str] = []
     for s in ready:
         try:
             chunk = s.read()
@@ -229,10 +229,10 @@ def _drain_remaining_output(client: Any, proc: subprocess.Popen, *, max_rounds: 
                 client.logger.info("%s", s)
 
 
-def _run_logged_subprocess(client: Any, argv: Sequence[str], *, env: Optional[Dict[str, str]] = None) -> int:
+def _run_logged_subprocess(client: Any, argv: Sequence[str], *, env: dict[str, str] | None = None) -> int:
     proc = _popen_text(client, argv, env=env)
 
-    def pump() -> List[str]:
+    def pump() -> list[str]:
         if SELECT_AVAILABLE:
             return _pump_lines_select(client, proc)
         return _pump_lines_blocking(client, proc)

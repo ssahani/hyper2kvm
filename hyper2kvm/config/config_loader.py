@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/config/config_loader.py
 from __future__ import annotations
 
@@ -48,7 +47,7 @@ class Config:
     # Public API
 
     @staticmethod
-    def load_one(logger: logging.Logger, path: str) -> Dict[str, Any]:
+    def load_one(logger: logging.Logger, path: str) -> dict[str, Any]:
         p = Path(path).expanduser().resolve()
         if not p.exists():
             # Enhanced error message (no behavior change: still dies with code=1)
@@ -116,11 +115,11 @@ class Config:
 
     @staticmethod
     def merge_dicts(
-        base: Dict[str, Any],
-        override: Dict[str, Any],
+        base: dict[str, Any],
+        override: dict[str, Any],
         *,
         list_mode: str = "replace",  # "replace" | "append" | "extend_unique"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Deep merge:
           - dict + dict => recurse
@@ -132,7 +131,7 @@ class Config:
           - append: base + override (concatenate)
           - extend_unique: concatenate but keep first occurrence (hashable only)
         """
-        out: Dict[str, Any] = dict(base)
+        out: dict[str, Any] = dict(base)
 
         for k, v in override.items():
             if k in out and isinstance(out[k], dict) and isinstance(v, dict):
@@ -145,7 +144,7 @@ class Config:
                 elif list_mode == "append":
                     out[k] = list(out[k]) + list(v)
                 elif list_mode == "extend_unique":
-                    merged: List[Any] = []
+                    merged: list[Any] = []
                     seen: set = set()
                     for item in list(out[k]) + list(v):
                         try:
@@ -168,16 +167,16 @@ class Config:
     @staticmethod
     def load_many(
         logger: logging.Logger,
-        paths: List[str],
+        paths: list[str],
         *,
         list_mode: str = "replace",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         paths = Config.expand_configs(logger, paths)
 
         # Pre-check missing before the progress UI starts
         Config._precheck_missing_paths(logger, paths)
 
-        conf: Dict[str, Any] = {}
+        conf: dict[str, Any] = {}
 
         with Progress(
             TextColumn("{task.description}"),
@@ -203,7 +202,7 @@ class Config:
     def apply_as_defaults(
         logger: logging.Logger,
         parser: argparse.ArgumentParser,
-        conf: Dict[str, Any],
+        conf: dict[str, Any],
         *,
         strict: bool = False,
     ) -> None:
@@ -225,7 +224,7 @@ class Config:
             if unknown:
                 U.die(logger, f"Unknown config keys (no argparse dest): {unknown}", 1)
 
-        def apply_actions(actions: List[argparse.Action], scope: str) -> None:
+        def apply_actions(actions: list[argparse.Action], scope: str) -> None:
             for act in actions:
                 dest = getattr(act, "dest", None)
                 if not dest or dest not in conf:
@@ -248,14 +247,14 @@ class Config:
                 apply_actions(sp._actions, f"sub:{name}")
 
     @staticmethod
-    def expand_configs(logger: logging.Logger, configs: List[str]) -> List[str]:
+    def expand_configs(logger: logging.Logger, configs: list[str]) -> list[str]:
         """
         Expand list of config specs:
           - directories: include **/*.yml, **/*.yaml, **/*.json
           - glob patterns: expanded via glob.glob
           - files: passed through
         """
-        expanded: List[str] = []
+        expanded: list[str] = []
 
         for c in configs:
             p = Path(c).expanduser()
@@ -275,7 +274,7 @@ class Config:
 
         # De-dup while preserving order
         seen = set()
-        uniq: List[str] = []
+        uniq: list[str] = []
         for x in expanded:
             if x not in seen:
                 uniq.append(x)
@@ -287,15 +286,15 @@ class Config:
     @staticmethod
     def load_vm_configs(
         logger: logging.Logger,
-        paths: List[str],
+        paths: list[str],
         *,
         list_mode: str = "replace",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Load configs; if a config has 'vms' list, fan-out into per-VM configs.
         Each VM entry deep-merges over the base config (minus 'vms').
         """
-        vm_confs: List[Dict[str, Any]] = []
+        vm_confs: list[dict[str, Any]] = []
         paths = Config.expand_configs(logger, paths)
 
         # Pre-check missing before the progress UI starts
@@ -336,7 +335,7 @@ class Config:
         return vm_confs
 
     @staticmethod
-    def _canonicalize_aliases(d: Dict[str, Any]) -> Dict[str, Any]:
+    def _canonicalize_aliases(d: dict[str, Any]) -> dict[str, Any]:
         """
         Canonicalize common alias keys so YAML can stay stable while code evolves.
 
@@ -394,7 +393,7 @@ class Config:
           - replace '-' with '_' in keys
         """
         if isinstance(obj, dict):
-            out: Dict[str, Any] = {}
+            out: dict[str, Any] = {}
             for k, v in obj.items():
                 nk = str(k).replace("-", "_")
                 if nk != k:
@@ -463,7 +462,7 @@ class Config:
 
 
     @staticmethod
-    def _precheck_missing_paths(logger: logging.Logger, paths: List[str]) -> None:
+    def _precheck_missing_paths(logger: logging.Logger, paths: list[str]) -> None:
         """
         Fail early (before progress UI) if any expanded configs don't exist.
         This avoids partial progress bars and gives one clean actionable error.
@@ -474,7 +473,7 @@ class Config:
         if not missing:
             return
 
-        msg_lines: List[str] = ["Config file(s) not found:"]
+        msg_lines: list[str] = ["Config file(s) not found:"]
         for m in missing[:20]:
             msg_lines.append(f" - {m}")
         if len(missing) > 20:
@@ -486,12 +485,12 @@ class Config:
         U.die(logger, "\n".join(msg_lines), 1)
 
     @staticmethod
-    def _die_missing_config(logger: logging.Logger, resolved: Path, *, original_spec: Optional[str] = None) -> None:
+    def _die_missing_config(logger: logging.Logger, resolved: Path, *, original_spec: str | None = None) -> None:
         msg = f"Config not found: {resolved}\n\n{Config._missing_config_help(str(resolved), original_spec=original_spec)}"
         U.die(logger, msg, 1)
 
     @staticmethod
-    def _missing_config_help(resolved_path: str, *, original_spec: Optional[str]) -> str:
+    def _missing_config_help(resolved_path: str, *, original_spec: str | None) -> str:
         """
         Build actionable hints for missing config paths.
         - Shows whether user passed a glob
@@ -501,14 +500,14 @@ class Config:
         rp = Path(resolved_path).expanduser()
         parent = rp.parent
 
-        lines: List[str] = []
+        lines: list[str] = []
 
         if original_spec and (("*" in original_spec) or ("?" in original_spec) or ("[" in original_spec and "]" in original_spec)):
             lines.append(f"Note: the config argument looked like a glob pattern: {original_spec!r}")
             lines.append(" It expanded to zero matching files (or matched paths that don't exist).")
 
         if parent.exists() and parent.is_dir():
-            candidates: List[Path] = []
+            candidates: list[Path] = []
             for ext in (".yaml", ".yml", ".json"):
                 candidates.extend(sorted(parent.glob(f"*{ext}")))
 

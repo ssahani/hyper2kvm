@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/transports/hyperctl_common.py
 from __future__ import annotations
 
@@ -53,7 +52,7 @@ class HyperCtlRunner:
         self.timeout = timeout
         self.logger = logging.getLogger(__name__)
 
-    def _run_command(self, args: List[str], check: bool = True) -> subprocess.CompletedProcess:
+    def _run_command(self, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
         """Run hyperctl command."""
         # Build command - only add -daemon if not using default
         # Note: The installed hyperctl binary may not support -daemon flag,
@@ -81,7 +80,7 @@ class HyperCtlRunner:
                 "Install hypersdk or set HYPERCTL_PATH environment variable."
             )
 
-    def check_daemon_status(self) -> Dict[str, Any]:
+    def check_daemon_status(self) -> dict[str, Any]:
         """Check if hypervisord daemon is running and get status."""
         result = self._run_command(["status"])
 
@@ -130,7 +129,7 @@ class HyperCtlRunner:
 
         raise VMwareError(msg="Failed to parse job ID from hyperctl output")
 
-    def query_job(self, job_id: str) -> Dict[str, Any]:
+    def query_job(self, job_id: str) -> dict[str, Any]:
         """Query job status."""
         result = self._run_command(["query", "-id", job_id])
 
@@ -142,9 +141,9 @@ class HyperCtlRunner:
         self,
         job_id: str,
         poll_interval: int = 5,
-        timeout: Optional[int] = None,
-        progress_callback: Optional[callable] = None,
-    ) -> Dict[str, Any]:
+        timeout: int | None = None,
+        progress_callback: callable | None = None,
+    ) -> dict[str, Any]:
         """
         Wait for export job to complete.
 
@@ -190,8 +189,8 @@ class HyperCtlRunner:
         parallel_downloads: int = 4,
         remove_cdrom: bool = True,
         wait: bool = True,
-        progress_callback: Optional[callable] = None,
-    ) -> Dict[str, Any]:
+        progress_callback: callable | None = None,
+    ) -> dict[str, Any]:
         """
         Export VM using hypervisord daemon (high-level wrapper).
 
@@ -230,8 +229,8 @@ class HyperCtlRunner:
 # Factory function for easy instantiation
 
 def create_hyperctl_runner(
-    daemon_url: Optional[str] = None,
-    hyperctl_path: Optional[str] = None,
+    daemon_url: str | None = None,
+    hyperctl_path: str | None = None,
 ) -> HyperCtlRunner:
     """
     Create HyperCtlRunner with environment variable defaults.
@@ -256,9 +255,9 @@ def export_vm_hyperctl(
     output_path: str,
     parallel_downloads: int = 4,
     remove_cdrom: bool = True,
-    daemon_url: Optional[str] = None,
-    progress_callback: Optional[callable] = None,
-) -> Dict[str, Any]:
+    daemon_url: str | None = None,
+    progress_callback: callable | None = None,
+) -> dict[str, Any]:
     """
     Export VM using hyperctl (convenience function).
 

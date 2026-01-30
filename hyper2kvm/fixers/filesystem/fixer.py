@@ -37,7 +37,7 @@ class FilesystemFixer:
     SAFE_FS_TYPES = {"ext2", "ext3", "ext4", "xfs", "vfat", "ntfs", "exfat"}
 
     # Normalization aliases -> canonical type
-    FS_ALIASES: Dict[str, str] = {
+    FS_ALIASES: dict[str, str] = {
         "fat": "vfat",
         "fat16": "vfat",
         "fat32": "vfat",
@@ -47,10 +47,10 @@ class FilesystemFixer:
         "exfatfs": "exfat",
     }
 
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(self, logger: logging.Logger | None = None):
         self.logger = logger or logging.getLogger(__name__)
         # NOTE: keep "repaired" for legacy expectations, but also expose "repairs_attempted".
-        self.stats: Dict[str, Any] = {
+        self.stats: dict[str, Any] = {
             "total_devices": 0,
             "checked": 0,
             "repaired": 0,  # legacy name: actually "repairs_attempted"
@@ -82,14 +82,14 @@ class FilesystemFixer:
         s = (fs_type or "").strip().lower().replace("-", "_")
         return self.FS_ALIASES.get(s, s)
 
-    def _tokenize_fs_type(self, fs_type: str) -> List[str]:
+    def _tokenize_fs_type(self, fs_type: str) -> list[str]:
         s = self._normalize_fs_type(fs_type)
         toks = [t for t in re.split(r"[^a-z0-9_]+", s) if t]
         return toks or ([s] if s else [])
 
     # Appliance memory helpers (best-effort)
 
-    def _get_guestfs_memsize_mib_best_effort(self, ctx: Any | None = None) -> Optional[int]:
+    def _get_guestfs_memsize_mib_best_effort(self, ctx: Any | None = None) -> int | None:
         for key in ("guestfs_memsize_mib", "memsize_mib", "appliance_memsize_mib"):
             try:
                 v = int(getattr(ctx, key))  # type: ignore[arg-type]
@@ -108,7 +108,7 @@ class FilesystemFixer:
 
         return None
 
-    def _xfs_safe_maxmem_mib(self, memsize_mib: Optional[int]) -> int:
+    def _xfs_safe_maxmem_mib(self, memsize_mib: int | None) -> int:
         if not memsize_mib or memsize_mib <= 0:
             return 768
 
@@ -127,17 +127,17 @@ class FilesystemFixer:
     def _run_variants_best_effort(
         self,
         g: guestfs.GuestFS,
-        variants: List[List[str]],
+        variants: list[list[str]],
         *,
         log_prefix: str,
-    ) -> Dict[str, Any]:
-        out: Dict[str, Any] = {"success": False, "command": None, "output": "", "error": None, "tried": []}
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {"success": False, "command": None, "output": "", "error": None, "tried": []}
 
         if not self._has_command(g):
             out["error"] = "guestfs handle does not support command()"
             return out
 
-        last_err: Optional[str] = None
+        last_err: str | None = None
         for args in variants:
             cmd = " ".join(args)
             out["tried"].append(cmd)
@@ -254,12 +254,12 @@ class FilesystemFixer:
 
     # Classification
 
-    def _classify_fs_type(self, fs_type: str) -> Dict[str, Any]:
+    def _classify_fs_type(self, fs_type: str) -> dict[str, Any]:
         fs_raw = fs_type or ""
         fs_norm = self._normalize_fs_type(fs_raw)
         toks = set(self._tokenize_fs_type(fs_raw))
 
-        classification: Dict[str, Any] = {
+        classification: dict[str, Any] = {
             "type": fs_raw,
             "type_normalized": fs_norm,
             "is_dangerous": False,
@@ -290,8 +290,8 @@ class FilesystemFixer:
 
     # Repair runners (small + focused)
 
-    def _run_fsck_ext(self, g: guestfs.GuestFS, dev: str, dry_run: bool, force_repair: bool = False) -> Dict[str, Any]:
-        result: Dict[str, Any] = {
+    def _run_fsck_ext(self, g: guestfs.GuestFS, dev: str, dry_run: bool, force_repair: bool = False) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "tool": "e2fsck",
             "device": dev,
             "dry_run": dry_run,
@@ -341,8 +341,8 @@ class FilesystemFixer:
         dry_run: bool,
         force_repair: bool = False,
         ctx: Any | None = None,
-    ) -> Dict[str, Any]:
-        result: Dict[str, Any] = {
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "tool": "xfs_repair",
             "device": dev,
             "dry_run": dry_run,
@@ -363,7 +363,7 @@ class FilesystemFixer:
             memsize = self._get_guestfs_memsize_mib_best_effort(ctx)
             maxmem = self._xfs_safe_maxmem_mib(memsize)
 
-            args: List[str] = ["xfs_repair", "-P", "-m", str(maxmem)]
+            args: list[str] = ["xfs_repair", "-P", "-m", str(maxmem)]
             if dry_run:
                 args.append("-n")
             elif force_repair:
@@ -391,8 +391,8 @@ class FilesystemFixer:
             self._log(logging.WARNING, "💥 xfs_repair failed for %s: %s", dev, str(e))
             return result
 
-    def _run_vfat_check(self, g: guestfs.GuestFS, dev: str, dry_run: bool) -> Dict[str, Any]:
-        result: Dict[str, Any] = {
+    def _run_vfat_check(self, g: guestfs.GuestFS, dev: str, dry_run: bool) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "tool": "fsck.vfat",
             "device": dev,
             "dry_run": dry_run,
@@ -403,7 +403,7 @@ class FilesystemFixer:
             "tried": [],
         }
 
-        variants: List[List[str]] = (
+        variants: list[list[str]] = (
             [["fsck.vfat", "-n", dev], ["fsck.vfat", dev]]
             if dry_run
             else [["fsck.vfat", "-a", dev], ["fsck.vfat", "-y", dev], ["fsck.vfat", dev]]
@@ -424,8 +424,8 @@ class FilesystemFixer:
             self._log(logging.WARNING, "💥 fsck.vfat failed for %s: %s", dev, result["error"])
         return result
 
-    def _run_ntfs_check(self, g: guestfs.GuestFS, dev: str, dry_run: bool) -> Dict[str, Any]:
-        result: Dict[str, Any] = {
+    def _run_ntfs_check(self, g: guestfs.GuestFS, dev: str, dry_run: bool) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "tool": "ntfsfix",
             "device": dev,
             "dry_run": dry_run,
@@ -436,7 +436,7 @@ class FilesystemFixer:
             "tried": [],
         }
 
-        variants: List[List[str]] = [["ntfsfix", "-n", dev], ["ntfsfix", dev]] if dry_run else [["ntfsfix", dev]]
+        variants: list[list[str]] = [["ntfsfix", "-n", dev], ["ntfsfix", dev]] if dry_run else [["ntfsfix", dev]]
         probe = self._run_variants_best_effort(g, variants, log_prefix="ntfsfix")
         result.update(
             {
@@ -453,8 +453,8 @@ class FilesystemFixer:
             self._log(logging.WARNING, "💥 ntfsfix failed for %s: %s", dev, result["error"])
         return result
 
-    def _run_exfat_check(self, g: guestfs.GuestFS, dev: str, dry_run: bool) -> Dict[str, Any]:
-        result: Dict[str, Any] = {
+    def _run_exfat_check(self, g: guestfs.GuestFS, dev: str, dry_run: bool) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "tool": "exfat",
             "device": dev,
             "dry_run": dry_run,
@@ -467,7 +467,7 @@ class FilesystemFixer:
 
         # Choose candidate without /bin/sh dependency
         candidates = ["fsck.exfat", "exfatfsck"]
-        chosen: Optional[str] = None
+        chosen: str | None = None
         for c in candidates:
             if self._probe_tool_exists(g, c):
                 chosen = c
@@ -512,7 +512,7 @@ class FilesystemFixer:
         dry_run: bool,
         force_repair: bool,
         ctx: Any | None,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         if fs_norm.startswith("ext"):
             return self._run_fsck_ext(g, dev, dry_run, force_repair)
         if fs_norm == "xfs":
@@ -526,7 +526,7 @@ class FilesystemFixer:
         return None
 
 
-    def _init_device_result(self, dev_text: str, dry_run: bool, force_repair: bool) -> Dict[str, Any]:
+    def _init_device_result(self, dev_text: str, dry_run: bool, force_repair: bool) -> dict[str, Any]:
         return {
             "device": dev_text,
             "fs_type": None,
@@ -541,7 +541,7 @@ class FilesystemFixer:
             "performed_repair": False,
         }
 
-    def _detect_and_classify(self, g: guestfs.GuestFS, dev_text: str) -> Tuple[str, str, Dict[str, Any]]:
+    def _detect_and_classify(self, g: guestfs.GuestFS, dev_text: str) -> tuple[str, str, dict[str, Any]]:
         fs_type = self._vfs_type(g, dev_text)
         fs_norm = self._normalize_fs_type(fs_type) if fs_type else ""
         classification = self._classify_fs_type(fs_type) if fs_type else {
@@ -556,7 +556,7 @@ class FilesystemFixer:
         }
         return fs_type, fs_norm, classification
 
-    def _should_skip(self, dev_text: str, fs_type: str, classification: Dict[str, Any], result: Dict[str, Any]) -> bool:
+    def _should_skip(self, dev_text: str, fs_type: str, classification: dict[str, Any], result: dict[str, Any]) -> bool:
         if not fs_type:
             msg = "Could not detect filesystem type"
             result["errors"].append(msg)
@@ -596,7 +596,7 @@ class FilesystemFixer:
         dry_run: bool,
         force_repair: bool,
         ctx: Any | None,
-        result: Dict[str, Any],
+        result: dict[str, Any],
     ) -> None:
         self._log(logging.INFO, "🔧 checking: %s (%s -> %s) dry_run=%s", dev_text, fs_type, fs_norm, dry_run)
         self._bump_stat("checked")
@@ -636,7 +636,7 @@ class FilesystemFixer:
         dry_run: bool = True,
         force_repair: bool = False,
         ctx: Any | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Per-device check/repair entrypoint (refactored into small helpers).
         """
@@ -695,7 +695,7 @@ class FilesystemFixer:
         self.stats["end_time"] = self._now()
         return result
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         stats = self.stats.copy()
         if stats.get("end_time") and stats.get("start_time"):
             stats["total_duration"] = stats["end_time"] - stats["start_time"]
@@ -718,7 +718,7 @@ def log_vfs_type_best_effort(ctx: Any, g: guestfs.GuestFS, dev: str) -> None:
         pass
 
 
-def best_effort_fsck(ctx: Any, g: guestfs.GuestFS, dev: str) -> Dict[str, Any]:
+def best_effort_fsck(ctx: Any, g: guestfs.GuestFS, dev: str) -> dict[str, Any]:
     fixer = FilesystemFixer(ctx.logger if hasattr(ctx, "logger") else None)
     dry_run = bool(getattr(ctx, "dry_run", False))
     result = fixer.check_and_repair(g, dev, dry_run=dry_run, ctx=ctx)
@@ -742,7 +742,7 @@ def best_effort_fsck(ctx: Any, g: guestfs.GuestFS, dev: str) -> Dict[str, Any]:
 
 # Orchestrated "fix all filesystems" entrypoint (also refactored)
 
-def _umount_all_best_effort(ctx: Any, g: guestfs.GuestFS, logger: Optional[logging.Logger]) -> None:
+def _umount_all_best_effort(ctx: Any, g: guestfs.GuestFS, logger: logging.Logger | None) -> None:
     try:
         if hasattr(ctx, "_safe_umount_all"):
             if logger:
@@ -762,12 +762,12 @@ def _umount_all_best_effort(ctx: Any, g: guestfs.GuestFS, logger: Optional[loggi
         # Caller can decide whether to record as warning in audit
 
 
-def _list_candidate_devices(g: guestfs.GuestFS) -> List[Tuple[str, str]]:
+def _list_candidate_devices(g: guestfs.GuestFS) -> list[tuple[str, str]]:
     """
     Return devices as (dev, hinted_fstype) from guestfs list_filesystems(),
     filtering obvious non-dev paths and obvious non-filesystem entries.
     """
-    devices: List[Tuple[str, str]] = []
+    devices: list[tuple[str, str]] = []
     fsmap = g.list_filesystems() or {}
     for dev, fstype in fsmap.items():
         d = U.to_text(dev)
@@ -783,13 +783,13 @@ def _list_candidate_devices(g: guestfs.GuestFS) -> List[Tuple[str, str]]:
     return devices
 
 
-def _sort_devices_root_first(devices: List[Tuple[str, str]], root_dev: str) -> List[Tuple[str, str]]:
+def _sort_devices_root_first(devices: list[tuple[str, str]], root_dev: str) -> list[tuple[str, str]]:
     if not root_dev:
         return devices
     return sorted(devices, key=lambda x: (0 if x[0] == root_dev else 1, x[0]))
 
 
-def _update_classification_summary(summary: Dict[str, int], classification: Dict[str, Any] | None) -> None:
+def _update_classification_summary(summary: dict[str, int], classification: dict[str, Any] | None) -> None:
     c = classification or {}
     if c.get("is_dangerous"):
         summary["dangerous"] += 1
@@ -801,7 +801,7 @@ def _update_classification_summary(summary: Dict[str, int], classification: Dict
         summary["unknown"] += 1
 
 
-def _finalize_audit(audit: Dict[str, Any], fixer: FilesystemFixer, devices: List[Tuple[str, str]], dry_run: bool) -> Dict[str, Any]:
+def _finalize_audit(audit: dict[str, Any], fixer: FilesystemFixer, devices: list[tuple[str, str]], dry_run: bool) -> dict[str, Any]:
     stats = fixer.get_stats()
     audit["statistics"] = stats
     audit["summary"] = {
@@ -815,7 +815,7 @@ def _finalize_audit(audit: Dict[str, Any], fixer: FilesystemFixer, devices: List
     return audit
 
 
-def fix_filesystems(ctx: Any, g: guestfs.GuestFS) -> Dict[str, Any]:
+def fix_filesystems(ctx: Any, g: guestfs.GuestFS) -> dict[str, Any]:
     """
     Offline filesystem fixer driver.
     - unmounts everything (best effort)
@@ -837,7 +837,7 @@ def fix_filesystems(ctx: Any, g: guestfs.GuestFS) -> Dict[str, Any]:
     if logger:
         logger.info("🧰 filesystem fixer: enabled=true dry_run=%s", dry_run)
 
-    audit: Dict[str, Any] = {
+    audit: dict[str, Any] = {
         "enabled": True,
         "dry_run": dry_run,
         "fixer_version": "2.5",

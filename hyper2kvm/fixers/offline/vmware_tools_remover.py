@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/fixers/offline/vmware_tools_remover.py
 from __future__ import annotations
 
@@ -18,14 +17,14 @@ from ...core.utils import U
 
 @dataclass
 class RemovalResult:
-    removed_paths: List[str]
-    removed_services: List[str]
-    removed_symlinks: List[str]
-    package_hints: List[str]
-    touched_files: List[str]
-    errors: List[str]
+    removed_paths: list[str]
+    removed_services: list[str]
+    removed_symlinks: list[str]
+    package_hints: list[str]
+    touched_files: list[str]
+    errors: list[str]
     distro_id: str = ""
-    warnings: List[str] = None  # type: ignore
+    warnings: list[str] = None  # type: ignore
 
 
 class OfflineVmwareToolsRemover:
@@ -114,8 +113,8 @@ class OfflineVmwareToolsRemover:
         dry_run: bool,
         no_backup: bool,
         # optional advanced knobs
-        extra_paths: Optional[List[str]] = None,
-        extra_units: Optional[List[str]] = None,
+        extra_paths: list[str] | None = None,
+        extra_units: list[str] | None = None,
         allow_chroot: bool = False,
     ):
         self.logger = logger
@@ -258,7 +257,7 @@ class OfflineVmwareToolsRemover:
             self._result.errors.append(f"unlink:{path}:{e}")
             self.logger.warning(f"Failed unlinking {path}: {e}")
 
-    def _disable_systemd_units(self, unit_names: List[str]) -> None:
+    def _disable_systemd_units(self, unit_names: list[str]) -> None:
         # Remove unit files, and unlink wants symlinks
         for unit in unit_names:
             # Unit file locations
@@ -309,7 +308,7 @@ class OfflineVmwareToolsRemover:
                         self._remove_remote_path(rel)
 
     # Known files / dirs removal
-    def _remove_known_files(self, patterns: List[str]) -> None:
+    def _remove_known_files(self, patterns: list[str]) -> None:
         # Patterns may include globs like /usr/bin/vmware-*
         for pat in patterns:
             if "*" not in pat and "?" not in pat and "[" not in pat:
@@ -332,7 +331,7 @@ class OfflineVmwareToolsRemover:
                 self.logger.debug(f"Glob failed for {pat}: {e}")
 
     # Offline "package removal" hints / optional chroot mode
-    def _package_manager_hints(self, distro: str) -> List[str]:
+    def _package_manager_hints(self, distro: str) -> list[str]:
         pkgs = ["open-vm-tools", "open-vm-tools-desktop", "vmware-tools", "vmware-tools-desktop", "vgauth"]
         # Keep hints as commands the user can run after boot (or in chroot)
         hints = []

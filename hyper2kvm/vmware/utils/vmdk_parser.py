@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/utils/vmdk_parser.py
 from __future__ import annotations
 
@@ -40,17 +39,17 @@ class Extent:
 
 @dataclass
 class DescriptorInfo:
-    extents: List[Extent]
-    parent: Optional[str] = None
-    cid: Optional[str] = None
-    parent_cid: Optional[str] = None
-    create_type: Optional[str] = None
-    version: Optional[str] = None
-    encoding: Optional[str] = None
-    adapter_type: Optional[str] = None
-    size_sectors: Optional[int] = None
+    extents: list[Extent]
+    parent: str | None = None
+    cid: str | None = None
+    parent_cid: str | None = None
+    create_type: str | None = None
+    version: str | None = None
+    encoding: str | None = None
+    adapter_type: str | None = None
+    size_sectors: int | None = None
     # Keep raw kvs if you want to inspect odd descriptors later
-    kv: Dict[str, str] = None  # type: ignore[assignment]
+    kv: dict[str, str] = None  # type: ignore[assignment]
 
 
 class VMDK:
@@ -103,14 +102,14 @@ class VMDK:
     )
 
     @staticmethod
-    def _safe_stat(p: Path) -> Optional[os.stat_result]:
+    def _safe_stat(p: Path) -> os.stat_result | None:
         try:
             return p.stat()
         except Exception:
             return None
 
     @staticmethod
-    def _read_head(p: Path, n: int) -> Optional[bytes]:
+    def _read_head(p: Path, n: int) -> bytes | None:
         try:
             with p.open("rb") as f:
                 return f.read(n)
@@ -262,7 +261,7 @@ class VMDK:
         return base
 
     @staticmethod
-    def parse_descriptor(logger: logging.Logger, desc: Path) -> Optional[Dict[str, Any]]:
+    def parse_descriptor(logger: logging.Logger, desc: Path) -> dict[str, Any] | None:
         """
         Backward-compatible API: returns a dict, but internally uses DescriptorInfo.
         (Your other code likely expects a Dict[str, Any].)
@@ -271,7 +270,7 @@ class VMDK:
         if not info:
             return None
 
-        out: Dict[str, Any] = {
+        out: dict[str, Any] = {
             "extents": [
                 {
                     "access": e.access,
@@ -296,7 +295,7 @@ class VMDK:
         return out
 
     @staticmethod
-    def parse_descriptor_info(logger: logging.Logger, desc: Path) -> Optional[DescriptorInfo]:
+    def parse_descriptor_info(logger: logging.Logger, desc: Path) -> DescriptorInfo | None:
         """
         Parse a text descriptor and return strongly-typed DescriptorInfo.
         """
@@ -390,21 +389,21 @@ class VMDK:
     # --- Backward-compatible helpers ---
 
     @staticmethod
-    def parse_extent(logger: logging.Logger, desc: Path) -> Optional[str]:
+    def parse_extent(logger: logging.Logger, desc: Path) -> str | None:
         info = VMDK.parse_descriptor_info(logger, desc)
         if info and info.extents:
             return info.extents[0].file
         return None
 
     @staticmethod
-    def parse_parent(logger: logging.Logger, desc: Path) -> Optional[str]:
+    def parse_parent(logger: logging.Logger, desc: Path) -> str | None:
         info = VMDK.parse_descriptor_info(logger, desc)
         return info.parent if info else None
 
     # --- Smarter layout detection ---
 
     @staticmethod
-    def guess_layout(logger: logging.Logger, vmdk: Path) -> Tuple[str, Optional[Path]]:
+    def guess_layout(logger: logging.Logger, vmdk: Path) -> tuple[str, Path | None]:
         """
         Backward-compatible return:
           ("descriptor"|"monolithic", extent_path_or_None)
@@ -417,7 +416,7 @@ class VMDK:
         return "monolithic", None
 
     @staticmethod
-    def guess_layout_typed(logger: logging.Logger, vmdk: Path) -> Tuple[VMDKType, Optional[Path]]:
+    def guess_layout_typed(logger: logging.Logger, vmdk: Path) -> tuple[VMDKType, Path | None]:
         """
         New API: returns (VMDKType, first_extent_path_or_None).
         """
@@ -460,7 +459,7 @@ class VMDK:
     # --- Multi-extent support ---
 
     @staticmethod
-    def get_all_extents(logger: logging.Logger, desc: Path) -> List[Path]:
+    def get_all_extents(logger: logging.Logger, desc: Path) -> list[Path]:
         """
         Returns list of resolved absolute extent paths (may include non-existing paths).
         """
@@ -471,7 +470,7 @@ class VMDK:
         return [VMDK._resolve_ref(desc.parent, e.file) for e in info.extents]
 
     @staticmethod
-    def get_existing_extents(logger: logging.Logger, desc: Path) -> List[Path]:
+    def get_existing_extents(logger: logging.Logger, desc: Path) -> list[Path]:
         """
         Like get_all_extents(), but filters to only those that exist.
         Useful for “is this descriptor usable here?” checks.
@@ -479,7 +478,7 @@ class VMDK:
         return [p for p in VMDK.get_all_extents(logger, desc) if p.exists()]
 
     @staticmethod
-    def is_sparse_vmdk(logger: logging.Logger, vmdk: Path) -> Optional[bool]:
+    def is_sparse_vmdk(logger: logging.Logger, vmdk: Path) -> bool | None:
         """
         Returns True for sparse/growable, False for flat/preallocated, None unknown.
         Improvements:
@@ -534,7 +533,7 @@ class VMDK:
         return False
 
     @staticmethod
-    def resolve_parent_path(logger: logging.Logger, desc: Path) -> Optional[Path]:
+    def resolve_parent_path(logger: logging.Logger, desc: Path) -> Path | None:
         """
         Resolve parentFileNameHint to an actual Path if possible.
         This is gold for snapshot-chain walking.
@@ -546,12 +545,12 @@ class VMDK:
         return p if p.exists() else p  # return even if missing; caller may fetch it
 
     @staticmethod
-    def walk_parent_chain(logger: logging.Logger, desc: Path, max_depth: int = 64) -> List[Path]:
+    def walk_parent_chain(logger: logging.Logger, desc: Path, max_depth: int = 64) -> list[Path]:
         """
         Follow parentFileNameHint recursively (best-effort). Returns list starting at `desc`,
         then parent, grandparent, ... until missing/no-parent or max_depth.
         """
-        chain: List[Path] = []
+        chain: list[Path] = []
         cur = desc
         for _ in range(max_depth):
             chain.append(cur)

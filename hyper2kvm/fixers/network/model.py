@@ -11,11 +11,11 @@ This file intentionally contains:
 
 from __future__ import annotations
 
+import builtins
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
-
 
 # Enums / dataclasses
 
@@ -56,8 +56,8 @@ class NetworkConfig:
     original_hash: str = ""
     modified: bool = False
     backup_path: str = ""
-    error: Optional[str] = None
-    fixes_applied: List[str] = field(default_factory=list)
+    error: str | None = None
+    fixes_applied: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -66,9 +66,9 @@ class FixResult:
 
     config: NetworkConfig
     new_content: str
-    applied_fixes: List[str]
-    validation_errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    applied_fixes: list[str]
+    validation_errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 # Topology model (best-effort)
@@ -86,8 +86,8 @@ class DeviceKind(Enum):
 class TopoNode:
     name: str
     kind: DeviceKind
-    sources: Set[str] = field(default_factory=set)  # config paths
-    props: Dict[str, Any] = field(default_factory=dict)  # arbitrary parsed details
+    sources: set[str] = field(default_factory=set)  # config paths
+    props: dict[str, Any] = field(default_factory=dict)  # arbitrary parsed details
 
 
 @dataclass
@@ -109,11 +109,11 @@ class TopologyGraph:
     """
 
     def __init__(self) -> None:
-        self.nodes: Dict[str, TopoNode] = {}
-        self.edges: List[TopoEdge] = []
-        self.warnings: List[str] = []
+        self.nodes: dict[str, TopoNode] = {}
+        self.edges: list[TopoEdge] = []
+        self.warnings: list[str] = []
 
-    def add_node(self, name: str, kind: DeviceKind, *, source: Optional[str] = None, **props: Any) -> None:
+    def add_node(self, name: str, kind: DeviceKind, *, source: str | None = None, **props: Any) -> None:
         if not name:
             return
         n = self.nodes.get(name)
@@ -155,7 +155,7 @@ class TopologyGraph:
 
         return DeviceKind.UNKNOWN
 
-    def rename_map_propagate(self, rename_map: Dict[str, str]) -> Dict[str, str]:
+    def rename_map_propagate(self, rename_map: dict[str, str]) -> dict[str, str]:
         """
         Expand rename map across trivial VLAN names (eth0.100), if present.
 
@@ -165,7 +165,7 @@ class TopologyGraph:
         out = dict(rename_map)
 
         # Collect names we can see in the graph
-        seen: Set[str] = set(self.nodes.keys())
+        seen: set[str] = set(self.nodes.keys())
         for e in self.edges:
             seen.add(e.src)
             seen.add(e.dst)
@@ -178,7 +178,7 @@ class TopologyGraph:
 
         return out
 
-    def apply_rename_map(self, rename_map: Dict[str, str]) -> None:
+    def apply_rename_map(self, rename_map: dict[str, str]) -> None:
         """
         Apply renames to graph state (nodes + edges).
 
@@ -192,7 +192,7 @@ class TopologyGraph:
             return
 
         # Rename nodes (re-key dict)
-        new_nodes: Dict[str, TopoNode] = {}
+        new_nodes: dict[str, TopoNode] = {}
         for name, node in self.nodes.items():
             new_name = rename_map.get(name, name)
             node.name = new_name
@@ -212,8 +212,8 @@ class TopologyGraph:
             e.src = rename_map.get(e.src, e.src)
             e.dst = rename_map.get(e.dst, e.dst)
 
-    def summarize(self) -> Dict[str, Any]:
-        by_kind: Dict[str, List[str]] = {}
+    def summarize(self) -> dict[str, Any]:
+        by_kind: dict[str, list[str]] = {}
         for n in self.nodes.values():
             by_kind.setdefault(n.kind.value, []).append(n.name)
         for k in list(by_kind.keys()):
@@ -238,12 +238,12 @@ class IfcfgKV:
       - Tracks keys commented out by this editor, so later set() doesn't overwrite comments.
     """
 
-    lines: List[str]
-    kv: Dict[str, str] = field(default_factory=dict)
-    key_line_idx: Dict[str, int] = field(default_factory=dict)  # last *active* line index
-    duplicates: Dict[str, List[int]] = field(default_factory=dict)  # key -> line indices (active occurrences)
-    commented_keys: Set[str] = field(default_factory=set)  # keys we commented out via this editor
-    warnings: List[str] = field(default_factory=list)
+    lines: list[str]
+    kv: dict[str, str] = field(default_factory=dict)
+    key_line_idx: dict[str, int] = field(default_factory=dict)  # last *active* line index
+    duplicates: dict[str, list[int]] = field(default_factory=dict)  # key -> line indices (active occurrences)
+    commented_keys: builtins.set[str] = field(default_factory=set)  # keys we commented out via this editor
+    warnings: list[str] = field(default_factory=list)
 
     @staticmethod
     def _strip_inline_comment_unquoted(val: str) -> str:
@@ -261,12 +261,12 @@ class IfcfgKV:
         return val
 
     @staticmethod
-    def parse(text: str) -> "IfcfgKV":
+    def parse(text: str) -> IfcfgKV:
         lines = text.splitlines()
-        kv: Dict[str, str] = {}
-        idx: Dict[str, int] = {}
-        dups: Dict[str, List[int]] = {}
-        warnings: List[str] = []
+        kv: dict[str, str] = {}
+        idx: dict[str, int] = {}
+        dups: dict[str, list[int]] = {}
+        warnings: list[str] = []
 
         for i, ln in enumerate(lines):
             # Skip pure comments early (they're preserved in lines, just not "active" keys)
@@ -301,7 +301,7 @@ class IfcfgKV:
 
         return IfcfgKV(lines=lines, kv=kv, key_line_idx=idx, duplicates=dups, warnings=warnings)
 
-    def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
+    def get(self, key: str, default: str | None = None) -> str | None:
         return self.kv.get(key.upper(), default)
 
     def has(self, key: str) -> bool:
@@ -378,13 +378,13 @@ class IfcfgKV:
         return out
 
 
-def ifcfg_kind_and_links(ifcfg: IfcfgKV) -> Tuple[DeviceKind, List[TopoEdge]]:
+def ifcfg_kind_and_links(ifcfg: IfcfgKV) -> tuple[DeviceKind, list[TopoEdge]]:
     """
     Infer device kind and edges from an ifcfg file.
     """
     dev = (ifcfg.get("DEVICE") or "").strip()
     typ = (ifcfg.get("TYPE") or "").strip().lower()
-    edges: List[TopoEdge] = []
+    edges: list[TopoEdge] = []
 
     kind = DeviceKind.ETHERNET
 

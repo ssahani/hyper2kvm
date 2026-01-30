@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/clients/extensions.py
 from __future__ import annotations
 
@@ -9,8 +8,9 @@ import os
 import re
 import shlex
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .client import V2VExportOptions, VMwareClient, VMwareError
 
@@ -22,7 +22,7 @@ class _TailBuffer:
 
     def __init__(self, max_lines: int = 80) -> None:
         self.max_lines = max(1, int(max_lines))
-        self._lines: List[str] = []
+        self._lines: list[str] = []
 
     def add(self, line: str) -> None:
         if not line:
@@ -48,7 +48,7 @@ def _strip_ansi(s: str) -> str:
 
 
 async def _pump_with_tail(
-    stream: Optional[asyncio.StreamReader],
+    stream: asyncio.StreamReader | None,
     logger: logging.Logger,
     level: int,
     prefix: str,
@@ -73,10 +73,10 @@ async def _run_logged_subprocess_with_tails(
     logger: logging.Logger,
     argv: Sequence[str],
     *,
-    env: Optional[Dict[str, str]] = None,
+    env: dict[str, str] | None = None,
     stderr_tail_lines: int = 160,
     stdout_tail_lines: int = 60,
-) -> Tuple[int, str, str]:
+) -> tuple[int, str, str]:
     """
     Like VMwareClient._run_logged_subprocess(), but ALSO returns (rc, stdout_tail, stderr_tail).
     Add-only helper so you don't have to touch the existing method.
@@ -203,12 +203,12 @@ VMwareClient.async_v2v_export_vm_verbose = async_v2v_export_vm_verbose  # type: 
 
 
 async def _pump_stream_chunked(
-    stream: Optional[asyncio.StreamReader],
+    stream: asyncio.StreamReader | None,
     logger: logging.Logger,
     level: int,
     prefix: str,
     *,
-    tail: Optional[_TailBuffer] = None,
+    tail: _TailBuffer | None = None,
     chunk_size: int = 8192,
 ) -> None:
     """
@@ -258,7 +258,7 @@ async def _run_logged_subprocess_chunked(
     logger: logging.Logger,
     argv: Sequence[str],
     *,
-    env: Optional[Dict[str, str]] = None,
+    env: dict[str, str] | None = None,
 ) -> int:
     """Drop-in replacement for VMwareClient._run_logged_subprocess(), but safe."""
     logger.info("Running: %s", " ".join(shlex.quote(a) for a in argv))
@@ -281,10 +281,10 @@ async def _run_logged_subprocess_with_tails_chunked(
     logger: logging.Logger,
     argv: Sequence[str],
     *,
-    env: Optional[Dict[str, str]] = None,
+    env: dict[str, str] | None = None,
     stderr_tail_lines: int = 160,
     stdout_tail_lines: int = 60,
-) -> Tuple[int, str, str]:
+) -> tuple[int, str, str]:
     """
     Safe replacement for _run_logged_subprocess_with_tails().
     Keeps the same signature/return value: (rc, stdout_tail, stderr_tail).
@@ -313,7 +313,7 @@ async def _vmwareclient__run_logged_subprocess_safe(
     self: VMwareClient,
     argv: Sequence[str],
     *,
-    env: Optional[Dict[str, str]] = None,
+    env: dict[str, str] | None = None,
 ) -> int:
     # Preserve existing logging format; do not log secrets.
     return await _run_logged_subprocess_chunked(self.logger, argv, env=env)

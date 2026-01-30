@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/vmware/transports/ovftool_client.py
 from __future__ import annotations
 
@@ -23,9 +22,10 @@ import shlex
 import shutil
 import subprocess
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..utils.utils import is_tty as _is_tty
 
@@ -43,7 +43,7 @@ except Exception:  # pragma: no cover
 try:  # pragma: no cover
     from rich.console import Console
     from rich.panel import Panel
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
     from rich.text import Text
 
     RICH_AVAILABLE = True
@@ -121,7 +121,7 @@ class OvfExportOptions:
 
     # TLS / endpoint
     no_ssl_verify: bool = True
-    thumbprint: Optional[str] = None  # e.g. "AA:BB:..."; used with vi:// endpoints
+    thumbprint: str | None = None  # e.g. "AA:BB:..."; used with vi:// endpoints
 
     # Legal / UX
     accept_all_eulas: bool = True
@@ -132,14 +132,14 @@ class OvfExportOptions:
     overwrite: bool = False
 
     # VM / disk behavior (commonly useful for deploy/import, harmless on export)
-    disk_mode: Optional[str] = None  # "thin" | "thick" | "eagerZeroedThick" (depends on target)
+    disk_mode: str | None = None  # "thin" | "thick" | "eagerZeroedThick" (depends on target)
 
     # Optional retry wrapper (our wrapper, not ovftool internal)
     retries: int = 0
     retry_backoff_s: float = 2.0
 
     # Extra raw args appended last (advanced escape hatch)
-    extra_args: Tuple[str, ...] = ()
+    extra_args: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -151,30 +151,30 @@ class OvfDeployOptions:
     """
 
     no_ssl_verify: bool = True
-    thumbprint: Optional[str] = None
+    thumbprint: str | None = None
     accept_all_eulas: bool = True
 
     overwrite: bool = False
     power_on: bool = False
 
     # Placement knobs (some are expressed as --prop:, --net:, etc; keep generic)
-    name: Optional[str] = None  # --name=...
-    datastore: Optional[str] = None  # --datastore=...
-    network_map: Tuple[Tuple[str, str], ...] = ()  # (src_net, dst_net) -> --net:"src"="dst"
+    name: str | None = None  # --name=...
+    datastore: str | None = None  # --datastore=...
+    network_map: tuple[tuple[str, str], ...] = ()  # (src_net, dst_net) -> --net:"src"="dst"
 
     # Disk / provisioning
-    disk_mode: Optional[str] = None  # "thin" etc.
+    disk_mode: str | None = None  # "thin" etc.
 
     quiet: bool = False
     verbose: bool = False
 
     retries: int = 0
     retry_backoff_s: float = 2.0
-    extra_args: Tuple[str, ...] = ()
+    extra_args: tuple[str, ...] = ()
 
 
 # UI helpers (Rich Panel when possible, otherwise plain box-drawing)
-def _console() -> Optional[Any]:
+def _console() -> Any | None:
     """Create Rich Console if available and running in TTY."""
     if not (RICH_AVAILABLE and Console and _is_tty()):
         return None
@@ -230,7 +230,7 @@ def _ok_line(msg: str) -> None:
     print(f" ✓ {msg}")
 
 
-def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
+def _fmt_elapsed(start_time: float) -> tuple[int, int]:
     elapsed = time.time() - start_time
     minutes = int(elapsed // 60)
     seconds = int(elapsed % 60)
@@ -238,7 +238,7 @@ def _fmt_elapsed(start_time: float) -> Tuple[int, int]:
 
 
 # Public API
-def find_ovftool(explicit_path: Optional[str] = None) -> OvfToolPaths:
+def find_ovftool(explicit_path: str | None = None) -> OvfToolPaths:
     """
     Resolve ovftool binary.
 
@@ -248,7 +248,7 @@ def find_ovftool(explicit_path: Optional[str] = None) -> OvfToolPaths:
       3) PATH via shutil.which("ovftool")
       4) common install locations (best-effort)
     """
-    candidates: List[str] = []
+    candidates: list[str] = []
 
     if explicit_path:
         candidates.append(explicit_path)
@@ -283,7 +283,7 @@ def find_ovftool(explicit_path: Optional[str] = None) -> OvfToolPaths:
     )
 
 
-def ovftool_version(paths: OvfToolPaths) -> Optional[str]:
+def ovftool_version(paths: OvfToolPaths) -> str | None:
     """Return ovftool version string if detected, else None."""
     rc, out, _err = _run_capture([paths.ovftool_bin, "--version"])
     if rc != 0:
@@ -304,9 +304,9 @@ def export_to_ovf_or_ova(
     *,
     paths: OvfToolPaths,
     source: str,
-    destination: Union[str, Path],
-    options: Optional[OvfExportOptions] = None,
-    env: Optional[Dict[str, str]] = None,
+    destination: str | Path,
+    options: OvfExportOptions | None = None,
+    env: dict[str, str] | None = None,
     log_prefix: str = "ovftool",
 ) -> None:
     """
@@ -332,7 +332,7 @@ def export_to_ovf_or_ova(
     _info_line(f"Starting {mode} export...")
     _info_line("This may take several minutes depending on disk size...\n")
 
-    cmd: List[str] = [paths.ovftool_bin]
+    cmd: list[str] = [paths.ovftool_bin]
     cmd.extend(_common_flags(no_ssl_verify=opt.no_ssl_verify, thumbprint=opt.thumbprint))
     if opt.accept_all_eulas:
         cmd.append("--acceptAllEulas")
@@ -370,9 +370,9 @@ def export_to_ova(
     *,
     paths: OvfToolPaths,
     source: str,
-    ova_path: Union[str, Path],
-    options: Optional[OvfExportOptions] = None,
-    env: Optional[Dict[str, str]] = None,
+    ova_path: str | Path,
+    options: OvfExportOptions | None = None,
+    env: dict[str, str] | None = None,
     log_prefix: str = "ovftool",
 ) -> None:
     """Convenience wrapper to export explicitly to an .ova file."""
@@ -392,10 +392,10 @@ def export_to_ova(
 def deploy_ovf_or_ova(
     *,
     paths: OvfToolPaths,
-    source_ovf_or_ova: Union[str, Path],
+    source_ovf_or_ova: str | Path,
     target_vi: str,
-    options: Optional[OvfDeployOptions] = None,
-    env: Optional[Dict[str, str]] = None,
+    options: OvfDeployOptions | None = None,
+    env: dict[str, str] | None = None,
     log_prefix: str = "ovftool",
 ) -> None:
     """
@@ -423,7 +423,7 @@ def deploy_ovf_or_ova(
     _info_line("Starting deploy/import...")
     _info_line("This may take several minutes depending on disk size...\n")
 
-    cmd: List[str] = [paths.ovftool_bin]
+    cmd: list[str] = [paths.ovftool_bin]
     cmd.extend(_common_flags(no_ssl_verify=opt.no_ssl_verify, thumbprint=opt.thumbprint))
     if opt.accept_all_eulas:
         cmd.append("--acceptAllEulas")
@@ -468,8 +468,8 @@ def deploy_ovf_or_ova(
 
 
 # Internals
-def _common_flags(*, no_ssl_verify: bool, thumbprint: Optional[str]) -> List[str]:
-    flags: List[str] = []
+def _common_flags(*, no_ssl_verify: bool, thumbprint: str | None) -> list[str]:
+    flags: list[str] = []
     if no_ssl_verify:
         flags.append("--noSSLVerify")
     if thumbprint:
@@ -494,7 +494,7 @@ def _fmt_cmd_for_log(cmd: Sequence[str]) -> str:
     return " ".join(shlex.quote(t) for t in toks)
 
 
-def _classify_error(stderr: str, stdout: str) -> Optional[type]:
+def _classify_error(stderr: str, stdout: str) -> type | None:
     blob = (stdout + "\n" + stderr).lower()
     if any(h.lower() in blob for h in _SSL_HINTS):
         return OvfToolSslError
@@ -503,11 +503,10 @@ def _classify_error(stderr: str, stdout: str) -> Optional[type]:
     return None
 
 
-def _run_capture(cmd: Sequence[str], env: Optional[Dict[str, str]] = None) -> Tuple[int, str, str]:
+def _run_capture(cmd: Sequence[str], env: dict[str, str] | None = None) -> tuple[int, str, str]:
     p = subprocess.run(
         list(cmd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         env=_merged_env(env),
         check=False,
@@ -515,7 +514,7 @@ def _run_capture(cmd: Sequence[str], env: Optional[Dict[str, str]] = None) -> Tu
     return p.returncode, p.stdout or "", p.stderr or ""
 
 
-def _merged_env(env: Optional[Dict[str, str]]) -> Dict[str, str]:
+def _merged_env(env: dict[str, str] | None) -> dict[str, str]:
     merged = dict(os.environ)
     if env:
         merged.update(env)
@@ -527,7 +526,7 @@ def _run_with_retries(
     cmd: Sequence[str],
     retries: int,
     backoff_s: float,
-    env: Optional[Dict[str, str]],
+    env: dict[str, str] | None,
     log_prefix: str,
 ) -> None:
     attempts = 0
@@ -548,7 +547,7 @@ def _run_with_retries(
 def _run_streaming(
     *,
     cmd: Sequence[str],
-    env: Optional[Dict[str, str]],
+    env: dict[str, str] | None,
     log_prefix: str,
 ) -> None:
     """
@@ -566,10 +565,10 @@ def _run_streaming(
     print(f"{log_prefix}: exec: {_fmt_cmd_for_log(cmd_list)}")
 
     tail_max = 300
-    out_tail: List[str] = []
-    err_tail: List[str] = []
+    out_tail: list[str] = []
+    err_tail: list[str] = []
 
-    def _tail_push(buf: List[str], line: str) -> None:
+    def _tail_push(buf: list[str], line: str) -> None:
         buf.append(line)
         if len(buf) > tail_max:
             del buf[0 : len(buf) - tail_max]
@@ -579,7 +578,7 @@ def _run_streaming(
 
     progress = None
     task_id = None
-    last_pct: Optional[int] = None
+    last_pct: int | None = None
     last_status: str = ""
 
     if use_rich:

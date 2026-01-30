@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/azure/download.py
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ LOG = logging.getLogger(__name__)
 @dataclass
 class DownloadResult:
     bytes_written: int
-    expected_total: Optional[int]
+    expected_total: int | None
     resumed_from: int = 0
 
 
@@ -100,7 +99,7 @@ def download_with_resume(
                 resp.raise_for_status()
 
                 # Parse Content-Range or Content-Length
-                expected_total: Optional[int] = None
+                expected_total: int | None = None
                 content_range = resp.headers.get("Content-Range")
                 if content_range:
                     # Format: bytes start-end/total
@@ -148,7 +147,7 @@ def download_with_resume(
                     resumed_from=start_byte,
                 )
 
-            except (requests.RequestException, IOError, OSError) as e:
+            except (requests.RequestException, OSError) as e:
                 last_error = str(e)
                 LOG.warning(f"Download attempt {attempt + 1}/{retries} failed: {e}")
 

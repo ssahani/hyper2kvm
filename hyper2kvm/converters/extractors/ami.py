@@ -39,12 +39,12 @@ class ExtractManifest:
     src: str
     outdir: str
     extracted_to: str
-    extracted_members: List[Dict[str, Any]]
-    skipped_members: List[Dict[str, Any]]
-    nested_extractions: List[Dict[str, Any]]
-    discovered_disks: List[Dict[str, Any]]
-    conversions: List[Dict[str, Any]]
-    notes: List[str]
+    extracted_members: list[dict[str, Any]]
+    skipped_members: list[dict[str, Any]]
+    nested_extractions: list[dict[str, Any]]
+    discovered_disks: list[dict[str, Any]]
+    conversions: list[dict[str, Any]]
+    notes: list[str]
 
 
 class AMI:
@@ -129,25 +129,25 @@ class AMI:
         outdir: Path,
         *,
         convert_to_qcow2: bool = False,
-        convert_outdir: Optional[Path] = None,
+        convert_outdir: Path | None = None,
         convert_compress: bool = False,
-        convert_compress_level: Optional[int] = None,
+        convert_compress_level: int | None = None,
         log_virt_filesystems: bool = False,
         # Enhancement: handle tar-within-tar (one level)
         extract_nested_tar: bool = True,
         # Security/limits
         skip_special: bool = True,
-        max_members: Optional[int] = None,
-        max_total_bytes: Optional[int] = None,
-        max_single_file_bytes: Optional[int] = None,
+        max_members: int | None = None,
+        max_total_bytes: int | None = None,
+        max_single_file_bytes: int | None = None,
         # Disk detection
         probe_with_qemu_img: bool = True,
         probe_with_file: bool = True,
         # Output layout
-        extract_subdir: Optional[str] = "extracted",
+        extract_subdir: str | None = "extracted",
         # Manifest
         write_manifest: bool = True,
-    ) -> List[Path]:
+    ) -> list[Path]:
         """
         Accepts:
           - tar/tar.gz/tgz/tar.xz/ova containing disk payload(s)
@@ -201,20 +201,20 @@ class AMI:
         outdir: Path,
         *,
         convert_to_qcow2: bool,
-        convert_outdir: Optional[Path],
+        convert_outdir: Path | None,
         convert_compress: bool,
-        convert_compress_level: Optional[int],
+        convert_compress_level: int | None,
         log_virt_filesystems: bool,
         extract_nested_tar: bool,
         skip_special: bool,
-        max_members: Optional[int],
-        max_total_bytes: Optional[int],
-        max_single_file_bytes: Optional[int],
+        max_members: int | None,
+        max_total_bytes: int | None,
+        max_single_file_bytes: int | None,
         probe_with_qemu_img: bool,
         probe_with_file: bool,
-        extract_subdir: Optional[str],
+        extract_subdir: str | None,
         write_manifest: bool,
-    ) -> List[Path]:
+    ) -> list[Path]:
         U.banner(logger, "Extract AMI/cloud-image tarball")
         logger.info(f"Tarball: {tar_path}")
 
@@ -340,9 +340,9 @@ class AMI:
         manifest: ExtractManifest,
         *,
         skip_special: bool,
-        max_members: Optional[int],
-        max_total_bytes: Optional[int],
-        max_single_file_bytes: Optional[int],
+        max_members: int | None,
+        max_total_bytes: int | None,
+        max_single_file_bytes: int | None,
     ) -> None:
         """
         Safe tar extraction:
@@ -410,9 +410,9 @@ class AMI:
         manifest: ExtractManifest,
         *,
         skip_special: bool,
-        max_members: Optional[int],
-        max_total_bytes: Optional[int],
-        max_single_file_bytes: Optional[int],
+        max_members: int | None,
+        max_total_bytes: int | None,
+        max_single_file_bytes: int | None,
     ) -> None:
         """
         One-level nested tar extraction:
@@ -420,7 +420,7 @@ class AMI:
           - ignores any tarballs living under *.extracted/* to avoid “growth loops”
           - extracts each nested tar into <parent>/<stem>.extracted/
         """
-        candidates: List[Path] = []
+        candidates: list[Path] = []
         for p in extracted_to.rglob("*"):
             if not p.is_file():
                 continue
@@ -491,7 +491,7 @@ class AMI:
         *,
         probe_with_qemu_img: bool,
         probe_with_file: bool,
-    ) -> Tuple[List[Path], List[Dict[str, Any]]]:
+    ) -> tuple[list[Path], list[dict[str, Any]]]:
         """
         Disk discovery strategy:
           1) Extension hits (DISK_EXTS), skipping obvious metadata.
@@ -500,8 +500,8 @@ class AMI:
         """
         exts = set(e.lower() for e in AMI.DISK_EXTS)
 
-        hits: List[Path] = []
-        candidates: List[Path] = []
+        hits: list[Path] = []
+        candidates: list[Path] = []
 
         for p in extracted_to.rglob("*"):
             if not p.is_file():
@@ -513,14 +513,14 @@ class AMI:
             if p.suffix.lower() in exts:
                 hits.append(rp)
 
-        probe_meta: Dict[str, Dict[str, Any]] = {}
+        probe_meta: dict[str, dict[str, Any]] = {}
         qemu_ok = probe_with_qemu_img and shutil.which("qemu-img") is not None
         file_ok = probe_with_file and shutil.which("file") is not None
 
-        def maybe_probe(path: Path) -> Dict[str, Any]:
+        def maybe_probe(path: Path) -> dict[str, Any]:
             if str(path) in probe_meta:
                 return probe_meta[str(path)]
-            meta: Dict[str, Any] = {"path": str(path)}
+            meta: dict[str, Any] = {"path": str(path)}
             try:
                 meta["size_bytes"] = path.stat().st_size
             except Exception:
@@ -564,7 +564,7 @@ class AMI:
                 return 3
             return 0
 
-        def score(meta: Dict[str, Any]) -> Tuple[int, int, int, int, int]:
+        def score(meta: dict[str, Any]) -> tuple[int, int, int, int, int]:
             """
             Higher is better.
 
@@ -605,14 +605,14 @@ class AMI:
             return chosen, metas
 
         # No extension hits:
-        filtered: List[Path] = []
+        filtered: list[Path] = []
         for p in candidates:
             suf = p.suffix.lower()
             if suf in AMI.ARCHIVE_LIKE_EXTS:
                 continue
             filtered.append(p)
 
-        large: List[Path] = []
+        large: list[Path] = []
         for p in filtered:
             try:
                 if p.stat().st_size >= 64 * 1024 * 1024:
@@ -633,9 +633,9 @@ class AMI:
         return chosen, metas
 
     @staticmethod
-    def _dedup_paths(paths: List[Path]) -> List[Path]:
+    def _dedup_paths(paths: list[Path]) -> list[Path]:
         seen: set[str] = set()
-        out: List[Path] = []
+        out: list[Path] = []
         for p in paths:
             s = str(p)
             if s not in seen:
@@ -654,14 +654,14 @@ class AMI:
     @staticmethod
     def _convert_disks_to_qcow2(
         logger: logging.Logger,
-        disks: List[Path],
+        disks: list[Path],
         outdir: Path,
         *,
         manifest: ExtractManifest,
         compress: bool = False,
-        compress_level: Optional[int] = None,
+        compress_level: int | None = None,
         log_virt_filesystems: bool = False,
-    ) -> List[Path]:
+    ) -> list[Path]:
         try:
             from ..qemu.converter import Convert  # type: ignore
         except Exception as e:
@@ -671,7 +671,7 @@ class AMI:
         U.banner(logger, "Convert extracted disk(s) to QCOW2")
         U.ensure_dir(outdir)
 
-        outputs: List[Path] = []
+        outputs: list[Path] = []
         for idx, disk in enumerate(disks, 1):
             if not disk.exists():
                 logger.warning(f"Skipping missing disk: {disk}")
@@ -744,7 +744,7 @@ class AMI:
         return outdir / f"{base}-{h}.qcow2"
 
     @staticmethod
-    def _log_virt_filesystems(logger: logging.Logger, image: Path) -> Dict[str, Any]:
+    def _log_virt_filesystems(logger: logging.Logger, image: Path) -> dict[str, Any]:
         cmd = ["virt-filesystems", "-a", str(image), "--all", "--long", "-h"]
         try:
             cp = U.run_cmd(logger, cmd, capture=True, check=False)
@@ -854,7 +854,7 @@ class AMI:
         return open(path, "wb")
 
     @staticmethod
-    def _copy_limited(src_f: Any, dst_f: Any, *, limit_bytes: Optional[int]) -> int:
+    def _copy_limited(src_f: Any, dst_f: Any, *, limit_bytes: int | None) -> int:
         """
         Copy bytes from src to dst, enforcing a hard byte limit if provided.
 
@@ -879,8 +879,8 @@ class AMI:
         outdir: Path,
         *,
         skip_special: bool,
-        max_single_file_bytes: Optional[int],
-    ) -> Tuple[bool, Dict[str, Any]]:
+        max_single_file_bytes: int | None,
+    ) -> tuple[bool, dict[str, Any]]:
         """
         Returns (extracted_ok, info_dict).
 
@@ -895,7 +895,7 @@ class AMI:
         raw_name = member.name
         name = AMI._normalize_tar_name(raw_name)
 
-        info: Dict[str, Any] = {
+        info: dict[str, Any] = {
             "name": raw_name,
             "normalized_name": name,
             "type": AMI._tar_member_type(member),

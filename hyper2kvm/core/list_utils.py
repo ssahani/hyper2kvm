@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/list_utils.py
 """Shared list manipulation utilities
 
@@ -7,13 +6,13 @@ Provides common helpers for list operations to avoid duplication across modules.
 """
 from __future__ import annotations
 
-from typing import List, TypeVar, Hashable
-
+from collections.abc import Hashable
+from typing import List, TypeVar
 
 T = TypeVar('T', bound=Hashable)
 
 
-def dedup_preserve_order(items: List[T]) -> List[T]:
+def dedup_preserve_order(items: list[T]) -> list[T]:
     """Remove duplicates from a list while preserving order.
 
     Args:
@@ -44,7 +43,7 @@ def dedup_preserve_order(items: List[T]) -> List[T]:
     return result
 
 
-def dedup_preserve_order_str(items: List[str]) -> List[str]:
+def dedup_preserve_order_str(items: list[str]) -> list[str]:
     """Remove duplicates from a string list while preserving order.
 
     Args:
@@ -62,7 +61,7 @@ def dedup_preserve_order_str(items: List[str]) -> List[str]:
         ['foo', 'bar', 'baz']
     """
     seen: set[str] = set()
-    result: List[str] = []
+    result: list[str] = []
     for item in items:
         if item not in seen:
             seen.add(item)

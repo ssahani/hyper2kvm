@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/daemon/notifier.py
 """
 Notification system for daemon mode.
@@ -14,7 +13,7 @@ import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 try:
     import requests
@@ -32,7 +31,7 @@ class DaemonNotifier:
     - Email (SMTP)
     """
 
-    def __init__(self, logger: logging.Logger, config: Dict[str, Any]):
+    def __init__(self, logger: logging.Logger, config: dict[str, Any]):
         self.logger = logger
         self.config = config
         self.enabled = config.get('enabled', False)
@@ -127,7 +126,7 @@ class DaemonNotifier:
             level='warning'
         )
 
-    def _send_notification(self, title: str, message: str, details: Dict, level: str) -> None:
+    def _send_notification(self, title: str, message: str, details: dict, level: str) -> None:
         """Send notification via configured channels."""
         # Send webhook
         if self.webhook_url:
@@ -137,7 +136,7 @@ class DaemonNotifier:
         if self.email_enabled:
             self._send_email(title, message, details, level)
 
-    def _send_webhook(self, title: str, message: str, details: Dict, level: str) -> None:
+    def _send_webhook(self, title: str, message: str, details: dict, level: str) -> None:
         """Send webhook notification."""
         if not REQUESTS_AVAILABLE:
             self.logger.warning("requests library not available, skipping webhook")
@@ -163,7 +162,7 @@ class DaemonNotifier:
         except Exception as e:
             self.logger.error(f"Failed to send webhook: {e}")
 
-    def _format_slack(self, title: str, message: str, details: Dict, level: str) -> Dict:
+    def _format_slack(self, title: str, message: str, details: dict, level: str) -> dict:
         """Format notification for Slack."""
         color_map = {
             'success': '#36a64f',
@@ -186,7 +185,7 @@ class DaemonNotifier:
             }]
         }
 
-    def _format_discord(self, title: str, message: str, details: Dict, level: str) -> Dict:
+    def _format_discord(self, title: str, message: str, details: dict, level: str) -> dict:
         """Format notification for Discord."""
         color_map = {
             'success': 3066993,  # Green
@@ -211,7 +210,7 @@ class DaemonNotifier:
             }]
         }
 
-    def _format_generic(self, title: str, message: str, details: Dict, level: str) -> Dict:
+    def _format_generic(self, title: str, message: str, details: dict, level: str) -> dict:
         """Format generic webhook payload."""
         return {
             'title': title,
@@ -222,7 +221,7 @@ class DaemonNotifier:
             'timestamp': datetime.now().isoformat(),
         }
 
-    def _send_email(self, title: str, message: str, details: Dict, level: str) -> None:
+    def _send_email(self, title: str, message: str, details: dict, level: str) -> None:
         """Send email notification."""
         if not all([self.email_smtp_host, self.email_from, self.email_to]):
             self.logger.warning("Email not configured properly, skipping")

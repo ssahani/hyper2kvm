@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/core/guest_identity.py
 from __future__ import annotations
 
@@ -33,7 +32,7 @@ class GuestType(Enum):
     UNKNOWN = "unknown"
 
     @classmethod
-    def from_string(cls, value: str) -> "GuestType":
+    def from_string(cls, value: str) -> GuestType:
         value = (value or "").lower().strip()
         for member in cls:
             if member.value == value:
@@ -48,31 +47,31 @@ class GuestIdentity:
     type: GuestType = GuestType.UNKNOWN
 
     # Linux-ish (also useful for general OS)
-    hostname: Optional[str] = None
-    machine_id: Optional[str] = None
-    os_name: Optional[str] = None
-    os_pretty_name: Optional[str] = None
-    os_version: Optional[str] = None
-    architecture: Optional[str] = None
-    kernel_version: Optional[str] = None
-    cpe_name: Optional[str] = None
-    support_end: Optional[str] = None
+    hostname: str | None = None
+    machine_id: str | None = None
+    os_name: str | None = None
+    os_pretty_name: str | None = None
+    os_version: str | None = None
+    architecture: str | None = None
+    kernel_version: str | None = None
+    cpe_name: str | None = None
+    support_end: str | None = None
 
     # Windows-ish (NOTE: major/minor are not very meaningful for modern Windows, kept for compatibility)
-    windows_major: Optional[str] = None
-    windows_minor: Optional[str] = None
-    windows_distro: Optional[str] = None
+    windows_major: str | None = None
+    windows_minor: str | None = None
+    windows_distro: str | None = None
 
     # Better Windows identifiers (populate later via registry if desired)
-    windows_build: Optional[str] = None
-    windows_display_version: Optional[str] = None
-    windows_edition: Optional[str] = None
+    windows_build: str | None = None
+    windows_display_version: str | None = None
+    windows_edition: str | None = None
 
     # Detection meta
     confidence: float = 0.0
     detection_method: str = "unknown"
 
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -84,7 +83,7 @@ class _WvShim:
     """
 
     logger: object
-    inspect_root: Optional[str] = None
+    inspect_root: str | None = None
 
 
 class GuestDetector:
@@ -97,7 +96,7 @@ class GuestDetector:
         We normalize that shape to avoid shape bugs.
     """
 
-    OS_INDICATORS: Dict[GuestType, List[str]] = {
+    OS_INDICATORS: dict[GuestType, list[str]] = {
         GuestType.LINUX: [
             "/etc/os-release",
             "/usr/lib/os-release",
@@ -134,7 +133,7 @@ class GuestDetector:
         GuestType.UNKNOWN: [],
     }
 
-    WINDOWS_REGISTRY_HIVES: List[str] = [
+    WINDOWS_REGISTRY_HIVES: list[str] = [
         "/Windows/System32/config/SOFTWARE",
         "/Windows/System32/config/SYSTEM",
         "/WINDOWS/System32/config/SOFTWARE",
@@ -146,7 +145,7 @@ class GuestDetector:
     # Small parsing helpers
 
     @staticmethod
-    def read_first_line(g: guestfs.GuestFS, path: str) -> Optional[str]:
+    def read_first_line(g: guestfs.GuestFS, path: str) -> str | None:
         try:
             if not g.is_file(path):
                 return None
@@ -157,8 +156,8 @@ class GuestDetector:
             return None
 
     @staticmethod
-    def parse_os_release(text: str) -> Dict[str, str]:
-        out: Dict[str, str] = {}
+    def parse_os_release(text: str) -> dict[str, str]:
+        out: dict[str, str] = {}
         for line in (text or "").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -169,7 +168,7 @@ class GuestDetector:
         return out
 
     @staticmethod
-    def parse_issue_file(content: str) -> Optional[str]:
+    def parse_issue_file(content: str) -> str | None:
         if not content:
             return None
         # /etc/issue commonly includes backslash escapes like \S \n \l etc.
@@ -182,14 +181,14 @@ class GuestDetector:
     # Mounting (shape-safe)
 
     @staticmethod
-    def _normalize_mountpoints(mps: Any) -> List[Tuple[str, str]]:
+    def _normalize_mountpoints(mps: Any) -> list[tuple[str, str]]:
         """
         guestfs inspect_get_mountpoints(root) can be:
           - dict when python_return_dict=True: { mountpoint: device }
           - list/tuple when python_return_dict=False: [(device, mountpoint), ...]
         We normalize to: [(device, mountpoint), ...]
         """
-        out: List[Tuple[str, str]] = []
+        out: list[tuple[str, str]] = []
         if mps is None:
             return out
 
@@ -243,7 +242,7 @@ class GuestDetector:
 
         # Ensure "/" mounts first, then shallower paths before deeper paths,
         # then length as a tie-breaker.
-        def _mp_sort_key(item: Tuple[str, str]) -> Tuple[int, int, int]:
+        def _mp_sort_key(item: tuple[str, str]) -> tuple[int, int, int]:
             _dev, mp = item
             return (0 if mp == "/" else 1, cls._path_depth(mp), len(mp))
 
@@ -256,7 +255,7 @@ class GuestDetector:
     # Detection strategies
 
     @classmethod
-    def detect_by_indicators(cls, g: guestfs.GuestFS) -> Dict[GuestType, float]:
+    def detect_by_indicators(cls, g: guestfs.GuestFS) -> dict[GuestType, float]:
         """
         Path-based indicator detection.
 
@@ -267,7 +266,7 @@ class GuestDetector:
         if not cls._mounted_anything(g):
             return {gt: 0.0 for gt in GuestType}
 
-        scores: Dict[GuestType, float] = {gt: 0.0 for gt in GuestType}
+        scores: dict[GuestType, float] = {gt: 0.0 for gt in GuestType}
 
         for os_type, indicators in cls.OS_INDICATORS.items():
             if os_type == GuestType.UNKNOWN:
@@ -293,7 +292,7 @@ class GuestDetector:
         return scores
 
     @classmethod
-    def detect_by_inspection(cls, g: guestfs.GuestFS, root: str) -> Optional[GuestType]:
+    def detect_by_inspection(cls, g: guestfs.GuestFS, root: str) -> GuestType | None:
         try:
             os_type = g.inspect_get_type(root)
             if not os_type:
@@ -312,7 +311,7 @@ class GuestDetector:
         return None
 
     @classmethod
-    def detect_by_canonical(cls, g: guestfs.GuestFS, root: str, logger) -> Tuple[Optional[GuestType], Optional[str]]:
+    def detect_by_canonical(cls, g: guestfs.GuestFS, root: str, logger) -> tuple[GuestType | None, str | None]:
         """
         Canonical helper answers ONLY: "is this Windows?"
         If it says "no", we return None (do NOT assume Linux).
@@ -332,7 +331,7 @@ class GuestDetector:
     # Identity collection
 
     @staticmethod
-    def _versionish_key(s: str) -> List[Tuple[int, Any]]:
+    def _versionish_key(s: str) -> list[tuple[int, Any]]:
         """
         Comparable version-ish key.
 
@@ -344,7 +343,7 @@ class GuestDetector:
           [(0, 6), (1,'.'), (0, 12), (1,'.'), (0, 10), (1,'-'), (0, 200), (1,'.'), (1,'fc'), (0, 41)]
         """
         s = (s or "").strip()
-        out: List[Tuple[int, Any]] = []
+        out: list[tuple[int, Any]] = []
         for tok in re.split(r"(\d+)", s):
             if tok == "":
                 continue
@@ -358,7 +357,7 @@ class GuestDetector:
         return out
 
     @classmethod
-    def best_effort_kernel(cls, g: guestfs.GuestFS) -> Optional[str]:
+    def best_effort_kernel(cls, g: guestfs.GuestFS) -> str | None:
         try:
             if g.is_dir("/lib/modules"):
                 vers = [U.to_text(x) or "" for x in g.ls("/lib/modules")]
@@ -468,7 +467,7 @@ class GuestDetector:
             pass
 
         # evidence (dirs/hives)
-        windows_dirs: List[str] = []
+        windows_dirs: list[str] = []
         for d in ("/Windows", "/WINDOWS", "/winnt"):
             try:
                 if g.is_dir(d):
@@ -478,7 +477,7 @@ class GuestDetector:
         if windows_dirs:
             ident.metadata["windows_dirs"] = windows_dirs
 
-        reg_hives: List[str] = []
+        reg_hives: list[str] = []
         for h in cls.WINDOWS_REGISTRY_HIVES:
             try:
                 if g.is_file(h):
@@ -493,7 +492,7 @@ class GuestDetector:
     # Root selection + main detect()
 
     @classmethod
-    def best_root(cls, g: guestfs.GuestFS) -> Optional[str]:
+    def best_root(cls, g: guestfs.GuestFS) -> str | None:
         try:
             roots = g.inspect_os()
         except Exception:
@@ -511,13 +510,13 @@ class GuestDetector:
         return roots[0]
 
     @classmethod
-    def detect(cls, img_path: Path, logger, readonly: bool = True) -> Optional[GuestIdentity]:
+    def detect(cls, img_path: Path, logger, readonly: bool = True) -> GuestIdentity | None:
         """
         Open guestfs read-only and detect guest OS + identity.
 
         Returns GuestIdentity or None if no OS roots.
         """
-        g: Optional[guestfs.GuestFS] = None
+        g: guestfs.GuestFS | None = None
         try:
             g = guestfs.GuestFS(python_return_dict=True)
             g.add_drive_opts(str(img_path), readonly=bool(readonly))
@@ -544,7 +543,7 @@ class GuestDetector:
             # Canonical Windows-only detection (capture error for debugging)
             t_can, can_err = cls.detect_by_canonical(g, root, logger)
 
-            identity: Optional[GuestIdentity] = None
+            identity: GuestIdentity | None = None
 
             # Strategy A: canonical Windows-only detection
             if t_can == GuestType.WINDOWS:

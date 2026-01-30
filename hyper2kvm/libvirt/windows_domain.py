@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/libvirt/windows_domain.py
 """
 Windows libvirt domain XML emitter (UEFI-focused).
@@ -22,7 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
-from ..core.xml_utils import xml_escape_attr as _xml_escape_attr, xml_escape_text as _xml_escape_text
+from ..core.xml_utils import xml_escape_attr as _xml_escape_attr
+from ..core.xml_utils import xml_escape_text as _xml_escape_text
 from .libvirt_utils import sanitize_name as _sanitize_name
 
 WinStage = Literal["bootstrap", "final"]
@@ -45,7 +45,7 @@ class WinDomainSpec:
 
     # Firmware / NVRAM
     ovmf_code: str = "/usr/share/edk2/ovmf/OVMF_CODE.fd"
-    ovmf_vars_template: Optional[str] = "/usr/share/edk2/ovmf/OVMF_VARS.fd"
+    ovmf_vars_template: str | None = "/usr/share/edk2/ovmf/OVMF_VARS.fd"
     nvram_vars: str = "/var/lib/libvirt/qemu/nvram/VM_VARS.fd"
 
     # Compute
@@ -66,7 +66,7 @@ class WinDomainSpec:
     disk_type: str = "qcow2"  # allow "raw" etc.
 
     # Optional: attach drivers ISO (virtio-win.iso) as CDROM for bootstrap
-    driver_iso: Optional[str] = None
+    driver_iso: str | None = None
 
     # Windows niceties
     localtime_clock: bool = True
@@ -79,8 +79,8 @@ class WinDomainSpec:
 class WinDomainPaths:
     out_dir: Path
     xml_path: Path
-    nvram_path: Optional[Path] = None
-    disk_path: Optional[Path] = None
+    nvram_path: Path | None = None
+    disk_path: Path | None = None
 
 
 # Small utilities
@@ -237,7 +237,7 @@ def copy_disk_for_libvirt(
     *,
     src: Path,
     name: str,
-    dest_dir: Optional[Path] = None,
+    dest_dir: Path | None = None,
     overwrite: bool = False,
 ) -> Path:
     """
@@ -277,9 +277,9 @@ def write_windows_domain_xml(
     spec: WinDomainSpec,
     out_dir: Path,
     stage: WinStage,
-    filename: Optional[str] = None,
+    filename: str | None = None,
     overwrite: bool = True,
-    disk_path: Optional[Path] = None,
+    disk_path: Path | None = None,
 ) -> WinDomainPaths:
     out_dir = out_dir.expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -339,8 +339,8 @@ def emit_windows_domain(
     stage: WinStage,
     # firmware
     ovmf_code: str = "/usr/share/edk2/ovmf/OVMF_CODE.fd",
-    ovmf_vars_template: Optional[str] = "/usr/share/edk2/ovmf/OVMF_VARS.fd",
-    nvram_vars: Optional[str] = None,
+    ovmf_vars_template: str | None = "/usr/share/edk2/ovmf/OVMF_VARS.fd",
+    nvram_vars: str | None = None,
     # compute
     memory_mib: int = 8192,
     vcpus: int = 4,
@@ -352,15 +352,15 @@ def emit_windows_domain(
     graphics_listen: str = "127.0.0.1",
     disk_cache: str = "none",
     disk_type: str = "qcow2",
-    driver_iso: Optional[str] = None,
+    driver_iso: str | None = None,
     localtime_clock: bool = True,
     hyperv: bool = False,
     # actions
     write_xml: bool = True,
     virsh_define: bool = False,
     # storage policy
-    copy_to_libvirt_images: Optional[bool] = None,  # default True if virsh_define else False
-    libvirt_images_dir: Optional[str] = None,
+    copy_to_libvirt_images: bool | None = None,  # default True if virsh_define else False
+    libvirt_images_dir: str | None = None,
     overwrite_disk_copy: bool = False,
 ) -> WinDomainPaths:
     """

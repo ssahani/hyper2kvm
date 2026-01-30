@@ -20,8 +20,8 @@ from .model import (
     IfcfgKV,
     NetworkConfig,
     NetworkConfigType,
-    TopologyGraph,
     TopoEdge,
+    TopologyGraph,
     ifcfg_kind_and_links,
 )
 
@@ -66,7 +66,7 @@ class NetworkTopology:
         """
         return e.kind in ("slave", "port", "vlan") and self._edge_touches(e, name)
 
-    def _is_lower_layer_member(self, name: str, edges: List[TopoEdge]) -> bool:
+    def _is_lower_layer_member(self, name: str, edges: list[TopoEdge]) -> bool:
         """Check if interface is member of bond/bridge/VLAN."""
         return any(self._is_lower_layer_member_edge(e, name) for e in edges)
 
@@ -124,7 +124,7 @@ class NetworkTopology:
         self,
         graph: TopologyGraph,
         cfg: NetworkConfig,
-        data: Dict[str, Any],
+        data: dict[str, Any],
     ) -> None:
         """
         Parse netplan YAML and add devices to topology graph.
@@ -197,10 +197,10 @@ class NetworkTopology:
         """
         text = cfg.content
         sec = None
-        match_names: List[str] = []
-        bond_ref: Optional[str] = None
-        bridge_ref: Optional[str] = None
-        vlan_refs: List[str] = []
+        match_names: list[str] = []
+        bond_ref: str | None = None
+        bridge_ref: str | None = None
+        vlan_refs: list[str] = []
 
         for ln in text.splitlines():
             s = ln.strip()
@@ -303,7 +303,7 @@ class NetworkTopology:
 
     # Main topology builder
 
-    def build_topology(self, configs: List[NetworkConfig]) -> TopologyGraph:
+    def build_topology(self, configs: list[NetworkConfig]) -> TopologyGraph:
         """
         Build topology graph from network configuration files.
 
@@ -314,7 +314,7 @@ class NetworkTopology:
             TopologyGraph with nodes and edges
         """
         graph = TopologyGraph()
-        backend_touch: Dict[str, Set[str]] = {}
+        backend_touch: dict[str, set[str]] = {}
 
         for cfg in configs:
             try:
@@ -359,7 +359,7 @@ class NetworkTopology:
 
     # Interface rename planning
 
-    def compute_rename_map(self, topo: TopologyGraph) -> Dict[str, str]:
+    def compute_rename_map(self, topo: TopologyGraph) -> dict[str, str]:
         """
         Compute interface rename map (AGGRESSIVE mode only).
 
@@ -372,8 +372,8 @@ class NetworkTopology:
         if self.fix_level != FixLevel.AGGRESSIVE:
             return {}
 
-        rename: Dict[str, str] = {}
-        used: Set[str] = set(topo.nodes.keys())
+        rename: dict[str, str] = {}
+        used: set[str] = set(topo.nodes.keys())
 
         for node in topo.nodes.values():
             if node.kind not in (DeviceKind.ETHERNET, DeviceKind.UNKNOWN):

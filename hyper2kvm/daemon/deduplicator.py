@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/daemon/deduplicator.py
 """
 File deduplication for daemon mode.
@@ -15,7 +14,7 @@ import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 
 class FileDeduplicator:
@@ -70,7 +69,7 @@ class FileDeduplicator:
 
             conn.commit()
 
-    def is_duplicate(self, file_path: Path) -> Optional[Dict]:
+    def is_duplicate(self, file_path: Path) -> dict | None:
         """
         Check if file was already processed.
 
@@ -115,7 +114,7 @@ class FileDeduplicator:
 
             return None
 
-    def mark_processed(self, file_path: Path, output_path: Optional[Path] = None,
+    def mark_processed(self, file_path: Path, output_path: Path | None = None,
                       status: str = 'success') -> None:
         """Mark file as processed."""
         with self.lock:
@@ -155,7 +154,7 @@ class FileDeduplicator:
             self.logger.error(f"Failed to calculate MD5: {e}")
             return ""
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Get deduplication statistics."""
         with self.lock:
             with sqlite3.connect(str(self.db_path)) as conn:

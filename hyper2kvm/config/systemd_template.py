@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/config/systemd_template.py
 from __future__ import annotations
 
@@ -66,7 +65,7 @@ def _q(s: str) -> str:
     return shlex.quote(s)
 
 
-def _q_opt(s: Optional[str]) -> str:
+def _q_opt(s: str | None) -> str:
     """Quote optional strings; empty becomes empty."""
     if not s:
         return ""

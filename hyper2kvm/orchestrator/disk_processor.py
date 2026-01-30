@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# -*- coding: utf-8 -*-
 # hyper2kvm/orchestrator/disk_processor.py
 """
 Disk processing pipeline.
@@ -12,8 +11,9 @@ import argparse
 import concurrent.futures
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from rich.progress import (
     BarColumn,
@@ -47,7 +47,7 @@ class DiskProcessor:
         self,
         logger: logging.Logger,
         args: argparse.Namespace,
-        recovery_manager: Optional[RecoveryManager] = None,
+        recovery_manager: RecoveryManager | None = None,
     ):
         self.logger = logger
         self.args = args
@@ -106,7 +106,7 @@ class DiskProcessor:
             else:
                 self.logger.warning(f"VMDK layout: descriptor (extent missing?) ⚠️ ({extent})")
 
-    def _load_cloud_init_config(self) -> Optional[Dict[str, Any]]:
+    def _load_cloud_init_config(self) -> dict[str, Any] | None:
         """Load cloud-init configuration if specified."""
         import json
 
@@ -225,7 +225,7 @@ class DiskProcessor:
         Log.ok(self.logger, "Offline fixes complete")
 
         # Convert to output format if requested
-        out_image: Optional[Path] = None
+        out_image: Path | None = None
         if getattr(self.args, "to_output", None) and not getattr(self.args, "dry_run", False):
             out_image = self._resolve_output_path(
                 str(self.args.to_output),
@@ -266,7 +266,7 @@ class DiskProcessor:
 
         return out_image if out_image else working
 
-    def process_disks_parallel(self, disks: List[Path], out_root: Path) -> List[Path]:
+    def process_disks_parallel(self, disks: list[Path], out_root: Path) -> list[Path]:
         """
         Process multiple disks in parallel.
 
@@ -280,7 +280,7 @@ class DiskProcessor:
         self.logger.info(f"🧵 Processing {len(disks)} disks in parallel")
         Log.trace(self.logger, "🧵 process_disks_parallel: out_root=%s", out_root)
 
-        results: List[Optional[Path]] = [None] * len(disks)
+        results: list[Path | None] = [None] * len(disks)
 
         env_workers = os.environ.get("VMDK2KVM_WORKERS")
         if env_workers:
