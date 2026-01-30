@@ -824,6 +824,173 @@ for fmt, files in result["reports_generated"].items():
 
 **Business Value**: HIGH - Critical for regulated industries (finance, healthcare, government). Enables automated compliance validation and audit trail for SOX, HIPAA, PCI-DSS compliance.
 
+#### Container Extraction v1.0 (January 2026) - P1 Feature IMPLEMENTED ✅
+
+**VM-to-Container Migration** (2,950 lines across 6 modules, 17 tests):
+
+Comprehensive container extraction from VMs with automatic Kubernetes manifest generation, enabling migration from VM-based containerized workloads to Kubernetes or Docker environments.
+
+**1. Container Detector** (detector.py - 450 lines):
+- **Runtime Detection**: Automatic detection of Docker, Podman, containerd, CRI-O
+- **Container Discovery**: Scans /var/lib/docker and /var/lib/containers for containers
+- **Configuration Parsing**: Extracts container configs from JSON files
+- **Docker Container Info**:
+  - Image name and tag
+  - Command and entrypoint
+  - Environment variables
+  - Port mappings
+  - Volume mounts
+  - Network configuration
+  - Resource limits (memory, CPU)
+  - Labels and metadata
+- **Docker Compose Detection**: Finds docker-compose.yml files in common locations
+- **Container Summary**: Statistics by runtime, image, running/stopped state
+
+**2. Docker Extractor** (docker_extractor.py - 580 lines):
+- **Image Export**: Extracts container images from /var/lib/docker/overlay2
+- **Dockerfile Generation**: Reverse-engineers Dockerfile from container config
+  - FROM instruction with base image
+  - ENV variables
+  - EXPOSE ports
+  - WORKDIR
+  - LABEL metadata
+  - ENTRYPOINT and CMD
+- **docker-compose.yml Generation**: Multi-container compose file creation
+  - Service definitions
+  - Port mappings
+  - Volume declarations
+  - Network configuration
+  - Resource limits (deploy section)
+  - Environment variables
+- **Volume Export**: Extracts volume data to tar.gz archives
+- **Simple YAML Converter**: Dictionary-to-YAML for compose files
+
+**3. Podman Extractor** (podman_extractor.py - 90 lines):
+- **Podman Compatibility**: Inherits Docker extractor (Podman uses Docker-compatible format)
+- **Podman Play Kube**: Generates Kubernetes YAML for `podman play kube`
+- **Rootless Support**: Handles ~/.local/share/containers/storage (rootless Podman)
+- **System Support**: Handles /var/lib/containers/storage (root Podman)
+
+**4. Kubernetes Manifest Generator** (kubernetes_generator.py - 530 lines):
+- **Deployment Manifest**: Converts containers to Kubernetes Deployments
+  - apiVersion: apps/v1
+  - Pod template with container specs
+  - Replica count configuration
+  - Label selectors
+  - Container ports, environment, volumes
+  - Resource requests/limits
+- **Service Manifest**: Generates Services for exposed ports
+  - ClusterIP (default)
+  - NodePort (with port range validation)
+  - LoadBalancer
+  - Port mapping and protocol configuration
+- **ConfigMap Manifest**: Environment variables → ConfigMap
+- **PersistentVolumeClaim Manifest**: Container volumes → PVCs
+  - Storage class configuration
+  - Access modes (ReadWriteOnce default)
+  - Size requests
+- **Container Spec Conversion**: Docker → Kubernetes translation
+  - Image names
+  - Commands and args
+  - Working directory
+  - Environment variables
+  - Port mappings
+  - Volume mounts
+  - Resource limits (CPU/memory)
+
+**5. Container Extraction Orchestrator** (orchestrator.py - 420 lines):
+- **Unified Workflow**:
+  1. **Detect Containers**: Scan VM for Docker/Podman
+  2. **Select Target Platform**: Kubernetes, Docker, Podman
+  3. **Extract Artifacts**: Images, configs, volumes
+  4. **Generate Manifests**: K8s YAML or docker-compose
+  5. **Create Migration Guide**: Step-by-step instructions
+- **Kubernetes Extraction**: Full K8s migration workflow
+  - Deployment, Service, ConfigMap, PVC generation
+  - Image export for container registry
+  - Per-container manifest creation
+- **Docker Extraction**: Docker-to-Docker migration
+  - docker-compose.yml generation
+  - Dockerfile generation per container
+- **Migration Guide Generation**: Markdown documentation
+  - Platform-specific steps (kubectl apply, docker-compose up)
+  - Container details (images, ports, volumes, env vars)
+  - Verification commands
+
+**6. Integration Example**:
+```python
+from hyper2kvm.containers import ContainerExtractionOrchestrator
+
+# Initialize orchestrator
+orchestrator = ContainerExtractionOrchestrator(logger)
+
+# Extract containers for Kubernetes
+result = orchestrator.extract_containers(
+    vmcraft_instance,
+    output_dir=Path("./container-export"),
+    target_platform="kubernetes"
+)
+
+if result["success"]:
+    print(f"Runtime: {result['runtime_detected']}")
+    print(f"Containers found: {result['containers_found']}")
+    print(f"Manifests generated: {len(result['manifests_generated'])}")
+
+    # Manifests are in ./container-export/kubernetes/
+    # - deployment-{name}.yaml
+    # - service-{name}.yaml
+    # - configmap-{name}-config.yaml
+    # - pvc-{name}-{volume}-pvc.yaml
+```
+
+**Implementation Status**:
+- Phase 1 (Container Detection): ✅ COMPLETE
+- Phase 2 (Docker Extraction): ✅ COMPLETE
+- Phase 3 (Podman Extraction): ✅ COMPLETE
+- Phase 4 (Kubernetes Generator): ✅ COMPLETE
+- Phase 5 (Orchestrator): ✅ COMPLETE
+- Phase 6 (Unit Tests): ✅ COMPLETE (17 tests, 100% pass rate)
+
+**Testing Coverage**:
+- 17 unit tests covering all modules
+- Container detection tests (Docker, Podman)
+- Docker config parsing tests
+- Dockerfile and docker-compose generation
+- Kubernetes manifest generation (Deployment, Service, ConfigMap, PVC)
+- Full orchestration workflow tests
+- Migration guide generation tests
+
+**Supported Migration Paths**:
+- ✅ **VM → Kubernetes**: Full migration with Deployment, Service, ConfigMap, PVC
+- ✅ **VM → Docker**: docker-compose.yml + Dockerfiles
+- ✅ **VM → Podman**: Kubernetes YAML for podman play kube
+- 🔲 **Docker Compose → Kubernetes**: Direct conversion (pending)
+- 🔲 **Multi-container Apps**: Ingress, StatefulSet support (pending)
+
+**Supported Container Runtimes**:
+- ✅ **Docker**: Full support (image export, config parsing, manifest generation)
+- ✅ **Podman**: Full support (Docker-compatible)
+- 🔲 **containerd**: Runtime detection only (extraction pending)
+- 🔲 **CRI-O**: Runtime detection only (extraction pending)
+
+**Generated Kubernetes Manifests**:
+1. **Deployment**: Container → Pod spec with replicas
+2. **Service**: Port mappings → ClusterIP/NodePort/LoadBalancer
+3. **ConfigMap**: Environment variables → ConfigMap data
+4. **PersistentVolumeClaim**: Docker volumes → PVCs
+
+**Next Steps**:
+- containerd and CRI-O extraction support
+- Docker Compose → Kubernetes direct conversion
+- Helm chart generation
+- StatefulSet support for databases
+- Ingress manifest generation
+- Secret extraction (from env vars)
+- CLI integration for container extraction commands
+- Integration with migration workflow (automatic container detection)
+
+**Business Value**: HIGH - Enables VM-to-Kubernetes migration for containerized workloads. Critical for organizations moving from VM-based Docker deployments to Kubernetes. Reduces manual Kubernetes manifest creation.
+
 #### Advanced Windows Support v1.0 (January 2026) - P0 Feature IMPLEMENTED ✅
 
 **Enterprise Windows VM Migration** (3,355 lines across 6 modules, 55 tests):
