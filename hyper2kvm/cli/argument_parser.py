@@ -22,8 +22,13 @@ class HelpFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefau
     pass
 
 
-def build_parser() -> argparse.ArgumentParser:
-    epilog = (
+# --------------------------------------------------------------------------------------
+# Parser construction helpers
+# --------------------------------------------------------------------------------------
+
+
+def _build_epilog() -> str:
+    return (
         c("YAML examples:\n", "cyan", ["bold"])
         + c(YAML_EXAMPLE, "cyan")
         + "\n"
@@ -33,12 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
         + c(SYSTEMD_UNIT_TEMPLATE + SYSTEMD_EXAMPLE, "cyan")
     )
 
-    p = argparse.ArgumentParser(
-        description=c("hyper2kvm: Ultimate VMware → KVM/QEMU Converter + Fixer", "green", ["bold"]),
-        formatter_class=HelpFormatter,
-        epilog=epilog,
-    )
 
+def _add_global_config_logging(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Global config/logging (two-phase parse relies on these)
     # ------------------------------------------------------------------
@@ -60,8 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enable extra debug logging (also via env VMDK2KVM_DEBUG=1).",
     )
 
+
+def _add_project_control(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
-    # NEW PROJECT CONTROL: YAML-driven operation (no subcommands)
+    # Project control: YAML-driven operation (no subcommands)
     # ------------------------------------------------------------------
     p.add_argument(
         "--cmd",
@@ -76,6 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="vSphere action (normally from YAML `vs_action:`). Examples: list_vm_names, export_vm, download_only_vm, download_datastore_file, ovftool_export, ovftool_deploy, ...",
     )
 
+
+def _add_global_operation_flags(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Global operation flags
     # ------------------------------------------------------------------
@@ -85,6 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--print-fstab", dest="print_fstab", action="store_true", help="Print /etc/fstab before+after.")
     p.add_argument("--workdir", default=None, help="Working directory for intermediate files (default: <output-dir>/work).")
 
+
+def _add_flatten_convert(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Flatten/convert
     # ------------------------------------------------------------------
@@ -107,6 +114,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--compress-level", dest="compress_level", type=int, choices=range(1, 10), default=None, help="Compression level 1-9.")
     p.add_argument("--checksum", action="store_true", help="Compute SHA256 checksum of output.")
 
+
+def _add_fixing_behavior(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Fixing behavior
     # ------------------------------------------------------------------
@@ -130,6 +139,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--report", default=None, help="Write Markdown report (relative to output-dir if not absolute).")
     p.add_argument("--virtio-drivers-dir", dest="virtio_drivers_dir", default=None, help="Path to virtio-win drivers directory for Windows injection.")
 
+
+def _add_windows_virtio_definitions(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Windows VirtIO driver *definitions* config (PnP payload discovery)
     # ------------------------------------------------------------------
@@ -149,10 +160,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Windows VirtIO: inline JSON object for driver-definition overrides (advanced). "
-            "Example: --virtio-config-json '{\"drivers\":{\"storage\":[...]}}'"
+            'Example: --virtio-config-json \'{"drivers":{"storage":[...]}}\''
         ),
     )
 
+
+def _add_v2v_flags(p: argparse.ArgumentParser) -> None:
+    # ------------------------------------------------------------------
+    # virt-v2v knobs
+    # ------------------------------------------------------------------
     p.add_argument("--post-v2v", dest="post_v2v", action="store_true", help="Run virt-v2v after internal fixes.")
     p.add_argument("--use-v2v", dest="use_v2v", action="store_true", help="Use virt-v2v for conversion if available.")
     p.add_argument(
@@ -169,6 +185,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Max concurrent virt-v2v jobs when --v2v-parallel is set (default: 2).",
     )
 
+
+def _add_windows_network_override(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Windows network retention override (first-boot apply)
     # ------------------------------------------------------------------
@@ -178,7 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Windows: path to JSON network override file on the host. "
-            "If set, it is staged into guest as C:\\hyper2kvm\\net\\network_override.json and applied at first boot."
+            "If set, it is staged into guest as C:\\vmdk2kvm\\net\\network_override.json and applied at first boot."
         ),
     )
     p.add_argument(
@@ -188,10 +206,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Windows: inline JSON string for network override (advanced). "
             "Useful for systemd/YAML embedding. Example: "
-            "--win-net-json '{\"schema\":1,\"mode\":\"dhcp\",\"dhcp\":{\"dns_servers\":[\"10.0.0.53\"]}}'"
+            '--win-net-json \'{"schema":1,"mode":"dhcp","dhcp":{"dns_servers":["10.0.0.53"]}}\''
         ),
     )
 
+
+def _add_luks_knobs(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # LUKS knobs
     # ------------------------------------------------------------------
@@ -211,11 +231,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--luks-mapper-prefix",
         dest="luks_mapper_prefix",
-        default="hyper2kvm-crypt",
-        help="Mapper name prefix for opened LUKS devices (default: hyper2kvm-crypt).",
+        default="vmdk2kvm-crypt",
+        help="Mapper name prefix for opened LUKS devices (default: vmdk2kvm-crypt).",
     )
     p.add_argument("--luks-enable", dest="luks_enable", action="store_true", help="Explicitly enable LUKS unlocking (otherwise inferred from passphrase/keyfile).")
 
+
+def _add_tests(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Tests
     # ------------------------------------------------------------------
@@ -229,6 +251,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keep-domain", dest="keep_domain", action="store_true", help="Keep libvirt domain after test.")
     p.add_argument("--headless", action="store_true", help="Headless libvirt domain (no graphics).")
 
+
+def _add_domain_emission(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Libvirt domain XML emission (after pipeline)
     # ------------------------------------------------------------------
@@ -312,12 +336,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-win-hyperv", dest="win_hyperv", action="store_false", help="Windows domain: disable Hyper-V enlightenments.")
     p.set_defaults(win_hyperv=True)
 
+
+def _add_daemon_flags(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Daemon flags
     # ------------------------------------------------------------------
     p.add_argument("--daemon", action="store_true", help="Run in daemon mode (for systemd service).")
     p.add_argument("--watch-dir", dest="watch_dir", default=None, help="Directory to watch for new VMDK files in daemon mode.")
 
+
+def _add_ovf_ova_knobs(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # OVF/OVA knobs
     # ------------------------------------------------------------------
@@ -349,6 +377,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compression level 1-9 for qcow2 conversion of OVA/OVF disks.",
     )
 
+
+def _add_ami_extraction_knobs(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # AMI/cloud tarball extraction knobs
     # ------------------------------------------------------------------
@@ -377,6 +407,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compression level 1-9 for qcow2 conversion of AMI/cloud payload disks.",
     )
 
+
+def _add_input_paths(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Former subcommand args, promoted to globals (YAML-driven; CLI overrides)
     # ------------------------------------------------------------------
@@ -386,7 +418,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vhd", default=None, help="Path to .vhd OR tarball containing a .vhd (e.g. .tar/.tar.gz/.tgz).")
     p.add_argument("--ami", default=None, help="Path to tar/tar.gz/tgz/tar.xz containing a disk payload (raw/img/qcow2/vmdk/vhd/...).")
 
+
+def _add_ssh_fetch_knobs(p: argparse.ArgumentParser) -> None:
+    # ------------------------------------------------------------------
     # fetch-and-fix + live-fix common SSH knobs:
+    # ------------------------------------------------------------------
     p.add_argument("--host", default=None, help="Remote host for fetch-and-fix/live-fix")
     p.add_argument("--user", default="root", help="Remote user (fetch-and-fix/live-fix)")
     p.add_argument("--port", type=int, default=22, help="SSH port (fetch-and-fix/live-fix)")
@@ -397,9 +433,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fetch-all", dest="fetch_all", action="store_true", help="Fetch full snapshot descriptor chain recursively.")
     p.add_argument("--sudo", action="store_true", help="Run remote commands through sudo -n (live-fix)")
 
+
+def _add_systemd_gen(p: argparse.ArgumentParser) -> None:
     # generate-systemd:
     p.add_argument("--systemd-output", dest="systemd_output", default=None, help="Write systemd unit to file instead of stdout")
 
+
+def _add_vsphere_core_knobs(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # vSphere / vCenter knobs (promoted to globals)
     # ------------------------------------------------------------------
@@ -420,9 +460,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="vSphere export mode preference (export_vm action): ovf_export, ova_export, auto, or ovftool_export.",
     )
 
-    # ------------------------------------------------------------------
     # vSphere control-plane selection: govc vs pyvmomi
-    # ------------------------------------------------------------------
     p.add_argument(
         "--vs-control-plane",
         dest="vs_control_plane",
@@ -431,9 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="vSphere control-plane backend: auto (prefer govc), govc, or pyvmomi.",
     )
 
-    # ------------------------------------------------------------------
     # download-only transport (HTTP/HTTPS only)
-    # ------------------------------------------------------------------
     p.add_argument(
         "--vs-download-transport",
         dest="vs_download_transport",
@@ -442,6 +478,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="download-only transport preference (default: https). auto behaves like https.",
     )
 
+
+def _add_govc_knobs(p: argparse.ArgumentParser) -> None:
     # govc context knobs (CLI overrides; YAML can carry same keys)
     p.add_argument("--govc-url", dest="govc_url", default=None, help="govc URL (e.g. https://vcenter/sdk or https://esxi/sdk).")
     p.add_argument("--govc-user", dest="govc_user", default=None, help="govc username (defaults to vc_user if unset).")
@@ -468,66 +506,27 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(govc_export_show_vm_info=True)
     p.add_argument("--govc-max-detail", dest="govc_max_detail", type=int, default=500, help="govc list_vm_names: max VMs to fetch detailed vm.info JSON for.")
 
+
+def _add_ovftool_knobs(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # OVF Tool (ovftool) knobs
     # ------------------------------------------------------------------
-    p.add_argument(
-        "--ovftool-path",
-        dest="ovftool_path",
-        default=None,
-        help="Path to OVF Tool binary or install dir (optional; auto-detect if unset).",
-    )
-    p.add_argument(
-        "--ovftool-no-ssl-verify",
-        dest="ovftool_no_ssl_verify",
-        action="store_true",
-        help="OVF Tool: disable TLS verification (adds --noSSLVerify).",
-    )
-    p.add_argument(
-        "--no-ovftool-no-ssl-verify",
-        dest="ovftool_no_ssl_verify",
-        action="store_false",
-        help="OVF Tool: keep TLS verification (do not add --noSSLVerify).",
-    )
+    p.add_argument("--ovftool-path", dest="ovftool_path", default=None, help="Path to OVF Tool binary or install dir (optional; auto-detect if unset).")
+    p.add_argument("--ovftool-no-ssl-verify", dest="ovftool_no_ssl_verify", action="store_true", help="OVF Tool: disable TLS verification (adds --noSSLVerify).")
+    p.add_argument("--no-ovftool-no-ssl-verify", dest="ovftool_no_ssl_verify", action="store_false", help="OVF Tool: keep TLS verification (do not add --noSSLVerify).")
     p.set_defaults(ovftool_no_ssl_verify=True)
 
-    p.add_argument(
-        "--ovftool-thumbprint",
-        dest="ovftool_thumbprint",
-        default=None,
-        help="OVF Tool: expected TLS thumbprint (e.g. AA:BB:...); used instead of disabling verification.",
-    )
-    p.add_argument(
-        "--ovftool-accept-all-eulas",
-        dest="ovftool_accept_all_eulas",
-        action="store_true",
-        help="OVF Tool: accept all EULAs (adds --acceptAllEulas).",
-    )
-    p.add_argument(
-        "--no-ovftool-accept-all-eulas",
-        dest="ovftool_accept_all_eulas",
-        action="store_false",
-        help="OVF Tool: do NOT accept EULAs automatically.",
-    )
+    p.add_argument("--ovftool-thumbprint", dest="ovftool_thumbprint", default=None, help="OVF Tool: expected TLS thumbprint (e.g. AA:BB:...); used instead of disabling verification.")
+    p.add_argument("--ovftool-accept-all-eulas", dest="ovftool_accept_all_eulas", action="store_true", help="OVF Tool: accept all EULAs (adds --acceptAllEulas).")
+    p.add_argument("--no-ovftool-accept-all-eulas", dest="ovftool_accept_all_eulas", action="store_false", help="OVF Tool: do NOT accept EULAs automatically.")
     p.set_defaults(ovftool_accept_all_eulas=True)
 
     p.add_argument("--ovftool-quiet", dest="ovftool_quiet", action="store_true", help="OVF Tool: quiet output (adds --quiet).")
     p.add_argument("--ovftool-verbose", dest="ovftool_verbose", action="store_true", help="OVF Tool: verbose output (adds --verbose).")
     p.add_argument("--ovftool-overwrite", dest="ovftool_overwrite", action="store_true", help="OVF Tool: overwrite outputs / target objects (adds --overwrite).")
-    p.add_argument(
-        "--ovftool-disk-mode",
-        dest="ovftool_disk_mode",
-        default=None,
-        help="OVF Tool: disk mode for deploy/export where supported (e.g. thin|thick|eagerZeroedThick).",
-    )
+    p.add_argument("--ovftool-disk-mode", dest="ovftool_disk_mode", default=None, help="OVF Tool: disk mode for deploy/export where supported (e.g. thin|thick|eagerZeroedThick).")
     p.add_argument("--ovftool-retries", dest="ovftool_retries", type=int, default=0, help="OVF Tool wrapper: retry count for transient failures (default 0).")
-    p.add_argument(
-        "--ovftool-retry-backoff-s",
-        dest="ovftool_retry_backoff_s",
-        type=float,
-        default=2.0,
-        help="OVF Tool wrapper: base backoff seconds between retries (default 2.0).",
-    )
+    p.add_argument("--ovftool-retry-backoff-s", dest="ovftool_retry_backoff_s", type=float, default=2.0, help="OVF Tool wrapper: base backoff seconds between retries (default 2.0).")
     p.add_argument(
         "--ovftool-extra-arg",
         dest="ovftool_extra_args",
@@ -537,28 +536,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # OVF Tool deploy-only targeting knobs
-    p.add_argument(
-        "--ovftool-target-folder",
-        dest="ovftool_target_folder",
-        default=None,
-        help="OVF Tool deploy: target inventory folder under /vm (relative path). Example: 'Prod/Linux'.",
-    )
-    p.add_argument(
-        "--ovftool-target-resource-pool",
-        dest="ovftool_target_resource_pool",
-        default=None,
-        help="OVF Tool deploy: target resource pool path under /host (advanced; exact format depends on vCenter inventory).",
-    )
-    p.add_argument(
-        "--ovftool-network-map",
-        dest="ovftool_network_map",
-        default=None,
-        help="OVF Tool deploy: network mapping 'src:dst,src2:dst2'. Example: 'VM Network:KVM-Bridge'.",
-    )
+    p.add_argument("--ovftool-target-folder", dest="ovftool_target_folder", default=None, help="OVF Tool deploy: target inventory folder under /vm (relative path). Example: 'Prod/Linux'.")
+    p.add_argument("--ovftool-target-resource-pool", dest="ovftool_target_resource_pool", default=None, help="OVF Tool deploy: target resource pool path under /host (advanced; exact format depends on vCenter inventory).")
+    p.add_argument("--ovftool-network-map", dest="ovftool_network_map", default=None, help="OVF Tool deploy: network mapping 'src:dst,src2:dst2'. Example: 'VM Network:KVM-Bridge'.")
     p.add_argument("--ovftool-power-on", dest="ovftool_power_on", action="store_true", help="OVF Tool deploy: power on after deploy.")
     p.add_argument("--ovftool-vm-name", dest="ovftool_vm_name", default=None, help="OVF Tool deploy: override VM name (--name in ovftool).")
     p.add_argument("--ovftool-datastore", dest="ovftool_datastore", default=None, help="OVF Tool deploy: target datastore name.")
 
+
+def _add_vsphere_v2v_and_download_knobs(p: argparse.ArgumentParser) -> None:
     # ------------------------------------------------------------------
     # Existing virt-v2v vSphere export knobs, download-only knobs, VDDK knobs...
     # ------------------------------------------------------------------
@@ -573,13 +559,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vs-datacenter", dest="vs_datacenter", default="ha-datacenter", help="Datacenter name (default: ha-datacenter)")
 
     # IMPORTANT: no default here (avoids silently selecting VDDK)
-    p.add_argument(
-        "--vs-transport",
-        dest="vs_transport",
-        default=None,
-        choices=["vddk", "ssh"],
-        help="EXPERIMENTAL virt-v2v input transport (set explicitly).",
-    )
+    p.add_argument("--vs-transport", dest="vs_transport", default=None, choices=["vddk", "ssh"], help="EXPERIMENTAL virt-v2v input transport (set explicitly).")
 
     p.add_argument("--vs-vddk-libdir", dest="vs_vddk_libdir", default=None, help="Path to VDDK libdir (if using vddk transport)")
     p.add_argument("--vs-vddk-thumbprint", dest="vs_vddk_thumbprint", default=None, help="vCenter TLS thumbprint for VDDK verification")
@@ -594,13 +574,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vs-v2v-extra-args", dest="vs_v2v_extra_args", action="append", default=[], help="Extra args passed through to virt-v2v (repeatable).")
     p.add_argument("--vs-no-verify", dest="vs_no_verify", action="store_true", help="Disable TLS verification for virt-v2v vpx:// input (use with caution).")
 
-    p.add_argument(
-        "--include-glob",
-        dest="vs_include_glob",
-        action="append",
-        default=[],
-        help="download-only VM folder: include file glob (repeatable). Default is ['*'] if none supplied.",
-    )
+    p.add_argument("--include-glob", dest="vs_include_glob", action="append", default=[], help="download-only VM folder: include file glob (repeatable). Default is ['*'] if none supplied.")
     p.add_argument("--exclude-glob", dest="vs_exclude_glob", action="append", default=[], help="download-only VM folder: exclude file glob (repeatable).")
     p.add_argument("--concurrency", dest="vs_concurrency", type=int, default=4, help="download-only VM folder: concurrent downloads (default: 4).")
     p.add_argument("--max-files", dest="vs_max_files", type=int, default=5000, help="download-only VM folder: refuse to download more than this many files (default: 5000).")
@@ -631,7 +605,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--quiesce", dest="quiesce", action="store_true", default=True, help="Quiesce filesystem (create_snapshot)")
     p.add_argument("--no_quiesce", dest="quiesce", action="store_false", help="Disable quiesce (create_snapshot)")
     p.add_argument("--snapshot_memory", dest="snapshot_memory", action="store_true", default=False, help="Include memory in snapshot (create_snapshot)")
-    p.add_argument("--description", dest="snapshot_description", default="Created by hyper2kvm", help="Snapshot description (create_snapshot)")
+    p.add_argument("--description", dest="snapshot_description", default="Created by vmdk2kvm", help="Snapshot description (create_snapshot)")
 
     p.add_argument("--enable_cbt", dest="enable_cbt", action="store_true", help="Enable CBT (cbt_sync)")
     p.add_argument("--device_key", dest="device_key", type=int, default=None, help="Device key (query_changed_disk_areas)")
@@ -642,14 +616,51 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vs_output_dir", dest="vs_output_dir", default=None, help="Local output dir override for download_only_vm (defaults to --output-dir)")
 
     # OVF Tool deploy action arg (input local OVA/OVF)
-    p.add_argument(
-        "--source-path",
-        dest="source_path",
-        default=None,
-        help="ovftool_deploy: local source path to .ova or .ovf (required for vs_action=ovftool_deploy).",
+    p.add_argument("--source-path", dest="source_path", default=None, help="ovftool_deploy: local source path to .ova or .ovf (required for vs_action=ovftool_deploy).")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    epilog = _build_epilog()
+
+    p = argparse.ArgumentParser(
+        description=c("vmdk2kvm: Ultimate VMware → KVM/QEMU Converter + Fixer", "green", ["bold"]),
+        formatter_class=HelpFormatter,
+        epilog=epilog,
     )
 
+    _add_global_config_logging(p)
+    _add_project_control(p)
+    _add_global_operation_flags(p)
+
+    _add_flatten_convert(p)
+    _add_fixing_behavior(p)
+    _add_windows_virtio_definitions(p)
+    _add_v2v_flags(p)
+    _add_windows_network_override(p)
+    _add_luks_knobs(p)
+
+    _add_tests(p)
+    _add_domain_emission(p)
+
+    _add_daemon_flags(p)
+    _add_ovf_ova_knobs(p)
+    _add_ami_extraction_knobs(p)
+
+    _add_input_paths(p)
+    _add_ssh_fetch_knobs(p)
+    _add_systemd_gen(p)
+
+    _add_vsphere_core_knobs(p)
+    _add_govc_knobs(p)
+    _add_ovftool_knobs(p)
+    _add_vsphere_v2v_and_download_knobs(p)
+
     return p
+
+
+# --------------------------------------------------------------------------------------
+# Merge helpers
+# --------------------------------------------------------------------------------------
 
 
 def _require(v: Any) -> bool:
@@ -714,6 +725,32 @@ def _merged_vs_action(args: argparse.Namespace, conf: Dict[str, Any]) -> Optiona
     return None
 
 
+# --------------------------------------------------------------------------------------
+# Validation helpers (no side effects)
+# --------------------------------------------------------------------------------------
+
+
+def _validate_json_object_file(path: str, flag: str) -> None:
+    if not os.path.isfile(path):
+        raise SystemExit(f"{flag} file not found: {path}")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+        if not isinstance(parsed, dict):
+            raise ValueError("top-level JSON must be an object")
+    except Exception as e:
+        raise SystemExit(f"{flag} is not valid JSON object: {path}: {e}")
+
+
+def _validate_json_object_inline(js: str, flag: str) -> None:
+    try:
+        parsed = json.loads(js)
+        if not isinstance(parsed, dict):
+            raise ValueError("top-level JSON must be an object")
+    except Exception as e:
+        raise SystemExit(f"{flag} is not valid JSON object: {e}")
+
+
 def _validate_win_net_override_inputs(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
     """
     Validate Windows network override knobs without doing any filesystem writes.
@@ -727,24 +764,10 @@ def _validate_win_net_override_inputs(args: argparse.Namespace, conf: Dict[str, 
     js = _merged_get(args, conf, "win_net_json")
 
     if _require(p):
-        path = str(p)
-        if not os.path.isfile(path):
-            raise SystemExit(f"--win-net-override file not found: {path}")
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                parsed = json.load(f)
-            if not isinstance(parsed, dict):
-                raise ValueError("top-level JSON must be an object")
-        except Exception as e:
-            raise SystemExit(f"--win-net-override is not valid JSON object: {path}: {e}")
+        _validate_json_object_file(str(p), "--win-net-override")
 
     if _require(js):
-        try:
-            parsed = json.loads(str(js))
-            if not isinstance(parsed, dict):
-                raise ValueError("top-level JSON must be an object")
-        except Exception as e:
-            raise SystemExit(f"--win-net-json is not valid JSON object: {e}")
+        _validate_json_object_inline(str(js), "--win-net-json")
 
 
 def _validate_virtio_config_inputs(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
@@ -767,12 +790,243 @@ def _validate_virtio_config_inputs(args: argparse.Namespace, conf: Dict[str, Any
             raise SystemExit(f"--virtio-config must be .json/.yaml/.yml, got: {path}")
 
     if _require(js):
-        try:
-            parsed = json.loads(str(js))
-            if not isinstance(parsed, dict):
-                raise ValueError("top-level JSON must be an object")
-        except Exception as e:
-            raise SystemExit(f"--virtio-config-json is not valid JSON object: {e}")
+        _validate_json_object_inline(str(js), "--virtio-config-json")
+
+
+def _pick_vsphere_vm_name(args: argparse.Namespace, conf: Dict[str, Any]) -> Optional[str]:
+    vm_name = conf.get("vm_name", None)
+    if not _require(vm_name):
+        vm_name = getattr(args, "vm_name_vsphere", None)
+    if not _require(vm_name):
+        vms = getattr(args, "vs_vms", None)
+        vm_name = getattr(args, "vs_vm", None) or (vms[0] if vms else None)
+    return str(vm_name) if _require(vm_name) else None
+
+
+def _validate_cmd_local(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "vmdk")):
+        raise SystemExit("cmd=local: missing required `vmdk:` (YAML) or CLI override --vmdk")
+
+
+def _validate_cmd_fetch_and_fix(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "host")):
+        raise SystemExit("cmd=fetch-and-fix: missing required `host:` (YAML) or CLI --host")
+    if not _require(_merged_get(args, conf, "remote")):
+        raise SystemExit("cmd=fetch-and-fix: missing required `remote:` (YAML) or CLI --remote")
+
+
+def _validate_cmd_ova(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "ova")):
+        raise SystemExit("cmd=ova: missing required `ova:` (YAML) or CLI --ova")
+
+
+def _validate_cmd_ovf(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "ovf")):
+        raise SystemExit("cmd=ovf: missing required `ovf:` (YAML) or CLI --ovf")
+
+
+def _validate_cmd_vhd(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "vhd")):
+        raise SystemExit("cmd=vhd: missing required `vhd:` (YAML) or CLI --vhd")
+
+
+def _validate_cmd_ami(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "ami")):
+        raise SystemExit("cmd=ami: missing required `ami:` (YAML) or CLI --ami")
+
+
+def _validate_cmd_live_fix(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    if not _require(_merged_get(args, conf, "host")):
+        raise SystemExit("cmd=live-fix: missing required `host:` (YAML) or CLI --host")
+
+
+def _validate_vsphere_identity(args: argparse.Namespace, conf: Dict[str, Any]) -> Tuple[str, str, str]:
+    vcenter = _merged_get(args, conf, "vcenter")
+    vc_user = _merged_get(args, conf, "vc_user")
+    vc_password = _merged_secret(args, conf, "vc_password", "vc_password_env")
+
+    if not _require(vcenter):
+        raise SystemExit("cmd=vsphere: missing required `vcenter:` (YAML) or CLI --vcenter")
+    if not _require(vc_user):
+        raise SystemExit("cmd=vsphere: missing required `vc_user:` (YAML) or CLI --vc-user")
+    if not _require(vc_password):
+        raise SystemExit("cmd=vsphere: missing vCenter password. Set `vc_password:` or `vc_password_env:` (or CLI equivalents).")
+
+    return str(vcenter), str(vc_user), str(vc_password)
+
+
+def _validate_vsphere_control_plane(args: argparse.Namespace, conf: Dict[str, Any], vcenter: str, vc_user: str, vc_password: str) -> None:
+    vs_cp = _merged_get(args, conf, "vs_control_plane")
+    if not _require(vs_cp):
+        vs_cp = conf.get("vs_control_plane", None) or "govc"
+    vs_cp = str(vs_cp).strip().lower()
+
+    govc_url = _merged_get(args, conf, "govc_url")
+    govc_user = _merged_get(args, conf, "govc_user") or vc_user
+    govc_password = _merged_secret(args, conf, "govc_password", "govc_password_env") or vc_password
+
+    if not _require(govc_url) and _require(vcenter):
+        govc_url = f"https://{str(vcenter).strip()}/sdk"
+
+    if vs_cp in ("govc", "auto"):
+        if not _require(govc_url):
+            raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_url:` (or it must be derivable).")
+        if not _require(govc_user):
+            raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_user:` (or `vc_user:`).")
+        if not _require(govc_password):
+            raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_password:`/`govc_password_env:` (or `vc_password:`).")
+
+    elif vs_cp == "pyvmomi":
+        return
+    else:
+        raise SystemExit(f"cmd=vsphere: invalid vs_control_plane={vs_cp!r} (use auto|govc|pyvmomi)")
+
+
+def _validate_vsphere_download_transport(args: argparse.Namespace, conf: Dict[str, Any]) -> str:
+    dl = _merged_get(args, conf, "vs_download_transport")
+    if not _require(dl):
+        dl = conf.get("vs_download_transport", None)
+
+    legacy = conf.get("vs_transport", None)
+    if not _require(dl) and _require(legacy):
+        dl = str(legacy).strip().lower()
+
+    dl = (str(dl).strip().lower() if _require(dl) else "https")
+    if dl == "auto":
+        dl = "https"
+    if dl not in ("https", "http"):
+        raise SystemExit(f"cmd=vsphere: invalid vs_download_transport={dl!r} (use https|http|auto)")
+    return dl
+
+
+def _validate_vsphere_action_requirements(args: argparse.Namespace, conf: Dict[str, Any], act: str) -> None:
+    vm_name = _pick_vsphere_vm_name(args, conf)
+
+    name = conf.get("name", None)
+    if not _require(name):
+        name = getattr(args, "name_vsphere", None)
+
+    label_or_index = conf.get("label_or_index", None)
+    if not _require(label_or_index):
+        label_or_index = getattr(args, "label_or_index", None)
+
+    datastore = conf.get("datastore", None) if _require(conf.get("datastore", None)) else getattr(args, "datastore", None)
+    ds_path = conf.get("ds_path", None) if _require(conf.get("ds_path", None)) else getattr(args, "ds_path", None)
+    local_path = conf.get("local_path", None) if _require(conf.get("local_path", None)) else getattr(args, "local_path", None)
+
+    needs_vm = {
+        "vm_disks",
+        "select_disk",
+        "download_vm_disk",
+        "cbt_sync",
+        "create_snapshot",
+        "enable_cbt",
+        "query_changed_disk_areas",
+        "download_only_vm",
+        "vddk_download_disk",
+        "export_vm",
+        "ovftool_export",
+    }
+    if act in needs_vm and not _require(vm_name):
+        raise SystemExit(f"cmd=vsphere vs_action={act}: missing required `vm_name:` (YAML) or CLI --vm_name (or --vs-vm)")
+
+    if act == "get_vm_by_name" and not _require(name):
+        raise SystemExit("cmd=vsphere vs_action=get_vm_by_name: missing required `name:` (YAML) or CLI --name")
+
+    if act == "select_disk" and not _require(label_or_index):
+        raise SystemExit("cmd=vsphere vs_action=select_disk: missing required `label_or_index:` (YAML) or CLI --label_or_index")
+
+    if act == "download_datastore_file":
+        for k, vv in (("datastore", datastore), ("ds_path", ds_path), ("local_path", local_path)):
+            if not _require(vv):
+                raise SystemExit(f"cmd=vsphere vs_action=download_datastore_file: missing required `{k}:` (YAML) or CLI --{k}")
+
+    if act in ("download_vm_disk", "vddk_download_disk", "cbt_sync"):
+        if not _require(local_path):
+            raise SystemExit(f"cmd=vsphere vs_action={act}: missing required `local_path:` (YAML) or CLI --local_path")
+
+    if act == "download_only_vm":
+        outd = conf.get("vs_output_dir", None)
+        if not _require(outd):
+            outd = getattr(args, "vs_output_dir", None) or getattr(args, "output_dir", None)
+        if not _require(outd):
+            raise SystemExit("cmd=vsphere vs_action=download_only_vm: missing `vs_output_dir:` (or set --output-dir).")
+
+    if act == "query_changed_disk_areas":
+        device_key = conf.get("device_key", None) if _require(conf.get("device_key", None)) else getattr(args, "device_key", None)
+        disk = conf.get("disk", None) if _require(conf.get("disk", None)) else getattr(args, "disk", None)
+        if not (_require(device_key) or _require(disk)):
+            raise SystemExit("cmd=vsphere vs_action=query_changed_disk_areas: must set `device_key:` OR `disk:` in YAML (or CLI overrides).")
+
+    if act == "ovftool_deploy":
+        sp = conf.get("source_path", None)
+        if not _require(sp):
+            sp = getattr(args, "source_path", None)
+        if not _require(sp):
+            raise SystemExit("cmd=vsphere vs_action=ovftool_deploy: missing required `source_path:` (YAML) or CLI --source-path")
+
+
+def _validate_cmd_vsphere(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    vcenter, vc_user, vc_password = _validate_vsphere_identity(args, conf)
+    _validate_vsphere_control_plane(args, conf, vcenter, vc_user, vc_password)
+
+    act = _merged_vs_action(args, conf)
+    if not _require(act):
+        raise SystemExit("cmd=vsphere: missing required `vs_action:` (YAML) or CLI --vs-action")
+    act = str(act).strip()
+
+    _validate_vsphere_download_transport(args, conf)
+    _validate_vsphere_action_requirements(args, conf, act)
+
+
+def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
+    """
+    New-project policy:
+      - No CLI subcommands.
+      - YAML drives the operation (cmd / vs_action), CLI can override.
+    """
+    cmd = _merged_cmd(args, conf)
+    if not _require(cmd):
+        raise SystemExit(
+            "Missing required YAML key: `cmd:` (or `command:`). "
+            "Examples: local, fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, daemon, generate-systemd."
+        )
+
+    # Optional knobs validation (no side effects)
+    _validate_win_net_override_inputs(args, conf)
+    _validate_virtio_config_inputs(args, conf)
+
+    cmd_l = str(cmd).strip().lower()
+
+    validators = {
+        "local": _validate_cmd_local,
+        "fetch-and-fix": _validate_cmd_fetch_and_fix,
+        "ova": _validate_cmd_ova,
+        "ovf": _validate_cmd_ovf,
+        "vhd": _validate_cmd_vhd,
+        "ami": _validate_cmd_ami,
+        "live-fix": _validate_cmd_live_fix,
+        "generate-systemd": lambda _a, _c: None,
+        "daemon": lambda _a, _c: None,
+        "vsphere": _validate_cmd_vsphere,
+    }
+
+    fn = validators.get(cmd_l)
+    if fn is None:
+        raise SystemExit(f"Unknown cmd={cmd!r}. Set YAML `cmd:` to a supported operation.")
+    fn(args, conf)
+
+
+# --------------------------------------------------------------------------------------
+# Materialization (side effects happen AFTER validation)
+# --------------------------------------------------------------------------------------
+
+
+def _resolve_workdir(args: argparse.Namespace, conf: Dict[str, Any]) -> str:
+    out_dir = _merged_get(args, conf, "output_dir") or "./out"
+    wd = getattr(args, "workdir", None) or os.path.join(str(out_dir), "work")
+    os.makedirs(wd, exist_ok=True)
+    return str(wd)
 
 
 def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: Dict[str, Any], logger: Any) -> None:
@@ -780,7 +1034,6 @@ def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: Dict[str
     If user provided inline win_net_json and did NOT provide win_net_override,
     write the JSON to a stable file under workdir, and set args.win_net_override.
     """
-    # If they already provided a file, don't override it.
     p = _merged_get(args, conf, "win_net_override")
     if _require(p):
         return
@@ -793,9 +1046,7 @@ def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: Dict[str
     if not isinstance(parsed, dict):
         raise SystemExit("win_net_json must be a JSON object (top-level dict)")
 
-    out_dir = _merged_get(args, conf, "output_dir") or "./out"
-    wd = getattr(args, "workdir", None) or os.path.join(str(out_dir), "work")
-    os.makedirs(wd, exist_ok=True)
+    wd = _resolve_workdir(args, conf)
     out_path = os.path.join(wd, "win-net-override.json")
 
     try:
@@ -805,7 +1056,6 @@ def _materialize_win_net_json_if_needed(args: argparse.Namespace, conf: Dict[str
     except Exception as e:
         raise SystemExit(f"Failed to write materialized win-net override JSON to {out_path}: {e}")
 
-    # Make downstream consume it like a normal file path.
     setattr(args, "win_net_override", out_path)
 
     try:
@@ -831,9 +1081,7 @@ def _materialize_virtio_config_json_if_needed(args: argparse.Namespace, conf: Di
     if not isinstance(parsed, dict):
         raise SystemExit("virtio_config_json must be a JSON object (top-level dict)")
 
-    out_dir = _merged_get(args, conf, "output_dir") or "./out"
-    wd = getattr(args, "workdir", None) or os.path.join(str(out_dir), "work")
-    os.makedirs(wd, exist_ok=True)
+    wd = _resolve_workdir(args, conf)
     out_path = os.path.join(wd, "virtio-config.json")
 
     try:
@@ -851,197 +1099,26 @@ def _materialize_virtio_config_json_if_needed(args: argparse.Namespace, conf: Di
         pass
 
 
-def validate_args(args: argparse.Namespace, conf: Dict[str, Any]) -> None:
-    """
-    New-project policy:
-      - No CLI subcommands.
-      - YAML drives the operation (cmd / vs_action), CLI can override.
+# --------------------------------------------------------------------------------------
+# Two-phase parse
+# --------------------------------------------------------------------------------------
 
-    Validation uses merged view:
-      - command selection: cmd from (CLI --cmd) else YAML (cmd/command)
-      - required per-cmd keys can come from YAML or CLI overrides
-    """
-    cmd = _merged_cmd(args, conf)
-    if not _require(cmd):
-        raise SystemExit(
-            "Missing required YAML key: `cmd:` (or `command:`). "
-            "Examples: local, fetch-and-fix, ova, ovf, vhd, ami, live-fix, vsphere, daemon, generate-systemd."
-        )
 
-    # Optional knobs validation (no side effects)
-    _validate_win_net_override_inputs(args, conf)
-    _validate_virtio_config_inputs(args, conf)
+def _build_preparser() -> argparse.ArgumentParser:
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", action="append", default=[])
+    pre.add_argument("-v", "--verbose", action="count", default=0)
+    pre.add_argument("--log-file", dest="log_file", default=None)
+    pre.add_argument("--dump-config", action="store_true")
+    pre.add_argument("--dump-args", action="store_true")
+    return pre
 
-    cmd_l = str(cmd).strip().lower()
 
-    if cmd_l == "local":
-        if not _require(_merged_get(args, conf, "vmdk")):
-            raise SystemExit("cmd=local: missing required `vmdk:` (YAML) or CLI override --vmdk")
-
-    elif cmd_l == "fetch-and-fix":
-        if not _require(_merged_get(args, conf, "host")):
-            raise SystemExit("cmd=fetch-and-fix: missing required `host:` (YAML) or CLI --host")
-        if not _require(_merged_get(args, conf, "remote")):
-            raise SystemExit("cmd=fetch-and-fix: missing required `remote:` (YAML) or CLI --remote")
-
-    elif cmd_l == "ova":
-        if not _require(_merged_get(args, conf, "ova")):
-            raise SystemExit("cmd=ova: missing required `ova:` (YAML) or CLI --ova")
-
-    elif cmd_l == "ovf":
-        if not _require(_merged_get(args, conf, "ovf")):
-            raise SystemExit("cmd=ovf: missing required `ovf:` (YAML) or CLI --ovf")
-
-    elif cmd_l == "vhd":
-        if not _require(_merged_get(args, conf, "vhd")):
-            raise SystemExit("cmd=vhd: missing required `vhd:` (YAML) or CLI --vhd")
-
-    elif cmd_l == "ami":
-        if not _require(_merged_get(args, conf, "ami")):
-            raise SystemExit("cmd=ami: missing required `ami:` (YAML) or CLI --ami")
-
-    elif cmd_l == "live-fix":
-        if not _require(_merged_get(args, conf, "host")):
-            raise SystemExit("cmd=live-fix: missing required `host:` (YAML) or CLI --host")
-
-    elif cmd_l == "generate-systemd":
-        pass
-
-    elif cmd_l == "daemon":
-        pass
-
-    elif cmd_l == "vsphere":
-        # Core identity
-        vcenter = _merged_get(args, conf, "vcenter")
-        vc_user = _merged_get(args, conf, "vc_user")
-        vc_password = _merged_secret(args, conf, "vc_password", "vc_password_env")
-
-        if not _require(vcenter):
-            raise SystemExit("cmd=vsphere: missing required `vcenter:` (YAML) or CLI --vcenter")
-        if not _require(vc_user):
-            raise SystemExit("cmd=vsphere: missing required `vc_user:` (YAML) or CLI --vc-user")
-        if not _require(vc_password):
-            raise SystemExit("cmd=vsphere: missing vCenter password. Set `vc_password:` or `vc_password_env:` (or CLI equivalents).")
-
-        # Control-plane selection (auto/govc/pyvmomi)
-        vs_cp = _merged_get(args, conf, "vs_control_plane")
-        if not _require(vs_cp):
-            vs_cp = conf.get("vs_control_plane", None) or "govc"
-        vs_cp = str(vs_cp).strip().lower()
-
-        # govc derived identity (required for govc backend; also used for auto since auto prefers govc)
-        govc_url = _merged_get(args, conf, "govc_url")
-        govc_user = _merged_get(args, conf, "govc_user") or vc_user
-        govc_password = _merged_secret(args, conf, "govc_password", "govc_password_env") or vc_password
-
-        if not _require(govc_url) and _require(vcenter):
-            govc_url = f"https://{str(vcenter).strip()}/sdk"
-
-        if vs_cp in ("govc", "auto"):
-            if not _require(govc_url):
-                raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_url:` (or it must be derivable).")
-            if not _require(govc_user):
-                raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_user:` (or `vc_user:`).")
-            if not _require(govc_password):
-                raise SystemExit("cmd=vsphere: vs_control_plane requires `govc_password:`/`govc_password_env:` (or `vc_password:`).")
-
-        elif vs_cp == "pyvmomi":
-            pass
-        else:
-            raise SystemExit(f"cmd=vsphere: invalid vs_control_plane={vs_cp!r} (use auto|govc|pyvmomi)")
-
-        act = _merged_vs_action(args, conf)
-        if not _require(act):
-            raise SystemExit("cmd=vsphere: missing required `vs_action:` (YAML) or CLI --vs-action")
-        act = str(act).strip()
-
-        # download-only transport: HTTP/HTTPS only
-        dl = _merged_get(args, conf, "vs_download_transport")
-        if not _require(dl):
-            dl = conf.get("vs_download_transport", None)
-
-        legacy = conf.get("vs_transport", None)
-        if not _require(dl) and _require(legacy):
-            dl = str(legacy).strip().lower()
-
-        dl = (str(dl).strip().lower() if _require(dl) else "https")
-        if dl == "auto":
-            dl = "https"
-        if dl not in ("https", "http"):
-            raise SystemExit(f"cmd=vsphere: invalid vs_download_transport={dl!r} (use https|http|auto)")
-
-        # Action-specific args
-        vm_name = conf.get("vm_name", None)
-        if not _require(vm_name):
-            vm_name = getattr(args, "vm_name_vsphere", None)
-        if not _require(vm_name):
-            vm_name = getattr(args, "vs_vm", None) or (getattr(args, "vs_vms", None)[0] if getattr(args, "vs_vms", None) else None)
-
-        name = conf.get("name", None)
-        if not _require(name):
-            name = getattr(args, "name_vsphere", None)
-
-        label_or_index = conf.get("label_or_index", None)
-        if not _require(label_or_index):
-            label_or_index = getattr(args, "label_or_index", None)
-
-        datastore = conf.get("datastore", None) if _require(conf.get("datastore", None)) else getattr(args, "datastore", None)
-        ds_path = conf.get("ds_path", None) if _require(conf.get("ds_path", None)) else getattr(args, "ds_path", None)
-        local_path = conf.get("local_path", None) if _require(conf.get("local_path", None)) else getattr(args, "local_path", None)
-
-        needs_vm = {
-            "vm_disks",
-            "select_disk",
-            "download_vm_disk",
-            "cbt_sync",
-            "create_snapshot",
-            "enable_cbt",
-            "query_changed_disk_areas",
-            "download_only_vm",
-            "vddk_download_disk",
-            "export_vm",
-            "ovftool_export",
-        }
-        if act in needs_vm and not _require(vm_name):
-            raise SystemExit(f"cmd=vsphere vs_action={act}: missing required `vm_name:` (YAML) or CLI --vm_name (or --vs-vm)")
-
-        if act == "get_vm_by_name" and not _require(name):
-            raise SystemExit("cmd=vsphere vs_action=get_vm_by_name: missing required `name:` (YAML) or CLI --name")
-
-        if act == "select_disk" and not _require(label_or_index):
-            raise SystemExit("cmd=vsphere vs_action=select_disk: missing required `label_or_index:` (YAML) or CLI --label_or_index")
-
-        if act == "download_datastore_file":
-            for k, vv in (("datastore", datastore), ("ds_path", ds_path), ("local_path", local_path)):
-                if not _require(vv):
-                    raise SystemExit(f"cmd=vsphere vs_action=download_datastore_file: missing required `{k}:` (YAML) or CLI --{k}")
-
-        if act in ("download_vm_disk", "vddk_download_disk", "cbt_sync"):
-            if not _require(local_path):
-                raise SystemExit(f"cmd=vsphere vs_action={act}: missing required `local_path:` (YAML) or CLI --local_path")
-
-        if act == "download_only_vm":
-            outd = conf.get("vs_output_dir", None)
-            if not _require(outd):
-                outd = getattr(args, "vs_output_dir", None) or getattr(args, "output_dir", None)
-            if not _require(outd):
-                raise SystemExit("cmd=vsphere vs_action=download_only_vm: missing `vs_output_dir:` (or set --output-dir).")
-
-        if act == "query_changed_disk_areas":
-            device_key = conf.get("device_key", None) if _require(conf.get("device_key", None)) else getattr(args, "device_key", None)
-            disk = conf.get("disk", None) if _require(conf.get("disk", None)) else getattr(args, "disk", None)
-            if not (_require(device_key) or _require(disk)):
-                raise SystemExit("cmd=vsphere vs_action=query_changed_disk_areas: must set `device_key:` OR `disk:` in YAML (or CLI overrides).")
-
-        if act == "ovftool_deploy":
-            sp = conf.get("source_path", None)
-            if not _require(sp):
-                sp = getattr(args, "source_path", None)
-            if not _require(sp):
-                raise SystemExit("cmd=vsphere vs_action=ovftool_deploy: missing required `source_path:` (YAML) or CLI --source-path")
-
-    else:
-        raise SystemExit(f"Unknown cmd={cmd!r}. Set YAML `cmd:` to a supported operation.")
+def _load_merged_config(logger: Any, cfgs: Sequence[str]) -> Dict[str, Any]:
+    if not cfgs:
+        return {}
+    expanded = Config.expand_configs(logger, list(cfgs))
+    return Config.load_many(logger, expanded)
 
 
 def parse_args_with_config(
@@ -1070,13 +1147,7 @@ def parse_args_with_config(
 
     parser = build_parser()
 
-    # Phase 0: pre-parser (must not depend on any "required" semantics)
-    pre = argparse.ArgumentParser(add_help=False)
-    pre.add_argument("--config", action="append", default=[])
-    pre.add_argument("-v", "--verbose", action="count", default=0)
-    pre.add_argument("--log-file", dest="log_file", default=None)
-    pre.add_argument("--dump-config", action="store_true")
-    pre.add_argument("--dump-args", action="store_true")
+    pre = _build_preparser()
     args0, _rest = pre.parse_known_args(argv)
 
     if logger is None:
@@ -1084,11 +1155,7 @@ def parse_args_with_config(
 
         logger = Log.setup(getattr(args0, "verbose", 0), getattr(args0, "log_file", None))
 
-    conf: Dict[str, Any] = {}
-    cfgs = getattr(args0, "config", None) or []
-    if cfgs:
-        cfgs = Config.expand_configs(logger, list(cfgs))
-        conf = Config.load_many(logger, cfgs)
+    conf = _load_merged_config(logger, getattr(args0, "config", None) or [])
 
     if getattr(args0, "dump_config", False):
         print(U.json_dump(conf))
