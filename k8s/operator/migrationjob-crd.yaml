@@ -220,6 +220,119 @@ spec:
                       type: string
                       enum: ["pod", "masquerade", "bridge"]
                       default: "masquerade"
+                    evictionStrategy:
+                      type: string
+                      enum: ["None", "LiveMigrate", "LiveMigrateIfPossible", "External"]
+                      default: "LiveMigrate"
+                      description: Strategy for handling node evictions
+                    migrationPolicyRef:
+                      type: string
+                      description: Reference to MigrationPolicy CR name
+                    firmware:
+                      type: object
+                      description: Firmware configuration for VM
+                      properties:
+                        bootloader:
+                          type: string
+                          enum: ["bios", "uefi", "uefi-secure"]
+                          default: "bios"
+                          description: Bootloader type
+                        secureBoot:
+                          type: boolean
+                          default: false
+                          description: Enable UEFI secure boot
+                    cpuConfig:
+                      type: object
+                      description: Advanced CPU configuration
+                      properties:
+                        cores:
+                          type: integer
+                          minimum: 1
+                          default: 1
+                          description: Number of cores per socket
+                        sockets:
+                          type: integer
+                          minimum: 1
+                          default: 1
+                          description: Number of CPU sockets
+                        threads:
+                          type: integer
+                          minimum: 1
+                          default: 1
+                          description: Number of threads per core
+                        dedicatedCpuPlacement:
+                          type: boolean
+                          default: false
+                          description: Request dedicated CPU placement
+                        features:
+                          type: array
+                          description: CPU features to enable
+                          items:
+                            type: string
+                    resources:
+                      type: object
+                      description: Resource requests and limits
+                      properties:
+                        requests:
+                          type: object
+                          properties:
+                            cpu:
+                              type: string
+                            memory:
+                              type: string
+                        limits:
+                          type: object
+                          properties:
+                            cpu:
+                              type: string
+                            memory:
+                              type: string
+                    disks:
+                      type: array
+                      description: Multiple disks for VM (beyond root disk)
+                      items:
+                        type: object
+                        required:
+                          - name
+                          - pvcName
+                        properties:
+                          name:
+                            type: string
+                            description: Disk name
+                          pvcName:
+                            type: string
+                            description: PVC name for this disk
+                          bootOrder:
+                            type: integer
+                            minimum: 1
+                            description: Boot order (1 = first)
+                          bus:
+                            type: string
+                            enum: ["virtio", "sata", "scsi"]
+                            default: "virtio"
+                            description: Disk bus type
+                    interfaces:
+                      type: array
+                      description: Network interfaces for VM
+                      items:
+                        type: object
+                        required:
+                          - name
+                          - type
+                        properties:
+                          name:
+                            type: string
+                            description: Interface name
+                          type:
+                            type: string
+                            enum: ["masquerade", "bridge", "sriov"]
+                            description: Interface type
+                          networkName:
+                            type: string
+                            description: Network attachment definition name
+                          macAddress:
+                            type: string
+                            description: MAC address for interface
                 cleanupPolicy:
                   type: string
                   enum: ["Always", "OnSuccess", "Never"]
@@ -368,6 +481,47 @@ spec:
                             type: string
                           error:
                             type: string
+                liveMigration:
+                  type: object
+                  description: Live migration status (KubeVirt VM migration)
+                  properties:
+                    vmimName:
+                      type: string
+                      description: VirtualMachineInstanceMigration resource name
+                    phase:
+                      type: string
+                      enum: ["Pending", "Scheduling", "Running", "Succeeded", "Failed"]
+                      description: Live migration phase
+                    progress:
+                      type: object
+                      description: Live migration progress details
+                      properties:
+                        dataTransferred:
+                          type: string
+                          description: Amount of data transferred
+                        dataRemaining:
+                          type: string
+                          description: Amount of data remaining
+                        dirtyRate:
+                          type: string
+                          description: Memory dirty rate
+                        bandwidth:
+                          type: string
+                          description: Current migration bandwidth
+                    postCopyActive:
+                      type: boolean
+                      description: Whether post-copy is active
+                    autoConvergeActive:
+                      type: boolean
+                      description: Whether auto-converge is active
+                    startTime:
+                      type: string
+                      format: date-time
+                      description: Migration start time
+                    endTime:
+                      type: string
+                      format: date-time
+                      description: Migration end time
       subresources:
         status: {}
       additionalPrinterColumns:
