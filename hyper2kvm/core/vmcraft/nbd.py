@@ -475,6 +475,95 @@ class NBDDeviceManager:
 
         return False
 
+    def _validate_image(self, image_path: Path) -> dict[str, any]:
+        """
+        Validate disk image integrity with qemu-img before attempting connection.
+
+        Uses qemu-img check and qemu-img info to:
+        1. Detect image corruption early (before NBD connection)
+        2. Extract metadata (format, virtual size, backing files)
+        3. Provide better error messages for invalid images
+
+        Args:
+            image_path: Path to disk image
+
+        Returns:
+            Image metadata dict from qemu-img info
+
+        Raises:
+            RuntimeError: If image is corrupted or invalid
+        """
+        try:
+            # Step 1: Check image integrity
+            self.logger.debug(f"Validating image integrity: {image_path.name}")
+            check_result = run_sudo(
+                self.logger,
+                ["qemu-img", "check", str(image_path)],
+                check=False,  # Don't raise on non-zero (some warnings are OK)
+                capture=True,
+                failure_log_level=logging.DEBUG
+            )
+
+            # Parse qemu-img check output for critical errors
+            # Exit code 0 = no errors, 1 = errors found, 2 = check not supported, 3 = invalid image
+            if check_result.returncode == 3:
+                raise RuntimeError(
+                    f"Image validation failed: {image_path.name}\n"
+                    f"qemu-img cannot recognize this image format.\n"
+                    f"Output: {check_result.stdout}"
+                )
+            elif check_result.returncode == 1:
+                # Check if errors are critical
+                stdout_lower = check_result.stdout.lower()
+                if "leaked clusters" in stdout_lower or "corruptions" in stdout_lower:
+                    self.logger.warning(
+                        f"Image has corruption/leaks: {image_path.name}\n"
+                        f"qemu-img check output: {check_result.stdout}\n"
+                        f"Attempting to proceed anyway (may fail during mount)"
+                    )
+
+            # Step 2: Get image metadata
+            self.logger.debug(f"Extracting image metadata: {image_path.name}")
+            info_result = run_sudo(
+                self.logger,
+                ["qemu-img", "info", "--output=json", str(image_path)],
+                check=True,
+                capture=True
+            )
+
+            metadata = json.loads(info_result.stdout)
+
+            # Log useful metadata
+            virtual_size_gb = metadata.get('virtual-size', 0) / (1024**3)
+            actual_size_gb = metadata.get('actual-size', 0) / (1024**3)
+            format_name = metadata.get('format', 'unknown')
+
+            self.logger.info(
+                f"✓ Image validated: {format_name} "
+                f"(virtual: {virtual_size_gb:.2f} GiB, actual: {actual_size_gb:.2f} GiB)"
+            )
+
+            # Warn about backing files (snapshots/linked clones)
+            if 'backing-filename' in metadata:
+                backing = metadata['backing-filename']
+                self.logger.warning(
+                    f"Image has backing file: {backing}\n"
+                    f"This is a snapshot or linked clone. Ensure backing file is accessible."
+                )
+
+            return metadata
+
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                f"Failed to parse qemu-img info output for {image_path.name}: {e}"
+            ) from None
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(
+                f"qemu-img failed to read image {image_path.name}:\n{e.stdout}"
+            ) from None
+        except Exception as e:
+            raise RuntimeError(f"Image validation failed for {image_path.name}: {e}") from None
+
     @retry_with_backoff(
         max_attempts=3,
         base_backoff_s=2.0,
@@ -517,6 +606,9 @@ class NBDDeviceManager:
         image_path = Path(image_path).resolve()
         if not image_path.exists():
             raise FileNotFoundError(f"Disk image not found: {image_path}")
+
+        # Validate image integrity before attempting connection
+        self._validate_image(image_path)
 
         readonly = readonly if readonly is not None else self.readonly
 
