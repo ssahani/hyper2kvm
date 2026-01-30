@@ -8,7 +8,6 @@
   - [Linux](#linux)
   - [macOS](#macos)
   - [Windows (WSL)](#windows-wsl)
-- [Verify Installation](#verify-libguestfs-works-do-this-once)
 - [Running](#running)
 - [Developer Install](#developer-install)
 
@@ -77,14 +76,15 @@ For detailed installation instructions and troubleshooting, see [completions/REA
 
 ### System dependencies by OS
 
-`hyper2kvm` is Python, but it **drives real system tools**. You typically need:
+`hyper2kvm` is Python with a pure Python VMCraft engine for VM manipulation. You need:
 
 * `qemu-img` (from qemu) - Required for disk conversion
-* `libguestfs` + tools - Required for offline inspection/editing
 * `libvirt` - Only if you use `--libvirt-test`
 * `openssh-client` / `scp` - For `fetch-and-fix` and `live-fix`
 * optional: `pyvmomi` + `requests` - For `vsphere` downloads/actions
 * optional: `watchdog` - For daemon watch mode
+
+**Note:** hyper2kvm uses the native **VMCraft engine** (pure Python, no C dependencies). No external C dependencies required.
 
 ---
 
@@ -96,13 +96,9 @@ For detailed installation instructions and troubleshooting, see [completions/REA
 sudo dnf install -y \
   python3 python3-pip python3-virtualenv \
   qemu-img qemu-kvm \
-  libguestfs libguestfs-tools libguestfs-xfs \
   openssh-clients rsync \
   libvirt-client libvirt-daemon-kvm
-
-# For libguestfs on Fedora/RHEL: "libguestfs-test-tool" is handy
-sudo dnf install -y libguestfs-test-tool
-```bash
+```
 
 #### Ubuntu / Debian
 
@@ -111,10 +107,9 @@ sudo apt-get update
 sudo apt-get install -y \
   python3 python3-pip python3-venv \
   qemu-utils \
-  libguestfs-tools \
   openssh-client rsync \
   libvirt-clients libvirt-daemon-system qemu-system-x86
-```bash
+```
 
 #### openSUSE / SLES
 
@@ -122,10 +117,9 @@ sudo apt-get install -y \
 sudo zypper install -y \
   python3 python3-pip python3-virtualenv \
   qemu-tools \
-  libguestfs libguestfs-tools \
   openssh rsync \
   libvirt-client libvirt-daemon-qemu
-```bash
+```
 
 #### Arch Linux / Manjaro
 
@@ -133,13 +127,12 @@ sudo zypper install -y \
 sudo pacman -Syu --noconfirm \
   python python-pip python-virtualenv \
   qemu-img qemu-system-x86 \
-  libguestfs \
   openssh rsync \
   libvirt virt-manager
 
 # Enable and start libvirtd service
 sudo systemctl enable --now libvirtd
-```bash
+```
 
 #### Alpine Linux
 
@@ -148,7 +141,6 @@ sudo systemctl enable --now libvirtd
 sudo apk add --no-cache \
   python3 py3-pip py3-virtualenv \
   qemu-img qemu-system-x86_64 \
-  libguestfs libguestfs-tools \
   openssh-client rsync \
   libvirt libvirt-daemon libvirt-client
 
@@ -161,9 +153,9 @@ sudo rc-update add libvirtd
 
 ## macOS
 
-macOS support is **experimental** due to limitations with libguestfs. You can use it for some operations, but full functionality requires a Linux environment.
+macOS support works with the VMCraft engine. For best performance, use Docker option below for full Linux environment.
 
-### Option 1: Using Homebrew (Limited functionality)
+### Option 1: Using Homebrew
 
 ```bash
 # Install Homebrew if not already installed
@@ -179,11 +171,11 @@ pip install -r requirements.txt
 pip install -e .
 ```bash
 
-**Note:** libguestfs is **not available** on macOS. You can use qemu-img for conversions, but offline inspection/fixing won't work.
+**Note:** macOS support works with VMCraft engine. Docker option below provides full Linux environment.
 
 ### Option 2: Using Docker (Recommended for macOS)
 
-Run hyper2kvm in a Linux container with full libguestfs support:
+Run hyper2kvm in a Linux container:
 
 ```bash
 # Build container
@@ -236,7 +228,6 @@ sudo apt-get update
 sudo apt-get install -y \
   python3 python3-pip python3-venv \
   qemu-utils qemu-system-x86 \
-  libguestfs-tools \
   openssh-client rsync \
   libvirt-clients libvirt-daemon-system
 
@@ -253,7 +244,6 @@ pip install -e .
 ### Known WSL2 Limitations
 
 - **KVM acceleration** may not work (depends on Windows version and CPU)
-- **libguestfs** might have issues with nested virtualization
 - File I/O between Windows and WSL2 can be slow
 - Use `/mnt/c/` to access Windows drives
 
@@ -269,18 +259,6 @@ docker run -it --rm --privileged `
 
 ---
 
-### Verify libguestfs works (do this once)
-
-If `libguestfs` can’t launch its appliance, everything else becomes sadness.
-
-```bash
-sudo libguestfs-test-tool
-```bash
-
-If that fails, it's usually KVM permissions, missing kernel modules, or a broken appliance setup.
-
----
-
 ## Container/Alternative Installation Methods
 
 ### Using Docker
@@ -293,7 +271,6 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-venv \
     qemu-utils qemu-system-x86 \
-    libguestfs-tools python3-guestfs \
     openssh-client rsync \
     libvirt-clients libvirt-daemon-system \
     git && \
@@ -358,53 +335,6 @@ deactivate
 
 ## Troubleshooting Installation
 
-### libguestfs fails with "permission denied"
-
-**Problem:** libguestfs can't access KVM.
-
-**Solution:**
-```bash
-# Add your user to kvm and libvirt groups
-sudo usermod -a -G kvm,libvirt $USER
-
-# Log out and back in, or:
-newgrp kvm
-
-# Verify permissions
-ls -l /dev/kvm
-# Should show: crw-rw----+ 1 root kvm
-
-# Test again
-sudo libguestfs-test-tool
-```bash
-
-### "could not access KVM kernel module"
-
-**Problem:** KVM kernel module not loaded.
-
-**Solution:**
-```bash
-# Check if KVM is available
-lsmod | grep kvm
-
-# Load KVM modules (Intel)
-sudo modprobe kvm_intel
-
-# Or for AMD
-sudo modprobe kvm_amd
-
-# Make permanent
-echo "kvm_intel" | sudo tee -a /etc/modules
-# or
-echo "kvm_amd" | sudo tee -a /etc/modules
-```bash
-
-### "No matching distribution found for libguestfs"
-
-**Problem:** Trying to install libguestfs via pip.
-
-**Solution:** libguestfs is a **system package**, not a Python package. Install it using your OS package manager (apt, dnf, zypper, pacman) as shown in the sections above. Then use `python3-guestfs` if available.
-
 ### "qemu-img: command not found"
 
 **Problem:** QEMU not installed or not in PATH.
@@ -441,19 +371,7 @@ sudo apt-get install python3.12 python3.12-venv
 
 # Then use python3.12 explicitly
 python3.12 -m venv .venv
-```bash
-
-### SELinux blocks libguestfs (Fedora/RHEL)
-
-**Problem:** SELinux denies libguestfs operations.
-
-**Solution:**
-```bash
-# Temporary: Set SELinux to permissive
-sudo setenforce 0
-
-# Run your command
-sudo python -m hyper2kvm ...
+```
 
 # Re-enable SELinux
 sudo setenforce 1

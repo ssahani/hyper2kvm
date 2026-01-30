@@ -15,12 +15,12 @@ hyper2kvm has two types of dependencies:
 
 These **MUST** be installed via your system package manager before installing Python dependencies.
 
+**Note:** hyper2kvm uses the **VMCraft engine** (pure Python) for VM manipulation. Native VMCraft engine - no C dependencies.
+
 ### Required System Packages
 
 | Package | Purpose |
 |---------|---------|
-| `libguestfs-tools` | Guest filesystem access and modification |
-| `python3-guestfs` | Python bindings for libguestfs |
 | `qemu-utils` | QEMU disk image utilities (qemu-img) |
 | `qemu-system-x86` | QEMU virtualization for testing |
 | `libvirt-daemon-system` | LibVirt virtualization management |
@@ -34,9 +34,6 @@ These **MUST** be installed via your system package manager before installing Py
 sudo dnf install -y \
   python3 \
   python3-pip \
-  python3-guestfs \
-  libguestfs \
-  libguestfs-tools \
   qemu-img \
   qemu-kvm \
   qemu-system-x86 \
@@ -53,8 +50,6 @@ sudo apt-get install -y \
   python3 \
   python3-pip \
   python3-venv \
-  python3-guestfs \
-  libguestfs-tools \
   qemu-utils \
   qemu-system-x86 \
   libvirt-daemon-system \
@@ -68,9 +63,6 @@ sudo zypper install -y \
   python3 \
   python3-pip \
   python3-virtualenv \
-  python3-guestfs \
-  libguestfs \
-  libguestfs-tools \
   qemu-tools \
   qemu-x86 \
   libvirt-daemon-qemu \
@@ -128,19 +120,16 @@ pip install -r requirements-dev.txt
 
 ```bash
 # 1. Install system dependencies first
-sudo apt-get install -y python3-guestfs libguestfs-tools qemu-utils
+sudo apt-get install -y qemu-utils libvirt-clients
 
-# 2. Verify libguestfs works
-sudo libguestfs-test-tool
-
-# 3. Create virtual environment (recommended)
+# 2. Create virtual environment (recommended)
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 4. Install Python dependencies
+# 3. Install Python dependencies
 pip install -r requirements.txt
 
-# 5. Install hyper2kvm
+# 4. Install hyper2kvm
 pip install -e .
 ```
 
@@ -148,61 +137,17 @@ pip install -e .
 
 ## Common Issues
 
-### Issue: "ERROR: No matching distribution found for libguestfs"
+### Issue: "qemu-img: command not found"
 
-**Cause:** `libguestfs` is not a pip package.
+**Cause:** QEMU tools not installed.
 
 **Solution:** Install via system package manager:
 ```bash
 # Ubuntu/Debian
-sudo apt-get install python3-guestfs libguestfs-tools
+sudo apt-get install qemu-utils
 
 # Fedora/RHEL
-sudo dnf install python3-guestfs libguestfs-tools
-```
-
-### Issue: "libguestfs-test-tool failed"
-
-**Cause:** libguestfs appliance not properly configured.
-
-**Solution:**
-```bash
-# Check KVM permissions
-sudo usermod -aG kvm $(whoami)
-# Log out and back in
-
-# Load KVM modules
-sudo modprobe kvm
-sudo modprobe kvm_intel  # or kvm_amd
-
-# Run test again
-sudo libguestfs-test-tool
-```
-
-### Issue: "ImportError: No module named guestfs"
-
-**Cause:** Python guestfs bindings not installed.
-
-**Solution:**
-```bash
-# Ubuntu/Debian
-sudo apt-get install python3-guestfs
-
-# Fedora/RHEL
-sudo dnf install python3-guestfs
-```
-
-**Note:** Do NOT use pip to install guestfs - it must come from system packages.
-
-### Issue: Virtual environment issues with system packages
-
-**Cause:** System packages like `python3-guestfs` are not visible in virtualenv.
-
-**Solution:** Use `--system-site-packages` when creating venv:
-
-```bash
-python3 -m venv --system-site-packages .venv
-source .venv/bin/activate
+sudo dnf install qemu-img
 ```
 
 Or skip virtualenv for system-wide installation:
@@ -223,18 +168,11 @@ After installation, verify everything works:
 # 1. Check system tools
 qemu-img --version
 virsh --version
-guestfish --version
 
-# 2. Check Python can import libguestfs
-python3 -c "import guestfs; print('libguestfs OK')"
-
-# 3. Run libguestfs test
-sudo libguestfs-test-tool
-
-# 4. Check hyper2kvm
+# 2. Check hyper2kvm
 python -m hyper2kvm --help
 
-# 5. Run tests (if dev dependencies installed)
+# 3. Run tests (if dev dependencies installed)
 python -m pytest tests/unit/ -v
 ```
 
@@ -246,7 +184,7 @@ If you only need core functionality without testing:
 
 ```bash
 # System packages
-sudo apt-get install python3-guestfs libguestfs-tools qemu-utils
+sudo apt-get install qemu-utils
 
 # Python packages (minimal)
 pip install rich click PyYAML requests
@@ -268,8 +206,6 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
-    python3-guestfs \
-    libguestfs-tools \
     qemu-utils \
     qemu-system-x86 \
     && rm -rf /var/lib/apt/lists/*
@@ -295,8 +231,6 @@ For GitHub Actions, Travis CI, etc:
   run: |
     sudo apt-get update
     sudo apt-get install -y \
-      python3-guestfs \
-      libguestfs-tools \
       qemu-utils \
       qemu-system-x86
 
@@ -325,10 +259,10 @@ pip install --upgrade pyvmomi
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
-sudo apt-get upgrade libguestfs-tools qemu-utils
+sudo apt-get upgrade qemu-utils
 
 # Fedora/RHEL
-sudo dnf upgrade libguestfs-tools qemu-img
+sudo dnf upgrade qemu-img
 ```
 
 ---
