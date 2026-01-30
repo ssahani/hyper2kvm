@@ -131,11 +131,151 @@ print(xml)
 
 ---
 
+## Auto-Fix Mode
+
+The VMDK Inspector can automatically remediate controller mismatches by injecting virtio drivers into the guest initramfs.
+
+### Standalone CLI Auto-Fix
+
+```bash
+# Detect and fix controller mismatch in one command
+./scripts/vmdk_inspect.py --auto-fix --output fixed.qcow2 disk.vmdk
+
+# Output:
+🔧 Applying automatic fix for controller mismatch...
+   Controller: lsilogic → virtio
+   Action: Injecting virtio drivers into initramfs
+
+📋 Generated fix configuration:
+   /tmp/vmdk-fix-abc123.yaml
+
+✅ Fix applied successfully!
+   Output: fixed.qcow2
+
+   The fixed image has virtio drivers in initramfs.
+   Boot this VM on KVM - it will use virtio-blk/virtio-scsi controllers.
+```
+
+### YAML Config Auto-Fix
+
+Enable automatic controller remediation in your migration config:
+
+```yaml
+cmd: local
+vmdk: /path/to/vm-with-lsilogic.vmdk
+output_dir: ./output
+to_output: vm-fixed.qcow2
+
+# Enable automatic controller fix
+vmdk_auto_fix_controller: true
+
+# These are enabled automatically when controller mismatch detected:
+# regen_initramfs: true  (auto-enabled)
+# initramfs_add_drivers: [virtio, virtio_blk, virtio_scsi, virtio_net, virtio_pci]  (auto-added)
+
+verbose: 2
+```
+
+When `vmdk_auto_fix_controller: true` is set:
+1. VMDK Inspector detects controller mismatch (LSI Logic, IDE, etc.)
+2. Pipeline automatically enables initramfs rebuild
+3. Virtio drivers are injected into guest initramfs
+4. Result: VM boots successfully on KVM with virtio controllers
+
+### Supported Auto-Fix Scenarios
+
+✅ **Can Auto-Fix:**
+- LSI Logic → virtio
+- LSI Logic SAS → virtio
+- IDE → virtio
+- SATA → virtio
+- Any non-virtio controller where KVM driver exists
+
+❌ **Cannot Auto-Fix:**
+- BusLogic → No KVM driver (FATAL - must change in VMware first)
+- Snapshot chains → Must consolidate snapshots
+- Missing extent files → Must re-export from VMware
+
+### Custom Drivers with Auto-Fix
+
+Specify additional drivers beyond the defaults:
+
+```yaml
+cmd: local
+vmdk: /path/to/vm.vmdk
+to_output: vm-custom.qcow2
+
+# Enable auto-fix
+vmdk_auto_fix_controller: true
+
+# Add custom drivers (replaces defaults)
+initramfs_add_drivers:
+  - virtio
+  - virtio_blk
+  - virtio_scsi
+  - virtio_net
+  - virtio_pci
+  - e1000e        # Intel NIC
+  - nvme          # NVMe storage
+  - megaraid_sas  # RAID controller
+```
+
+### Batch Auto-Fix
+
+Fix multiple VMs with controller mismatches:
+
+```yaml
+cmd: local
+parallel_processing: true
+
+# Apply auto-fix to all VMs
+vmdk_auto_fix_controller: true
+
+vms:
+  - vmdk: /data/vm1-lsilogic.vmdk
+    to_output: vm1-fixed.qcow2
+  - vmdk: /data/vm2-ide.vmdk
+    to_output: vm2-fixed.qcow2
+  - vmdk: /data/vm3-virtio.vmdk
+    to_output: vm3.qcow2  # No fix needed
+
+output_dir: ./batch-output
+```
+
+### See Also
+
+- [Complete Auto-Fix Example Config](../../examples/vmdk-auto-fix-controller.yaml)
+- [Initramfs Drivers Examples](../../test-confs/96-linux-initramfs-drivers-examples.yaml)
+
+---
+
+## Inventory Mode (--no-fail)
+
+For fleet-wide VMDK scanning without early exit:
+
+```bash
+# Scan all VMDKs, never fail (even with FATAL risks)
+./scripts/vmdk_inspect.py --no-fail --json "/vmfs/volumes/*/*.vmdk" > fleet-report.json
+
+# Exit code: 0 ✅ (complete scan regardless of risks)
+
+# Filter problematic VMs
+jq '.[] | select(.risks[].level == "FATAL")' fleet-report.json
+```
+
+Use cases:
+- **Discovery**: Catalog all VMs in ESXi datastore
+- **Audit**: Generate migration compatibility reports
+- **Planning**: Identify which VMs need manual intervention
+- **CI/CD**: Collect findings without pipeline failure
+
+---
+
 ## Exit Codes (CLI)
 
 | Code | Meaning |
 |------|---------|
-| `0` | No issues or only INFO/MEDIUM |
+| `0` | No issues or only INFO/MEDIUM (or --no-fail mode) |
 | `2` | HIGH risk detected |
 | `3` | FATAL risk detected |
 
@@ -143,13 +283,23 @@ Use in scripts:
 
 ```bash
 #!/bin/bash
+# Option 1: Fail on risks (default)
 if ! ./scripts/vmdk_inspect.py disk.vmdk; then
     echo "Pre-migration validation failed!"
     exit 1
 fi
 
-# Proceed with migration
-hyper2kvm --config migration.yaml
+# Option 2: Auto-fix controller mismatches
+if ./scripts/vmdk_inspect.py disk.vmdk 2>&1 | grep -q "Controller.*mismatch"; then
+    echo "Controller mismatch detected - applying auto-fix"
+    ./scripts/vmdk_inspect.py --auto-fix --output fixed.qcow2 disk.vmdk
+else
+    echo "No fix needed - direct conversion"
+    hyper2kvm --config migration.yaml
+fi
+
+# Option 3: Inventory mode (never fail)
+./scripts/vmdk_inspect.py --no-fail --json "*.vmdk" > inventory.json
 ```
 
 ---

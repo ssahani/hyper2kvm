@@ -379,11 +379,36 @@ class DiskProcessor:
             high_risks = [r for r in result.risks if r.level == RiskLevel.HIGH]
             self.logger.warning("")
             self.logger.warning(f"⚠️  {len(high_risks)} HIGH risk(s) detected - migration may require manual fixes")
+
+            # Check for controller mismatch
+            has_controller_mismatch = False
             for risk in high_risks:
-                if "controller" in risk.message.lower() and "mismatch" in risk.message.lower():
+                if "controller" in risk.message.lower() and ("mismatch" in risk.message.lower() or "initramfs" in risk.message.lower()):
+                    has_controller_mismatch = True
                     self.logger.warning("   → hyper2kvm will rebuild initramfs with virtio drivers")
                 elif "uefi" in risk.message.lower():
                     self.logger.warning("   → Use OVMF firmware in libvirt (not SeaBIOS)")
+
+            # Auto-fix controller mismatch if enabled
+            if has_controller_mismatch and getattr(self.args, "vmdk_auto_fix_controller", False):
+                self.logger.info("")
+                self.logger.info("🔧 Auto-fix enabled: Injecting virtio drivers into initramfs")
+
+                # Ensure regen_initramfs is enabled
+                if not getattr(self.args, "regen_initramfs", True):
+                    self.logger.info("   Enabling regen_initramfs for controller fix")
+                    self.args.regen_initramfs = True
+
+                # Add virtio drivers if not already specified
+                if not hasattr(self.args, "initramfs_add_drivers") or not self.args.initramfs_add_drivers:
+                    virtio_drivers = ["virtio", "virtio_blk", "virtio_scsi", "virtio_net", "virtio_pci"]
+                    self.args.initramfs_add_drivers = virtio_drivers
+                    self.logger.info(f"   Adding drivers: {', '.join(virtio_drivers)}")
+                else:
+                    self.logger.info(f"   Using custom drivers: {self.args.initramfs_add_drivers}")
+
+                self.logger.info("")
+
             self.logger.warning("")
 
         return result
