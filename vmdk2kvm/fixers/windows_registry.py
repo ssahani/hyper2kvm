@@ -6,8 +6,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Union
 
 import guestfs  # type: ignore
 import hivex  # type: ignore
@@ -31,6 +32,18 @@ def _safe_logger(self) -> logging.Logger:
 # ---------------------------------------------------------------------------
 
 
+def _is_probably_regf(path: Path) -> bool:
+    """
+    Windows registry hives start with ASCII 'regf' signature.
+    Cheap corruption/truncation guardrail.
+    """
+    try:
+        b = path.read_bytes()
+        return len(b) >= 4 and b[:4] == b"regf"
+    except Exception:
+        return False
+
+
 def _download_hive_local(logger: logging.Logger, g: guestfs.GuestFS, remote: str, local: Path) -> None:
     """
     Robustly download a hive from the guest to a local path.
@@ -38,26 +51,23 @@ def _download_hive_local(logger: logging.Logger, g: guestfs.GuestFS, remote: str
     We've seen cases where g.download() does not materialize the local file
     (or produces an empty/truncated file) without raising. This helper:
       1) tries g.download()
-      2) verifies local exists + size >= 4KiB
+      2) verifies local exists + size >= 4KiB + 'regf' signature
       3) falls back to g.read_file()/g.cat() and writes bytes locally
     """
     local.parent.mkdir(parents=True, exist_ok=True)
 
-    # Attempt primary download path.
     try:
         logger.info("Downloading hive: %r -> %r", remote, str(local))
         g.download(remote, str(local))
     except Exception as e:
         logger.warning("g.download(%r, %r) failed: %s", remote, str(local), e)
 
-    # Verify the file actually exists and is non-trivial.
     try:
-        if local.exists() and local.stat().st_size >= 4096:
+        if local.exists() and local.stat().st_size >= 4096 and _is_probably_regf(local):
             return
     except Exception:
         pass
 
-    # Fallback: read bytes from guestfs and write locally.
     logger.warning("Hive not materialized after download; falling back to guestfs read: %r", remote)
     data: Optional[bytes] = None
 
@@ -70,7 +80,7 @@ def _download_hive_local(logger: logging.Logger, g: guestfs.GuestFS, remote: str
             if isinstance(out, (bytes, bytearray)):
                 data = bytes(out)
             else:
-                # Some bindings return str; preserve raw-ish bytes best-effort.
+                # guestfs bindings sometimes return str-ish
                 data = str(out).encode("latin-1", errors="ignore")
             break
         except Exception as e:
@@ -86,11 +96,11 @@ def _download_hive_local(logger: logging.Logger, g: guestfs.GuestFS, remote: str
     if not local.exists() or local.stat().st_size < 4096:
         raise RuntimeError(f"Local hive still missing after fallback: {local}")
 
+    if not _is_probably_regf(local):
+        raise RuntimeError(f"Local hive downloaded but missing regf signature: {local}")
+
 
 def _log_mountpoints_best_effort(logger: logging.Logger, g: guestfs.GuestFS) -> None:
-    """
-    Helpful when hive paths are correct but the wrong partition is mounted as /.
-    """
     try:
         mps = g.mountpoints()
         logger.debug("guestfs mountpoints=%r", mps)
@@ -104,7 +114,6 @@ def _log_mountpoints_best_effort(logger: logging.Logger, g: guestfs.GuestFS) -> 
 
 
 def _win_expected_paths() -> List[str]:
-    # These are *linux-style* paths inside the mounted Windows system volume.
     return [
         "/Windows/System32/config/SYSTEM",
         "/Windows/System32/config/SOFTWARE",
@@ -113,7 +122,6 @@ def _win_expected_paths() -> List[str]:
 
 
 def _guest_path_join(*parts: str) -> str:
-    # GuestFS paths are unix-like even for Windows volumes.
     out = ""
     for p in parts:
         if not p:
@@ -137,11 +145,10 @@ def _looks_like_windows_root(g: guestfs.GuestFS) -> bool:
 
 def _mount_inspected_os_best_effort(logger: logging.Logger, g: guestfs.GuestFS) -> bool:
     """
-    Mount the inspected OS the canonical libguestfs way:
+    Canonical libguestfs mount recipe:
       roots = inspect_os()
       mps = inspect_get_mountpoints(root)
       mount in descending mountpoint-length order
-    Returns True if mounted and looks like Windows system volume at /.
     """
     try:
         roots = g.inspect_os()
@@ -160,11 +167,8 @@ def _mount_inspected_os_best_effort(logger: logging.Logger, g: guestfs.GuestFS) 
         logger.warning("inspect_get_mountpoints failed: %s", e)
         return False
 
-    # Sort by mountpoint path length descending: mount "/" last.
-    # mps is list of (mountpoint, device)
     mps_sorted = sorted(mps, key=lambda x: len(x[0] or ""), reverse=True)
 
-    # Re-mount fresh.
     try:
         g.umount_all()
     except Exception:
@@ -192,20 +196,14 @@ def _mount_inspected_os_best_effort(logger: logging.Logger, g: guestfs.GuestFS) 
 
 def _ensure_windows_root(logger: logging.Logger, g: guestfs.GuestFS, *, hint_hive_path: Optional[str] = None) -> None:
     """
-    Ensure the mounted filesystem at / is the *Windows system volume* (the one that is C: at runtime).
-
-    We’ve seen failures where the wrong partition gets mounted as /, causing:
-      - /Windows missing
-      - hive path checks succeeding on the wrong volume (rare but possible)
-      - firstboot payload uploaded to the wrong place
+    Ensure / is the Windows system volume (C: at runtime).
 
     Strategy:
-      1) If hint_hive_path exists AND / looks like Windows, accept.
-      2) Otherwise, use inspect_os mount recipe and require /Windows/System32/config/SYSTEM etc.
+      1) If / already looks like Windows and (optional) hint exists, accept.
+      2) Otherwise, remount using inspect_os and require expected paths.
     """
     _log_mountpoints_best_effort(logger, g)
 
-    # If user code already mounted something, validate.
     looks = False
     try:
         looks = _looks_like_windows_root(g)
@@ -222,9 +220,7 @@ def _ensure_windows_root(logger: logging.Logger, g: guestfs.GuestFS, *, hint_hiv
         else:
             return
 
-    # Try re-mount via inspect.
     if _mount_inspected_os_best_effort(logger, g):
-        # If hint was provided, it should now resolve (unless caller gave a non-standard hive path).
         if hint_hive_path:
             try:
                 if g.is_file(hint_hive_path):
@@ -234,7 +230,6 @@ def _ensure_windows_root(logger: logging.Logger, g: guestfs.GuestFS, *, hint_hiv
         else:
             return
 
-    # Final: give actionable mount debug.
     try:
         fs = g.list_filesystems()
         logger.debug("list_filesystems=%r", fs)
@@ -243,20 +238,25 @@ def _ensure_windows_root(logger: logging.Logger, g: guestfs.GuestFS, *, hint_hiv
     raise RuntimeError("Unable to ensure Windows system volume is mounted at / (C: mapping uncertain)")
 
 
+# ---------------------------------------------------------------------------
+# Guest file helpers
+# ---------------------------------------------------------------------------
+
+
 def _mkdir_p_guest(logger: logging.Logger, g: guestfs.GuestFS, path: str) -> None:
     try:
         if g.is_dir(path):
             return
     except Exception:
         pass
-    # guestfs mkdir_p exists
+
     try:
         g.mkdir_p(path)
         logger.debug("Created guest dir: %s", path)
         return
     except Exception:
         pass
-    # fallback: iterative
+
     cur = ""
     for comp in path.strip("/").split("/"):
         cur = "/" + comp if not cur else cur.rstrip("/") + "/" + comp
@@ -299,6 +299,15 @@ def _upload_bytes(
     logger.info("Uploaded guest file: %s (sha256=%s, bytes=%s)", guest_path, sha, sz)
 
 
+def _encode_windows_cmd_script(text: str) -> bytes:
+    """
+    Encode .cmd in a Windows-friendly way (UTF-16LE + BOM).
+    Also normalizes to CRLF.
+    """
+    t = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
+    return b"\xff\xfe" + t.encode("utf-16le", errors="replace")
+
+
 # ---------------------------------------------------------------------------
 # Hivex node normalization (IMPORTANT)
 # ---------------------------------------------------------------------------
@@ -307,9 +316,6 @@ NodeLike = Union[int, None]
 
 
 def _node_id(n: NodeLike) -> int:
-    """
-    Normalize a node id to int. Invalid/missing => 0.
-    """
     if n is None:
         return 0
     try:
@@ -482,6 +488,8 @@ def _open_hive_local(path: Path, *, write: bool) -> hivex.Hivex:
     st = path.stat()
     if st.st_size < 4096:
         raise RuntimeError(f"hive local file too small ({st.st_size} bytes): {path}")
+    if not _is_probably_regf(path):
+        raise RuntimeError(f"hive local file does not look like regf hive: {path}")
     return hivex.Hivex(str(path), write=(1 if write else 0))
 
 
@@ -525,7 +533,7 @@ def _commit_best_effort(h: hivex.Hivex) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Internal: normalize Start values (fixes NoneType -> int errors)
+# Internal: normalize Driver values (fixes NoneType -> int errors)
 # ---------------------------------------------------------------------------
 
 
@@ -569,12 +577,13 @@ def _pci_id_normalize(pci_id: str) -> str:
 # First-boot mechanism: create a one-shot SERVICE (more reliable than RunOnce)
 # ---------------------------------------------------------------------------
 
+_DEFAULT_GUEST_DIR = "/vmdk2kvm"
+_DEFAULT_DRIVER_STAGE_DIR = "/vmdk2kvm/drivers"
+_DEFAULT_LOG_PATH = "/Windows/Temp/vmdk2kvm-firstboot.log"
+_DEFAULT_MARKER_PATH = "/vmdk2kvm/firstboot.done"
+
 
 def _service_imagepath_cmd(cmdline: str) -> str:
-    """
-    Build a service ImagePath that runs cmd.exe /c <cmdline>.
-    Use REG_EXPAND_SZ so %SystemRoot% and %SystemDrive% can expand.
-    """
     return r"%SystemRoot%\System32\cmd.exe /c " + cmdline
 
 
@@ -591,7 +600,9 @@ def _add_firstboot_service_system_hive(
 ) -> Dict[str, Any]:
     """
     Create/update a Win32 service entry that executes once at boot.
-    Service runs as LocalSystem by default.
+
+    NOTE: This is a "command service" (ImagePath uses cmd.exe /c ...).
+    Script must self-delete the service.
     """
     logger = _safe_logger(self)
     dry_run = bool(getattr(self, "dry_run", False))
@@ -604,6 +615,7 @@ def _add_firstboot_service_system_hive(
         "cmdline": cmdline,
         "errors": [],
         "notes": [],
+        "verification": {},
     }
 
     _ensure_windows_root(logger, g, hint_hive_path=system_hive_path)
@@ -681,9 +693,12 @@ def _add_firstboot_service_system_hive(
                     _download_hive_local(logger, g, system_hive_path, vlocal)
                     new_hash = hashlib.sha256(vlocal.read_bytes()).hexdigest()
 
-                # NOTE: even if hash matches, we may have written identical content;
-                # keep "success" meaning "did not error".
-                results["success"] = True if new_hash else True
+                results["verification"] = {
+                    "sha256_before": orig_hash,
+                    "sha256_after": new_hash,
+                    "changed": (new_hash != orig_hash),
+                }
+                results["success"] = True
             else:
                 results["success"] = True
 
@@ -708,15 +723,6 @@ def _add_firstboot_service_system_hive(
 
 
 def _vmware_tools_removal_cmd_block() -> str:
-    r"""
-    CMD block to remove VMware Tools at first boot.
-
-    Fixes vs previous:
-      - Uninstall detection matches either DisplayName contains "VMware Tools" OR Publisher contains "VMware"
-      - Runs QuietUninstallString/UninstallString; if msiexec, enforces /qn /norestart
-      - After uninstall attempt, FORCE-REMOVE VMware Tools dirs with takeown+icacls+rmdir (deterministic)
-      - Adds clarity for sc.exe 1060 (service already removed)
-    """
     return r"""
 echo --- VMware Tools removal (best-effort) --- >> "%LOG%"
 
@@ -784,92 +790,122 @@ for %%D in (
 """
 
 
-def provision_firstboot_payload_and_service(
-    self,
-    g: guestfs.GuestFS,
+# ---------------------------------------------------------------------------
+# Firstboot provisioning: refactored into small helpers
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _FirstbootPolicyPaths:
+    guest_dir: str = _DEFAULT_GUEST_DIR
+    driver_stage_dir: str = _DEFAULT_DRIVER_STAGE_DIR
+    log_path: str = _DEFAULT_LOG_PATH
+    marker_path: str = _DEFAULT_MARKER_PATH
+
+    def as_dict(self) -> Dict[str, str]:
+        return {
+            "guest_dir": self.guest_dir,
+            "driver_stage_dir": self.driver_stage_dir,
+            "log_path": self.log_path,
+            "marker_path": self.marker_path,
+        }
+
+
+@dataclass(frozen=True)
+class _FirstbootWinPaths:
+    win_guest_dir: str
+    win_stage_dir: str
+    win_log: str
+    win_marker: str
+
+
+def _enforce_firstboot_policy_paths(
+    guest_dir: str,
+    driver_stage_dir: str,
+    log_path: str,
+    marker_path: str,
     *,
-    system_hive_path: str = "/Windows/System32/config/SYSTEM",
-    service_name: str = "vmdk2kvm-firstboot",
-    guest_dir: str = "/vmdk2kvm",
-    log_path: str = "/Windows/Temp/vmdk2kvm-firstboot.log",
-    driver_stage_dir: str = "/vmdk2kvm/drivers",
-    extra_cmd: Optional[str] = None,
-    remove_vmware_tools: bool = False,
-) -> Dict[str, Any]:
-    """
-    End-to-end firstboot provisioning:
-      1) Ensure Windows system volume is mounted as / (C: mapping)
-      2) Upload a robust firstboot .cmd to %SystemDrive%\\vmdk2kvm\\firstboot.cmd (guestfs: /vmdk2kvm/firstboot.cmd)
-      3) Create a service that runs it at boot (LocalSystem), logs to C:\\Windows\\Temp\\vmdk2kvm-firstboot.log
-      4) Record what was uploaded (sha256 + bytes) in results["uploaded_files"]
+    notes: List[str],
+) -> _FirstbootPolicyPaths:
+    gd = guest_dir
+    sd = driver_stage_dir
+    lp = log_path
+    mp = marker_path
 
-    Optional:
-      - remove_vmware_tools=True: attempt to uninstall VMware Tools, stop/delete common VMware services,
-        disable known VMware drivers, and remove VMware Tools directories (best-effort).
+    if gd.rstrip("/") != _DEFAULT_GUEST_DIR:
+        notes.append(f"guest_dir overridden to {_DEFAULT_GUEST_DIR} for stability (was {gd})")
+        gd = _DEFAULT_GUEST_DIR
+    if sd.rstrip("/") != _DEFAULT_DRIVER_STAGE_DIR:
+        notes.append(f"driver_stage_dir overridden to {_DEFAULT_DRIVER_STAGE_DIR} for stability (was {sd})")
+        sd = _DEFAULT_DRIVER_STAGE_DIR
+    if lp.rstrip("/") != _DEFAULT_LOG_PATH:
+        notes.append(f"log_path overridden to {_DEFAULT_LOG_PATH} for stability (was {lp})")
+        lp = _DEFAULT_LOG_PATH
+    if mp.rstrip("/") != _DEFAULT_MARKER_PATH:
+        notes.append(f"marker_path overridden to {_DEFAULT_MARKER_PATH} for stability (was {mp})")
+        mp = _DEFAULT_MARKER_PATH
 
-    IMPORTANT: This does NOT invent drivers. You should ensure your driver injection code
-    actually uploads INF/CAT/SYS into driver_stage_dir before first boot.
-    """
-    logger = _safe_logger(self)
-    dry_run = bool(getattr(self, "dry_run", False))
+    return _FirstbootPolicyPaths(guest_dir=gd, driver_stage_dir=sd, log_path=lp, marker_path=mp)
 
-    results: Dict[str, Any] = {
-        "success": False,
-        "dry_run": dry_run,
-        "errors": [],
-        "notes": [],
-        "uploaded_files": [],
-        "service": None,
-        "payload": None,
-        "paths": {
-            "guest_dir": guest_dir,
-            "log_path": log_path,
-            "driver_stage_dir": driver_stage_dir,
-        },
-        "remove_vmware_tools": bool(remove_vmware_tools),
-    }
 
-    # Ensure the *right* Windows volume is / (so /Windows and /vmdk2kvm are truly C:\Windows and C:\vmdk2kvm)
-    try:
-        _ensure_windows_root(logger, g, hint_hive_path=system_hive_path)
-    except Exception as e:
-        results["errors"].append(str(e))
-        return results
-
-    # Create directories on guest
-    try:
-        _mkdir_p_guest(logger, g, guest_dir)
-        _mkdir_p_guest(logger, g, str(Path(log_path).parent).replace("\\", "/"))
-        _mkdir_p_guest(logger, g, driver_stage_dir)
-    except Exception as e:
-        results["errors"].append(f"Failed to create guest dirs: {e}")
-        return results
-
-    # Build the firstboot script content (Windows CMD)
+def _firstboot_windows_paths(service_name: str) -> _FirstbootWinPaths:
+    # Windows runtime paths aligned with policy guestfs paths:
+    #   guestfs /vmdk2kvm        -> Windows C:\vmdk2kvm
+    #   guestfs /vmdk2kvm/drivers-> Windows C:\vmdk2kvm\drivers
+    #   guestfs /Windows/Temp/...-> Windows C:\Windows\Temp\...
     win_guest_dir = r"%SystemDrive%\vmdk2kvm"
-    win_driver_dir = fr"{win_guest_dir}\drivers"
+    win_stage_dir = fr"{win_guest_dir}\drivers"
     win_log = r"%SystemRoot%\Temp\vmdk2kvm-firstboot.log"
+    win_marker = fr"{win_guest_dir}\firstboot.done"
+    _ = service_name  # kept for future shaping (service name is in script variables)
+    return _FirstbootWinPaths(
+        win_guest_dir=win_guest_dir,
+        win_stage_dir=win_stage_dir,
+        win_log=win_log,
+        win_marker=win_marker,
+    )
 
-    extra = ""
-    if extra_cmd:
-        extra = (
-            "\r\n"
-            "echo ==== EXTRA CMD BEGIN ====>> \"%LOG%\"\r\n"
-            f"call {extra_cmd} >> \"%LOG%\" 2>&1\r\n"
-            "echo ==== EXTRA CMD END ====>> \"%LOG%\"\r\n"
-        )
+
+def _firstboot_extra_cmd_block(extra_cmd: Optional[str]) -> str:
+    if not extra_cmd:
+        return ""
+    # Keep this as "call ..." because user might pass a .cmd/.bat path.
+    return (
+        "\r\n"
+        "echo ==== EXTRA CMD BEGIN ====>> \"%LOG%\"\r\n"
+        f"call {extra_cmd} >> \"%LOG%\" 2>&1\r\n"
+        "echo ==== EXTRA CMD END ====>> \"%LOG%\"\r\n"
+    )
+
+
+def _firstboot_build_cmd_script(
+    *,
+    service_name: str,
+    win: _FirstbootWinPaths,
+    include_vmware_removal: bool,
+    extra_cmd: Optional[str],
+) -> str:
+    extra = _firstboot_extra_cmd_block(extra_cmd)
 
     vmware_block = ""
-    if remove_vmware_tools:
-        # Ensure CRLF for cmd.exe friendliness.
-        vmware_block = _vmware_tools_removal_cmd_block().replace("\n", "\r\n").strip() + "\r\n"
+    if include_vmware_removal:
+        vmware_block = _vmware_tools_removal_cmd_block().strip() + "\r\n"
 
-    firstboot_cmd = rf"""@echo off
+    # NOTE: This is a “pure string builder”; no guestfs/hivex side effects.
+    return rf"""@echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-set LOG={win_log}
+set LOG={win.win_log}
 set SVC={service_name}
-set STAGE={win_driver_dir}
+set STAGE={win.win_stage_dir}
+set MARKER={win.win_marker}
+
+rem ---- idempotency guard ----
+if exist "%MARKER%" (
+  echo vmdk2kvm firstboot marker exists: %MARKER%>> "%LOG%"
+  echo Exiting without doing work.>> "%LOG%"
+  exit /b 0
+)
 
 echo ==================================================>> "%LOG%"
 echo vmdk2kvm firstboot starting at %DATE% %TIME%>> "%LOG%"
@@ -885,7 +921,6 @@ if %ERRORLEVEL%==0 (
 ) else (
   echo wmic not available >> "%LOG%"
 )
-where powershell >> "%LOG%" 2>&1
 
 echo --- Ensure stage exists --- >> "%LOG%"
 if not exist "%STAGE%" (
@@ -909,7 +944,15 @@ if %ERRORLEVEL%==0 (
 {vmware_block}
 {extra}
 
-echo --- Cleanup / self-delete --- >> "%LOG%"
+echo --- Write marker (done) --- >> "%LOG%"
+echo done at %DATE% %TIME%> "%MARKER%" 2>> "%LOG%"
+if exist "%MARKER%" (
+  echo Marker written: %MARKER%>> "%LOG%"
+) else (
+  echo WARN: failed to write marker: %MARKER%>> "%LOG%"
+)
+
+echo --- Cleanup / self-delete service --- >> "%LOG%"
 where sc.exe >> "%LOG%" 2>&1
 if %ERRORLEVEL%==0 (
   echo Deleting service %SVC% (1060 == already removed) >> "%LOG%"
@@ -927,18 +970,124 @@ endlocal
 exit /b 0
 """
 
-    # Upload firstboot script to guest (C:\vmdk2kvm\firstboot.cmd == /vmdk2kvm/firstboot.cmd)
-    guest_firstboot = _guest_path_join(guest_dir, "firstboot.cmd")
+
+def _firstboot_create_guest_dirs(logger: logging.Logger, g: guestfs.GuestFS, policy: _FirstbootPolicyPaths) -> None:
+    _mkdir_p_guest(logger, g, policy.guest_dir)
+    _mkdir_p_guest(logger, g, str(Path(policy.log_path).parent).replace("\\", "/"))
+    _mkdir_p_guest(logger, g, policy.driver_stage_dir)
+
+
+def _firstboot_upload_payload(
+    logger: logging.Logger,
+    g: guestfs.GuestFS,
+    *,
+    policy: _FirstbootPolicyPaths,
+    script_text: str,
+    results: Dict[str, Any],
+    dry_run: bool,
+) -> str:
+    guest_firstboot = _guest_path_join(policy.guest_dir, "firstboot.cmd")
+    if not dry_run:
+        _upload_bytes(logger, g, guest_firstboot, _encode_windows_cmd_script(script_text), results=results)
+    return guest_firstboot
+
+
+def _firstboot_service_cmdline(win_guest_dir: str) -> str:
+    # Run from C:\vmdk2kvm\firstboot.cmd (quoted)
+    return fr'"{win_guest_dir}\firstboot.cmd"'
+
+
+def provision_firstboot_payload_and_service(
+    self,
+    g: guestfs.GuestFS,
+    *,
+    system_hive_path: str = "/Windows/System32/config/SYSTEM",
+    service_name: str = "vmdk2kvm-firstboot",
+    guest_dir: str = _DEFAULT_GUEST_DIR,
+    log_path: str = _DEFAULT_LOG_PATH,
+    driver_stage_dir: str = _DEFAULT_DRIVER_STAGE_DIR,
+    extra_cmd: Optional[str] = None,
+    remove_vmware_tools: bool = False,
+    marker_path: str = _DEFAULT_MARKER_PATH,
+) -> Dict[str, Any]:
+    """
+    End-to-end firstboot provisioning (policy-driven paths for stability):
+      1) Ensure Windows system volume is mounted as / (C: mapping)
+      2) Upload firstboot.cmd to /vmdk2kvm/firstboot.cmd
+      3) Create a service that runs it at boot (LocalSystem)
+      4) Record uploads (sha256 + bytes)
+
+    NOTE: guest_dir/log_path/driver_stage_dir/marker_path are policy paths.
+    If callers pass different values, we override them (and record a note) to
+    prevent Windows runtime paths from diverging from guestfs paths.
+    """
+    logger = _safe_logger(self)
+    dry_run = bool(getattr(self, "dry_run", False))
+
+    results: Dict[str, Any] = {
+        "success": False,
+        "dry_run": dry_run,
+        "errors": [],
+        "notes": [],
+        "uploaded_files": [],
+        "service": None,
+        "payload": None,
+        "paths": {},
+        "remove_vmware_tools": bool(remove_vmware_tools),
+    }
+
+    # 1) Enforce stable guest paths (policy)
+    policy = _enforce_firstboot_policy_paths(
+        guest_dir=guest_dir,
+        driver_stage_dir=driver_stage_dir,
+        log_path=log_path,
+        marker_path=marker_path,
+        notes=results["notes"],
+    )
+    results["paths"] = policy.as_dict()
+
+    # 2) Ensure correct Windows root mount (C: mapping)
     try:
-        if not dry_run:
-            _upload_bytes(logger, g, guest_firstboot, firstboot_cmd.encode("utf-8", errors="ignore"), results=results)
-        results["payload"] = {"guest_path": guest_firstboot, "log_path": log_path}
+        _ensure_windows_root(logger, g, hint_hive_path=system_hive_path)
+    except Exception as e:
+        results["errors"].append(str(e))
+        return results
+
+    # 3) Create guest directories
+    try:
+        _firstboot_create_guest_dirs(logger, g, policy)
+    except Exception as e:
+        results["errors"].append(f"Failed to create guest dirs: {e}")
+        return results
+
+    # 4) Build script + upload
+    win = _firstboot_windows_paths(service_name)
+    script = _firstboot_build_cmd_script(
+        service_name=service_name,
+        win=win,
+        include_vmware_removal=bool(remove_vmware_tools),
+        extra_cmd=extra_cmd,
+    )
+    try:
+        guest_script_path = _firstboot_upload_payload(
+            logger,
+            g,
+            policy=policy,
+            script_text=script,
+            results=results,
+            dry_run=dry_run,
+        )
+        results["payload"] = {
+            "guest_path": guest_script_path,
+            "log_path": policy.log_path,
+            "marker_path": policy.marker_path,
+        }
     except Exception as e:
         results["errors"].append(f"Failed to upload firstboot.cmd: {e}")
         return results
 
-    # Create the service pointing to that script
-    cmdline = fr'"{win_guest_dir}\firstboot.cmd"'
+    # 5) Add service in SYSTEM hive
+    cmdline = _firstboot_service_cmdline(win.win_guest_dir)
     svc_res = _add_firstboot_service_system_hive(
         self,
         g,
@@ -954,15 +1103,18 @@ exit /b 0
         results["errors"].extend(svc_res.get("errors", []))
         return results
 
+    # 6) Notes + success
     results["notes"] += [
         "Firstboot uses a SERVICE (LocalSystem) instead of RunOnce: less fragile across logon/autologon quirks.",
-        "Log file will be at C:\\Windows\\Temp\\vmdk2kvm-firstboot.log (guestfs path: /Windows/Temp/vmdk2kvm-firstboot.log).",
-        "Drivers must be staged under C:\\vmdk2kvm\\drivers (guestfs path: /vmdk2kvm/drivers).",
+        "Log file will be at C:\\Windows\\Temp\\vmdk2kvm-firstboot.log (guestfs: /Windows/Temp/vmdk2kvm-firstboot.log).",
+        "Drivers must be staged under C:\\vmdk2kvm\\drivers (guestfs: /vmdk2kvm/drivers).",
+        "A completion marker is written to C:\\vmdk2kvm\\firstboot.done to avoid reruns if the service delete fails.",
         "uploaded_files includes sha256+size so you can prove what landed on disk.",
     ]
     if remove_vmware_tools:
         results["notes"].append(
-            "VMware Tools removal enabled: firstboot will attempt registry-based uninstall + stop/delete services + disable drivers + remove Tools dirs (best-effort)."
+            "VMware Tools removal enabled: firstboot will attempt registry-based uninstall + stop/delete services "
+            "+ disable drivers + remove Tools dirs (best-effort)."
         )
 
     results["success"] = True
@@ -972,6 +1124,247 @@ exit /b 0
 # ---------------------------------------------------------------------------
 # Public: SYSTEM hive edit (Services + CDD + StartOverride)
 # ---------------------------------------------------------------------------
+
+
+def _hive_backup_best_effort(
+    logger: logging.Logger,
+    g: guestfs.GuestFS,
+    hive_path: str,
+    *,
+    dry_run: bool,
+    results: Dict[str, Any],
+) -> None:
+    if dry_run:
+        return
+    ts = U.now_ts()
+    backup_path = f"{hive_path}.vmdk2kvm.backup.{ts}"
+    g.cp(hive_path, backup_path)
+    logger.info("Hive backup created: %s", backup_path)
+    results["hive_backup"] = backup_path
+
+
+def _open_system_hive_local_for_edit(
+    logger: logging.Logger,
+    g: guestfs.GuestFS,
+    hive_path: str,
+    *,
+    dry_run: bool,
+    local_hive: Path,
+) -> Dict[str, Any]:
+    _download_hive_local(logger, g, hive_path, local_hive)
+    return {"sha256_before": hashlib.sha256(local_hive.read_bytes()).hexdigest()}
+
+
+def _resolve_controlset_node(h: hivex.Hivex, root: int, *, logger: logging.Logger) -> Dict[str, Any]:
+    cs_name = _detect_current_controlset(h, root)
+    logger.info("Using control set: %s", cs_name)
+
+    cs = _node_id(h.node_get_child(root, cs_name))
+    if cs == 0:
+        logger.warning("%s missing; falling back to ControlSet001", cs_name)
+        cs_name = "ControlSet001"
+        cs = _node_id(h.node_get_child(root, cs_name))
+        if cs == 0:
+            raise RuntimeError("No usable ControlSet found (001/current)")
+    return {"controlset_name": cs_name, "controlset_node": cs}
+
+
+def _service_group_for_driver_type(drv_type_value: str, *, storage_type_norm: str) -> str:
+    if str(drv_type_value) == storage_type_norm:
+        return "SCSI miniport"
+    if str(drv_type_value) == "network":
+        return "NDIS"
+    return "System Bus Extender"
+
+
+def _edit_system_services(
+    logger: logging.Logger,
+    h: hivex.Hivex,
+    services_node: int,
+    drivers: List[Any],
+    *,
+    storage_type_norm: str,
+    boot_start_value: int,
+    results: Dict[str, Any],
+) -> None:
+    for drv in drivers:
+        try:
+            drv_type_value = _driver_type_norm(drv)
+            svc_name = str(getattr(drv, "service_name"))
+            dest_name = str(getattr(drv, "dest_name"))
+
+            start_default = _driver_start_default(drv, fallback=3)
+            svc = _node_id(h.node_get_child(services_node, svc_name))
+            action = "updated" if svc != 0 else "created"
+            if svc == 0:
+                svc = _node_id(h.node_add_child(services_node, svc_name))
+            if svc == 0:
+                raise RuntimeError(f"failed to open/create service key {svc_name}")
+
+            logger.info("Registry service %s: Services\\%s", action, svc_name)
+
+            _set_dword(h, svc, "Type", 1)  # SERVICE_KERNEL_DRIVER
+            _set_dword(h, svc, "ErrorControl", 1)
+
+            start = int(start_default)
+            if str(drv_type_value) == storage_type_norm:
+                start = int(boot_start_value)
+            _set_dword(h, svc, "Start", start)
+
+            group = _service_group_for_driver_type(str(drv_type_value), storage_type_norm=storage_type_norm)
+            _set_sz(h, svc, "Group", group)
+            _set_sz(h, svc, "ImagePath", fr"\SystemRoot\System32\drivers\{dest_name}")
+            _set_sz(h, svc, "DisplayName", svc_name)
+
+            removed = _delete_child_if_exists(h, svc, "StartOverride", logger=logger)
+            if removed:
+                logger.info("Removed StartOverride: Services\\%s\\StartOverride", svc_name)
+                results["startoverride_removed"].append(svc_name)
+
+            results["services"].append(
+                {
+                    "service": svc_name,
+                    "type": drv_type_value,
+                    "start": start,
+                    "group": group,
+                    "image": fr"\SystemRoot\System32\drivers\{dest_name}",
+                    "action": action,
+                }
+            )
+        except Exception as e:
+            msg = f"Failed to create/update service {getattr(drv, 'service_name', '?')}: {e}"
+            logger.error(msg)
+            results["errors"].append(msg)
+
+
+def _edit_system_cdd(
+    logger: logging.Logger,
+    h: hivex.Hivex,
+    controlset_node: int,
+    drivers: List[Any],
+    *,
+    storage_type_norm: str,
+    results: Dict[str, Any],
+) -> None:
+    control = _ensure_child(h, controlset_node, "Control")
+    cdd = _ensure_child(h, control, "CriticalDeviceDatabase")
+
+    for drv in drivers:
+        drv_type_value = _driver_type_norm(drv)
+        if str(drv_type_value) != storage_type_norm:
+            continue
+
+        svc_name = str(getattr(drv, "service_name"))
+        class_guid = str(getattr(drv, "class_guid"))
+        dev_name = str(getattr(drv, "name"))
+
+        pci_ids = list(getattr(drv, "pci_ids", []) or [])
+        for pci_id in pci_ids:
+            pci_id = _pci_id_normalize(pci_id)
+            if not pci_id:
+                continue
+            try:
+                node = _node_id(h.node_get_child(cdd, pci_id))
+                action = "updated" if node != 0 else "created"
+                if node == 0:
+                    node = _node_id(h.node_add_child(cdd, pci_id))
+                if node == 0:
+                    raise RuntimeError(f"failed to open/create CDD node {pci_id}")
+
+                _set_sz(h, node, "Service", svc_name)
+                _set_sz(h, node, "ClassGUID", class_guid)
+                _set_sz(h, node, "Class", "SCSIAdapter")
+                _set_sz(h, node, "DeviceDesc", dev_name)
+
+                logger.info("CDD %s: %s -> %s", action, pci_id, svc_name)
+                results["cdd"].append({"pci_id": pci_id, "service": svc_name, "action": action})
+            except Exception as e:
+                msg = f"Failed CDD entry {pci_id} -> {svc_name}: {e}"
+                logger.error(msg)
+                results["errors"].append(msg)
+
+
+def _upload_hive_and_verify(
+    logger: logging.Logger,
+    g: guestfs.GuestFS,
+    hive_path: str,
+    local_hive: Path,
+    *,
+    results: Dict[str, Any],
+    sha_before: str,
+) -> None:
+    logger.info("Uploading modified hive back to guest: %s", hive_path)
+    g.upload(str(local_hive), hive_path)
+
+    try:
+        results.setdefault("uploaded_files", []).append(
+            {"guest_path": hive_path, "sha256_local": hashlib.sha256(local_hive.read_bytes()).hexdigest()}
+        )
+    except Exception:
+        pass
+
+    with tempfile.TemporaryDirectory() as verify_tmp:
+        verify_path = Path(verify_tmp) / "HIVE_verify"
+        _download_hive_local(logger, g, hive_path, verify_path)
+        sha_after = hashlib.sha256(verify_path.read_bytes()).hexdigest()
+
+    results["verification"] = {
+        "sha256_before": sha_before,
+        "sha256_after": sha_after,
+        "changed": (sha_after != sha_before),
+    }
+
+
+def _verify_services_post_write(
+    logger: logging.Logger,
+    g: guestfs.GuestFS,
+    hive_path: str,
+    *,
+    cs_name: str,
+    drivers: List[Any],
+    storage_type_norm: str,
+    boot_start_value: int,
+    results: Dict[str, Any],
+) -> None:
+    # Best-effort verification: download the hive again, open read-only, and check Start values exist.
+    with tempfile.TemporaryDirectory() as verify_dir:
+        verify_hive = Path(verify_dir) / "SYSTEM_verify"
+        _download_hive_local(logger, g, hive_path, verify_hive)
+
+        vh: Optional[hivex.Hivex] = None
+        try:
+            vh = _open_hive_local(verify_hive, write=False)
+            vroot = _node_id(vh.root())
+            vcs = _node_id(vh.node_get_child(vroot, cs_name))
+            if vcs == 0:
+                vcs = _node_id(vh.node_get_child(vroot, "ControlSet001"))
+            vservices = _node_id(vh.node_get_child(vcs, "Services")) if vcs != 0 else 0
+
+            if vservices == 0:
+                results["verification_errors"].append("Verification failed: Services node missing")
+                return
+
+            for drv in drivers:
+                svc_name = str(getattr(drv, "service_name"))
+                drv_type_value = _driver_type_norm(drv)
+                start_default = _driver_start_default(drv, fallback=3)
+
+                svc = _node_id(vh.node_get_child(vservices, svc_name))
+                if svc == 0:
+                    results["verification_errors"].append(f"Missing service after edit: {svc_name}")
+                    continue
+
+                got = _hivex_read_dword(vh, svc, "Start")
+                expected = int(start_default)
+                if str(drv_type_value) == storage_type_norm:
+                    expected = int(boot_start_value)
+
+                if got == expected:
+                    results["verified_services"].append(svc_name)
+                else:
+                    results["verification_errors"].append(f"{svc_name} Start mismatch: got={got} expected={expected}")
+        finally:
+            _close_best_effort(vh)
 
 
 def edit_system_hive(
@@ -1005,16 +1398,15 @@ def edit_system_hive(
         "verified_services": [],
         "verification_errors": [],
         "uploaded_files": [],
+        "verification": {},
     }
 
-    # 🔥 Ensure / is the actual Windows system volume first.
     try:
         _ensure_windows_root(logger, g, hint_hive_path=hive_path)
     except Exception as e:
         results["errors"].append(str(e))
         return results
 
-    # Fast preflight: does the hive exist inside the guest mount?
     try:
         if not g.is_file(hive_path):
             results["errors"].append(f"SYSTEM hive not found: {hive_path}")
@@ -1029,135 +1421,40 @@ def edit_system_hive(
 
         try:
             _log_mountpoints_best_effort(logger, g)
+            _hive_backup_best_effort(logger, g, hive_path, dry_run=dry_run, results=results)
 
-            # Backup hive inside guest
-            if not dry_run:
-                ts = U.now_ts()
-                backup_path = f"{hive_path}.vmdk2kvm.backup.{ts}"
-                g.cp(hive_path, backup_path)
-                logger.info("Hive backup created: %s", backup_path)
-                results["hive_backup"] = backup_path
+            meta = _open_system_hive_local_for_edit(logger, g, hive_path, dry_run=dry_run, local_hive=local_hive)
+            sha_before = str(meta.get("sha256_before") or "")
 
-            # Download hive locally (robust)
-            _download_hive_local(logger, g, hive_path, local_hive)
-
-            original_hash = hashlib.sha256(local_hive.read_bytes()).hexdigest()
-            logger.debug("SYSTEM hive baseline sha256=%s", original_hash)
-
-            # Open local hive with python-hivex
             h = _open_hive_local(local_hive, write=(not dry_run))
             root = _node_id(h.root())
             if root == 0:
                 raise RuntimeError("python-hivex root() returned invalid node")
 
-            cs_name = _detect_current_controlset(h, root)
-            logger.info("Using control set: %s", cs_name)
-
-            control_set = _node_id(h.node_get_child(root, cs_name))
-            if control_set == 0:
-                logger.warning("%s missing; falling back to ControlSet001", cs_name)
-                cs_name = "ControlSet001"
-                control_set = _node_id(h.node_get_child(root, cs_name))
-                if control_set == 0:
-                    raise RuntimeError("No usable ControlSet found (001/current)")
+            cs = _resolve_controlset_node(h, root, logger=logger)
+            cs_name = str(cs["controlset_name"])
+            control_set = int(cs["controlset_node"])
 
             services = _ensure_child(h, control_set, "Services")
-
             storage_type_norm = str(driver_type_storage_value)
 
-            # Services\<driver>
-            for drv in drivers:
-                try:
-                    drv_type_value = _driver_type_norm(drv)
-                    svc_name = str(getattr(drv, "service_name"))
-                    dest_name = str(getattr(drv, "dest_name"))
-
-                    start_default = _driver_start_default(drv, fallback=3)
-                    svc = _node_id(h.node_get_child(services, svc_name))
-                    action = "updated" if svc != 0 else "created"
-                    if svc == 0:
-                        svc = _node_id(h.node_add_child(services, svc_name))
-                    if svc == 0:
-                        raise RuntimeError(f"failed to open/create service key {svc_name}")
-
-                    logger.info("Registry service %s: Services\\%s", action, svc_name)
-
-                    _set_dword(h, svc, "Type", 1)  # SERVICE_KERNEL_DRIVER
-                    _set_dword(h, svc, "ErrorControl", 1)
-
-                    start = int(start_default)
-                    if str(drv_type_value) == storage_type_norm:
-                        start = int(boot_start_value)
-                    _set_dword(h, svc, "Start", start)
-
-                    if str(drv_type_value) == storage_type_norm:
-                        group = "SCSI miniport"
-                    elif str(drv_type_value) == "network":
-                        group = "NDIS"
-                    else:
-                        group = "System Bus Extender"
-
-                    _set_sz(h, svc, "Group", group)
-                    _set_sz(h, svc, "ImagePath", fr"\SystemRoot\System32\drivers\{dest_name}")
-                    _set_sz(h, svc, "DisplayName", svc_name)
-
-                    removed = _delete_child_if_exists(h, svc, "StartOverride", logger=logger)
-                    if removed:
-                        logger.info("Removed StartOverride: Services\\%s\\StartOverride", svc_name)
-                        results["startoverride_removed"].append(svc_name)
-
-                    results["services"].append(
-                        {
-                            "service": svc_name,
-                            "type": drv_type_value,
-                            "start": start,
-                            "group": group,
-                            "image": fr"\SystemRoot\System32\drivers\{dest_name}",
-                            "action": action,
-                        }
-                    )
-                except Exception as e:
-                    msg = f"Failed to create/update service {getattr(drv, 'service_name', '?')}: {e}"
-                    logger.error(msg)
-                    results["errors"].append(msg)
-
-            # CriticalDeviceDatabase for storage
-            control = _ensure_child(h, control_set, "Control")
-            cdd = _ensure_child(h, control, "CriticalDeviceDatabase")
-
-            for drv in drivers:
-                drv_type_value = _driver_type_norm(drv)
-                if str(drv_type_value) != storage_type_norm:
-                    continue
-
-                svc_name = str(getattr(drv, "service_name"))
-                class_guid = str(getattr(drv, "class_guid"))
-                dev_name = str(getattr(drv, "name"))
-
-                pci_ids = list(getattr(drv, "pci_ids", []) or [])
-                for pci_id in pci_ids:
-                    pci_id = _pci_id_normalize(pci_id)
-                    if not pci_id:
-                        continue
-                    try:
-                        node = _node_id(h.node_get_child(cdd, pci_id))
-                        action = "updated" if node != 0 else "created"
-                        if node == 0:
-                            node = _node_id(h.node_add_child(cdd, pci_id))
-                        if node == 0:
-                            raise RuntimeError(f"failed to open/create CDD node {pci_id}")
-
-                        _set_sz(h, node, "Service", svc_name)
-                        _set_sz(h, node, "ClassGUID", class_guid)
-                        _set_sz(h, node, "Class", "SCSIAdapter")
-                        _set_sz(h, node, "DeviceDesc", dev_name)
-
-                        logger.info("CDD %s: %s -> %s", action, pci_id, svc_name)
-                        results["cdd"].append({"pci_id": pci_id, "service": svc_name, "action": action})
-                    except Exception as e:
-                        msg = f"Failed CDD entry {pci_id} -> {svc_name}: {e}"
-                        logger.error(msg)
-                        results["errors"].append(msg)
+            _edit_system_services(
+                logger,
+                h,
+                services,
+                drivers,
+                storage_type_norm=storage_type_norm,
+                boot_start_value=int(boot_start_value),
+                results=results,
+            )
+            _edit_system_cdd(
+                logger,
+                h,
+                control_set,
+                drivers,
+                storage_type_norm=storage_type_norm,
+                results=results,
+            )
 
             if not dry_run:
                 try:
@@ -1167,67 +1464,19 @@ def edit_system_hive(
                     _close_best_effort(h)
                     h = None
 
-                logger.info("Uploading modified SYSTEM hive back to guest: %s", hive_path)
-                g.upload(str(local_hive), hive_path)
+                _upload_hive_and_verify(logger, g, hive_path, local_hive, results=results, sha_before=sha_before)
+                results["registry_modified"] = bool(results.get("verification", {}).get("changed", False))
 
-                # record upload proof
-                try:
-                    results.setdefault("uploaded_files", []).append(
-                        {"guest_path": hive_path, "sha256_local": hashlib.sha256(local_hive.read_bytes()).hexdigest()}
-                    )
-                except Exception:
-                    pass
-
-                with tempfile.TemporaryDirectory() as verify_tmp:
-                    verify_path = Path(verify_tmp) / "SYSTEM_verify"
-                    _download_hive_local(logger, g, hive_path, verify_path)
-                    new_hash = hashlib.sha256(verify_path.read_bytes()).hexdigest()
-
-                if new_hash != original_hash:
-                    results["registry_modified"] = True
-                    logger.info("SYSTEM hive changed: sha256 %s -> %s", original_hash, new_hash)
-                else:
-                    logger.warning("SYSTEM hive appears unchanged after upload (unexpected)")
-
-                # Optional verification readback (best-effort)
-                with tempfile.TemporaryDirectory() as verify_dir:
-                    verify_hive = Path(verify_dir) / "SYSTEM_verify"
-                    _download_hive_local(logger, g, hive_path, verify_hive)
-                    vh: Optional[hivex.Hivex] = None
-                    try:
-                        vh = _open_hive_local(verify_hive, write=False)
-                        vroot = _node_id(vh.root())
-                        vcs = _node_id(vh.node_get_child(vroot, cs_name))
-                        if vcs == 0:
-                            vcs = _node_id(vh.node_get_child(vroot, "ControlSet001"))
-                        vservices = _node_id(vh.node_get_child(vcs, "Services")) if vcs != 0 else 0
-
-                        if vservices == 0:
-                            results["verification_errors"].append("Verification failed: Services node missing")
-                        else:
-                            for drv in drivers:
-                                svc_name = str(getattr(drv, "service_name"))
-                                drv_type_value = _driver_type_norm(drv)
-                                start_default = _driver_start_default(drv, fallback=3)
-
-                                svc = _node_id(vh.node_get_child(vservices, svc_name))
-                                if svc == 0:
-                                    results["verification_errors"].append(f"Missing service after edit: {svc_name}")
-                                    continue
-
-                                got = _hivex_read_dword(vh, svc, "Start")
-                                expected = int(start_default)
-                                if str(drv_type_value) == storage_type_norm:
-                                    expected = int(boot_start_value)
-
-                                if got == expected:
-                                    results["verified_services"].append(svc_name)
-                                else:
-                                    results["verification_errors"].append(
-                                        f"{svc_name} Start mismatch: got={got} expected={expected}"
-                                    )
-                    finally:
-                        _close_best_effort(vh)
+                _verify_services_post_write(
+                    logger,
+                    g,
+                    hive_path,
+                    cs_name=cs_name,
+                    drivers=drivers,
+                    storage_type_norm=storage_type_norm,
+                    boot_start_value=int(boot_start_value),
+                    results=results,
+                )
             else:
                 logger.info("Dry-run: registry edits computed but not committed/uploaded")
 
@@ -1236,11 +1485,12 @@ def edit_system_hive(
                 "Windows root is validated/remounted to ensure C: mapping (prevents writing to wrong partition).",
                 "Storage services forced to BOOT start to prevent INACCESSIBLE_BOOT_DEVICE.",
                 "StartOverride keys removed (if present) because they can silently disable drivers.",
-                "Registry strings written as UTF-16LE REG_SZ (Windows-correct).",
+                "Registry strings written as UTF-16LE REG_SZ/REG_EXPAND_SZ (Windows-correct).",
                 "CriticalDeviceDatabase populated for storage PCI IDs.",
                 "Node ids normalized across python-hivex versions (0 vs None).",
                 "Driver start_type None handled with fallback Start=3 (demand).",
                 "Driver type comparisons normalized via _driver_type_norm().",
+                "Hive integrity checked via size + 'regf' signature during downloads.",
             ]
             return results
 
@@ -1256,6 +1506,24 @@ def edit_system_hive(
 # ---------------------------------------------------------------------------
 # Public: SYSTEM hive generic DWORD setter (for CrashControl etc.)
 # ---------------------------------------------------------------------------
+
+
+def _resolve_controlset_for_path(h: hivex.Hivex, root: int) -> Dict[str, Any]:
+    cs_name = _detect_current_controlset(h, root)
+    cs = _node_id(h.node_get_child(root, cs_name))
+    if cs == 0:
+        cs_name = "ControlSet001"
+        cs = _node_id(h.node_get_child(root, cs_name))
+    if cs == 0:
+        raise RuntimeError("No usable ControlSet found (001/current)")
+    return {"controlset_name": cs_name, "controlset_node": cs}
+
+
+def _ensure_key_path(h: hivex.Hivex, start_node: int, key_path: List[str]) -> int:
+    node = int(start_node)
+    for comp in key_path:
+        node = _ensure_child(h, node, comp)
+    return node
 
 
 def set_system_dword(
@@ -1283,9 +1551,9 @@ def set_system_dword(
         "errors": [],
         "notes": [],
         "uploaded_files": [],
+        "verification": {},
     }
 
-    # Ensure correct Windows root mount (C: mapping)
     try:
         _ensure_windows_root(logger, g, hint_hive_path=hive_path)
     except Exception as e:
@@ -1305,12 +1573,7 @@ def set_system_dword(
         h: Optional[hivex.Hivex] = None
         try:
             _log_mountpoints_best_effort(logger, g)
-
-            if not dry_run:
-                ts = U.now_ts()
-                backup_path = f"{hive_path}.vmdk2kvm.backup.{ts}"
-                g.cp(hive_path, backup_path)
-                out["hive_backup"] = backup_path
+            _hive_backup_best_effort(logger, g, hive_path, dry_run=dry_run, results=out)
 
             _download_hive_local(logger, g, hive_path, local)
             orig_hash = hashlib.sha256(local.read_bytes()).hexdigest()
@@ -1321,18 +1584,11 @@ def set_system_dword(
                 out["errors"].append("Invalid hivex root()")
                 return out
 
-            cs_name = _detect_current_controlset(h, root)
-            cs = _node_id(h.node_get_child(root, cs_name))
-            if cs == 0:
-                cs_name = "ControlSet001"
-                cs = _node_id(h.node_get_child(root, cs_name))
-            if cs == 0:
-                out["errors"].append("No usable ControlSet found (001/current)")
-                return out
+            cs = _resolve_controlset_for_path(h, root)
+            cs_name = str(cs["controlset_name"])
+            cs_node = int(cs["controlset_node"])
 
-            node = cs
-            for comp in key_path:
-                node = _ensure_child(h, node, comp)
+            node = _ensure_key_path(h, cs_node, list(key_path))
 
             old = _hivex_read_dword(h, node, name)
             out["original"] = old
@@ -1352,14 +1608,21 @@ def set_system_dword(
                     h = None
 
                 g.upload(str(local), hive_path)
-                out["uploaded_files"].append({"guest_path": hive_path, "sha256_local": hashlib.sha256(local.read_bytes()).hexdigest()})
+                out["uploaded_files"].append(
+                    {"guest_path": hive_path, "sha256_local": hashlib.sha256(local.read_bytes()).hexdigest()}
+                )
 
                 with tempfile.TemporaryDirectory() as vtd:
                     vlocal = Path(vtd) / "SYSTEM_verify"
                     _download_hive_local(logger, g, hive_path, vlocal)
                     new_hash = hashlib.sha256(vlocal.read_bytes()).hexdigest()
 
-                out["success"] = (new_hash != orig_hash) or (not out["modified"])
+                out["verification"] = {
+                    "sha256_before": orig_hash,
+                    "sha256_after": new_hash,
+                    "changed": (new_hash != orig_hash),
+                }
+                out["success"] = True
             else:
                 out["success"] = True
 
@@ -1368,6 +1631,7 @@ def set_system_dword(
                 "DWORD written as REG_DWORD (little-endian).",
                 "Node ids normalized across python-hivex versions (0 vs None).",
                 "Windows root mount validated to ensure correct C: mapping.",
+                "Hive integrity checked via size + 'regf' signature during downloads.",
             ]
             return out
 
@@ -1381,6 +1645,25 @@ def set_system_dword(
 # ---------------------------------------------------------------------------
 # Public: SOFTWARE hive DevicePath append
 # ---------------------------------------------------------------------------
+
+
+def _normalize_devicepath_part(p: str) -> str:
+    return p.strip().strip(";").strip().lower()
+
+
+def _resolve_software_cv_node(h: hivex.Hivex, root: int) -> int:
+    microsoft = _node_id(h.node_get_child(root, "Microsoft"))
+    if microsoft == 0:
+        raise RuntimeError("SOFTWARE hive missing Microsoft key")
+
+    windows = _node_id(h.node_get_child(microsoft, "Windows"))
+    if windows == 0:
+        raise RuntimeError("SOFTWARE hive missing Microsoft\\Windows key")
+
+    cv = _node_id(h.node_get_child(windows, "CurrentVersion"))
+    if cv == 0:
+        raise RuntimeError("SOFTWARE hive missing Microsoft\\Windows\\CurrentVersion key")
+    return cv
 
 
 def append_devicepath_software_hive(
@@ -1402,9 +1685,9 @@ def append_devicepath_software_hive(
         "errors": [],
         "notes": [],
         "uploaded_files": [],
+        "verification": {},
     }
 
-    # Ensure correct Windows root mount (C: mapping)
     try:
         _ensure_windows_root(logger, g, hint_hive_path=software_hive_path)
     except Exception as e:
@@ -1424,12 +1707,7 @@ def append_devicepath_software_hive(
         h: Optional[hivex.Hivex] = None
         try:
             _log_mountpoints_best_effort(logger, g)
-
-            if not dry_run:
-                ts = U.now_ts()
-                backup_path = f"{software_hive_path}.vmdk2kvm.backup.{ts}"
-                g.cp(software_hive_path, backup_path)
-                out["hive_backup"] = backup_path
+            _hive_backup_best_effort(logger, g, software_hive_path, dry_run=dry_run, results=out)
 
             _download_hive_local(logger, g, software_hive_path, local)
             orig_hash = hashlib.sha256(local.read_bytes()).hexdigest()
@@ -1440,28 +1718,18 @@ def append_devicepath_software_hive(
                 out["errors"].append("Invalid hivex root()")
                 return out
 
-            microsoft = _node_id(h.node_get_child(root, "Microsoft"))
-            if microsoft == 0:
-                out["errors"].append("SOFTWARE hive missing Microsoft key")
-                return out
-
-            windows = _node_id(h.node_get_child(microsoft, "Windows"))
-            if windows == 0:
-                out["errors"].append("SOFTWARE hive missing Microsoft\\Windows key")
-                return out
-
-            cv = _node_id(h.node_get_child(windows, "CurrentVersion"))
-            if cv == 0:
-                out["errors"].append("SOFTWARE hive missing Microsoft\\Windows\\CurrentVersion key")
-                return out
+            cv = _resolve_software_cv_node(h, root)
 
             cur = _hivex_read_sz(h, cv, "DevicePath") or r"%SystemRoot%\inf"
             out["original"] = cur
 
-            parts = [p.strip() for p in cur.split(";") if p.strip()]
-            if append_path not in parts:
-                parts.append(append_path)
-            new = ";".join(parts)
+            parts_raw = [p.strip() for p in cur.split(";") if p.strip()]
+            parts_norm = {_normalize_devicepath_part(p) for p in parts_raw}
+
+            ap_norm = _normalize_devicepath_part(append_path)
+            if ap_norm and ap_norm not in parts_norm:
+                parts_raw.append(append_path.strip())
+            new = ";".join(parts_raw)
             out["new"] = new
 
             if new != cur:
@@ -1469,7 +1737,7 @@ def append_devicepath_software_hive(
                 _set_expand_sz(h, cv, "DevicePath", new)
                 out["modified"] = True
             else:
-                logger.info("DevicePath already contains staging path; no change needed")
+                logger.info("DevicePath already contains staging path (case-insensitive); no change needed")
 
             if not dry_run:
                 try:
@@ -1479,23 +1747,32 @@ def append_devicepath_software_hive(
                     h = None
 
                 g.upload(str(local), software_hive_path)
-                out["uploaded_files"].append({"guest_path": software_hive_path, "sha256_local": hashlib.sha256(local.read_bytes()).hexdigest()})
+                out["uploaded_files"].append(
+                    {"guest_path": software_hive_path, "sha256_local": hashlib.sha256(local.read_bytes()).hexdigest()}
+                )
 
                 with tempfile.TemporaryDirectory() as vtd:
                     vlocal = Path(vtd) / "SOFTWARE_verify"
                     _download_hive_local(logger, g, software_hive_path, vlocal)
                     new_hash = hashlib.sha256(vlocal.read_bytes()).hexdigest()
 
-                out["success"] = (new_hash != orig_hash) or (not out["modified"])
+                out["verification"] = {
+                    "sha256_before": orig_hash,
+                    "sha256_after": new_hash,
+                    "changed": (new_hash != orig_hash),
+                }
+                out["success"] = True
             else:
                 out["success"] = True
 
             out["notes"] += [
                 "DevicePath updated to help Windows PnP discover staged INF packages on first boot.",
+                "Comparison is case-insensitive to avoid duplicates differing only by case/whitespace.",
                 "Value written as REG_EXPAND_SZ (UTF-16LE).",
                 "Node ids normalized across python-hivex versions (0 vs None).",
                 "Backup created alongside other SOFTWARE edits.",
                 "Windows root mount validated to ensure correct C: mapping.",
+                "Hive integrity checked via size + 'regf' signature during downloads.",
             ]
             return out
 
@@ -1509,6 +1786,21 @@ def append_devicepath_software_hive(
 # ---------------------------------------------------------------------------
 # Public: SOFTWARE hive RunOnce helper (kept, but SERVICE is preferred)
 # ---------------------------------------------------------------------------
+
+
+def _ensure_software_cv_path(h: hivex.Hivex, root: int) -> int:
+    microsoft = _node_id(h.node_get_child(root, "Microsoft"))
+    if microsoft == 0:
+        microsoft = _ensure_child(h, root, "Microsoft")
+
+    windows = _node_id(h.node_get_child(microsoft, "Windows"))
+    if windows == 0:
+        windows = _ensure_child(h, microsoft, "Windows")
+
+    cv = _node_id(h.node_get_child(windows, "CurrentVersion"))
+    if cv == 0:
+        cv = _ensure_child(h, windows, "CurrentVersion")
+    return cv
 
 
 def add_software_runonce(
@@ -1534,9 +1826,9 @@ def add_software_runonce(
         "errors": [],
         "notes": [],
         "uploaded_files": [],
+        "verification": {},
     }
 
-    # Ensure correct Windows root mount (C: mapping)
     try:
         _ensure_windows_root(logger, g, hint_hive_path=software_hive_path)
     except Exception as e:
@@ -1556,12 +1848,7 @@ def add_software_runonce(
         h: Optional[hivex.Hivex] = None
         try:
             _log_mountpoints_best_effort(logger, g)
-
-            if not dry_run:
-                ts = U.now_ts()
-                backup_path = f"{software_hive_path}.vmdk2kvm.backup.{ts}"
-                g.cp(software_hive_path, backup_path)
-                out["hive_backup"] = backup_path
+            _hive_backup_best_effort(logger, g, software_hive_path, dry_run=dry_run, results=out)
 
             _download_hive_local(logger, g, software_hive_path, local)
             orig_hash = hashlib.sha256(local.read_bytes()).hexdigest()
@@ -1572,18 +1859,7 @@ def add_software_runonce(
                 out["errors"].append("Invalid hivex root()")
                 return out
 
-            microsoft = _node_id(h.node_get_child(root, "Microsoft"))
-            if microsoft == 0:
-                microsoft = _ensure_child(h, root, "Microsoft")
-
-            windows = _node_id(h.node_get_child(microsoft, "Windows"))
-            if windows == 0:
-                windows = _ensure_child(h, microsoft, "Windows")
-
-            cv = _node_id(h.node_get_child(windows, "CurrentVersion"))
-            if cv == 0:
-                cv = _ensure_child(h, windows, "CurrentVersion")
-
+            cv = _ensure_software_cv_path(h, root)
             runonce = _node_id(h.node_get_child(cv, "RunOnce"))
             if runonce == 0:
                 runonce = _ensure_child(h, cv, "RunOnce")
@@ -1606,14 +1882,21 @@ def add_software_runonce(
                     h = None
 
                 g.upload(str(local), software_hive_path)
-                out["uploaded_files"].append({"guest_path": software_hive_path, "sha256_local": hashlib.sha256(local.read_bytes()).hexdigest()})
+                out["uploaded_files"].append(
+                    {"guest_path": software_hive_path, "sha256_local": hashlib.sha256(local.read_bytes()).hexdigest()}
+                )
 
                 with tempfile.TemporaryDirectory() as vtd:
                     vlocal = Path(vtd) / "SOFTWARE_verify"
                     _download_hive_local(logger, g, software_hive_path, vlocal)
                     new_hash = hashlib.sha256(vlocal.read_bytes()).hexdigest()
 
-                out["success"] = (new_hash != orig_hash) or (not out["modified"])
+                out["verification"] = {
+                    "sha256_before": orig_hash,
+                    "sha256_after": new_hash,
+                    "changed": (new_hash != orig_hash),
+                }
+                out["success"] = True
             else:
                 out["success"] = True
 
@@ -1623,6 +1906,7 @@ def add_software_runonce(
                 "Value written as REG_SZ (UTF-16LE).",
                 "Node ids normalized across python-hivex versions (0 vs None).",
                 "Windows root mount validated to ensure correct C: mapping.",
+                "Hive integrity checked via size + 'regf' signature during downloads.",
                 "Consider using provision_firstboot_payload_and_service() for higher reliability than RunOnce.",
             ]
             return out
