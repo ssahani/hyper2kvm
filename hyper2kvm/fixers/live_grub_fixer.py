@@ -2,6 +2,7 @@
 # hyper2kvm/fixers/live_grub_fixer.py
 from __future__ import annotations
 
+import base64
 import logging
 import re
 import shlex
@@ -46,14 +47,17 @@ class LiveGrubFixer:
       - Remove stale device.map (only if it looks auto-generated / references legacy disk names)
       - Stabilize root= in /etc/default/grub using UUID/PARTUUID/LABEL/PARTLABEL if possible
       - Best-effort initramfs + bootloader regeneration using capability detection (not distro-only)
-      - Optional post-check: grep grub.cfg for stable root token (warning only)
+      - Optional post-check: search generated config (grub.cfg and/or BLS entries) for stable root token (warning only)
 
     Knobs:
       - dry_run: do not mutate, but still probe/detect
       - no_backup: disable timestamped backups
-      - update_grub: enable root= stabilization
-      - regen_initramfs: enable initramfs + bootloader regeneration
+      - update_grub: enable root= stabilization in /etc/default/grub
+      - regen_initramfs: enable initramfs regeneration (bootloader regen may still run if grub root was updated)
     """
+
+    _INLINE_B64_MAX_CHARS = 24_000
+    _B64_CHUNK_CHARS = 8_000
 
     def __init__(
         self,
@@ -75,37 +79,58 @@ class LiveGrubFixer:
         self.prefer = prefer
         self.report = LiveGrubFixReport()
 
+        self._warned_once: set[str] = set()
+
     # ---------------------------
     # ssh helpers
     # ---------------------------
 
+    def _warn_once(self, key: str, msg: str, *args: Any) -> None:
+        if key in self._warned_once:
+            return
+        self._warned_once.add(key)
+        self.logger.warning(msg, *args)
+
     def _ssh(self, cmd: str) -> str:
         self.logger.debug("SSH: %s", cmd)
-        out = self.sshc.ssh(cmd) or ""
-        return out
+        return self.sshc.ssh(cmd) or ""
 
     def _sh(self, cmd: str, *, allow_fail: bool = True) -> Tuple[int, str]:
         """
         Run a command remotely and capture rc reliably.
+
+        Robustness:
+          - pipefail is best-effort (dash/busybox sh may not support it)
+          - rc marker is unique per call to avoid output spoofing
+          - if multiple markers appear, we take the LAST one
         """
-        wrapped = "sh -lc " + shlex.quote(
-            f"""
-set -o pipefail
+        # If U.now_ts() is second-resolution, add a cheap extra entropy component (python-side).
+        marker = f"__H2KVM_RC_{U.now_ts()}_{id(cmd)}__"
+
+        wrapped_body = f"""
+set -u
+set -o pipefail 2>/dev/null || true
 {cmd}
 rc=$?
-echo __VMDK2KVM_RC__=$rc
+printf "\\n{marker}=%s\\n" "$rc"
 exit 0
 """.strip()
-        )
+
+        wrapped = "sh -lc " + shlex.quote(wrapped_body)
         out = self._ssh(wrapped)
 
         rc = 0
-        m = re.search(r"__VMDK2KVM_RC__=(\d+)", out)
-        if m:
-            rc = int(m.group(1))
-            out = re.sub(r"\n?__VMDK2KVM_RC__=\d+\s*$", "", out, flags=re.M)
+        matches = list(re.finditer(rf"{re.escape(marker)}=(\d+)\s*$", out, flags=re.M))
+        if matches:
+            rc = int(matches[-1].group(1))
+            out = re.sub(rf"\n?{re.escape(marker)}=\d+\s*$", "", out, flags=re.M)
         else:
             rc = 0
+            self._warn_once(
+                "missing_rc_marker",
+                "Could not parse remote rc marker (unexpected shell output); treating as rc=0 for: %s",
+                cmd,
+            )
 
         self.report.commands_ran.append({"cmd": cmd, "rc": str(rc)})
         if rc != 0 and not allow_fail:
@@ -120,11 +145,38 @@ exit 0
         _, out = self._sh(f"test -e {shlex.quote(path)} && echo OK || echo NO")
         return out.strip() == "OK"
 
+    def _remote_is_dir(self, path: str) -> bool:
+        _, out = self._sh(f"test -d {shlex.quote(path)} && echo OK || echo NO")
+        return out.strip() == "OK"
+
     def _read_remote_file(self, path: str) -> str:
         _, out = self._sh(f"cat {shlex.quote(path)} 2>/dev/null || true")
         return out
 
+    def _remote_stat_u_g_a(self, path: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        if not self._has_cmd("stat"):
+            return None, None, None
+        _, out = self._sh(f"stat -c '%u %g %a' -- {shlex.quote(path)} 2>/dev/null || true")
+        s = out.strip()
+        if not s:
+            return None, None, None
+        parts = s.split()
+        if len(parts) != 3:
+            return None, None, None
+        uid, gid, mode = parts
+        if not (uid.isdigit() and gid.isdigit() and mode.isdigit()):
+            return None, None, None
+        return uid, gid, mode
+
     def _write_remote_file_atomic(self, path: str, content: str, mode: str = "0644") -> None:
+        """
+        Atomic-ish update:
+          - mktemp
+          - write content (base64 preferred; chunked if large; fallback to heredoc with unique marker)
+          - chmod/chown from existing target when possible
+          - mv over target
+          - sync
+        """
         if self.dry_run:
             self.logger.info("DRY-RUN: would write %s (%d bytes)", path, len(content))
             return
@@ -137,22 +189,58 @@ exit 0
         if not tmp:
             raise RuntimeError("mktemp failed on remote host")
 
-        self._sh(
-            "sh -lc " + shlex.quote(
-                f"cat > {shlex.quote(tmp)} <<'EOF'\n{content}\nEOF\nchmod {mode} {shlex.quote(tmp)} || true\n"
-            ),
-            allow_fail=False,
-        )
-        self._sh(f"mv -f {shlex.quote(tmp)} {shlex.quote(path)}", allow_fail=False)
-        self._sh("sync || true", allow_fail=True)
+        uid: Optional[str] = None
+        gid: Optional[str] = None
+        orig_mode: Optional[str] = None
+        if self._remote_exists(path):
+            uid, gid, orig_mode = self._remote_stat_u_g_a(path)
+
+        effective_mode = (orig_mode or "").strip() or mode
+
+        lines: List[str] = []
+        lines.append("set -e")
+        lines.append("umask 022")
+        lines.append(f": > {shlex.quote(tmp)}")
+
+        if self._has_cmd("base64"):
+            b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+            if len(b64) <= self._INLINE_B64_MAX_CHARS:
+                lines.append(f"printf %s {shlex.quote(b64)} | base64 -d >> {shlex.quote(tmp)}")
+            else:
+                lines.append("# chunked base64 decode")
+                for i in range(0, len(b64), self._B64_CHUNK_CHARS):
+                    chunk = b64[i : i + self._B64_CHUNK_CHARS]
+                    lines.append(f"printf %s {shlex.quote(chunk)} | base64 -d >> {shlex.quote(tmp)}")
+        else:
+            self._warn_once(
+                "missing_base64",
+                "Remote is missing 'base64'; falling back to heredoc writer (safe, slightly less robust).",
+            )
+            marker = f"__H2KVM_EOF_{U.now_ts()}_{re.sub(r'[^A-Za-z0-9]+', '_', tmp)}__"
+            lines.append(f"cat >> {shlex.quote(tmp)} <<'{marker}'")
+            lines.append(content)
+            lines.append(marker)
+
+        lines.append(f"chmod {shlex.quote(effective_mode)} {shlex.quote(tmp)} 2>/dev/null || true")
+        if uid and gid:
+            lines.append(f"chown {shlex.quote(uid)}:{shlex.quote(gid)} {shlex.quote(tmp)} 2>/dev/null || true")
+
+        lines.append(f"mv -f {shlex.quote(tmp)} {shlex.quote(path)}")
+        lines.append("sync 2>/dev/null || true")
+
+        payload = "\n".join(lines) + "\n"
+        self._sh("sh -lc " + shlex.quote(payload), allow_fail=False)
 
     def _backup_remote_file(self, path: str) -> Optional[str]:
         if self.no_backup or self.dry_run:
             return None
         b = f"{path}.bak.hyper2kvm.{U.now_ts()}"
         self._sh(f"cp -a {shlex.quote(path)} {shlex.quote(b)} 2>/dev/null || true")
-        self.logger.info("Backup: %s -> %s", path, b)
-        return b
+        if self._remote_exists(b):
+            self.logger.info("Backup: %s -> %s", path, b)
+            return b
+        self.logger.warning("Backup failed (best-effort): %s -> %s", path, b)
+        return None
 
     def _remove_remote_file(self, path: str) -> None:
         if self.dry_run:
@@ -187,43 +275,60 @@ echo "ID_LIKE=${ID_LIKE:-}"
         d = (did or "").lower()
         lk = {x.lower() for x in (like or [])}
 
-        # Debian-ish
-        if d in {"debian", "ubuntu", "linuxmint", "pop", "popos", "kali", "raspbian", "elementary", "zorin", "deepin"}:
+        if d in {
+            "debian",
+            "ubuntu",
+            "linuxmint",
+            "pop",
+            "popos",
+            "kali",
+            "raspbian",
+            "elementary",
+            "zorin",
+            "deepin",
+        }:
             return "debian"
         if {"debian", "ubuntu"} & lk:
             return "debian"
 
-        # RHEL-ish (+ common derivatives)
-        if d in {"rhel", "centos", "fedora", "rocky", "almalinux", "oraclelinux", "ol", "redhat", "amzn", "amazonlinux", "mariner", "cbl-mariner", "photon"}:
+        if d in {
+            "rhel",
+            "centos",
+            "fedora",
+            "rocky",
+            "almalinux",
+            "oraclelinux",
+            "ol",
+            "redhat",
+            "amzn",
+            "amazonlinux",
+            "mariner",
+            "cbl-mariner",
+            "photon",
+        }:
             return "rhel"
         if {"rhel", "fedora", "centos", "redhat"} & lk:
             return "rhel"
 
-        # SUSE-ish
         if d in {"sles", "sled", "opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"}:
             return "suse"
         if "suse" in lk:
             return "suse"
 
-        # Arch-ish
         if d in {"arch", "manjaro", "endeavouros", "garuda"}:
             return "arch"
         if "arch" in lk:
             return "arch"
 
-        # Alpine
         if d == "alpine" or "alpine" in lk:
             return "alpine"
 
-        # Gentoo/Funtoo
         if d in {"gentoo", "funtoo"} or "gentoo" in lk:
             return "gentoo"
 
-        # Void
         if d == "void" or "void" in lk:
             return "void"
 
-        # NixOS
         if d == "nixos" or "nixos" in lk:
             return "nixos"
 
@@ -237,6 +342,9 @@ echo "ID_LIKE=${ID_LIKE:-}"
         self.report.family = fam
 
     def _readlink_f(self, path: str) -> Optional[str]:
+        if not self._has_cmd("readlink"):
+            self._warn_once("missing_readlink", "readlink not found on remote; root path resolution may be limited.")
+            return None
         _, out = self._sh(f"readlink -f -- {shlex.quote(path)} 2>/dev/null || true")
         s = out.strip()
         return s or None
@@ -246,6 +354,9 @@ echo "ID_LIKE=${ID_LIKE:-}"
         return out.strip() == "OK"
 
     def _blkid(self, dev: str, key: str) -> Optional[str]:
+        if not self._has_cmd("blkid"):
+            self._warn_once("missing_blkid", "blkid not found on remote; cannot convert devices to UUID/PARTUUID.")
+            return None
         _, out = self._sh(f"blkid -s {shlex.quote(key)} -o value -- {shlex.quote(dev)} 2>/dev/null || true")
         v = out.strip()
         return v or None
@@ -261,11 +372,14 @@ echo "ID_LIKE=${ID_LIKE:-}"
             s = out.strip()
             if not s:
                 continue
+
+            # initramfs/rescue environments: / may be overlay/tmpfs
             if s in {"overlay", "tmpfs"}:
-                _, o2 = self._sh("findmnt -n -o SOURCE -T /sysroot 2>/dev/null || true")
-                s2 = o2.strip()
-                if s2 and s2 not in {"overlay", "tmpfs"}:
-                    return s2
+                for alt in ("/sysroot", "/mnt/sysimage"):
+                    _, o2 = self._sh(f"findmnt -n -o SOURCE -T {shlex.quote(alt)} 2>/dev/null || true")
+                    s2 = o2.strip()
+                    if s2 and s2 not in {"overlay", "tmpfs"}:
+                        return s2
             return s
         return ""
 
@@ -381,18 +495,34 @@ echo "ID_LIKE=${ID_LIKE:-}"
 
         cmdline_re = re.compile(r'^(GRUB_CMDLINE_LINUX(?:_DEFAULT)?)=(["\'])(.*)\2\s*$')
 
+        touched = False
+
         def patch_line(line: str) -> str:
+            nonlocal touched
             m = cmdline_re.match(line)
             if not m:
                 return line
             key, quote, val = m.group(1), m.group(2), m.group(3)
-            if re.search(r"\broot=", val):
+
+            # Handle root=token, root="token", root='token'
+            if re.search(r'\broot=("|\')', val):
+                val2 = re.sub(r'\broot=(["\'])[^"\']+\1', f'root={quote}{stable}{quote}', val)
+            elif re.search(r"\broot=", val):
                 val2 = re.sub(r"\broot=[^\s\"']+", f"root={stable}", val)
             else:
                 val2 = (val + f" root={stable}").strip()
+
+            if val2 != val:
+                touched = True
             return f"{key}={quote}{val2}{quote}"
 
-        new_lines = [patch_line(l) for l in old.splitlines()]
+        lines_in = old.splitlines()
+        new_lines = [patch_line(l) for l in lines_in]
+
+        if not touched:
+            new_lines.append(f'GRUB_CMDLINE_LINUX="root={stable}"')
+            touched = True
+
         new = "\n".join(new_lines) + "\n"
 
         if new == old:
@@ -413,7 +543,7 @@ echo "ID_LIKE=${ID_LIKE:-}"
         return True
 
     # ---------------------------
-    # regen logic (capability-first)
+    # regen logic (capability-first, split initramfs vs bootloader)
     # ---------------------------
 
     def _detect_grub_cfg_targets(self) -> List[str]:
@@ -433,6 +563,12 @@ echo "ID_LIKE=${ID_LIKE:-}"
                 out.append(t)
         return out
 
+    def _detect_bls_entries_dir(self) -> Optional[str]:
+        for d in ("/boot/loader/entries", "/boot/efi/loader/entries"):
+            if self._remote_is_dir(d):
+                return d
+        return None
+
     def _run_best_effort_until_ok(self, label: str, cmds: List[str]) -> None:
         for c in cmds:
             rc, out = self._sh(c, allow_fail=True)
@@ -443,25 +579,16 @@ echo "ID_LIKE=${ID_LIKE:-}"
             self.logger.debug("%s: failed rc=%s cmd=%s out=%s", label, rc, c, tail)
         self.report.warnings.append(f"{label}: all attempts failed (non-fatal)")
 
-    def regen_initramfs_and_grub(self) -> None:
+    def _regen_initramfs(self) -> None:
         if not self.regen_initramfs:
             return
 
-        # ensure we have distro info for logging/warnings
-        if not self.report.distro_id:
-            try:
-                self._detect_distro()
-            except Exception:
-                pass
-
-        did = self.report.distro_id
         fam = self.report.family
 
         if self.dry_run:
-            self.logger.info("DRY-RUN: would regenerate initramfs + bootloader (id=%s family=%s).", did, fam)
+            self.logger.info("DRY-RUN: would regenerate initramfs.")
             return
 
-        # ---- initramfs ----
         initramfs_cmds: List[str] = []
 
         if self._has_cmd("update-initramfs"):
@@ -492,13 +619,18 @@ echo "ID_LIKE=${ID_LIKE:-}"
 
         if fam == "nixos":
             self.report.warnings.append("initramfs: nixos detected; skipping nixos-rebuild (manual step)")
-        else:
-            if initramfs_cmds:
-                self._run_best_effort_until_ok("initramfs", initramfs_cmds)
-            else:
-                self.report.warnings.append("initramfs: no known initramfs tool detected; skipping")
+            return
 
-        # ---- bootloader config ----
+        if initramfs_cmds:
+            self._run_best_effort_until_ok("initramfs", initramfs_cmds)
+        else:
+            self.report.warnings.append("initramfs: no known initramfs tool detected; skipping")
+
+    def _regen_bootloader(self) -> None:
+        if self.dry_run:
+            self.logger.info("DRY-RUN: would regenerate bootloader config.")
+            return
+
         grub_targets = self._detect_grub_cfg_targets()
         boot_cmds: List[str] = []
 
@@ -513,42 +645,83 @@ echo "ID_LIKE=${ID_LIKE:-}"
             for tgt in grub_targets:
                 boot_cmds.append(f"grub-mkconfig -o {shlex.quote(tgt)} 2>/dev/null")
 
-        if self._has_cmd("bootctl"):
-            boot_cmds.append("bootctl status 2>/dev/null || true")
-            boot_cmds.append("bootctl update 2>/dev/null || true")
-
         if boot_cmds:
-            for c in boot_cmds:
-                self._sh(c, allow_fail=True)
-        else:
-            self.report.warnings.append("bootloader: no grub/bootctl tooling detected; skipping")
+            self._run_best_effort_until_ok("bootloader", boot_cmds)
+            return
+
+        if self._has_cmd("bootctl"):
+            self._sh("bootctl status 2>/dev/null || true", allow_fail=True)
+            self._sh("bootctl update 2>/dev/null || true", allow_fail=True)
+            return
+
+        self.report.warnings.append("bootloader: no grub/bootctl tooling detected; skipping")
+
+    def regen(self, *, force_bootloader: bool) -> None:
+        """
+        Regen orchestration:
+
+          - initramfs: only when self.regen_initramfs is True
+          - bootloader: when force_bootloader True OR self.regen_initramfs True
+            (i.e., if we updated /etc/default/grub, we force bootloader regen even if initramfs knob is off)
+        """
+        if not self.report.distro_id:
+            try:
+                self._detect_distro()
+            except Exception:
+                pass
+
+        did = self.report.distro_id
+        fam = self.report.family
+
+        if self.dry_run:
+            self.logger.info(
+                "DRY-RUN: would regen (bootloader=%s, initramfs=%s) (id=%s family=%s).",
+                force_bootloader or self.regen_initramfs,
+                self.regen_initramfs,
+                did,
+                fam,
+            )
+            return
+
+        self._regen_initramfs()
+
+        if force_bootloader or self.regen_initramfs:
+            self._regen_bootloader()
 
         self.logger.info("Live regen done (id=%s family=%s).", did, fam)
 
-    def postcheck_grubcfg(self) -> None:
+    def postcheck_configs(self) -> None:
         stable = (self.report.stable_root or "").strip()
         if not stable:
             return
 
         token = f"root={stable}"
-        candidates = self._detect_grub_cfg_targets()
-        found_any = False
 
+        # Check grub.cfg targets
+        candidates = self._detect_grub_cfg_targets()
         for p in candidates:
             if not self._remote_exists(p):
                 continue
             txt = self._read_remote_file(p)
             if token in txt or stable in txt:
-                found_any = True
-                break
+                return
 
-        if not found_any:
-            msg = (
-                f"Postcheck: stable root '{stable}' not found in grub.cfg "
-                f"(may still be OK; grub may source /etc/default/grub or BLS at boot)."
-            )
-            self.logger.warning(msg)
-            self.report.warnings.append(msg)
+        # Check BLS entries (Fedora/RHEL-ish)
+        bls_dir = self._detect_bls_entries_dir()
+        if bls_dir:
+            _, out = self._sh(f"grep -R --line-number -F {shlex.quote(token)} {shlex.quote(bls_dir)} 2>/dev/null || true")
+            if (out or "").strip():
+                return
+            _, out2 = self._sh(f"grep -R --line-number -F {shlex.quote(stable)} {shlex.quote(bls_dir)} 2>/dev/null || true")
+            if (out2 or "").strip():
+                return
+
+        msg = (
+            f"Postcheck: stable root '{stable}' not found in grub.cfg/BLS entries "
+            f"(may still be OK; generator tooling or bootloader may apply it differently)."
+        )
+        self.logger.warning(msg)
+        self.report.warnings.append(msg)
 
     # ---------------------------
     # main entry
@@ -579,17 +752,18 @@ echo "ID_LIKE=${ID_LIKE:-}"
             self.logger.warning(msg)
             self.report.warnings.append(msg)
 
-        # Regen if requested OR if we changed /etc/default/grub (common expectation)
+        # Key fix: even if regen_initramfs knob is off, if we updated /etc/default/grub we should
+        # at least regen bootloader config (best-effort).
         if self.regen_initramfs or updated:
             try:
-                self.regen_initramfs_and_grub()
+                self.regen(force_bootloader=updated)
             except Exception as e:
                 msg = f"regen_failed:{e}"
                 self.logger.warning(msg)
                 self.report.warnings.append(msg)
 
         try:
-            self.postcheck_grubcfg()
+            self.postcheck_configs()
         except Exception as e:
             self.logger.debug("Postcheck failed: %s", e)
 
