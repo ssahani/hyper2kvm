@@ -191,6 +191,10 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 - **[Priority Features](project/Priority-1-Features.md)** - Roadmap and priorities
 - **[Ecosystem](project/ECOSYSTEM.md)** - Related tools and integrations
 
+### 🗺️ Roadmap & Future Features
+- **[Roadmap Overview](roadmap/README.md)** - Planned features and enhancements
+- **[Advanced Windows Support](roadmap/Advanced-Windows-Support.md)** - Enterprise Windows features (v0.3.0+)
+
 ### 📚 Reference Documentation
 - **[Reference Hub](reference/)** - Complete reference documentation overview
 - **[Dependencies](reference/dependencies.md)** - Required dependencies
