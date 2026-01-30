@@ -1274,6 +1274,435 @@ class NativeGuestFS:
 
         return current if current.exists() else None
 
+    # Advanced file operations
+
+    def find_files(self, path: str, pattern: str | None = None, file_type: str | None = None) -> list[str]:
+        """
+        Find files in guest filesystem.
+
+        Args:
+            path: Starting directory path
+            pattern: Optional glob pattern (e.g., "*.log", "config.*")
+            file_type: Optional type filter ("f"=file, "d"=directory, "l"=symlink)
+
+        Returns:
+            List of matching file paths
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        search_path = self._guest_path(path)
+        if not search_path.exists():
+            return []
+
+        results = []
+
+        def scan_dir(directory: Path, base: str = ""):
+            try:
+                for entry in directory.iterdir():
+                    rel_path = f"{base}/{entry.name}" if base else entry.name
+                    full_guest_path = f"{path}/{rel_path}".replace("//", "/")
+
+                    # Type filter
+                    if file_type:
+                        if file_type == "f" and not entry.is_file():
+                            continue
+                        elif file_type == "d" and not entry.is_dir():
+                            continue
+                        elif file_type == "l" and not entry.is_symlink():
+                            continue
+
+                    # Pattern filter
+                    if pattern:
+                        import fnmatch
+                        if not fnmatch.fnmatch(entry.name, pattern):
+                            if entry.is_dir():
+                                scan_dir(entry, rel_path)
+                            continue
+
+                    results.append(full_guest_path)
+
+                    # Recurse into directories
+                    if entry.is_dir() and not entry.is_symlink():
+                        scan_dir(entry, rel_path)
+
+            except (PermissionError, OSError) as e:
+                self.logger.debug(f"Cannot access {directory}: {e}")
+
+        scan_dir(search_path)
+        return sorted(results)
+
+    def checksum(self, path: str, algorithm: str = "sha256") -> str:
+        """
+        Calculate checksum of file.
+
+        Args:
+            path: File path in guest
+            algorithm: Hash algorithm (md5, sha1, sha256, sha512)
+
+        Returns:
+            Hexadecimal checksum string
+        """
+        import hashlib
+
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        file_path = self._guest_path(path)
+        if not file_path.is_file():
+            raise ValueError(f"Not a file: {path}")
+
+        hasher = hashlib.new(algorithm)
+        with file_path.open('rb') as f:
+            while chunk := f.read(8192):
+                hasher.update(chunk)
+
+        checksum_value = hasher.hexdigest()
+        self.logger.debug(f"{algorithm}({path}) = {checksum_value}")
+        return checksum_value
+
+    def file_age(self, path: str) -> dict[str, Any]:
+        """
+        Get file timestamps.
+
+        Returns:
+            Dict with atime, mtime, ctime (seconds since epoch)
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        file_path = self._guest_path(path)
+        stat_info = file_path.stat()
+
+        return {
+            "atime": stat_info.st_atime,  # Access time
+            "mtime": stat_info.st_mtime,  # Modification time
+            "ctime": stat_info.st_ctime,  # Change time
+            "size": stat_info.st_size,
+        }
+
+    def set_permissions(self, path: str, mode: int, recursive: bool = False) -> None:
+        """
+        Set file/directory permissions.
+
+        Args:
+            path: File or directory path
+            mode: Permission mode (octal, e.g., 0o755)
+            recursive: Apply to all files in directory
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        target = self._guest_path(path)
+
+        if recursive and target.is_dir():
+            for item in target.rglob('*'):
+                try:
+                    item.chmod(mode)
+                except (PermissionError, OSError) as e:
+                    self.logger.warning(f"Cannot chmod {item}: {e}")
+        else:
+            target.chmod(mode)
+
+        self.logger.info(f"Set permissions {oct(mode)} on {path}")
+
+    def set_owner(self, path: str, uid: int, gid: int, recursive: bool = False) -> None:
+        """
+        Set file/directory owner.
+
+        Args:
+            path: File or directory path
+            uid: User ID
+            gid: Group ID
+            recursive: Apply to all files in directory
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        target = self._guest_path(path)
+
+        if recursive and target.is_dir():
+            for item in target.rglob('*'):
+                try:
+                    os.chown(item, uid, gid)
+                except (PermissionError, OSError) as e:
+                    self.logger.warning(f"Cannot chown {item}: {e}")
+        else:
+            os.chown(target, uid, gid)
+
+        self.logger.info(f"Set owner {uid}:{gid} on {path}")
+
+    # Disk and partition information
+
+    def disk_size(self, device: str | None = None) -> int:
+        """Get disk size in bytes."""
+        if device is None:
+            if not self._nbd_device:
+                raise RuntimeError("No device mounted")
+            device = self._nbd_device
+
+        try:
+            result = _run_sudo(self.logger, ["blockdev", "--getsize64", device], check=True, capture=True)
+            return int(result.stdout.strip())
+        except Exception as e:
+            self.logger.error(f"Failed to get disk size: {e}")
+            return 0
+
+    def partition_info(self, device: str) -> dict[str, Any]:
+        """
+        Get partition information.
+
+        Returns:
+            Dict with partition details (size, type, uuid, label, etc.)
+        """
+        info = {
+            "device": device,
+            "size": 0,
+            "fstype": "unknown",
+            "uuid": None,
+            "label": None,
+            "mountpoint": None,
+        }
+
+        try:
+            # Get size
+            result = _run_sudo(self.logger, ["blockdev", "--getsize64", device], check=True, capture=True)
+            info["size"] = int(result.stdout.strip())
+
+            # Get filesystem info
+            result = _run_sudo(self.logger, ["blkid", "-o", "export", device], check=False, capture=True)
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        if key == "TYPE":
+                            info["fstype"] = value
+                        elif key == "UUID":
+                            info["uuid"] = value
+                        elif key == "LABEL":
+                            info["label"] = value
+
+        except Exception as e:
+            self.logger.debug(f"Failed to get partition info for {device}: {e}")
+
+        return info
+
+    # Registry enumeration (Windows)
+
+    def win_registry_list_keys(self, hive_name: str, key_path: str = "") -> list[str]:
+        """
+        List subkeys in a registry path.
+
+        Args:
+            hive_name: Registry hive (SOFTWARE, SYSTEM, etc.)
+            key_path: Registry key path (empty for root)
+
+        Returns:
+            List of subkey names
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        # Find registry hive file
+        hive_file = None
+        for try_path in [
+            f"Windows/System32/config/{hive_name}",
+            f"windows/system32/config/{hive_name.lower()}",
+        ]:
+            test_path = self._mount_root / try_path
+            if test_path.exists():
+                hive_file = test_path
+                break
+
+        if not hive_file:
+            self.logger.warning(f"Registry hive not found: {hive_name}")
+            return []
+
+        try:
+            # Use hivexsh to list keys
+            if key_path:
+                hivex_cmd = f"cd {key_path}\\nls"
+            else:
+                hivex_cmd = "ls"
+
+            result = _run_sudo(
+                self.logger,
+                ["hivexsh", str(hive_file), "-c", hivex_cmd],
+                check=True,
+                capture=True
+            )
+
+            # Parse output
+            keys = []
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line and not line.startswith('['):
+                    keys.append(line)
+
+            return keys
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            self.logger.debug(f"Failed to list registry keys: {e}")
+            return []
+
+    def win_registry_list_values(self, hive_name: str, key_path: str) -> dict[str, Any]:
+        """
+        List values in a registry key.
+
+        Args:
+            hive_name: Registry hive (SOFTWARE, SYSTEM, etc.)
+            key_path: Registry key path
+
+        Returns:
+            Dict of {value_name: value_data}
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        # Find registry hive file
+        hive_file = None
+        for try_path in [
+            f"Windows/System32/config/{hive_name}",
+            f"windows/system32/config/{hive_name.lower()}",
+        ]:
+            test_path = self._mount_root / try_path
+            if test_path.exists():
+                hive_file = test_path
+                break
+
+        if not hive_file:
+            return {}
+
+        values = {}
+        try:
+            # Use hivexsh to list values
+            hivex_cmd = f"cd {key_path}\\nlsval"
+
+            result = _run_sudo(
+                self.logger,
+                ["hivexsh", str(hive_file), "-c", hivex_cmd],
+                check=True,
+                capture=True
+            )
+
+            # Parse output (format: "valuename" = type: data)
+            for line in result.stdout.splitlines():
+                if '=' in line:
+                    parts = line.split('=', 1)
+                    value_name = parts[0].strip().strip('"')
+                    value_data = parts[1].strip() if len(parts) > 1 else ""
+                    values[value_name] = value_data
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            self.logger.debug(f"Failed to list registry values: {e}")
+
+        return values
+
+    # Network configuration
+
+    def get_network_config(self) -> dict[str, Any]:
+        """
+        Get network configuration from guest.
+
+        Returns:
+            Dict with network interfaces and settings
+        """
+        config = {
+            "interfaces": [],
+            "hostname": None,
+            "dns_servers": [],
+        }
+
+        if not self._mount_root:
+            return config
+
+        # Get hostname
+        hostname_file = self._mount_root / "etc/hostname"
+        if hostname_file.exists():
+            try:
+                config["hostname"] = hostname_file.read_text().strip()
+            except Exception:
+                pass
+
+        # Get DNS servers
+        resolv_conf = self._mount_root / "etc/resolv.conf"
+        if resolv_conf.exists():
+            try:
+                for line in resolv_conf.read_text().splitlines():
+                    if line.strip().startswith('nameserver'):
+                        dns = line.split()[1]
+                        config["dns_servers"].append(dns)
+            except Exception:
+                pass
+
+        # Get network interfaces (from /etc/network/interfaces or /etc/sysconfig/network-scripts)
+        # This would need more implementation for different distros
+
+        return config
+
+    # Template and snapshot operations
+
+    def create_template(self, name: str, description: str = "") -> dict[str, Any]:
+        """
+        Mark current state as a template.
+
+        This prepares the guest for cloning by:
+        - Removing machine-specific IDs
+        - Cleaning up logs
+        - Removing SSH host keys
+        - Generalizing configuration
+
+        Returns:
+            Dict with template metadata
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        template_info = {
+            "name": name,
+            "description": description,
+            "created": None,
+            "changes": [],
+        }
+
+        changes = []
+
+        # Remove machine-id
+        machine_id = self._mount_root / "etc/machine-id"
+        if machine_id.exists():
+            machine_id.write_text("")
+            changes.append("Cleared /etc/machine-id")
+
+        # Remove SSH host keys
+        ssh_dir = self._mount_root / "etc/ssh"
+        if ssh_dir.exists():
+            for key_file in ssh_dir.glob("ssh_host_*_key*"):
+                key_file.unlink()
+                changes.append(f"Removed {key_file.name}")
+
+        # Clean logs
+        log_dir = self._mount_root / "var/log"
+        if log_dir.exists():
+            for log_file in log_dir.rglob("*.log"):
+                try:
+                    log_file.write_text("")
+                    changes.append(f"Cleared {log_file.relative_to(self._mount_root)}")
+                except Exception:
+                    pass
+
+        # Clear bash history
+        for history_file in self._mount_root.rglob(".bash_history"):
+            try:
+                history_file.unlink()
+                changes.append(f"Removed {history_file.relative_to(self._mount_root)}")
+            except Exception:
+                pass
+
+        template_info["changes"] = changes
+        self.logger.info(f"📋 Created template '{name}' with {len(changes)} changes")
+
+        return template_info
+
     # Context manager support
 
     def __enter__(self):

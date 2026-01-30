@@ -1,8 +1,8 @@
-# Native GuestFS as a Standalone Library
+# VMCraft: Python Library for VM Disk Image Manipulation
 
 ## Overview
 
-The native GuestFS implementation in hyper2kvm has evolved into a comprehensive library that could be valuable as a standalone project. This document outlines the vision and roadmap for extracting it into its own library.
+The native GuestFS implementation in hyper2kvm has evolved into **VMCraft** - a comprehensive Python library for crafting and manipulating VM disk images. This document outlines the vision and roadmap for extracting it into its own standalone library.
 
 ## Why Make It a Library?
 
@@ -65,16 +65,16 @@ The native GuestFS implementation in hyper2kvm has evolved into a comprehensive 
 ### Roadmap for Standalone Library
 
 **Phase 1: Extract Core Library** (1-2 weeks)
-- [ ] Create new repository: `python-native-guestfs`
+- [ ] Create new repository: `vmcraft`
 - [ ] Extract core modules:
-  - `native_guestfs/core.py` - Main NativeGuestFS class
-  - `native_guestfs/nbd.py` - NBD device management
-  - `native_guestfs/storage.py` - Storage stack activation
-  - `native_guestfs/windows.py` - Windows-specific operations
-  - `native_guestfs/factory.py` - Backend factory
+  - `vmcraft/core.py` - Main GuestFS class
+  - `vmcraft/nbd.py` - NBD device management
+  - `vmcraft/storage.py` - Storage stack activation
+  - `vmcraft/windows.py` - Windows-specific operations
+  - `vmcraft/factory.py` - Backend factory
 - [ ] Remove hyper2kvm-specific dependencies
 - [ ] Create standalone `pyproject.toml` with dependencies
-- [ ] Add CLI tool: `native-guestfs` command
+- [ ] Add CLI tool: `vmcraft` command
 
 **Phase 2: Enhanced Testing** (1 week)
 - [ ] Comprehensive unit tests (pytest)
@@ -93,7 +93,7 @@ The native GuestFS implementation in hyper2kvm has evolved into a comprehensive 
 - [ ] System requirements per OS
 
 **Phase 4: Packaging & Distribution** (1 week)
-- [ ] PyPI package: `pip install native-guestfs`
+- [ ] PyPI package: `pip install vmcraft`
 - [ ] GitHub repository with CI/CD
 - [ ] Docker images with all dependencies
 - [ ] Debian/Ubuntu packages
@@ -113,7 +113,7 @@ The native GuestFS implementation in hyper2kvm has evolved into a comprehensive 
 ## Proposed Library Structure
 
 ```
-python-native-guestfs/
+vmcraft/
 ├── pyproject.toml
 ├── README.md
 ├── LICENSE (LGPL-3.0)
@@ -123,7 +123,7 @@ python-native-guestfs/
 │   ├── windows.md
 │   ├── cookbook.md
 │   └── comparison.md
-├── native_guestfs/
+├── vmcraft/
 │   ├── __init__.py
 │   ├── core.py              # NativeGuestFS class
 │   ├── nbd.py               # NBD management
@@ -149,7 +149,7 @@ python-native-guestfs/
 ### Simple API (beginner-friendly)
 
 ```python
-from native_guestfs import GuestFS
+from vmcraft import GuestFS
 
 # Context manager for automatic cleanup
 with GuestFS('/path/to/disk.qcow2') as g:
@@ -171,7 +171,7 @@ with GuestFS('/path/to/disk.qcow2') as g:
 ### Advanced API (full control)
 
 ```python
-from native_guestfs import NativeGuestFS
+from vmcraft import NativeGuestFS
 
 g = NativeGuestFS()
 g.add_drive('/path/to/disk.qcow2', readonly=False, format='qcow2')
@@ -201,22 +201,22 @@ g.close()
 
 ```bash
 # Interactive shell
-native-guestfs -a disk.qcow2 -i
+vmcraft -a disk.qcow2 -i
 > mount-root
 > cat /etc/hostname
 > write /etc/motd "Welcome!"
 > exit
 
 # One-shot commands
-native-guestfs -a disk.qcow2 --run 'cat /etc/hostname'
-native-guestfs -a disk.qcow2 --run 'upload /local/file /remote/file'
+vmcraft -a disk.qcow2 --run 'cat /etc/hostname'
+vmcraft -a disk.qcow2 --run 'upload /local/file /remote/file'
 
 # Windows operations
-native-guestfs -a windows.vmdk \
+vmcraft -a windows.vmdk \
   --inject-driver /path/to/virtio viostor.inf
 
 # Registry operations
-native-guestfs -a windows.vmdk \
+vmcraft -a windows.vmdk \
   --reg-read 'SOFTWARE' 'Microsoft\Windows NT\CurrentVersion' 'ProductName'
 ```
 
@@ -325,7 +325,7 @@ windows = [
 
 ## Comparison with libguestfs
 
-| Feature | native-guestfs | libguestfs |
+| Feature | VMCraft | libguestfs |
 |---------|---------------|------------|
 | **Performance** |
 | Launch time | ~1-2s | ~5-10s |
@@ -351,22 +351,22 @@ windows = [
 
 ## Migration from hyper2kvm
 
-To use native-guestfs in hyper2kvm:
+To use VMCraft in hyper2kvm:
 
 ```python
 # Before:
 from hyper2kvm.core.guestfs_factory import create_guestfs
 
 # After (once library is published):
-from native_guestfs import GuestFS as create_guestfs
+from vmcraft import GuestFS as create_guestfs
 ```
 
-The hyper2kvm project would depend on `native-guestfs` package:
+The hyper2kvm project would depend on `vmcraft` package:
 
 ```toml
 [project]
 dependencies = [
-    "native-guestfs >= 1.0.0",
+    "vmcraft >= 1.0.0",
 ]
 ```
 
@@ -385,9 +385,9 @@ Alternative: MIT/BSD for maximum permissiveness
 ## Community & Governance
 
 **Project Hosting:**
-- GitHub: `github.com/yourorg/python-native-guestfs`
-- PyPI: `pypi.org/project/native-guestfs`
-- Docs: `native-guestfs.readthedocs.io`
+- GitHub: `github.com/ssahani/vmcraft`
+- PyPI: `pypi.org/project/vmcraft`
+- Docs: `vmcraft.rtfd.io` or `vmcraft.dev`
 
 **Contribution Guidelines:**
 - Code of Conduct (Contributor Covenant)
@@ -413,7 +413,7 @@ Alternative: MIT/BSD for maximum permissiveness
 
 ## Conclusion
 
-The native GuestFS implementation has evolved beyond a simple libguestfs replacement into a powerful, standalone library for disk image manipulation. Extracting it as a separate project would:
+VMCraft has evolved beyond a simple libguestfs replacement into a powerful, standalone library for disk image manipulation. Extracting it as a separate project would:
 
 1. ✅ **Benefit hyper2kvm** - Cleaner separation, focused testing
 2. ✅ **Benefit community** - Reusable tool for many use cases
