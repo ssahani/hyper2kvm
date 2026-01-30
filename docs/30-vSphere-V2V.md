@@ -9,6 +9,80 @@ The key idea is:
 
 ---
 
+## Migration Workflow
+
+### vSphere to KVM Migration Flow
+
+```mermaid
+flowchart TD
+    Start[Start vSphere Migration] --> Connect[Connect to vCenter/ESXi]
+    Connect --> Discover[Discover VMs]
+    
+    Discover --> SelectMethod{Export Method}
+    
+    SelectMethod -->|virt-v2v| V2V[virt-v2v Export]
+    SelectMethod -->|HTTP Download| HTTPDl[HTTP /folder Download]
+    SelectMethod -->|VDDK| VDDK[VDDK Transfer]
+    
+    V2V --> Convert[Convert to qcow2]
+    HTTPDl --> Flatten[Flatten VMDKs]
+    VDDK --> Flatten
+    
+    Flatten --> Convert
+    Convert --> Fix[Apply Fixes]
+    
+    Fix --> FixFstab[Fix /etc/fstab]
+    Fix --> FixGrub[Fix GRUB]
+    Fix --> FixNetwork[Fix Network]
+    Fix --> InjectDrivers[Inject VirtIO<br/>Windows only]
+    
+    FixFstab --> Test
+    FixGrub --> Test
+    FixNetwork --> Test
+    InjectDrivers --> Test
+    
+    Test[Boot Test] --> Success{Success?}
+    Success -->|Yes| Complete[Migration Complete]
+    Success -->|No| Troubleshoot[Troubleshoot]
+    Troubleshoot --> Fix
+    
+    style Start fill:#e1f5e1
+    style Complete fill:#c8e6c9
+    style Test fill:#fff3e0
+    style Troubleshoot fill:#ffebee
+```
+
+### Export Methods Comparison
+
+| Method | Speed | Use Case | Requirements |
+|--------|-------|----------|--------------|
+| **virt-v2v** | Medium | Full conversion | virt-v2v installed |
+| **HTTP Download** | Slow | Exact copy | vCenter access |
+| **VDDK** | Fast | Large VMs | VDDK library |
+
+
+
+## Table of Contents
+
+- [What we did (high level)](#what-we-did-high-level)
+  - [1) We configured credentials safely (no plaintext)](#1-we-configured-credentials-safely-no-plaintext)
+  - [2) We enabled the virt-v2v export path](#2-we-enabled-the-virt-v2v-export-path)
+  - [3) We pinned the VM and datacenter explicitly](#3-we-pinned-the-vm-and-datacenter-explicitly)
+  - [4) We chose transport = VDDK and provided VDDK libdir](#4-we-chose-transport-vddk-and-provided-vddk-libdir)
+  - [5) We kept export concurrency conservative](#5-we-kept-export-concurrency-conservative)
+  - [6) We made it download-only (no extra conversion stages)](#6-we-made-it-download-only-no-extra-conversion-stages)
+  - [7) We disabled smoke tests by default](#7-we-disabled-smoke-tests-by-default)
+- [Run commands](#run-commands)
+  - [List VM names (inventory)](#list-vm-names-inventory)
+  - [Export/download VM (virt-v2v)](#exportdownload-vm-virt-v2v)
+- [YAML configuration (download-only)](#yaml-configuration-download-only)
+- [Output artifact](#output-artifact)
+- [Troubleshooting notes (the “sharp edges”)](#troubleshooting-notes-the-sharp-edges)
+  - [“Path … does not specify a host system”](#path-does-not-specify-a-host-system)
+  - [VDDK libdir errors (libvixDiskLib.so not found)](#vddk-libdir-errors-libvixdisklibso-not-found)
+  - [Thumbprint vs no_verify](#thumbprint-vs-no_verify)
+
+---
 ## What we did (high level)
 
 ### 1) We configured credentials safely (no plaintext)

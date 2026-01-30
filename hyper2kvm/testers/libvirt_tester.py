@@ -30,7 +30,7 @@ class FirmwareConfig:
     Firmware selection.
 
       - uefi=False => BIOS
-      - uefi=True  => UEFI via OVMF (CODE+VARS)
+      - uefi=True => UEFI via OVMF (CODE+VARS)
     """
     uefi: bool = False
 
@@ -40,8 +40,8 @@ class GraphicsConfig:
     """
     libvirt graphics:
 
-      - none  => no display device
-      - vnc   => VNC server (good for headless servers)
+      - none => no display device
+      - vnc => VNC server (good for headless servers)
       - spice => SPICE server
     """
     mode: GraphicsMode = "none"
@@ -268,11 +268,11 @@ class LibvirtTest:
             if prof.driver_iso:
                 logger.info("📀 Driver ISO: %s", prof.driver_iso)
             logger.info("🧩 Hyper-V features: %s", "on" if prof.hyperv else "off")
-            logger.info("🕰️  Clock: %s", "localtime" if prof.localtime_clock else "utc")
+            logger.info("🕰️ Clock: %s", "localtime" if prof.localtime_clock else "utc")
             logger.info("🔐 TPM: %s", "on" if prof.tpm else "off")
 
         logger.info(
-            "⚙️  Machine: %s | Firmware: %s | Graphics: %s | Network: %s | Video: %s",
+            "⚙️ Machine: %s | Firmware: %s | Graphics: %s | Network: %s | Video: %s",
             dom.machine,
             "UEFI" if fw.uefi else "BIOS",
             gfx.mode,
@@ -391,7 +391,7 @@ class LibvirtTest:
         """
         Returns (dev, bus)
           - virtio => vda/virtio
-          - sata   => sda/sata  (Windows bootstrap-friendly)
+          - sata => sda/sata (Windows bootstrap-friendly)
         """
         bus = LibvirtTest._disk_bus_for_profile(prof)
         if bus == "sata":
@@ -413,7 +413,7 @@ class LibvirtTest:
             attrs.append(f"passwd='{gfx.passwd}'")
         if gfx.keymap:
             attrs.append(f"keymap='{gfx.keymap}'")
-        return f"    <graphics {' '.join(attrs)}/>"
+        return f" <graphics {' '.join(attrs)}/>"
 
     @staticmethod
     def _video_xml(vid: VideoConfig, gfx: GraphicsConfig) -> str:
@@ -429,36 +429,36 @@ class LibvirtTest:
             return ""
         parts = []
         if inp.usb_tablet:
-            parts.append("    <input type='tablet' bus='usb'/>")
+            parts.append(" <input type='tablet' bus='usb'/>")
         if inp.usb_kbd:
-            parts.append("    <input type='keyboard' bus='usb'/>")
+            parts.append(" <input type='keyboard' bus='usb'/>")
         if inp.usb_mouse:
-            parts.append("    <input type='mouse' bus='usb'/>")
+            parts.append(" <input type='mouse' bus='usb'/>")
         return "\n".join(parts)
 
     @staticmethod
     def _clock_xml(prof: GuestProfile) -> str:
         if prof.os == "windows" and prof.localtime_clock:
-            return "  <clock offset='localtime'/>"
-        return "  <clock offset='utc'/>"
+            return " <clock offset='localtime'/>"
+        return " <clock offset='utc'/>"
 
     @staticmethod
     def _features_xml(prof: GuestProfile) -> str:
         # Keep Linux baseline unchanged, add Windows Hyper-V hints when requested.
         base = [
-            "  <features>",
-            "    <acpi/>",
-            "    <apic/>",
+            " <features>",
+            " <acpi/>",
+            " <apic/>",
         ]
         if prof.os == "windows" and prof.hyperv:
             base += [
-                "    <hyperv mode='custom'>",
-                "      <relaxed state='on'/>",
-                "      <vapic state='on'/>",
-                "      <spinlocks state='on' retries='8191'/>",
-                "    </hyperv>",
+                " <hyperv mode='custom'>",
+                " <relaxed state='on'/>",
+                " <vapic state='on'/>",
+                " <spinlocks state='on' retries='8191'/>",
+                " </hyperv>",
             ]
-        base += ["  </features>"]
+        base += [" </features>"]
         return "\n".join(base)
 
     @staticmethod
@@ -505,16 +505,16 @@ class LibvirtTest:
         (disk_dev, disk_bus) = LibvirtTest._disk_target_for_profile(prof)
 
         os_bits = [
-            "  <os>",
-            f"    <type arch='x86_64' machine='{dom.machine}'>hvm</type>",
+            " <os>",
+            f" <type arch='x86_64' machine='{dom.machine}'>hvm</type>",
         ]
         if fw.uefi:
             assert ovmf is not None and nvram is not None
-            os_bits.append(f"    <loader readonly='yes' type='pflash'>{ovmf.code}</loader>")
-            os_bits.append(f"    <nvram>{nvram}</nvram>")
+            os_bits.append(f" <loader readonly='yes' type='pflash'>{ovmf.code}</loader>")
+            os_bits.append(f" <nvram>{nvram}</nvram>")
         else:
-            os_bits.append("    <boot dev='hd'/>")
-        os_bits.append("  </os>")
+            os_bits.append(" <boot dev='hd'/>")
+        os_bits.append(" </os>")
         os_xml = "\n".join(os_bits)
 
         clock_xml = LibvirtTest._clock_xml(prof)

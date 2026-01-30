@@ -7,7 +7,7 @@ Windows libvirt domain XML emitter (UEFI-focused).
 What this module does well (on purpose):
 - Generates a sane Windows UEFI libvirt XML for two stages:
     * bootstrap: SATA disk (Windows boots even without VirtIO storage driver)
-    * final:     VirtIO disk (performance, after driver is installed)
+    * final: VirtIO disk (performance, after driver is installed)
 - Optionally copies the disk into /var/lib/libvirt/images with safe perms + restorecon
 - Optionally runs `virsh define` (via sudo) on the generated XML
 
@@ -38,7 +38,7 @@ class WinDomainSpec:
 
     Notes:
       - stage=bootstrap => disk on SATA (boots even without VirtIO storage driver)
-      - stage=final     => disk on VirtIO (performance, requires VirtIO storage driver installed)
+      - stage=final => disk on VirtIO (performance, requires VirtIO storage driver installed)
       - graphics/video defaults are Windows-friendly for SPICE-based consoles
     """
     name: str
@@ -123,7 +123,7 @@ def render_windows_domain_xml(spec: WinDomainSpec, *, stage: WinStage) -> str:
 
     stage:
       - "bootstrap" => disk on SATA (safe boot)
-      - "final"     => disk on VirtIO (performance)
+      - "final" => disk on VirtIO (performance)
     """
     if stage not in ("bootstrap", "final"):
         raise ValueError(f"invalid stage: {stage}")
@@ -153,7 +153,7 @@ def render_windows_domain_xml(spec: WinDomainSpec, *, stage: WinStage) -> str:
     </disk>"""
 
     # Clock: Windows often expects localtime
-    clock_xml = "  <clock offset='localtime'/>" if spec.localtime_clock else "  <clock offset='utc'/>"
+    clock_xml = " <clock offset='localtime'/>" if spec.localtime_clock else " <clock offset='utc'/>"
 
     # Hyper-V enlightenments (conservative but useful)
     hyperv_xml = ""
@@ -171,11 +171,11 @@ def render_windows_domain_xml(spec: WinDomainSpec, *, stage: WinStage) -> str:
 
     # Graphics: include listen so it behaves consistently across hosts
     graphics_xml = (
-        f"    <graphics type='{_xml_escape_attr(spec.graphics)}' autoport='yes' "
+        f" <graphics type='{_xml_escape_attr(spec.graphics)}' autoport='yes' "
         f"listen='{_xml_escape_attr(spec.graphics_listen)}'/>"
     )
-    video_xml = f"    <video><model type='{_xml_escape_attr(spec.video)}'/></video>"
-    input_xml = "    <input type='tablet' bus='usb'/>"
+    video_xml = f" <video><model type='{_xml_escape_attr(spec.video)}'/></video>"
+    input_xml = " <input type='tablet' bus='usb'/>"
 
     # NIC: keep virtio both stages
     nic_xml = f"""
@@ -185,16 +185,16 @@ def render_windows_domain_xml(spec: WinDomainSpec, *, stage: WinStage) -> str:
     </interface>"""
 
     # Helpful extras for Windows guests
-    memballoon_xml = "    <memballoon model='virtio'/>" if stage == "final" else ""
+    memballoon_xml = " <memballoon model='virtio'/>" if stage == "final" else ""
 
     # NVRAM template is optional in libvirt; include attribute only when present
     if spec.ovmf_vars_template:
         nvram_line = (
-            f"    <nvram template='{_xml_escape_attr(spec.ovmf_vars_template)}'>"
+            f" <nvram template='{_xml_escape_attr(spec.ovmf_vars_template)}'>"
             f"{_xml_escape_text(spec.nvram_vars)}</nvram>"
         )
     else:
-        nvram_line = f"    <nvram>{_xml_escape_text(spec.nvram_vars)}</nvram>"
+        nvram_line = f" <nvram>{_xml_escape_text(spec.nvram_vars)}</nvram>"
 
     # NOTE: We keep cpu mode host-passthrough (good default for Windows perf),
     # and avoid piling on dozens of options until the caller asks for them.

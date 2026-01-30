@@ -1,5 +1,42 @@
 # hyper2kvm: vSphere Control-Plane + Data-Plane Design
 
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Design Principles](#design-principles)
+  - [Control-Plane ≠ Data-Plane (Don’t Mix Them)](#control-plane-data-plane-dont-mix-them)
+  - [Don’t Scan the Universe Unless Asked](#dont-scan-the-universe-unless-asked)
+  - [Correct Compute Paths for Libvirt ESX (Host-System Path)](#correct-compute-paths-for-libvirt-esx-host-system-path)
+  - [Bytes Should Be Explicit (Download ≠ Convert)](#bytes-should-be-explicit-download-convert)
+  - [Async Where It Matters, Sync Where It’s Safe](#async-where-it-matters-sync-where-its-safe)
+  - [Never Hide the Real Failure](#never-hide-the-real-failure)
+- [Architecture Diagram](#architecture-diagram)
+  - [Philosophy & Design Principles](#philosophy-design-principles)
+  - [Main Architecture Components](#main-architecture-components)
+  - [Export Modes](#export-modes)
+  - [Export Flow](#export-flow)
+- [Detailed Architecture Breakdown](#detailed-architecture-breakdown)
+  - [Where pyvmomi Ends and Data-Plane Begins](#where-pyvmomi-ends-and-data-plane-begins)
+    - [Control-Plane: pyvmomi / pyVim in `hyper2kvm`](#control-plane-pyvmomi-pyvim-in-hyper2kvm)
+    - [Data-Plane Options in `hyper2kvm`](#data-plane-options-in-hyper2kvm)
+  - [Why There Are *Two* Download-Only Implementations (Engine + CLI)](#why-there-are-two-download-only-implementations-engine-cli)
+- [CBT Sync in `hyper2kvm` (Control-Plane + Data-Plane Hybrid)](#cbt-sync-in-hyper2kvm-control-plane-data-plane-hybrid)
+- [Encoding + Typing Choices Used Across `hyper2kvm`](#encoding-typing-choices-used-across-hyper2kvm)
+- [Mode Selection Cheatsheet (for `hyper2kvm`)](#mode-selection-cheatsheet-for-hyper2kvm)
+- [Enhancements & Best Practices](#enhancements-best-practices)
+
+---
+
+## Prerequisites
+
+Before following this guide, you should have:
+
+- ✓ Completed the [Installation](02-Installation.md)
+- ✓ Familiarity with basic hyper2kvm concepts
+- ✓ Root/sudo access to your system
+- ✓ Source VM files ready for migration
+
 ## Overview
 `hyper2kvm` is a specialized tool for integrating with VMware vSphere, treating it in a realistic manner: **inventory and orchestration exist in one domain**, while **disk byte movement operates in another**. This intentional separation ensures the vSphere integration remains fast, predictable, and highly debuggable. By avoiding the mixing of control-plane and data-plane operations, the tool prevents common pitfalls like performance bottlenecks in large inventories or hidden failures during exports.
 
@@ -46,74 +83,105 @@ vSphere and `virt-v2v` failures often involve cryptic issues (e.g., TLS mismatch
 - Chunk-based stream pumping to prevent `asyncio LimitOverrunError` from tools emitting excessively long lines without newlines.
 
 ## Architecture Diagram
-The following ASCII diagram illustrates the high-level structure, emphasizing the separation of concerns:
 
-```
-+------------------------------------------------------------------------------------------+
-|                                   hyper2kvm: vSphere Integration                          |
-|                                                                                          |
-|  Philosophy: Control-Plane (Inventory/Orchestration) ≠ Data-Plane (Byte Movement)        |
-|  - Fast, Predictable, Debuggable                                                         |
-|  - No Universe Scans Unless Opt-In                                                       |
-|  - Correct Paths for libvirt ESX (host/<cluster>/<esx-host>)                             |
-|  - Explicit Modes: Download ≠ Convert                                                    |
-|  - Async-First Engine + Sync CLI                                                         |
-|  - Never Hide Failures (Stderr Tail, Chunked Pumping)                                    |
-+------------------------------------------------------------------------------------------+
-|                                                                                          |
-|  +-------------------+     +-------------------+     +-------------------+               |
-|  |  VMwareClient.py  |     |  VsphereMode.py   |     |    Data-Plane     |               |
-|  | (Reusable Engine) |<--->| (CLI Entrypoint)  |<--->| (Bytes Movement)  |               |
-|  +-------------------+     +-------------------+     +-------------------+               |
-|         |                           |                           |                        |
-|         | (Async-First)             | (Sync w/ Threads)         |                        |
-|         v                           v                           v                        |
-|  +-------------------+     +-------------------+     +-------------------+               |
-|  | Control-Plane     |     | Actions/Flags     |     | Modes:           |               |
-|  | - pyvmomi/pyVim   |     | - Wires to Options|     | - virt-v2v Export|               |
-|  | - Connect/Session |     | - Calls Engine    |     | - HTTP Download  |               |
-|  | - DC/Host Cache   |     |                   |     | - VDDK Disk Pull |               |
-|  | - VM Lookup       |     +-------------------+     +-------------------+               |
-|  | - Disk Enum       |                                                           |
-|  | - Snapshot/CBT    |     +-------------------+                                         |
-|  | - DS Browsing     |     | CBT Sync Workflow|                                         |
-|  +-------------------+     | (Hybrid)          |                                         |
-|                            | 1. Enable CBT     |                                         |
-|                            | 2. Quiesced Snap  |                                         |
-|                            | 3. Query Changes  |                                         |
-|                            | 4. Range HTTP Pull|                                         |
-|                            +-------------------+                                         |
-|                                                                                          |
-+------------------------------------------------------------------------------------------+
-| Export Modes Cheatsheet (via V2VExportOptions.export_mode)                               |
-|                                                                                          |
-|  +-------------------+  +-------------------+  +-------------------+                     |
-|  | "v2v" (Default)   |  | "download_only"   |  | "vddk_download"   |                     |
-|  | - Converted Output |  | - Exact VM Folder |  | - Single Disk Raw |                     |
-|  | - qcow2/raw Local  |  | - Byte-for-Byte   |  | - Fast VDDK Pull  |                     |
-|  | - Uses virt-v2v   |  | - HTTPS /folder   |  | - No Conversion   |                     |
-|  | - VDDK/SSH Transp.|  | - Globs/Concurrency|  | - Sector Reads    |                     |
-|  +-------------------+  +-------------------+  +-------------------+                     |
-|                                                                                          |
-+------------------------------------------------------------------------------------------+
-| Flow: Unified async_export_vm() -> Mode Dispatch                                         |
-|                                                                                          |
-|  User/CLI --> VsphereMode --> VMwareClient.async_export_vm(opt)                          |
-|                                    |                                                     |
-|                                    v                                                     |
-|                               +---------+                                                |
-|                               |  Mode?  |                                                |
-|                               +---------+                                                |
-|                                 /   |   \                                                |
-|                                /    |    \                                               |
-|                               v     v     v                                              |
-|                    +----------+  +----------+  +----------+                              |
-|                    | v2v Export|  |Download |  |VDDK Disk |                              |
-|                    | (Convert)|  | Only     |  | Download |                              |
-|                    +----------+  +----------+  +----------+                              |
-|                                                                                          |
-+------------------------------------------------------------------------------------------+
-```
+### Philosophy & Design Principles
+
+The vSphere integration follows these core principles:
+- **Control-Plane ≠ Data-Plane**: Inventory/orchestration separate from byte movement
+- **Fast, Predictable, Debuggable**: No performance bottlenecks
+- **No Universe Scans Unless Opt-In**: Targeted lookups, not full inventory traversals
+- **Correct Paths for libvirt ESX**: `host/<cluster>/<esx-host>` format
+- **Explicit Modes**: Download ≠ Convert (transparency)
+- **Async-First Engine + Sync CLI**: Concurrency where it matters
+- **Never Hide Failures**: Stderr tail capture, chunked stream pumping
+
+### Main Architecture Components
+
+```mermaid
+graph TB
+    subgraph "hyper2kvm vSphere Integration"
+        CLI[VsphereMode.py<br/>CLI Entrypoint<br/>Sync w/ Threads]
+        Engine[VMwareClient.py<br/>Reusable Engine<br/>Async-First]
+        DataPlane[Data-Plane<br/>Bytes Movement]
+
+        CLI <--> Engine
+        Engine <--> DataPlane
+
+        subgraph "Control-Plane"
+            CP1[pyvmomi/pyVim]
+            CP2[Connect/Session]
+            CP3[DC/Host Cache]
+            CP4[VM Lookup]
+            CP5[Disk Enum]
+            CP6[Snapshot/CBT]
+            CP7[DS Browsing]
+        end
+
+        subgraph "Actions/Flags"
+            AF1[Wires to Options]
+            AF2[Calls Engine]
+        end
+
+        subgraph "Data-Plane Modes"
+            DP1[virt-v2v Export]
+            DP2[HTTP Download]
+            DP3[VDDK Disk Pull]
+        end
+
+        subgraph "CBT Sync Workflow"
+            CBT1[1. Enable CBT]
+            CBT2[2. Quiesced Snap]
+            CBT3[3. Query Changes]
+            CBT4[4. Range HTTP Pull]
+            CBT1 --> CBT2 --> CBT3 --> CBT4
+        end
+
+        Engine --> CP1
+        Engine --> CP2
+        Engine --> CP3
+        Engine --> CP4
+        Engine --> CP5
+        Engine --> CP6
+        Engine --> CP7
+
+        CLI --> AF1
+        CLI --> AF2
+
+        DataPlane --> DP1
+        DataPlane --> DP2
+        DataPlane --> DP3
+    end
+```bash
+
+### Export Modes
+
+```mermaid
+graph LR
+    subgraph "Export Mode Options via V2VExportOptions.export_mode"
+        V2V["v2v (Default)<br/>---<br/>✓ Converted Output<br/>✓ qcow2/raw Local<br/>✓ Uses virt-v2v<br/>✓ VDDK/SSH Transport"]
+
+        Download["download_only<br/>---<br/>✓ Exact VM Folder<br/>✓ Byte-for-Byte<br/>✓ HTTPS /folder<br/>✓ Globs/Concurrency"]
+
+        VDDK["vddk_download<br/>---<br/>✓ Single Disk Raw<br/>✓ Fast VDDK Pull<br/>✓ No Conversion<br/>✓ Sector Reads"]
+    end
+```bash
+
+### Export Flow
+
+```mermaid
+flowchart TD
+    User[User/CLI] --> VsphereMode[VsphereMode]
+    VsphereMode --> AsyncExport[VMwareClient.async_export_vm]
+    AsyncExport --> ModeCheck{Export Mode?}
+
+    ModeCheck -->|v2v| V2VExport[v2v Export<br/>Convert]
+    ModeCheck -->|download_only| DownloadOnly[Download Only<br/>Exact Copy]
+    ModeCheck -->|vddk_download| VDDKDownload[VDDK Disk<br/>Download]
+
+    V2VExport --> Output1[Local qcow2/raw]
+    DownloadOnly --> Output2[VM Folder Files]
+    VDDKDownload --> Output3[Raw Disk Image]
+```bash
 
 ## Detailed Architecture Breakdown
 ### Where pyvmomi Ends and Data-Plane Begins
@@ -190,6 +258,73 @@ This transforms vSphere into an efficient incremental block source, avoiding ful
 | **One disk as raw bytes via VDDK** | `export_mode="vddk_download"` | VDDK client |
 | **Incremental updates on local disk** | `cbt_sync` | CBT + ranged HTTP reads |
 
+## Usage Examples
+
+### Example 1: Basic VM Export
+
+```bash
+# Export VM using virt-v2v
+python -m hyper2kvm vsphere \
+  --vcenter vcenter.example.com \
+  --username admin@vsphere.local \
+  --password-file ~/.vcenter_pass \
+  --vs-action export-vm \
+  --vs-vm-name production-web \
+  --output-dir /data/exports
+```
+
+### Example 2: Download-Only Mode
+
+```bash
+# Download exact VM folder contents
+python -m hyper2kvm vsphere \
+  --vcenter vcenter.example.com \
+  --username admin \
+  --vs-action download-vm \
+  --vs-vm-name backup-server \
+  --output-dir /backups
+```
+
+### Example 3: VDDK Fast Transfer
+
+```bash
+# Use VDDK for high-speed transfer
+python -m hyper2kvm vsphere \
+  --vcenter vcenter.example.com \
+  --username admin \
+  --vs-action vddk-export \
+  --vs-vm-name database-01 \
+  --vddk-libdir /usr/lib/vmware-vix-disklib \
+  --output-dir /data/vms
+```
+
+### Example 4: Programmatic Usage
+
+```python
+from hyper2kvm.vmware.clients.client import VMwareClient
+from hyper2kvm.vmware.vsphere.mode import V2VExportOptions
+
+# Initialize client
+client = VMwareClient(
+    host='vcenter.example.com',
+    user='admin@vsphere.local',
+    pwd='password'
+)
+
+# Configure export
+options = V2VExportOptions(
+    vm_name='web-server',
+    output_dir='/data/exports',
+    export_mode='v2v',
+    transport='vddk',
+    vddk_libdir='/usr/lib/vmware-vix-disklib'
+)
+
+# Execute export
+await client.async_export_vm(options)
+```
+
+
 ## Enhancements & Best Practices
 - **Error Handling**: Integrates stderr tails for diagnostics; detects transient issues (e.g., connection resets, auth failures).
 - **Performance Tips**: Enable `prefer_cached_vm_lookup` for repetitive tasks; tune `download_only_concurrency` to balance load.
@@ -198,3 +333,17 @@ This transforms vSphere into an efficient incremental block source, avoiding ful
 - **Future Directions**: Full consolidation of download logic; multi-disk CBT expansions; enhanced retry mechanisms.
 
 For code-level details, see `vmware_client.py`. If further expansions or examples are needed, provide specifics!
+
+## Next Steps
+
+Continue your migration journey:
+
+- **[CLI Reference](04-CLI-Reference.md)** - Complete command options
+- **[YAML Examples](05-YAML-Examples.md)** - Configuration templates
+- **[Cookbook](06-Cookbook.md)** - Common scenarios
+- **[Troubleshooting](90-Failure-Modes.md)** - When things go wrong
+
+## Getting Help
+
+Found an issue? [Report it on GitHub](https://github.com/hyper2kvm/hyper2kvm/issues)
+

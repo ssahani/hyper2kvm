@@ -27,9 +27,9 @@ WinStage = Literal["bootstrap", "final"]  # bootstrap=sata (safe), final=virtio 
 class QemuDisplay:
     """
     Display behavior:
-      - none:   headless (-nographic + serial to stdio)
+      - none: headless (-nographic + serial to stdio)
       - gtk/sdl: local GUI (requires a graphical session)
-      - vnc:    remote display (safe on headless servers)
+      - vnc: remote display (safe on headless servers)
     """
     mode: DisplayMode = "none"
     vnc_listen: str = "127.0.0.1"
@@ -63,7 +63,7 @@ class GuestProfile:
 
     Windows needs two-stage boot sometimes:
       - bootstrap: disk SATA (boots even without virtio storage driver)
-      - final:     disk VirtIO (performance, requires virtio drivers)
+      - final: disk VirtIO (performance, requires virtio drivers)
 
     Optional: attach virtio-win ISO during bootstrap.
     """
@@ -156,7 +156,7 @@ class QemuTest:
 
         # accel fallback: if /dev/kvm missing, auto-switch to tcg (slow but works)
         if machine.accel == "kvm" and not os.path.exists("/dev/kvm"):
-            logger.warning("⚠️  /dev/kvm missing; falling back to TCG (no KVM acceleration).")
+            logger.warning("⚠️ /dev/kvm missing; falling back to TCG (no KVM acceleration).")
             machine = QemuMachine(machine=machine.machine, accel="tcg", cpu="max")
 
         img_fmt = QemuTest._detect_img_format(logger, disk)
@@ -178,7 +178,7 @@ class QemuTest:
         cmd: list[str] = [
             str(qemu_bin),
             "-machine",
-            f"{machine.machine},accel={machine.accel}",
+            f"{machine.machine}, accel={machine.accel}",
             "-m",
             str(int(memory_mib)),
             "-smp",
@@ -188,7 +188,7 @@ class QemuTest:
 
             # Disk
             "-drive",
-            f"file={disk},if={disk_if},format={img_fmt},cache=none,discard=unmap",
+            f"file={disk}, if={disk_if}, format={img_fmt}, cache=none, discard=unmap",
 
             # Nice-to-have: show early boot logs on serial (and don't hang on graphics)
             "-serial",
@@ -208,14 +208,14 @@ class QemuTest:
         # Windows niceties: clock + Hyper-V enlightenments
         if prof.os == "windows":
             if prof.localtime_clock:
-                cmd += ["-rtc", "base=localtime,clock=host"]
+                cmd += ["-rtc", "base=localtime, clock=host"]
             else:
-                cmd += ["-rtc", "base=utc,clock=host"]
+                cmd += ["-rtc", "base=utc, clock=host"]
 
             if prof.hyperv:
                 # Keep conservative: avoid forcing vendor_id unless you need it.
                 # This helps performance and reduces odd guest timing issues.
-                cmd += ["-cpu", "host,hv_relaxed,hv_vapic,hv_spinlocks=0x1fff"]
+                cmd += ["-cpu", "host, hv_relaxed, hv_vapic, hv_spinlocks=0x1fff"]
 
         # UEFI handling (correct way: pflash CODE + writable VARS)
         if uefi:
@@ -223,9 +223,9 @@ class QemuTest:
             tmp_ovmf_vars = QemuTest._copy_ovmf_vars(logger, ovmf_vars)
             cmd += [
                 "-drive",
-                f"if=pflash,format=raw,readonly=on,file={ovmf_code}",
+                f"if=pflash, format=raw, readonly=on, file={ovmf_code}",
                 "-drive",
-                f"if=pflash,format=raw,file={tmp_ovmf_vars}",
+                f"if=pflash, format=raw, file={tmp_ovmf_vars}",
             ]
 
         # Optional: attach virtio driver ISO for Windows bootstrap
@@ -242,14 +242,14 @@ class QemuTest:
         logger.info("🧾 QEMU: %s", qemu_bin)
         logger.info("💽 Disk: %s (format=%s, if=%s)", disk, img_fmt, disk_if)
         logger.info("🧠 CPU: %s | vCPUs=%s | RAM=%s MiB | accel=%s", machine.cpu, vcpus, memory_mib, machine.accel)
-        logger.info("🖥️  Display: %s | Net: %s", display.mode, "on" if net.enabled else "off")
+        logger.info("🖥️ Display: %s | Net: %s", display.mode, "on" if net.enabled else "off")
         logger.info("🧬 Firmware: %s", "UEFI" if uefi else "BIOS")
 
         if prof.os == "windows":
             logger.info("🪟 Guest: windows | stage=%s", prof.win_stage)
             if prof.driver_iso:
                 logger.info("📀 virtio driver ISO: %s", prof.driver_iso)
-            logger.info("🕰️  Clock: %s", "localtime" if prof.localtime_clock else "utc")
+            logger.info("🕰️ Clock: %s", "localtime" if prof.localtime_clock else "utc")
             logger.info("🧩 Hyper-V: %s", "on" if prof.hyperv else "off")
         else:
             logger.info("🐧 Guest: linux")
@@ -258,7 +258,7 @@ class QemuTest:
             port = 5900 + int(display.vnc_display)
             logger.info("🔗 VNC: %s:%s (display :%s)", display.vnc_listen, port, display.vnc_display)
 
-        logger.debug("🧾 QEMU command:\n  %s", " ".join(shlex.quote(x) for x in cmd))
+        logger.debug("🧾 QEMU command:\n %s", " ".join(shlex.quote(x) for x in cmd))
 
         # ----------------------------
         # Execute
@@ -274,12 +274,12 @@ class QemuTest:
             try:
                 p.wait(timeout=float(timeout_s))
             except subprocess.TimeoutExpired:
-                logger.info("⏱️  Smoke timeout reached; terminating QEMU…")
+                logger.info("⏱️ Smoke timeout reached; terminating QEMU…")
                 p.terminate()
                 try:
                     p.wait(timeout=5.0)
                 except subprocess.TimeoutExpired:
-                    logger.warning("⚠️  QEMU didn't exit on SIGTERM; killing…")
+                    logger.warning("⚠️ QEMU didn't exit on SIGTERM; killing…")
                     p.kill()
                     p.wait(timeout=5.0)
 
@@ -323,7 +323,7 @@ class QemuTest:
             except Exception as e:
                 logger.debug("qemu-img info failed: %s", e)
 
-        logger.warning("⚠️  Could not confidently detect image format; defaulting to qcow2.")
+        logger.warning("⚠️ Could not confidently detect image format; defaulting to qcow2.")
         return "qcow2"
 
     @staticmethod
@@ -346,15 +346,15 @@ class QemuTest:
             hp = int(n.ssh_forward_host_port)
             return [
                 "-netdev",
-                f"user,id=n0,hostfwd=tcp::{hp}-:22",
+                f"user, id=n0, hostfwd=tcp::{hp}-:22",
                 "-device",
-                "virtio-net-pci,netdev=n0",
+                "virtio-net-pci, netdev=n0",
             ]
         return [
             "-netdev",
-            "user,id=n0",
+            "user, id=n0",
             "-device",
-            "virtio-net-pci,netdev=n0",
+            "virtio-net-pci, netdev=n0",
         ]
 
     @staticmethod
@@ -418,5 +418,5 @@ class QemuTest:
         # NOTE: we don't force boot order; Windows can mount it after boot.
         return [
             "-drive",
-            f"file={iso},media=cdrom,if=sata,readonly=on",
+            f"file={iso}, media=cdrom, if=sata, readonly=on",
         ]

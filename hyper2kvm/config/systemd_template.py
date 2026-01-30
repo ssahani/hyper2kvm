@@ -52,7 +52,7 @@ ReadWritePaths={rw_paths}
 # E.g. uncomment:
 # DeviceAllow=/dev/kvm r
 # DeviceAllow=/dev/nbd* rw
-# SupplementaryGroups=libvirt,kvm
+# SupplementaryGroups=libvirt, kvm
 
 StandardOutput=journal
 StandardError=journal
@@ -237,12 +237,12 @@ def generate_systemd_unit(args: Any, logger=None) -> None:
             unit_name = name if name.endswith(".service") else f"{name}.service"
 
             logger.info("Next steps:")
-            logger.info("  sudo install -m 0644 %s /etc/systemd/system/%s", out_path, unit_name)
-            logger.info("  sudo systemctl daemon-reload")
-            logger.info("  sudo systemctl enable --now %s", unit_name)
+            logger.info(" sudo install -m 0644 %s /etc/systemd/system/%s", out_path, unit_name)
+            logger.info(" sudo systemctl daemon-reload")
+            logger.info(" sudo systemctl enable --now %s", unit_name)
 
             # Extra tip, but harmless:
-            logger.info("  sudo journalctl -u %s -f", unit_name)
+            logger.info(" sudo journalctl -u %s -f", unit_name)
 
         return
 

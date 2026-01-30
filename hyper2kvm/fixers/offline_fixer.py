@@ -467,10 +467,10 @@ class OfflineFSFix:
                 self.root_btrfs_subvol = subvol
                 opts = f"subvol={subvol}"
                 if self.dry_run or mode == "ro":
-                    opts = f"ro,{opts}"
+                    opts = f"ro, {opts}"
                 if mode.startswith("opts:"):
                     extra = mode.split(":", 1)[1]
-                    opts = f"{extra},{opts}"
+                    opts = f"{extra}, {opts}"
                 g.mount_options(opts, dev, "/")
                 return
 
@@ -483,7 +483,7 @@ class OfflineFSFix:
             if mode.startswith("opts:"):
                 opts = mode.split(":", 1)[1]
                 if self.dry_run and "ro" not in opts:
-                    opts = f"ro,{opts}"
+                    opts = f"ro, {opts}"
                 g.mount_options(opts, dev, "/")
                 return
 
@@ -500,7 +500,7 @@ class OfflineFSFix:
             first_err = e
 
         # 2) fallback ladder
-        tries = ["ro", "opts:noload", "opts:ro,noload", "opts:ro,norecovery"]
+        tries = ["ro", "opts:noload", "opts:ro, noload", "opts:ro, norecovery"]
         last_err: Optional[Exception] = None
         for t in tries:
             self._safe_umount_all(g)
@@ -829,7 +829,7 @@ class OfflineFSFix:
                     filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                     opts = f"subvol={sv}"
                     if self.dry_run:
-                        opts = f"ro,{opts}"
+                        opts = f"ro, {opts}"
                     g.mount_options(opts, dev, "/")
                     if self._looks_like_root(g):
                         sc = self._score_root(g)
@@ -848,7 +848,7 @@ class OfflineFSFix:
                 filesystem_fixer.log_vfs_type_best_effort(self, g, dev)
                 opts = f"subvol={sv}"
                 if self.dry_run:
-                    opts = f"ro,{opts}"
+                    opts = f"ro, {opts}"
                 g.mount_options(opts, dev, "/")
                 self.root_dev = dev
                 self.root_btrfs_subvol = sv

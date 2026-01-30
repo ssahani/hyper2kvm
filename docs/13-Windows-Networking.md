@@ -8,6 +8,76 @@ This document explains **how Windows networking and drivers are configured**, ho
 
 ---
 
+## Prerequisites
+
+For Windows VM migration, you need:
+
+- ✓ hyper2kvm installed ([Installation Guide](02-Installation.md))
+- ✓ VirtIO drivers ISO downloaded
+- ✓ Windows source VM disk (VMDK, VHD, etc.)
+- ✓ Understanding of [Windows Boot Cycle](11-Windows-Boot-Cycle.md)
+
+
+
+## Architecture Overview
+
+### Windows Network Configuration Flow
+
+```mermaid
+flowchart TD
+    Start[Windows VM Migration] --> Detect[Detect Windows Version]
+    Detect --> LoadJSON[Load virtio-win-versions.json]
+    LoadJSON --> SelectDrivers[Select VirtIO Drivers]
+    
+    SelectDrivers --> InjectStorage[Inject VirtIO Storage Driver]
+    InjectStorage --> ModifyRegistry[Modify Registry<br/>CriticalDeviceDatabase]
+    ModifyRegistry --> InjectNetwork[Inject VirtIO Network Driver]
+    
+    InjectNetwork --> TwoPhase{Two-Phase Boot?}
+    TwoPhase -->|Yes| Phase1[Phase 1: SATA Boot]
+    TwoPhase -->|No| DirectBoot[Direct VirtIO Boot]
+    
+    Phase1 --> InstallDrivers[Windows Installs Drivers]
+    InstallDrivers --> Phase2[Phase 2: VirtIO Boot]
+    Phase2 --> NetworkReady[Network Ready]
+    DirectBoot --> NetworkReady
+    
+    NetworkReady --> Success[Migration Complete]
+    
+    style Start fill:#e1f5e1
+    style Success fill:#c8e6c9
+    style ModifyRegistry fill:#ffebee
+    style InjectStorage fill:#e3f2fd
+    style InjectNetwork fill:#f3e5f5
+```
+
+### Key Components
+
+- **JSON Database:** `virtio-win-versions.json` contains driver paths and compatibility
+- **Registry Modification:** Adds VirtIO drivers to `CriticalDeviceDatabase`  
+- **Two-Phase Boot:** SATA → VirtIO transition for compatibility
+- **Driver Injection:** Offline modification before first boot
+
+
+## Table of Contents
+
+- [Design Philosophy](#design-philosophy)
+- [📌 Where This Applies](#-where-this-applies)
+- [YAML → JSON: Network Override (Recommended)](#yaml-json-network-override-recommended)
+  - [YAML configuration](#yaml-configuration)
+  - [JSON payload (`windows-network.json`)](#json-payload-windows-networkjson)
+  - [What happens internally](#what-happens-internally)
+- [Inline Network JSON (Advanced / CI Friendly)](#inline-network-json-advanced-ci-friendly)
+- [Network JSON Schema (Current)](#network-json-schema-current)
+- [What Driver JSON Controls](#what-driver-json-controls)
+- [YAML → JSON: Driver Metadata](#yaml-json-driver-metadata)
+  - [YAML configuration](#yaml-configuration)
+  - [JSON: Core VirtIO Metadata (`virtio-drivers.json`)](#json-core-virtio-metadata-virtio-driversjson)
+- [🏭 Vendor / OEM Overrides (Optional)](#-vendor-oem-overrides-optional)
+  - [Vendor JSON (`virtio-vendors.json`)](#vendor-json-virtio-vendorsjson)
+  - [YAML to activate vendor overlay](#yaml-to-activate-vendor-overlay)
+
+---
 ##  Design Philosophy
 
 hyper2kvm follows a strict separation of concerns:
@@ -269,3 +339,17 @@ out_format: qcow2
 compress: true
 checksum: true
 ```
+
+## Next Steps
+
+For Windows migrations:
+
+- **[Windows Boot Cycle](11-Windows-Boot-Cycle.md)** - Understanding Windows boot process
+- **[Windows Troubleshooting](12-Windows-Troubleshooting.md)** - Common Windows issues
+- **[Windows Networking](13-Windows-Networking.md)** - Network and driver configuration
+
+## Getting Help
+
+- [Troubleshooting Guide](90-Failure-Modes.md)
+- [GitHub Issues](https://github.com/hyper2kvm/hyper2kvm/issues)
+

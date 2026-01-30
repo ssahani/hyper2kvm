@@ -6,7 +6,7 @@
 #   - Detect 7+ bootloader types (GRUB, GRUB2, systemd-boot, rEFInd, LILO, SYSLINUX, EXTLINUX)
 #   - Determine "active" bootloader via heuristics (UEFI presence + config locations)
 #   - Apply conservative fixes:
-#       * add serial console (console=ttyS0,115200n8 console=tty0) when missing
+#       * add serial console (console=ttyS0, 115200n8 console=tty0) when missing
 #       * avoid destructive installs (no MBR/ESP reinstall here)
 #       * preserve configs: backup before write (optional callback)
 #
@@ -120,7 +120,7 @@ class MultiBootloaderFixer:
         },
     }
 
-    SERIAL_CONSOLE_ARGS = "console=ttyS0,115200n8 console=tty0"
+    SERIAL_CONSOLE_ARGS = "console=ttyS0, 115200n8 console=tty0"
     GRUB_SERIAL_TERMINAL = 'GRUB_TERMINAL="console serial"'
     GRUB_SERIAL_COMMAND = (
         'GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1"'

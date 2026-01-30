@@ -58,7 +58,7 @@ class Convert:
         threads: Optional[int] = None  # -m N
         compression_type: Optional[str] = "zstd"  # zstd|zlib|None (omit)
         compression_level: Optional[int] = None  # compression_level=...
-        preallocation: Optional[str] = None  # preallocation=metadata,...
+        preallocation: Optional[str] = None  # preallocation=metadata, ...
 
         def short(self) -> str:
             return (
@@ -143,7 +143,7 @@ class Convert:
             )
 
             logger.debug(f"[attempt {attempt_no}/{len(plan)}] opts: {opt.short()}")
-            logger.debug(f"[attempt {attempt_no}/{len(plan)}] cmd:  {' '.join(cmd)}")
+            logger.debug(f"[attempt {attempt_no}/{len(plan)}] cmd: {' '.join(cmd)}")
 
             try:
                 rc, stderr_lines = Convert._run_convert_process(

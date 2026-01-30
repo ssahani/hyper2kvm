@@ -9,6 +9,24 @@ a VMware VMDK to qcow2 and applying offline fixes (fstab, GRUB, initramfs, etc.)
 
 ---
 
+
+## Table of Contents
+
+- [Host Requirements (Fedora)](#host-requirements-fedora)
+- [Image Under Test](#image-under-test)
+- [BIOS + GUI libvirt XML (Most Compatible)](#bios-gui-libvirt-xml-most-compatible)
+- [Define and Start the VM](#define-and-start-the-vm)
+- [Connect to the GUI](#connect-to-the-gui)
+  - [Option 1: virt-viewer (recommended)](#option-1-virt-viewer-recommended)
+  - [Option 2: VNC](#option-2-vnc)
+- [Expected Boot Sequence](#expected-boot-sequence)
+- [Troubleshooting](#troubleshooting)
+  - [Black screen after GRUB](#black-screen-after-grub)
+  - [“No bootable device”](#no-bootable-device)
+  - [Boots to text mode only](#boots-to-text-mode-only)
+- [Notes](#notes)
+
+---
 ## Host Requirements (Fedora)
 
 Install required virtualization tools:

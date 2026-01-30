@@ -19,7 +19,6 @@ from .. import __version__
 from ..core.utils import U
 
 
-
 def _json_safe(obj: Any) -> Any:
     """
     Convert common non-JSON-native objects into JSON-safe representations.
@@ -83,7 +82,6 @@ def _dump_json_best_effort(x: Any) -> str:
             return repr(x)
 
 
-
 def _atomic_write_text(path: Path, content: str, suffix: str = ".tmp.hyper2kvm") -> None:
     """
     Best-effort atomic-ish write:
@@ -141,9 +139,9 @@ def _json_sidecar_path(base: Path) -> Path:
     Decide JSON report path from a base report path.
 
     Rules:
-      - base ends with .md/.txt/...  -> replace suffix with .json
-      - base has no suffix          -> add .json
-      - base ends with .json        -> same path (JSON-only destination)
+      - base ends with .md/.txt/... -> replace suffix with .json
+      - base has no suffix -> add .json
+      - base ends with .json -> same path (JSON-only destination)
     """
     if base.suffix.lower() == ".json":
         return base
@@ -488,9 +486,9 @@ def _build_markdown(
     if net_files:
         md.append("")
         for fp in net_files[:50]:
-            md.append(f"  - `{fp}`")
+            md.append(f" - `{fp}`")
         if len(net_files) > 50:
-            md.append(f"  - … and `{len(net_files) - 50}` more")
+            md.append(f" - … and `{len(net_files) - 50}` more")
         md.append("")
 
     # Analysis sections (expanded)

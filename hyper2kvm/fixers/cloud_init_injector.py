@@ -135,26 +135,26 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         except Exception:
             return str(n)
 
-    _trace("☁️  cloud-init: inject_cloud_init(): enter")
+    _trace("☁️ cloud-init: inject_cloud_init(): enter")
     data = getattr(self, "inject_cloud_init_data", None)
     if not data:
-        _trace("☁️  cloud-init: no inject_cloud_init_data set; skipping")
+        _trace("☁️ cloud-init: no inject_cloud_init_data set; skipping")
         return {"injected": False, "reason": "no_data"}
 
     if not isinstance(data, dict):
         # Keep behavior conservative: treat as no-data rather than crashing.
-        _log("warning", f"☁️  cloud-init: inject_cloud_init_data is not a dict: {type(data).__name__}")
+        _log("warning", f"☁️ cloud-init: inject_cloud_init_data is not a dict: {type(data).__name__}")
         return {"injected": False, "reason": "no_data"}
 
     dry = bool(getattr(self, "dry_run", False))
-    _trace(f"☁️  cloud-init: dry_run={dry}")
+    _trace(f"☁️ cloud-init: dry_run={dry}")
 
     present = False
     try:
         present = _is_cloud_init_present(g)
-        _trace(f"☁️  cloud-init: detected={present}")
+        _trace(f"☁️ cloud-init: detected={present}")
     except Exception as e:
-        _log("warning", f"☁️  cloud-init: detection failed (treating as missing): {e}")
+        _log("warning", f"☁️ cloud-init: detection failed (treating as missing): {e}")
         present = False
 
     if not present:
@@ -162,7 +162,7 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         # Installing packages offline via libguestfs command() is usually the wrong move.
         # Keep this behind an explicit opt-in.
         if data.get("install_if_missing", False):
-            _log("warning", "☁️  cloud-init: install_if_missing requested, but offline install is not supported here")
+            _log("warning", "☁️ cloud-init: install_if_missing requested, but offline install is not supported here")
             return {
                 "injected": False,
                 "reason": "cloud_init_missing_install_not_supported_offline",
@@ -179,7 +179,7 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         dst = f"{cfgd}/99-hyper2kvm.cfg"
         rendered = _render_yaml_or_json(dropin_cfg)
 
-        _trace(f"☁️  cloud-init: dropin_cfg present -> {dst} bytes={len(rendered.encode('utf-8'))}")
+        _trace(f"☁️ cloud-init: dropin_cfg present -> {dst} bytes={len(rendered.encode('utf-8'))}")
 
         if dry:
             _log("info", f"DRY-RUN: would write cloud-init drop-in: {dst}")
@@ -196,10 +196,10 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             # backup if exists
             try:
                 if g.exists(dst):
-                    _trace(f"🗄️  cloud-init: backing up existing {dst}")
+                    _trace(f"🗄️ cloud-init: backing up existing {dst}")
                     self.backup_file(g, dst)
             except Exception as e:
-                _log("warning", f"🗄️  cloud-init: backup failed for {dst}: {e}")
+                _log("warning", f"🗄️ cloud-init: backup failed for {dst}: {e}")
 
             try:
                 _write_atomic_or_plain(self, g, dst, rendered.encode("utf-8"))
@@ -210,7 +210,7 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
                 _log("error", f"💥 cloud-init: failed writing drop-in {dst}: {e}")
                 raise
     else:
-        _trace(f"☁️  cloud-init: no dropin_cfg (type={type(dropin_cfg).__name__})")
+        _trace(f"☁️ cloud-init: no dropin_cfg (type={type(dropin_cfg).__name__})")
 
     # 2) NoCloud seed (portable way to inject user-data/meta-data/network-config)
     nocloud = data.get("nocloud")
@@ -222,11 +222,11 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             "network-config": "network-config",
         }
 
-        _trace(f"☁️  cloud-init: nocloud present -> seed_dir={seed_dir}")
+        _trace(f"☁️ cloud-init: nocloud present -> seed_dir={seed_dir}")
 
         for k, fname in files.items():
             if k not in nocloud or nocloud[k] in (None, "", {}):
-                _trace(f"☁️  cloud-init: nocloud {k} missing/empty; skipping")
+                _trace(f"☁️ cloud-init: nocloud {k} missing/empty; skipping")
                 continue
 
             content = nocloud[k]
@@ -244,7 +244,7 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
             dst = os.path.join(seed_dir, fname)
             size = len(txt.encode("utf-8"))
-            _trace(f"✍️  cloud-init: prepared {k} -> {dst} bytes={size}")
+            _trace(f"✍️ cloud-init: prepared {k} -> {dst} bytes={size}")
 
             if dry:
                 _log("info", f"DRY-RUN: would write NoCloud seed: {dst}")
@@ -259,10 +259,10 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
             try:
                 if g.exists(dst):
-                    _trace(f"🗄️  cloud-init: backing up existing {dst}")
+                    _trace(f"🗄️ cloud-init: backing up existing {dst}")
                     self.backup_file(g, dst)
             except Exception as e:
-                _log("warning", f"🗄️  cloud-init: backup failed for {dst}: {e}")
+                _log("warning", f"🗄️ cloud-init: backup failed for {dst}: {e}")
 
             try:
                 _write_atomic_or_plain(self, g, dst, txt.encode("utf-8"))
@@ -282,7 +282,7 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
                     g.mkdir_p("/etc/cloud/cloud.cfg.d")
                 ds_payload = "datasource_list: [ NoCloud, None ]\n"
                 if g.exists(ds_cfg):
-                    _trace(f"🗄️  cloud-init: backing up existing {ds_cfg}")
+                    _trace(f"🗄️ cloud-init: backing up existing {ds_cfg}")
                     self.backup_file(g, ds_cfg)
                 _write_atomic_or_plain(self, g, ds_cfg, ds_payload.encode("utf-8"))
                 results["writes"].append({"path": ds_cfg, "bytes": len(ds_payload), "kind": "datasource_hint"})
@@ -291,12 +291,12 @@ def inject_cloud_init(self, g: guestfs.GuestFS) -> Dict[str, Any]:
                 # Not fatal
                 _log("warning", f"Could not write datasource hint: {e}")
     else:
-        _trace(f"☁️  cloud-init: no nocloud payload (type={type(nocloud).__name__})")
+        _trace(f"☁️ cloud-init: no nocloud payload (type={type(nocloud).__name__})")
 
     if not results["writes"]:
         # Nothing to do isn’t a success; make it explicit.
-        _trace("☁️  cloud-init: nothing written (no_payload)")
+        _trace("☁️ cloud-init: nothing written (no_payload)")
         return {"injected": False, "reason": "no_payload", "cloud_init_present": True}
 
-    _trace(f"☁️  cloud-init: done; writes={len(results['writes'])}")
+    _trace(f"☁️ cloud-init: done; writes={len(results['writes'])}")
     return results

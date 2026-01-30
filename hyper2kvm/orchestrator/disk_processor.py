@@ -114,14 +114,14 @@ class DiskProcessor:
 
         p = getattr(self.args, "cloud_init_config", None)
         if not p:
-            Log.trace(self.logger, "☁️  cloud-init: no config provided")
+            Log.trace(self.logger, "☁️ cloud-init: no config provided")
             return None
         try:
             config_path = Path(p).expanduser().resolve()
             if not config_path.exists():
                 self.logger.warning(f"Cloud-init config not found: {config_path}")
                 return None
-            Log.trace(self.logger, "☁️  cloud-init: loading %s", config_path)
+            Log.trace(self.logger, "☁️ cloud-init: loading %s", config_path)
             if config_path.suffix.lower() == ".json":
                 return json.loads(config_path.read_text(encoding="utf-8"))
             if YAML_AVAILABLE:
@@ -194,7 +194,7 @@ class DiskProcessor:
         if cloud_init_data is not None:
             Log.trace(
                 self.logger,
-                "☁️  cloud-init loaded: keys=%s",
+                "☁️ cloud-init loaded: keys=%s",
                 sorted(list(cloud_init_data.keys())) if isinstance(cloud_init_data, dict) else type(cloud_init_data).__name__,
             )
 

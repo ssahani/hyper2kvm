@@ -33,7 +33,7 @@ class InventoryMode:
     inventory mode:
       - scan a local file/dir OR ESXi remote descriptor pull OR vSphere selection (optional scaffold)
       - emit inventory.json + inventory.md (optional) + artifacts.json (optional)
-      - exit code policy via --fail-on {none,low,medium,high}
+      - exit code policy via --fail-on {none, low, medium, high}
     """
 
     def __init__(self, logger: logging.Logger, args):
@@ -132,7 +132,7 @@ class InventoryMode:
 
         self.logger.info(f"Inventory written: {json_out}")
         self.logger.info(f"Artifacts written: {artifacts_out}")
-        self.logger.info(f"Markdown written:  {md_out}")
+        self.logger.info(f"Markdown written: {md_out}")
 
     def _scan_local(self, source: str, selector: Optional[str]) -> List[Dict[str, Any]]:
         p = Path(str(selector)).expanduser().resolve()

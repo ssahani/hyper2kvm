@@ -349,7 +349,7 @@ class GuestDetector:
           - strings => (1, string_value)
 
         Example: "6.12.10-200.fc41" becomes:
-          [(0,6),(1,'.'),(0,12),(1,'.'),(0,10),(1,'-'),(0,200),(1,'.'),(1,'fc'),(0,41)]
+          [(0, 6), (1,'.'), (0, 12), (1,'.'), (0, 10), (1,'-'), (0, 200), (1,'.'), (1,'fc'), (0, 41)]
         """
         s = (s or "").strip()
         out: List[Tuple[int, Any]] = []
@@ -657,17 +657,17 @@ def emit_guest_identity_log(logger, identity: GuestIdentity) -> None:
     if identity.type == GuestType.LINUX:
         logger.info(
             " guest identity (linux)\n"
-            "     Detection Method: %s\n"
-            "  Detection Confidence: %.1f%%\n"
-            "     Static hostname: %s\n"
-            "          Machine ID: %s\n"
-            "    Operating System: %s\n"
-            "      OS Pretty Name: %s\n"
-            "          OS Version: %s\n"
-            "         CPE OS Name: %s\n"
-            "      OS Support End: %s\n"
-            "        Architecture: %s\n"
-            "  Kernel (installed): %s",
+            " Detection Method: %s\n"
+            " Detection Confidence: %.1f%%\n"
+            " Static hostname: %s\n"
+            " Machine ID: %s\n"
+            " Operating System: %s\n"
+            " OS Pretty Name: %s\n"
+            " OS Version: %s\n"
+            " CPE OS Name: %s\n"
+            " OS Support End: %s\n"
+            " Architecture: %s\n"
+            " Kernel (installed): %s",
             identity.detection_method,
             identity.confidence * 100,
             identity.hostname or "?",
@@ -687,18 +687,18 @@ def emit_guest_identity_log(logger, identity: GuestIdentity) -> None:
         win_dirs = identity.metadata.get("windows_dirs", [])
         logger.info(
             " guest identity (windows)\n"
-            "     Detection Method: %s\n"
-            "  Detection Confidence: %.1f%%\n"
-            "    Operating System: %s\n"
-            "        Architecture: %s\n"
-            "      Windows Distro: %s\n"
-            "      Version (maj): %s\n"
-            "      Version (min): %s\n"
-            "            Build #: %s\n"
-            "   Display Version: %s\n"
-            "           Edition: %s\n"
-            "   Registry hives #: %s\n"
-            "   Windows dirs   #: %s",
+            " Detection Method: %s\n"
+            " Detection Confidence: %.1f%%\n"
+            " Operating System: %s\n"
+            " Architecture: %s\n"
+            " Windows Distro: %s\n"
+            " Version (maj): %s\n"
+            " Version (min): %s\n"
+            " Build #: %s\n"
+            " Display Version: %s\n"
+            " Edition: %s\n"
+            " Registry hives #: %s\n"
+            " Windows dirs   #: %s",
             identity.detection_method,
             identity.confidence * 100,
             identity.os_name or "Windows",
@@ -716,9 +716,9 @@ def emit_guest_identity_log(logger, identity: GuestIdentity) -> None:
 
     logger.info(
         " guest identity (unknown)\n"
-        "     Detection Method: %s\n"
-        "  Detection Confidence: %.1f%%\n"
-        "       Detected Type: %s",
+        " Detection Method: %s\n"
+        " Detection Confidence: %.1f%%\n"
+        " Detected Type: %s",
         identity.detection_method,
         identity.confidence * 100,
         identity.type.value,
