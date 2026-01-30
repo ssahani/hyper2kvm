@@ -182,6 +182,9 @@ class OfflineFSFix:
         self.luks_mapper_prefix = luks_mapper_prefix
         self._luks_opened: dict[str, str] = {}  # luks_dev -> /dev/mapper/name
 
+        # Storage stack activation tracking (prevent redundant activations)
+        self._lvm_activated: bool = False
+
         # Filesystem fixer flag (avoid shadowing method name)
         self.filesystem_repair_enable = bool(filesystem_repair_enable)
 
@@ -338,6 +341,11 @@ class OfflineFSFix:
         return None
 
     def _activate_lvm(self, g: guestfs.GuestFS) -> None:
+        # Skip if already activated (prevent redundant scans)
+        if self._lvm_activated:
+            self.logger.debug("LVM already activated, skipping redundant activation")
+            return
+
         if not hasattr(g, "vgscan") or not hasattr(g, "vgchange_activate_all"):
             return
         try:
@@ -346,9 +354,11 @@ class OfflineFSFix:
             return
         try:
             g.vgchange_activate_all(True)
+            self._lvm_activated = True  # Mark as activated on success
         except Exception:
             try:
                 g.vgchange_activate_all(1)
+                self._lvm_activated = True  # Mark as activated on success
             except Exception:
                 pass
 
