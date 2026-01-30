@@ -1991,6 +1991,1284 @@ class VMCraft:
             raise RuntimeError("Not launched")
         return self._sysconfig.loginctl_show_session(session)
 
+
+    # ============================================================================
+    # Advanced systemd Methods - Enhanced Inspection & Forensics
+    # ============================================================================
+
+    # Category 1: Core Offline Analysis
+
+    def systemd_analyze_plot_offline(self, output_path: str | None = None) -> str:
+        """
+        Generate SVG boot timeline from offline VM.
+
+        Works by analyzing journald logs without booting VM.
+
+        Args:
+            output_path: Optional path for SVG output
+
+        Returns:
+            SVG content as string (or empty if no boot data)
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            # Use systemd-analyze with --directory flag
+            journal_dir = self._mount_root / "var/log/journal"
+
+            if not journal_dir.exists():
+                self.logger.debug("No journal directory found")
+                return ""
+
+            cmd = ["systemd-analyze", "plot"]
+            cmd.extend(["--directory", str(self._mount_root)])
+
+            result = run_sudo(self.logger, cmd, check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+
+            svg_content = result.stdout
+
+            # Save to file if requested
+            if output_path:
+                Path(output_path).write_text(svg_content)
+
+            return svg_content
+
+        except Exception as e:
+            self.logger.debug(f"systemd_analyze_plot_offline failed: {e}")
+            return ""
+
+    def systemd_analyze_security_offline(self, unit: str | None = None) -> list[dict[str, Any]]:
+        """
+        Security analysis of systemd units from offline VM.
+
+        Analyzes service hardening features without running VM.
+
+        Args:
+            unit: Optional specific unit to analyze (default: all services)
+
+        Returns:
+            List of security analysis results with scores
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            cmd = ["systemd-analyze", "security"]
+            cmd.extend(["--offline", str(self._mount_root)])
+            cmd.append("--no-pager")
+
+            if unit:
+                cmd.append(unit)
+
+            result = run_sudo(self.logger, cmd, check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+
+            # Parse output (table format)
+            security_results = []
+            lines = result.stdout.strip().split('\n')
+
+            # Skip header lines
+            data_start = 0
+            for i, line in enumerate(lines):
+                if '─' in line:  # Separator line
+                    data_start = i + 1
+                    break
+
+            for line in lines[data_start:]:
+                if not line.strip():
+                    continue
+
+                # Parse: UNIT EXPOSURE PREDICATE
+                parts = line.split()
+                if len(parts) >= 3:
+                    security_results.append({
+                        "unit": parts[0],
+                        "exposure": parts[1],
+                        "predicate": parts[2],
+                    })
+
+            return security_results
+
+        except Exception as e:
+            self.logger.debug(f"systemd_analyze_security_offline failed: {e}")
+            return []
+
+    def systemd_analyze_time_offline(self) -> dict[str, float]:
+        """
+        Analyze boot time from offline VM journal.
+
+        Returns:
+            Dict with boot timing information
+            Keys: kernel_time, userspace_time, total_time (in seconds)
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            cmd = ["systemd-analyze", "time"]
+            cmd.extend(["--directory", str(self._mount_root)])
+
+            result = run_sudo(self.logger, cmd, check=True, capture=True,
+                             failure_log_level=logging.DEBUG)
+
+            # Parse output: "Startup finished in 2.5s (kernel) + 5.3s (userspace) = 7.8s"
+            output = result.stdout.strip()
+
+            timing = {
+                "kernel_time": 0.0,
+                "userspace_time": 0.0,
+                "total_time": 0.0,
+            }
+
+            # Extract kernel time
+            kernel_match = re.search(r'([\d.]+)s\s*\(kernel\)', output)
+            if kernel_match:
+                timing["kernel_time"] = float(kernel_match.group(1))
+
+            # Extract userspace time
+            userspace_match = re.search(r'([\d.]+)s\s*\(userspace\)', output)
+            if userspace_match:
+                timing["userspace_time"] = float(userspace_match.group(1))
+
+            # Extract total
+            total_match = re.search(r'=\s*([\d.]+)s', output)
+            if total_match:
+                timing["total_time"] = float(total_match.group(1))
+
+            return timing
+
+        except Exception as e:
+            self.logger.debug(f"systemd_analyze_time_offline failed: {e}")
+            return {"kernel_time": 0.0, "userspace_time": 0.0, "total_time": 0.0}
+
+    def systemd_detect_virt(self) -> dict[str, str]:
+        """
+        Detect virtualization type from guest VM perspective.
+
+        Returns:
+            Dict with virtualization info
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            # Check from inside guest
+            result = self.command_quiet(["systemd-detect-virt", "--vm"])
+            vm_type = result.strip() if result else "none"
+
+            result = self.command_quiet(["systemd-detect-virt", "--container"])
+            container_type = result.strip() if result else "none"
+
+            # Determine overall type
+            if vm_type != "none":
+                overall_type = "vm"
+            elif container_type != "none":
+                overall_type = "container"
+            else:
+                overall_type = "none"
+
+            return {
+                "type": overall_type,
+                "vm": vm_type,
+                "container": container_type,
+            }
+
+        except Exception as e:
+            self.logger.debug(f"systemd_detect_virt failed: {e}")
+            return {"type": "none", "vm": "none", "container": "none"}
+
+    def systemd_machine_id(self) -> str:
+        """
+        Get unique machine ID from systemd.
+
+        Returns:
+            128-bit machine ID as hex string
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            machine_id_path = self._mount_root / "etc/machine-id"
+            if machine_id_path.exists():
+                return machine_id_path.read_text().strip()
+
+            # Fallback to dbus machine ID
+            dbus_id_path = self._mount_root / "var/lib/dbus/machine-id"
+            if dbus_id_path.exists():
+                return dbus_id_path.read_text().strip()
+
+            return ""
+
+        except Exception as e:
+            self.logger.debug(f"systemd_machine_id failed: {e}")
+            return ""
+
+    # Category 2: Network & Journal (enhanced versions)
+
+    def journalctl_list_boots_detailed(self) -> list[dict[str, Any]]:
+        """
+        List all boots with detailed information.
+
+        Returns:
+            List of boot records with timestamps and IDs
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            cmd = ["journalctl", "--list-boots", "--output=json"]
+            result = self.command_quiet(cmd)
+
+            boots = []
+            for line in result.splitlines():
+                if not line.strip():
+                    continue
+
+                boot_data = json.loads(line)
+
+                # Extract boot information
+                boots.append({
+                    "boot_id": boot_data.get("boot_id", ""),
+                    "first_entry": boot_data.get("first_entry", ""),
+                    "last_entry": boot_data.get("last_entry", ""),
+                })
+
+            return boots
+
+        except Exception as e:
+            self.logger.debug(f"journalctl_list_boots_detailed failed: {e}")
+            return []
+
+    def journalctl_export_to_file(self, output_path: str, since: str | None = None,
+                     until: str | None = None) -> bool:
+        """
+        Export journal logs to binary format for offline analysis.
+
+        Args:
+            output_path: Path to save exported journal
+            since: Optional start timestamp
+            until: Optional end timestamp
+
+        Returns:
+            True if export successful
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            cmd = ["journalctl", "--output=export"]
+
+            if since:
+                cmd.extend(["--since", since])
+            if until:
+                cmd.extend(["--until", until])
+
+            result = self.command_quiet(cmd)
+
+            Path(output_path).write_bytes(result.encode('utf-8'))
+            return True
+
+        except Exception as e:
+            self.logger.debug(f"journalctl_export_to_file failed: {e}")
+            return False
+
+    def systemd_networkd_config(self) -> dict[str, Any]:
+        """
+        Inspect systemd-networkd configuration.
+
+        Returns:
+            Dict with network configuration
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        config = {
+            "networks": [],
+            "netdevs": [],
+            "links": [],
+        }
+
+        try:
+            # Parse .network files
+            network_dir = self._mount_root / "etc/systemd/network"
+            if network_dir.exists():
+                for network_file in network_dir.glob("*.network"):
+                    config["networks"].append({
+                        "file": network_file.name,
+                        "path": str(network_file),
+                    })
+
+                for netdev_file in network_dir.glob("*.netdev"):
+                    config["netdevs"].append({
+                        "file": netdev_file.name,
+                        "path": str(netdev_file),
+                    })
+
+                for link_file in network_dir.glob("*.link"):
+                    config["links"].append({
+                        "file": link_file.name,
+                        "path": str(link_file),
+                    })
+
+            return config
+
+        except Exception as e:
+            self.logger.debug(f"systemd_networkd_config failed: {e}")
+            return config
+
+    def systemd_resolved_config(self) -> dict[str, Any]:
+        """
+        Inspect systemd-resolved DNS configuration.
+
+        Returns:
+            Dict with DNS configuration
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        try:
+            # Read resolved.conf
+            resolved_conf = self._mount_root / "etc/systemd/resolved.conf"
+
+            config = {
+                "dns_servers": [],
+                "fallback_dns": [],
+                "domains": [],
+                "dnssec": "allow-downgrade",
+            }
+
+            if resolved_conf.exists():
+                import configparser
+                parser = configparser.ConfigParser()
+                parser.read(resolved_conf)
+
+                if "Resolve" in parser:
+                    resolve_section = parser["Resolve"]
+
+                    if "DNS" in resolve_section:
+                        config["dns_servers"] = resolve_section["DNS"].split()
+
+                    if "FallbackDNS" in resolve_section:
+                        config["fallback_dns"] = resolve_section["FallbackDNS"].split()
+
+                    if "Domains" in resolve_section:
+                        config["domains"] = resolve_section["Domains"].split()
+
+                    if "DNSSEC" in resolve_section:
+                        config["dnssec"] = resolve_section["DNSSEC"]
+
+            return config
+
+        except Exception as e:
+            self.logger.debug(f"systemd_resolved_config failed: {e}")
+            return {"dns_servers": [], "fallback_dns": [], "domains": [], "dnssec": "allow-downgrade"}
+
+    # Category 3: Forensic Analysis
+
+    def systemd_coredump_list(self) -> list[dict[str, Any]]:
+        """
+        List all core dumps from VM crashes.
+
+        Returns:
+            List of core dump records
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        coredumps = []
+
+        try:
+            coredump_dir = self._mount_root / "var/lib/systemd/coredump"
+
+            if not coredump_dir.exists():
+                return []
+
+            # List core dump files
+            for dump_file in coredump_dir.glob("core.*"):
+                # Parse filename: core.<command>.<uid>.<gid>.<pid>.<timestamp>
+                parts = dump_file.name.split(".")
+
+                if len(parts) >= 6:
+                    coredumps.append({
+                        "command": parts[1],
+                        "uid": parts[2],
+                        "gid": parts[3],
+                        "pid": parts[4],
+                        "timestamp": parts[5],
+                        "file": str(dump_file),
+                        "size_mb": dump_file.stat().st_size / (1024 * 1024),
+                    })
+
+            return coredumps
+
+        except Exception as e:
+            self.logger.debug(f"systemd_coredump_list failed: {e}")
+            return []
+
+    def systemd_coredump_config(self) -> dict[str, str]:
+        """
+        Get core dump configuration from VM.
+
+        Returns:
+            Dict with coredump settings
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        config = {
+            "Storage": "external",
+            "Compress": "yes",
+            "ProcessSizeMax": "2G",
+            "ExternalSizeMax": "2G",
+        }
+
+        try:
+            conf_file = self._mount_root / "etc/systemd/coredump.conf"
+
+            if conf_file.exists():
+                import configparser
+                parser = configparser.ConfigParser()
+                parser.read(conf_file)
+
+                if "Coredump" in parser:
+                    section = parser["Coredump"]
+
+                    for key in ["Storage", "Compress", "ProcessSizeMax", "ExternalSizeMax"]:
+                        if key in section:
+                            config[key] = section[key]
+
+            return config
+
+        except Exception as e:
+            self.logger.debug(f"systemd_coredump_config failed: {e}")
+            return config
+
+    def systemd_pstore_list(self) -> list[dict[str, Any]]:
+        """
+        List persistent storage crash data (pstore).
+
+        Returns:
+            List of pstore entries
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        entries = []
+
+        try:
+            pstore_dir = self._mount_root / "sys/fs/pstore"
+
+            if not pstore_dir.exists():
+                return []
+
+            for pstore_file in pstore_dir.iterdir():
+                if pstore_file.is_file():
+                    # Determine type from filename
+                    pstore_type = "unknown"
+                    if "dmesg" in pstore_file.name:
+                        pstore_type = "dmesg"
+                    elif "console" in pstore_file.name:
+                        pstore_type = "console"
+                    elif "panic" in pstore_file.name:
+                        pstore_type = "panic"
+
+                    entries.append({
+                        "file": pstore_file.name,
+                        "type": pstore_type,
+                        "size_kb": pstore_file.stat().st_size / 1024,
+                        "path": str(pstore_file),
+                    })
+
+            return entries
+
+        except Exception as e:
+            self.logger.debug(f"systemd_pstore_list failed: {e}")
+            return []
+
+    def systemd_sysusers_config(self) -> list[dict[str, Any]]:
+        """
+        Get systemd-sysusers configuration.
+
+        Returns:
+            List of sysusers entries
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        entries = []
+
+        try:
+            sysusers_dir = self._mount_root / "usr/lib/sysusers.d"
+
+            if not sysusers_dir.exists():
+                return []
+
+            for conf_file in sysusers_dir.glob("*.conf"):
+                content = conf_file.read_text()
+
+                for line in content.splitlines():
+                    line = line.strip()
+
+                    if not line or line.startswith("#"):
+                        continue
+
+                    # Parse: type name id gecos home shell
+                    parts = line.split(None, 5)
+
+                    if len(parts) >= 2:
+                        entry = {
+                            "type": parts[0],
+                            "name": parts[1],
+                            "id": parts[2] if len(parts) > 2 else "-",
+                            "gecos": parts[3] if len(parts) > 3 else "",
+                            "home": parts[4] if len(parts) > 4 else "/",
+                            "shell": parts[5] if len(parts) > 5 else "/usr/sbin/nologin",
+                            "source_file": conf_file.name,
+                        }
+                        entries.append(entry)
+
+            return entries
+
+        except Exception as e:
+            self.logger.debug(f"systemd_sysusers_config failed: {e}")
+            return []
+
+    def systemd_logind_config(self) -> dict[str, Any]:
+        """
+        Get systemd-logind configuration.
+
+        Returns:
+            Dict with logind configuration
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        config = {
+            "KillUserProcesses": "no",
+            "KillExcludeUsers": [],
+            "HandlePowerKey": "poweroff",
+            "HandleSuspendKey": "suspend",
+            "HandleLidSwitch": "suspend",
+            "IdleAction": "ignore",
+            "IdleActionSec": "30min",
+        }
+
+        try:
+            conf_file = self._mount_root / "etc/systemd/logind.conf"
+
+            if conf_file.exists():
+                import configparser
+                parser = configparser.ConfigParser()
+                parser.read(conf_file)
+
+                if "Login" in parser:
+                    section = parser["Login"]
+
+                    for key in config.keys():
+                        if key in section:
+                            value = section[key]
+
+                            # Parse list values
+                            if key == "KillExcludeUsers":
+                                config[key] = value.split()
+                            else:
+                                config[key] = value
+
+            return config
+
+        except Exception as e:
+            self.logger.debug(f"systemd_logind_config failed: {e}")
+            return config
+
+    def systemd_boot_entries(self) -> list[dict[str, Any]]:
+        """
+        List systemd-boot (UEFI) boot entries.
+
+        Returns:
+            List of boot entries
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        entries = []
+
+        try:
+            entries_dir = self._mount_root / "boot/loader/entries"
+
+            if not entries_dir.exists():
+                # Try EFI path
+                entries_dir = self._mount_root / "boot/efi/loader/entries"
+
+            if not entries_dir.exists():
+                return []
+
+            for entry_file in entries_dir.glob("*.conf"):
+                entry = {"file": entry_file.name}
+
+                content = entry_file.read_text()
+                for line in content.splitlines():
+                    line = line.strip()
+
+                    if not line or line.startswith("#"):
+                        continue
+
+                    # Parse key-value pairs
+                    if " " in line:
+                        key, value = line.split(None, 1)
+                        entry[key.lower()] = value
+
+                entries.append(entry)
+
+            return entries
+
+        except Exception as e:
+            self.logger.debug(f"systemd_boot_entries failed: {e}")
+            return []
+
+    def systemd_boot_loader_config(self) -> dict[str, str]:
+        """
+        Get systemd-boot loader configuration.
+
+        Returns:
+            Dict with boot loader settings
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        config = {}
+
+        try:
+            conf_file = self._mount_root / "boot/loader/loader.conf"
+
+            if not conf_file.exists():
+                conf_file = self._mount_root / "boot/efi/loader/loader.conf"
+
+            if conf_file.exists():
+                content = conf_file.read_text()
+
+                for line in content.splitlines():
+                    line = line.strip()
+
+                    if not line or line.startswith("#"):
+                        continue
+
+                    if " " in line:
+                        key, value = line.split(None, 1)
+                        config[key.lower()] = value
+
+            return config
+
+        except Exception as e:
+            self.logger.debug(f"systemd_boot_loader_config failed: {e}")
+            return {}
+
+    def systemd_sysext_list(self) -> list[dict[str, Any]]:
+        """
+        List systemd system extensions.
+
+        Returns:
+            List of system extensions
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        extensions = []
+
+        try:
+            sysext_dirs = [
+                self._mount_root / "var/lib/extensions",
+                self._mount_root / "usr/lib/extensions",
+            ]
+
+            for ext_dir in sysext_dirs:
+                if not ext_dir.exists():
+                    continue
+
+                for ext_file in ext_dir.glob("*.raw"):
+                    extensions.append({
+                        "name": ext_file.stem,
+                        "path": str(ext_file),
+                        "size_mb": ext_file.stat().st_size / (1024 * 1024),
+                        "location": ext_dir.name,
+                    })
+
+            return extensions
+
+        except Exception as e:
+            self.logger.debug(f"systemd_sysext_list failed: {e}")
+            return []
+
+    # Category 4: Compliance & Security
+
+    def systemd_security_compliance_check(self) -> dict[str, Any]:
+        """
+        Comprehensive security compliance check.
+
+        Returns:
+            Dict with compliance results
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        compliance = {
+            "score": 0,
+            "total_checks": 0,
+            "passed": 0,
+            "failed": 0,
+            "findings": [],
+            "recommendations": [],
+        }
+
+        # Check 1: Unnecessary services
+        unnecessary_services = [
+            "debug-shell.service",
+            "systemd-halt.service",
+        ]
+
+        for service in unnecessary_services:
+            compliance["total_checks"] += 1
+
+            try:
+                service_path = self._mount_root / f"etc/systemd/system/{service}"
+
+                if service_path.exists():
+                    compliance["failed"] += 1
+                    compliance["findings"].append({
+                        "check": f"Unnecessary service: {service}",
+                        "status": "FAIL",
+                        "severity": "medium",
+                    })
+                    compliance["recommendations"].append(
+                        f"Disable {service} to reduce attack surface"
+                    )
+                else:
+                    compliance["passed"] += 1
+
+            except Exception:
+                pass
+
+        # Check 2: Journal compression
+        compliance["total_checks"] += 1
+        try:
+            journal_conf = self._mount_root / "etc/systemd/journald.conf"
+
+            if journal_conf.exists():
+                content = journal_conf.read_text()
+                if "Compress=yes" in content:
+                    compliance["passed"] += 1
+                else:
+                    compliance["failed"] += 1
+                    compliance["findings"].append({
+                        "check": "Journal compression",
+                        "status": "FAIL",
+                        "severity": "low",
+                    })
+                    compliance["recommendations"].append(
+                        "Enable journal compression to save disk space"
+                    )
+        except Exception:
+            pass
+
+        # Check 3: Core dump restriction
+        compliance["total_checks"] += 1
+        try:
+            coredump_conf = self._mount_root / "etc/systemd/coredump.conf"
+
+            if coredump_conf.exists():
+                content = coredump_conf.read_text()
+                if "Storage=none" in content:
+                    compliance["passed"] += 1
+                else:
+                    compliance["failed"] += 1
+                    compliance["findings"].append({
+                        "check": "Core dump restriction",
+                        "status": "FAIL",
+                        "severity": "medium",
+                    })
+                    compliance["recommendations"].append(
+                        "Set Storage=none in coredump.conf"
+                    )
+        except Exception:
+            pass
+
+        # Check 4: SUID binaries audit
+        compliance["total_checks"] += 1
+
+        try:
+            known_safe_suid = {
+                "/usr/bin/sudo",
+                "/usr/bin/su",
+                "/usr/bin/passwd",
+                "/usr/bin/mount",
+                "/usr/bin/umount",
+                "/usr/bin/ping",
+            }
+
+            suid_binaries = []
+            for root_dir in [self._mount_root / "usr/bin", self._mount_root / "usr/sbin"]:
+                if root_dir.exists():
+                    for binary in root_dir.iterdir():
+                        if binary.is_file():
+                            stat_info = binary.stat()
+                            if stat_info.st_mode & 0o4000:
+                                rel_path = "/" + str(binary.relative_to(self._mount_root))
+                                if rel_path not in known_safe_suid:
+                                    suid_binaries.append(rel_path)
+
+            if suid_binaries:
+                compliance["failed"] += 1
+                compliance["findings"].append({
+                    "check": "SUID binaries audit",
+                    "status": "WARN",
+                    "severity": "high",
+                    "details": f"Found {len(suid_binaries)} unexpected SUID binaries",
+                    "binaries": suid_binaries,
+                })
+                compliance["recommendations"].append(
+                    "Review and remove unnecessary SUID binaries"
+                )
+            else:
+                compliance["passed"] += 1
+
+        except Exception as e:
+            self.logger.debug(f"SUID check failed: {e}")
+
+        # Calculate score
+        if compliance["total_checks"] > 0:
+            compliance["score"] = int(
+                (compliance["passed"] / compliance["total_checks"]) * 100
+            )
+
+        return compliance
+
+    def systemd_detect_anomalies(self) -> dict[str, list[dict[str, Any]]]:
+        """
+        Detect suspicious configurations and anomalies.
+
+        Returns:
+            Dict categorizing anomalies by type
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        anomalies = {
+            "hidden_units": [],
+            "writable_units": [],
+            "suspicious_timers": [],
+            "suspicious_sockets": [],
+        }
+
+        try:
+            systemd_dir = self._mount_root / "etc/systemd/system"
+
+            if not systemd_dir.exists():
+                return anomalies
+
+            # Check 1: Hidden units
+            for hidden_file in systemd_dir.glob(".*"):
+                if hidden_file.is_file():
+                    anomalies["hidden_units"].append({
+                        "file": str(hidden_file.relative_to(self._mount_root)),
+                        "size": hidden_file.stat().st_size,
+                    })
+
+            # Check 2: World-writable units
+            for unit_file in systemd_dir.rglob("*"):
+                if unit_file.is_file():
+                    mode = unit_file.stat().st_mode
+                    if mode & 0o002:
+                        anomalies["writable_units"].append({
+                            "file": str(unit_file.relative_to(self._mount_root)),
+                            "mode": oct(mode),
+                        })
+
+            # Check 3: Suspicious timers
+            for timer_file in systemd_dir.rglob("*.timer"):
+                if timer_file.is_file():
+                    content = timer_file.read_text()
+
+                    if "OnCalendar=*:0/1" in content or "OnCalendar=minutely" in content:
+                        anomalies["suspicious_timers"].append({
+                            "file": timer_file.name,
+                            "reason": "Very frequent activation",
+                            "path": str(timer_file.relative_to(self._mount_root)),
+                        })
+
+            # Check 4: Suspicious sockets
+            for socket_file in systemd_dir.rglob("*.socket"):
+                if socket_file.is_file():
+                    content = socket_file.read_text()
+
+                    for match in re.finditer(r'ListenStream=([^\n]+)', content):
+                        listen_addr = match.group(1)
+
+                        if not listen_addr.startswith("127.0.0.1") and \
+                           not listen_addr.startswith("/") and \
+                           not listen_addr.startswith("localhost"):
+                            anomalies["suspicious_sockets"].append({
+                                "file": socket_file.name,
+                                "address": listen_addr,
+                                "reason": "Listening on non-localhost",
+                                "path": str(socket_file.relative_to(self._mount_root)),
+                            })
+
+            return anomalies
+
+        except Exception as e:
+            self.logger.debug(f"systemd_detect_anomalies failed: {e}")
+            return anomalies
+
+    def systemd_analyze_failures(self) -> dict[str, Any]:
+        """
+        Comprehensive analysis of failed services.
+
+        Returns:
+            Dict with failure analysis
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        analysis = {
+            "failed_units": [],
+            "failure_patterns": {},
+            "recommendations": [],
+        }
+
+        try:
+            # Get all failed units
+            failed = self.systemctl_list_units(state="failed")
+
+            for unit_dict in failed:
+                unit = unit_dict.get("unit", "")
+
+                # Get detailed status
+                status = self.systemctl_status(unit)
+
+                # Extract failure information
+                failure_info = {
+                    "unit": unit,
+                    "status": status,
+                }
+
+                analysis["failed_units"].append(failure_info)
+
+                # Pattern detection
+                status_str = str(status).lower()
+                if "dependency" in status_str:
+                    analysis["failure_patterns"]["dependency"] = \
+                        analysis["failure_patterns"].get("dependency", 0) + 1
+
+                if "timeout" in status_str:
+                    analysis["failure_patterns"]["timeout"] = \
+                        analysis["failure_patterns"].get("timeout", 0) + 1
+
+            # Generate recommendations
+            if analysis["failure_patterns"].get("dependency", 0) > 0:
+                analysis["recommendations"].append(
+                    "Check service dependencies with systemctl list-dependencies"
+                )
+
+            if analysis["failure_patterns"].get("timeout", 0) > 0:
+                analysis["recommendations"].append(
+                    "Consider increasing TimeoutStartSec in unit files"
+                )
+
+            return analysis
+
+        except Exception as e:
+            self.logger.debug(f"systemd_analyze_failures failed: {e}")
+            return analysis
+
+    # Category 5: Migration Readiness
+
+    def systemd_migration_readiness_check(self) -> dict[str, Any]:
+        """
+        Comprehensive migration readiness assessment.
+
+        Returns:
+            Dict with readiness assessment
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        assessment = {
+            "ready": True,
+            "blockers": [],
+            "warnings": [],
+            "recommendations": [],
+            "checks_performed": 0,
+            "checks_passed": 0,
+        }
+
+        systemd_dir = self._mount_root / "etc/systemd/system"
+
+        try:
+            # Check 1: Host-specific units
+            assessment["checks_performed"] += 1
+            host_specific_found = False
+
+            if systemd_dir.exists():
+                for unit_file in systemd_dir.rglob("*.service"):
+                    if unit_file.is_file():
+                        content = unit_file.read_text()
+
+                        if "ConditionHost=" in content:
+                            assessment["warnings"].append({
+                                "check": "Host-specific unit",
+                                "file": unit_file.name,
+                                "issue": "Contains ConditionHost dependency",
+                                "impact": "May not start on new host",
+                            })
+                            assessment["recommendations"].append(
+                                f"Review {unit_file.name} for host-specific conditions"
+                            )
+                            host_specific_found = True
+
+            if not host_specific_found:
+                assessment["checks_passed"] += 1
+
+            # Check 2: Hardcoded MAC addresses
+            assessment["checks_performed"] += 1
+            mac_hardcoded = False
+
+            network_dir = self._mount_root / "etc/systemd/network"
+            if network_dir.exists():
+                for net_file in network_dir.glob("*.network"):
+                    content = net_file.read_text()
+
+                    if "MACAddress=" in content or "PermanentMACAddress=" in content:
+                        assessment["blockers"].append({
+                            "check": "Hardcoded MAC address",
+                            "file": net_file.name,
+                            "issue": "Network config has hardcoded MAC",
+                            "impact": "Network will fail on new host",
+                            "severity": "high",
+                        })
+                        assessment["recommendations"].append(
+                            f"Remove MAC address from {net_file.name}"
+                        )
+                        assessment["ready"] = False
+                        mac_hardcoded = True
+
+            if not mac_hardcoded:
+                assessment["checks_passed"] += 1
+
+            # Check 3: Non-portable filesystem mounts
+            assessment["checks_performed"] += 1
+
+            fstab_file = self._mount_root / "etc/fstab"
+            if fstab_file.exists():
+                content = fstab_file.read_text()
+
+                non_portable_mounts = re.findall(r'/dev/[sh]d[a-z]\d+', content)
+
+                if non_portable_mounts:
+                    assessment["warnings"].append({
+                        "check": "Non-portable filesystem mounts",
+                        "issue": f"fstab uses device names: {', '.join(set(non_portable_mounts))}",
+                        "impact": "Mounts may fail if device names change",
+                        "severity": "medium",
+                    })
+                    assessment["recommendations"].append(
+                        "Convert fstab to use UUID or PARTUUID"
+                    )
+                else:
+                    assessment["checks_passed"] += 1
+
+            return assessment
+
+        except Exception as e:
+            self.logger.debug(f"systemd_migration_readiness_check failed: {e}")
+            assessment["ready"] = False
+            assessment["blockers"].append({
+                "check": "Migration readiness scan",
+                "issue": f"Error during scan: {e}",
+                "severity": "unknown",
+            })
+            return assessment
+
+    def systemd_post_migration_validation(self) -> dict[str, Any]:
+        """
+        Validate VM after migration.
+
+        Returns:
+            Dict with validation results
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        validation = {
+            "valid": True,
+            "checks": [],
+            "issues": [],
+            "recommendations": [],
+        }
+
+        # Check 1: Virtualization detection
+        virt = self.systemd_detect_virt()
+        validation["checks"].append({
+            "name": "Virtualization detection",
+            "status": "pass" if virt["vm"] != "none" else "fail",
+            "details": f"Detected: {virt['vm']}",
+        })
+
+        if virt["vm"] == "none":
+            validation["valid"] = False
+            validation["issues"].append("Virtualization not detected after migration")
+
+        # Check 2: Machine ID exists
+        machine_id = self.systemd_machine_id()
+        validation["checks"].append({
+            "name": "Machine ID",
+            "status": "pass" if machine_id else "fail",
+            "details": machine_id[:16] + "..." if machine_id else "Missing",
+        })
+
+        if not machine_id:
+            validation["valid"] = False
+            validation["issues"].append("Machine ID missing")
+            validation["recommendations"].append("Run: systemd-machine-id-setup")
+
+        # Check 3: Boot configuration
+        boot_entries = self.systemd_boot_entries()
+        validation["checks"].append({
+            "name": "Boot entries",
+            "status": "pass" if boot_entries else "warn",
+            "details": f"Found {len(boot_entries)} boot entries",
+        })
+
+        return validation
+
+    # Category 6: Advanced System Analysis
+
+    def systemd_oomd_config(self) -> dict[str, Any]:
+        """
+        Get systemd-oomd (Out-Of-Memory daemon) configuration.
+
+        Returns:
+            Dict with OOM daemon configuration
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        config = {
+            "SwapUsedLimit": "90%",
+            "DefaultMemoryPressureLimit": "60%",
+            "DefaultMemoryPressureDurationSec": "30s",
+        }
+
+        try:
+            oomd_conf = self._mount_root / "etc/systemd/oomd.conf"
+
+            if oomd_conf.exists():
+                import configparser
+                parser = configparser.ConfigParser()
+                parser.read(oomd_conf)
+
+                if "OOM" in parser:
+                    section = parser["OOM"]
+
+                    for key in config.keys():
+                        if key in section:
+                            config[key] = section[key]
+
+            return config
+
+        except Exception as e:
+            self.logger.debug(f"systemd_oomd_config failed: {e}")
+            return config
+
+    def systemd_timesyncd_config(self) -> dict[str, Any]:
+        """
+        Get systemd-timesyncd (NTP client) configuration.
+
+        Returns:
+            Dict with NTP configuration
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        config = {
+            "NTP": [],
+            "FallbackNTP": ["time.cloudflare.com", "time.google.com"],
+            "RootDistanceMaxSec": "5",
+            "PollIntervalMinSec": "32",
+            "PollIntervalMaxSec": "2048",
+        }
+
+        try:
+            timesyncd_conf = self._mount_root / "etc/systemd/timesyncd.conf"
+
+            if timesyncd_conf.exists():
+                import configparser
+                parser = configparser.ConfigParser()
+                parser.read(timesyncd_conf)
+
+                if "Time" in parser:
+                    section = parser["Time"]
+
+                    if "NTP" in section:
+                        config["NTP"] = section["NTP"].split()
+
+                    if "FallbackNTP" in section:
+                        config["FallbackNTP"] = section["FallbackNTP"].split()
+
+                    for key in ["RootDistanceMaxSec", "PollIntervalMinSec", "PollIntervalMaxSec"]:
+                        if key in section:
+                            config[key] = section[key]
+
+            return config
+
+        except Exception as e:
+            self.logger.debug(f"systemd_timesyncd_config failed: {e}")
+            return config
+
+    def systemd_portable_list(self) -> list[dict[str, Any]]:
+        """
+        List systemd portable service images.
+
+        Returns:
+            List of portable service images
+        """
+        if not self._mount_root:
+            raise RuntimeError("Not launched")
+
+        portables = []
+
+        try:
+            portable_dirs = [
+                self._mount_root / "var/lib/portables",
+                self._mount_root / "etc/portables",
+            ]
+
+            for portable_dir in portable_dirs:
+                if not portable_dir.exists():
+                    continue
+
+                for portable_file in portable_dir.glob("*.raw"):
+                    portables.append({
+                        "name": portable_file.stem,
+                        "type": "raw",
+                        "path": str(portable_file),
+                        "size_mb": portable_file.stat().st_size / (1024 * 1024),
+                    })
+
+                for portable_file in portable_dir.glob("*.portable"):
+                    portables.append({
+                        "name": portable_file.stem,
+                        "type": "portable",
+                        "path": str(portable_file),
+                        "size_mb": portable_file.stat().st_size / (1024 * 1024),
+                    })
+
+            return portables
+
+        except Exception as e:
+            self.logger.debug(f"systemd_portable_list failed: {e}")
+            return []
+
     # Storage stack operations
 
     def vgscan(self) -> None:
