@@ -29,6 +29,7 @@ from ..core.logger import Log
 from ..core.recovery_manager import RecoveryManager
 from ..core.utils import U
 from ..fixers.offline_fixer import OfflineFSFix
+from ..validation.vmdk_inspector import VMDKInspector, RiskLevel
 from ..vmware.utils.vmdk_parser import VMDK
 
 
@@ -282,6 +283,111 @@ class DiskProcessor:
         Log.trace(self.logger, "🔐 luks implicit enabled: %s", enabled)
         return enabled
 
+    def _inspect_vmdk(self, disk: Path) -> Any:
+        """
+        Perform pre-migration VMDK inspection.
+
+        Analyzes VMDK for migration risks including:
+        - Controller compatibility (BusLogic, LSI Logic, etc.)
+        - Snapshot chains
+        - UEFI vs BIOS boot mode
+        - Extent file integrity
+
+        Args:
+            disk: Path to VMDK file
+
+        Returns:
+            VMDKInspectionResult
+
+        Raises:
+            Hyper2KvmError: If FATAL risks detected
+        """
+        from ..core.exceptions import Hyper2KvmError, create_helpful_error
+
+        # Skip inspection if disabled
+        if getattr(self.args, "skip_vmdk_inspection", False):
+            Log.trace(self.logger, "🔍 VMDK inspection skipped (--skip-vmdk-inspection)")
+            return None
+
+        Log.step(self.logger, "Pre-migration validation")
+        inspector = VMDKInspector(self.logger)
+
+        try:
+            result = inspector.inspect(disk)
+        except Exception as e:
+            self.logger.warning(f"⚠️  VMDK inspection failed: {e}")
+            Log.trace(self.logger, "💥 Inspection exception", exc_info=True)
+            return None
+
+        # Display findings
+        if result.risks:
+            self.logger.info("🔍 Migration Risk Analysis:")
+            for risk in result.risks:
+                level_icon = {
+                    RiskLevel.FATAL: "❌",
+                    RiskLevel.HIGH: "⚠️ ",
+                    RiskLevel.MEDIUM: "ℹ️ ",
+                    RiskLevel.INFO: "💡",
+                }.get(risk.level, "•")
+
+                self.logger.info(f"  {level_icon} [{risk.level.value}] {risk.message}")
+
+        # Handle boot mode detection
+        if hasattr(result, "boot_mode") and result.boot_mode:
+            boot_mode = str(result.boot_mode.value) if hasattr(result.boot_mode, "value") else str(result.boot_mode)
+            if boot_mode == "UEFI":
+                self.logger.warning("")
+                self.logger.warning("🔔 UEFI firmware detected!")
+                self.logger.warning("   Libvirt domain MUST use OVMF firmware:")
+                self.logger.warning("   <loader readonly='yes' type='pflash'>/usr/share/OVMF/OVMF_CODE.fd</loader>")
+                self.logger.warning("")
+
+        # Abort on FATAL risks
+        if result.has_fatal_risks:
+            fatal_risks = [r for r in result.risks if r.level == RiskLevel.FATAL]
+            error_msg = f"Pre-migration validation failed: {len(fatal_risks)} FATAL risk(s) detected"
+
+            solutions = []
+            for risk in fatal_risks:
+                if "snapshot" in risk.message.lower():
+                    solutions.append("Consolidate snapshots in VMware before migration")
+                    solutions.append("vSphere: Right-click VM → Snapshots → Consolidate")
+                elif "buslogic" in risk.message.lower():
+                    solutions.append("Change controller from BusLogic to LSI Logic or PVSCSI in VMware")
+                    solutions.append("BusLogic has no KVM driver - cannot be migrated")
+                elif "extent" in risk.message.lower() and "missing" in risk.message.lower():
+                    solutions.append("Verify all VMDK files are present (descriptor + extent)")
+                    solutions.append("Re-export VM from vSphere if files are incomplete")
+                elif "size mismatch" in risk.message.lower():
+                    solutions.append("Re-export VMDK from vSphere")
+                    solutions.append("Current extent file appears truncated or corrupted")
+
+            if not solutions:
+                solutions = ["Fix issues identified above before attempting migration"]
+
+            raise create_helpful_error(
+                Hyper2KvmError,
+                error_msg,
+                code=10,
+                solutions=solutions,
+                causes=[r.message for r in fatal_risks],
+                doc_link="features/vmdk-inspector.md"
+            )
+
+        # Warn on HIGH risks but continue
+        if result.has_high_risks:
+            high_risks = [r for r in result.risks if r.level == RiskLevel.HIGH]
+            self.logger.warning("")
+            self.logger.warning(f"⚠️  {len(high_risks)} HIGH risk(s) detected - migration may require manual fixes")
+            for risk in high_risks:
+                if "controller" in risk.message.lower() and "mismatch" in risk.message.lower():
+                    self.logger.warning("   → hyper2kvm will rebuild initramfs with virtio drivers")
+                elif "uefi" in risk.message.lower():
+                    self.logger.warning("   → Use OVMF firmware in libvirt (not SeaBIOS)")
+            self.logger.warning("")
+
+        return result
+
     def process_single_disk(self, disk: Path, out_root: Path, disk_index: int, total_disks: int) -> Path:
         """
         Process a single disk through the pipeline.
@@ -299,6 +405,10 @@ class DiskProcessor:
         Log.trace(self.logger, "🧱 process_single_disk: disk=%s out_root=%s", disk, out_root)
 
         self.log_input_layout(disk)
+
+        # Pre-migration VMDK inspection
+        inspection_result = self._inspect_vmdk(disk)
+
         working = disk
 
         # Flatten if requested
