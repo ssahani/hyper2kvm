@@ -51,6 +51,58 @@ sudo systemctl status hyper2kvm@production.service
 sudo journalctl -u hyper2kvm@production.service -f
 ```
 
+## Prerequisites
+
+### Install the Python Package
+
+**IMPORTANT:** Before setting up the systemd service, you must install the hyper2kvm Python package properly.
+
+```bash
+# Install from the repository (development mode)
+cd /path/to/hyper2kvm
+sudo /usr/bin/python3 -m pip install -e .
+
+# Or install from PyPI (when available)
+sudo /usr/bin/python3 -m pip install hyper2kvm
+```
+
+**Critical Notes:**
+- Always use `/usr/bin/python3` (not `/usr/sbin/python3` or other interpreters)
+- This ensures the wrapper script at `/usr/local/bin/hyper2kvm` is created with the correct shebang
+- The package must be installed system-wide (with sudo) for the systemd service to access it
+
+**Verify Installation:**
+```bash
+# Check that hyper2kvm is installed
+which hyper2kvm
+# Should show: /usr/local/bin/hyper2kvm
+
+# Verify the shebang is correct
+head -1 /usr/local/bin/hyper2kvm
+# Should show: #!/usr/bin/python3 (NOT /usr/sbin/python3)
+
+# Test the command
+hyper2kvm --help
+
+# Verify Python can import the module
+/usr/bin/python3 -c "import hyper2kvm; print(hyper2kvm.__file__)"
+```
+
+### System Dependencies
+
+Install required system packages:
+
+```bash
+# Fedora/RHEL/CentOS
+sudo dnf install -y qemu-img libguestfs libguestfs-tools python3-pip
+
+# Ubuntu/Debian
+sudo apt-get install -y qemu-utils libguestfs-tools python3-pip
+
+# Arch Linux
+sudo pacman -S qemu-img libguestfs python-pip
+```
+
 ## Setup
 
 ### 1. Create System User and Directories
@@ -294,6 +346,29 @@ systemctl show hyper2kvm.service -p MemoryMax
 # Adjust if needed
 sudo systemctl edit hyper2kvm.service
 # Add: MemoryMax=16G
+```
+
+**Module not found (incorrect Python shebang):**
+
+If you see "ModuleNotFoundError: No module named 'hyper2kvm'" even though the package is installed:
+
+```bash
+# 1. Check the shebang
+head -1 /usr/local/bin/hyper2kvm
+# Should be: #!/usr/bin/python3
+# If it shows #!/usr/sbin/python3 or another interpreter, it needs to be fixed
+
+# 2. Fix the issue by reinstalling
+sudo rm /usr/local/bin/hyper2kvm
+sudo pip3 uninstall -y hyper2kvm
+sudo /usr/bin/python3 -m pip install -e /path/to/hyper2kvm
+
+# 3. Verify the fix
+head -1 /usr/local/bin/hyper2kvm
+/usr/local/bin/hyper2kvm --help
+
+# 4. Restart the service
+sudo systemctl restart hyper2kvm.service
 ```
 
 ## Uninstall
