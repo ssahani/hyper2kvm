@@ -591,4 +591,4 @@ sudo systemctl kill -s SIGKILL hyper2kvm.service
 - [YAML Configuration Examples](05-YAML-Examples.md#6-daemon-mode-watch-a-directory-and-auto-convert)
 - [Systemd Service Units](../systemd/README.md)
 - [hyper2kvm Main Documentation](../README.md)
-- [Integration with hyper2kvmd](https://github.com/ssahani/hyper2kvm-providers)
+- [Integration with hypervisord](https://github.com/ssahani/hypersdk)

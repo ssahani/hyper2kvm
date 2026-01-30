@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """
-Example: Export VM using h2kvmctl (hyper2kvm-providers)
+Example: Export VM using hyperctl (hypersdk)
 
-This example shows how to use the Go-based hyper2kvm-providers daemon
+This example shows how to use the Go-based hypersdk daemon
 for high-performance VM exports instead of govc or pyvmomi.
 
 Prerequisites:
-    1. Install hyper2kvm-providers:
-       sudo dnf install hyper2kvm-providers
+    1. Install hypersdk:
+       https://github.com/ssahani/hypersdk/releases
 
     2. Start the daemon:
-       sudo systemctl start hyper2kvmd
+       sudo systemctl start hypervisord
 
     3. Or manually:
        export GOVC_URL='https://vcenter.example.com/sdk'
        export GOVC_USERNAME='administrator@vsphere.local'
        export GOVC_PASSWORD='your-password'
        export GOVC_INSECURE=1
-       hyper2kvmd
+       hypervisord
 """
 
 import logging
@@ -29,9 +29,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from hyper2kvm.vmware.transports import (
-    H2KVMCTL_AVAILABLE,
-    export_vm_h2kvmctl,
-    create_h2kvmctl_runner,
+    HYPERCTL_AVAILABLE,
+    export_vm_hyperctl,
+    create_hyperctl_runner,
 )
 
 logging.basicConfig(
@@ -42,15 +42,15 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    """Export VM using h2kvmctl."""
+    """Export VM using hyperctl."""
 
-    if not H2KVMCTL_AVAILABLE:
-        logger.error("h2kvmctl not available. Install hyper2kvm-providers.")
+    if not HYPERCTL_AVAILABLE:
+        logger.error("hyperctl not available. Install hypersdk from https://github.com/ssahani/hypersdk")
         sys.exit(1)
 
     # VM to export
     vm_path = "/datacenter/vm/my-test-vm"
-    output_path = "/tmp/h2kvmctl-export"
+    output_path = "/tmp/hyperctl-export"
 
     logger.info(f"Exporting VM: {vm_path}")
     logger.info(f"Output path: {output_path}")
@@ -62,7 +62,7 @@ def main():
 
     try:
         # Method 1: Simple one-liner
-        result = export_vm_h2kvmctl(
+        result = export_vm_hyperctl(
             vm_path=vm_path,
             output_path=output_path,
             parallel_downloads=4,
@@ -79,10 +79,10 @@ def main():
 
 
 def advanced_example():
-    """Advanced usage with H2KVMCtlRunner."""
+    """Advanced usage with HyperCtlRunner."""
 
     # Create runner
-    runner = create_h2kvmctl_runner(
+    runner = create_hyperctl_runner(
         daemon_url="http://localhost:8080",
     )
 
