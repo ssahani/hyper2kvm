@@ -7,8 +7,9 @@ import fnmatch
 import json
 import logging
 import os
-import sys
 import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -42,6 +43,79 @@ from .vmware_client import REQUESTS_AVAILABLE, VMwareClient
 from .govc_common import GovcRunner, extract_paths_from_datastore_ls_json, normalize_ds_path
 
 
+# --------------------------------------------------------------------------------------
+# Debug helpers
+# --------------------------------------------------------------------------------------
+
+_DEFAULT_HTTP_TIMEOUT = (10, 300)  # (connect, read) seconds
+_DEFAULT_CHUNK_SIZE = 1024 * 1024
+
+
+def _boolish(v: Any) -> bool:
+    if isinstance(v, bool):
+        return v
+    s = str(v or "").strip().lower()
+    return s in ("1", "true", "yes", "y", "on")
+
+
+def _short_exc(e: BaseException) -> str:
+    try:
+        return f"{type(e).__name__}: {e}"
+    except Exception:
+        return type(e).__name__
+
+
+def _fmt_bytes(n: Optional[int]) -> str:
+    if n is None:
+        return "?"
+    if n < 0:
+        return "?"
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    x = float(n)
+    for u in units:
+        if x < 1024.0 or u == units[-1]:
+            return f"{x:.2f} {u}"
+        x /= 1024.0
+    return f"{n} B"
+
+
+def _fmt_duration(sec: float) -> str:
+    if sec < 1.0:
+        return f"{sec*1000:.0f}ms"
+    if sec < 60.0:
+        return f"{sec:.2f}s"
+    m = int(sec // 60)
+    s = sec - (m * 60)
+    return f"{m}m{s:.0f}s"
+
+
+def _redact_cookie(cookie: str) -> str:
+    if not cookie:
+        return ""
+    # Very conservative: keep only cookie key and a tiny suffix for correlation.
+    # Example: "vmware_soap_session=abcd...xyz;" -> "vmware_soap_session=…xyz;"
+    try:
+        parts = cookie.split("=", 1)
+        if len(parts) != 2:
+            return "Cookie=<redacted>"
+        k, v = parts
+        v = v.strip()
+        tail = v[-6:] if len(v) >= 6 else v
+        return f"{k}=…{tail}"
+    except Exception:
+        return "Cookie=<redacted>"
+
+
+def _is_transient_http(status: int) -> bool:
+    # Classic transient statuses for retries
+    return status in (408, 429, 500, 502, 503, 504)
+
+
+# --------------------------------------------------------------------------------------
+# Govmomi wrapper
+# --------------------------------------------------------------------------------------
+
+
 class GovmomiCLI(GovcRunner):
     """
     Thin wrapper around govmomi tooling via `govc` (recommended).
@@ -57,10 +131,6 @@ class GovmomiCLI(GovcRunner):
     def __init__(self, logger: logging.Logger, args: argparse.Namespace):
         super().__init__(logger=logger, args=args)
 
-    # -------------------------
-    # govc helpers we use
-    # -------------------------
-
     def list_vm_names(self) -> List[Dict[str, Any]]:
         """
         Returns list of VM dicts.
@@ -71,6 +141,7 @@ class GovmomiCLI(GovcRunner):
 
         If inventory is too large, returns only names + inventory paths.
         """
+        t0 = time.monotonic()
         found = self.run_json(["find", "-type", "m", "-json", "."]) or {}
         vms = (found.get("Elements") or [])
         if not isinstance(vms, list):
@@ -82,6 +153,7 @@ class GovmomiCLI(GovcRunner):
                 self.logger.info(
                     f"govc: inventory has {len(vms)} VMs; returning names only (govc_max_detail={max_detail})"
                 )
+                self.logger.debug(f"govc: list_vm_names took {_fmt_duration(time.monotonic() - t0)}")
             except Exception:
                 pass
             out = [{"name": str(p).split("/")[-1], "path": p} for p in vms]
@@ -121,6 +193,10 @@ class GovmomiCLI(GovcRunner):
                     pass
                 detailed.append({"name": str(pth).split("/")[-1], "path": pth, "error": str(e)})
 
+        try:
+            self.logger.debug(f"govc: list_vm_names took {_fmt_duration(time.monotonic() - t0)}")
+        except Exception:
+            pass
         return sorted(detailed, key=lambda x: x.get("name", ""))
 
     def datastore_ls(self, datastore: str, folder: str) -> List[str]:
@@ -134,6 +210,7 @@ class GovmomiCLI(GovcRunner):
           - We call `govc datastore.ls -json -ds <ds> <folder/>` and then parse defensively.
           - govc output shapes vary by version (some return `file:[{path:...}]`).
         """
+        t0 = time.monotonic()
         ds, rel = normalize_ds_path(datastore, folder or "")
         rel = rel.strip().lstrip("/")  # govc wants no leading slash
         rel = rel.rstrip("/")  # we'll add slash for directory
@@ -160,6 +237,14 @@ class GovmomiCLI(GovcRunner):
                         relp = relp[len(prefix) :]
                     if relp:
                         out.append(relp)
+
+                try:
+                    self.logger.debug(
+                        f"govc: datastore_ls ds={ds!r} folder={folder!r} cand={cand!r} -> {len(out)} items "
+                        f"({_fmt_duration(time.monotonic() - t0)})"
+                    )
+                except Exception:
+                    pass
                 return out
             except Exception as e:
                 try:
@@ -168,7 +253,18 @@ class GovmomiCLI(GovcRunner):
                     pass
                 continue
 
+        try:
+            self.logger.debug(
+                f"govc: datastore_ls ds={ds!r} folder={folder!r} -> 0 items ({_fmt_duration(time.monotonic() - t0)})"
+            )
+        except Exception:
+            pass
         return []
+
+
+# --------------------------------------------------------------------------------------
+# vSphere CLI mode
+# --------------------------------------------------------------------------------------
 
 
 class VsphereMode:
@@ -178,6 +274,14 @@ class VsphereMode:
         self.logger = logger
         self.args = args
         self.govc = GovmomiCLI(logger, args)
+
+    def _debug_enabled(self) -> bool:
+        # Additive: enable extra logs via env/flag without changing behavior
+        if _boolish(os.environ.get("VMDK2KVM_DEBUG") or os.environ.get("VMDK2KVM_VSPHERE_DEBUG")):
+            return True
+        if bool(getattr(self.args, "debug", False)):
+            return True
+        return self.logger.isEnabledFor(logging.DEBUG)
 
     # ✅ ADDITIVE: centralized dc_name resolution (no behavior change)
     def _dc_name(self) -> str:
@@ -199,7 +303,13 @@ class VsphereMode:
         """
         if bool(getattr(self.args, "no_govmomi", False)):
             return False
-        return self.govc.available()
+        ok = self.govc.available()
+        if self._debug_enabled():
+            try:
+                self.logger.debug(f"vsphere: govc available={ok} govc_bin={getattr(self.govc, 'govc_bin', None)!r}")
+            except Exception:
+                pass
+        return ok
 
     # ----------------------------------------------------------------------------------
     # Download transport selection
@@ -209,13 +319,13 @@ class VsphereMode:
         """
         Decide which download transport to attempt first.
 
-        Priority request from you:
+        Priority:
           - Prefer VDDK when available (fast), otherwise fall back to HTTPS /folder
           - Keep behavior additive + feature-detected (no hard dependency)
 
         Sources (in order):
           - args.vs_transport (or args.vs_download_transport)
-          - env VMDK2KVM_VSPHERE_TRANSPORT
+          - env VMDK2KVM_VSPHERE_TRANSPORT (or VSPHERE_TRANSPORT)
           - default: "vddk"
         """
         v = getattr(self.args, "vs_transport", None) or getattr(self.args, "vs_download_transport", None)
@@ -243,13 +353,21 @@ class VsphereMode:
         ):
             try:
                 if hasattr(client, attr):
-                    # If it's a method returning bool, call it; else just treat presence as support.
                     obj = getattr(client, attr)
                     if callable(obj) and attr in ("vddk_available", "has_vddk"):
-                        return bool(obj())
+                        ok = bool(obj())
+                        if self._debug_enabled():
+                            self.logger.debug(f"vsphere: VDDK probe {attr}() -> {ok}")
+                        return ok
+                    if self._debug_enabled():
+                        self.logger.debug(f"vsphere: VDDK probe found attribute: {attr}")
                     return True
-            except Exception:
+            except Exception as e:
+                if self._debug_enabled():
+                    self.logger.debug(f"vsphere: VDDK probe error for {attr}: {_short_exc(e)}")
                 continue
+        if self._debug_enabled():
+            self.logger.debug("vsphere: VDDK not detected on VMwareClient")
         return False
 
     def _download_one_file_prefer_vddk(
@@ -263,7 +381,7 @@ class VsphereMode:
         local_path: Path,
         verify_tls: bool,
         on_bytes: Optional[Any] = None,
-        chunk_size: int = 1024 * 1024,
+        chunk_size: int = _DEFAULT_CHUNK_SIZE,
     ) -> None:
         """
         Prefer VDDK when available, otherwise fall back to HTTPS /folder download.
@@ -280,15 +398,19 @@ class VsphereMode:
         if pref == "auto":
             pref = "vddk"
 
+        if self._debug_enabled():
+            self.logger.debug(
+                f"vsphere: download transport pref={pref!r} vddk_detected={self._client_has_vddk(client)} "
+                f"ds=[{ds_name}] path={ds_path!r} -> {str(local_path)!r}"
+            )
+
         # 1) Try VDDK first (unless user forced https)
         if pref == "vddk" and self._client_has_vddk(client):
-            # Preferred method name: download_datastore_file_vddk(datastore, ds_path, local_path, dc_name?, ...)
-            # We'll try a couple of call signatures defensively.
+            t0 = time.monotonic()
             try:
                 fn = getattr(client, "download_datastore_file_vddk", None)
                 if callable(fn):
                     try:
-                        # most likely signature
                         fn(
                             datastore=ds_name,
                             ds_path=ds_path,
@@ -297,10 +419,17 @@ class VsphereMode:
                             chunk_size=chunk_size,
                             on_bytes=on_bytes,
                         )
+                        if self._debug_enabled():
+                            self.logger.debug(
+                                f"vsphere: VDDK download_datastore_file_vddk ok in {_fmt_duration(time.monotonic()-t0)}"
+                            )
                         return
                     except TypeError:
-                        # alternate signature (positional / fewer kwargs)
                         fn(ds_name, ds_path, local_path)
+                        if self._debug_enabled():
+                            self.logger.debug(
+                                f"vsphere: VDDK download_datastore_file_vddk(positional) ok in {_fmt_duration(time.monotonic()-t0)}"
+                            )
                         return
 
                 fn2 = getattr(client, "download_disk_vddk", None)
@@ -309,6 +438,10 @@ class VsphereMode:
                         fn2(datastore=ds_name, ds_path=ds_path, local_path=local_path, dc_name=dc_name)
                     except TypeError:
                         fn2(ds_name, ds_path, local_path)
+                    if self._debug_enabled():
+                        self.logger.debug(
+                            f"vsphere: VDDK download_disk_vddk ok in {_fmt_duration(time.monotonic()-t0)}"
+                        )
                     return
 
                 # If we got here, we "have vddk" but no known callable
@@ -316,7 +449,7 @@ class VsphereMode:
             except Exception as e:
                 # VDDK can segfault or raise; we fall back for Python exceptions.
                 # (If it segfaults, nothing can catch it; that's a process crash.)
-                self.logger.warning(f"VDDK download failed; falling back to HTTPS folder: {e}")
+                self.logger.warning(f"VDDK download failed; falling back to HTTPS folder: {_short_exc(e)}")
 
         # 2) HTTPS /folder fallback (original behavior)
         self._download_one_folder_file(
@@ -391,6 +524,7 @@ class VsphereMode:
         Find a vim.Datastore object by name using inventory.
         Best-effort across folders/datacenters.
         """
+        t0 = time.monotonic()
         content = client._content()
 
         def iter_children(obj):
@@ -404,12 +538,20 @@ class VsphereMode:
                 if isinstance(top, vim.Datacenter):
                     for ds in (top.datastore or []):
                         if ds.name == datastore_name:
+                            if self._debug_enabled():
+                                self.logger.debug(
+                                    f"vsphere: found datastore {datastore_name!r} in {_fmt_duration(time.monotonic()-t0)}"
+                                )
                             return ds
                 elif isinstance(top, vim.Folder):
                     for child in iter_children(top):
                         if isinstance(child, vim.Datacenter):
                             for ds in (child.datastore or []):
                                 if ds.name == datastore_name:
+                                    if self._debug_enabled():
+                                        self.logger.debug(
+                                            f"vsphere: found datastore {datastore_name!r} in {_fmt_duration(time.monotonic()-t0)}"
+                                        )
                                     return ds
             except Exception:
                 continue
@@ -430,6 +572,7 @@ class VsphereMode:
         Use HostDatastoreBrowser to list files in the VM folder.
         Returns list of datastore-relative paths like: "folder/file.vmdk"
         """
+        t0 = time.monotonic()
         browser = datastore_obj.browser  # vim.HostDatastoreBrowser
         ds_folder_path = f"[{ds_name}] {folder}" if folder else f"[{ds_name}]"
 
@@ -437,11 +580,20 @@ class VsphereMode:
         spec.details = vim.FileQueryFlags(fileOwner=True, fileSize=True, fileType=True, modification=True)
         spec.sortFoldersFirst = True
 
+        if self._debug_enabled():
+            self.logger.debug(
+                f"vsphere: pyvmomi SearchDatastore_Task path={ds_folder_path!r} include={include_glob} exclude={exclude_glob}"
+            )
+
         task = browser.SearchDatastore_Task(datastorePath=ds_folder_path, searchSpec=spec)
         client.wait_for_task(task)
 
         result = getattr(task.info, "result", None)
         if not result:
+            if self._debug_enabled():
+                self.logger.debug(
+                    f"vsphere: pyvmomi SearchDatastore_Task returned no result ({_fmt_duration(time.monotonic()-t0)})"
+                )
             return []
 
         files: List[str] = []
@@ -463,6 +615,10 @@ class VsphereMode:
             if max_files and len(files) > max_files:
                 raise VMwareError(f"Refusing to download > max_files={max_files} (found so far: {len(files)})")
 
+        if self._debug_enabled():
+            self.logger.debug(
+                f"vsphere: pyvmomi listed {len(files)} files in {_fmt_duration(time.monotonic()-t0)}"
+            )
         return files
 
     def _list_vm_folder_files(
@@ -480,6 +636,7 @@ class VsphereMode:
         """
         if self._prefer_govmomi():
             try:
+                t0 = time.monotonic()
                 rels = self.govc.datastore_ls(ds_name, folder)
                 files: List[str] = []
                 base = folder.rstrip("/")
@@ -495,6 +652,11 @@ class VsphereMode:
                     files.append(rel)
                     if max_files and len(files) > max_files:
                         raise VMwareError(f"Refusing to download > max_files={max_files} (found so far: {len(files)})")
+
+                if self._debug_enabled():
+                    self.logger.debug(
+                        f"vsphere: govc listing produced {len(files)} files in {_fmt_duration(time.monotonic()-t0)}"
+                    )
                 return files
             except Exception as e:
                 self.logger.debug(f"govc datastore listing failed; falling back to pyvmomi: {e}")
@@ -520,16 +682,24 @@ class VsphereMode:
         verify_tls: bool,
         *,
         on_bytes: Optional[Any] = None,
-        chunk_size: int = 1024 * 1024,
+        chunk_size: int = _DEFAULT_CHUNK_SIZE,
     ) -> None:
         """
         Download a single datastore file via /folder endpoint using the session cookie from VMwareClient.
+
+        Enhancements (additive):
+          - request timeouts (connect/read)
+          - small retry loop for transient HTTP errors
+          - debug logs: url (no cookie), sizes, duration
+          - safer temp file handling + cleanup on failure
         """
         if not REQUESTS_AVAILABLE:
             raise VMwareError("requests not installed. Install: pip install requests")
+
         quoted_path = quote(ds_path, safe="/")
         url = f"https://{vc_host}/folder/{quoted_path}?dcPath={quote(dc_name)}&dsName={quote(ds_name)}"
-        headers = {"Cookie": client._session_cookie()}
+        cookie = client._session_cookie()
+        headers = {"Cookie": cookie}
 
         # Silence urllib3 warnings when verify is disabled (common for lab vCenters)
         if not verify_tls and urllib3 is not None:  # pragma: no cover
@@ -541,25 +711,144 @@ class VsphereMode:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = local_path.with_suffix(local_path.suffix + ".part")
 
-        with requests.get(url, headers=headers, verify=verify_tls, stream=True) as r:
-            r.raise_for_status()
-            total = int(r.headers.get("content-length", "0") or "0")
-            got = 0
+        timeout = getattr(self.args, "vs_http_timeout", None)
+        if timeout is None:
+            timeout = os.environ.get("VMDK2KVM_VSPHERE_HTTP_TIMEOUT")
+        if timeout:
+            # allow "10,300" or "300"
+            try:
+                if isinstance(timeout, str) and "," in timeout:
+                    a, b = timeout.split(",", 1)
+                    timeout_tuple = (int(a.strip()), int(b.strip()))
+                else:
+                    t = int(str(timeout).strip())
+                    timeout_tuple = (10, t)
+            except Exception:
+                timeout_tuple = _DEFAULT_HTTP_TIMEOUT
+        else:
+            timeout_tuple = _DEFAULT_HTTP_TIMEOUT
 
-            with open(tmp, "wb") as f:
-                for chunk in r.iter_content(chunk_size=chunk_size):
-                    if not chunk:
-                        continue
-                    f.write(chunk)
-                    got += len(chunk)
-                    if on_bytes is not None:
+        retries = getattr(self.args, "vs_http_retries", None)
+        if retries is None:
+            retries = os.environ.get("VMDK2KVM_VSPHERE_HTTP_RETRIES")
+        try:
+            retries_i = int(retries) if retries is not None else 3
+        except Exception:
+            retries_i = 3
+        if retries_i < 0:
+            retries_i = 0
+
+        if self._debug_enabled():
+            try:
+                self.logger.debug(
+                    "vsphere: HTTPS /folder download: "
+                    f"url={url!r} verify_tls={verify_tls} timeout={timeout_tuple} chunk_size={chunk_size} "
+                    f"cookie={_redact_cookie(cookie)!r}"
+                )
+            except Exception:
+                pass
+
+        # Always start fresh for this file (we don't attempt resume here).
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
+
+        attempt = 0
+        last_err: Optional[BaseException] = None
+        t0 = time.monotonic()
+        while True:
+            attempt += 1
+            try:
+                got = 0
+                total = 0
+                with requests.get(url, headers=headers, verify=verify_tls, stream=True, timeout=timeout_tuple) as r:
+                    status = int(getattr(r, "status_code", 0) or 0)
+                    if status >= 400:
+                        # consume body for better server-side logging sometimes (but keep small)
                         try:
-                            on_bytes(len(chunk), total)
+                            _ = r.content[:256]
                         except Exception:
-                            # progress must never break downloads
                             pass
+                        r.raise_for_status()
 
-        os.replace(tmp, local_path)
+                    total = int(r.headers.get("content-length", "0") or "0")
+
+                    with open(tmp, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=chunk_size):
+                            if not chunk:
+                                continue
+                            f.write(chunk)
+                            got += len(chunk)
+                            if on_bytes is not None:
+                                try:
+                                    on_bytes(len(chunk), total)
+                                except Exception:
+                                    # progress must never break downloads
+                                    pass
+
+                # Basic sanity: if server provided content-length, ensure we got it
+                if total and got != total:
+                    raise VMwareError(f"incomplete download: got={got} expected={total}")
+
+                # Atomic replace
+                os.replace(tmp, local_path)
+
+                if self._debug_enabled():
+                    self.logger.debug(
+                        f"vsphere: HTTPS download ok: ds=[{ds_name}] path={ds_path!r} "
+                        f"bytes={_fmt_bytes(got)} total={_fmt_bytes(total)} "
+                        f"dur={_fmt_duration(time.monotonic() - t0)} attempts={attempt}"
+                    )
+                return
+
+            except requests.RequestException as e:
+                last_err = e
+                # Determine transientness
+                status = None
+                try:
+                    resp = getattr(e, "response", None)
+                    if resp is not None:
+                        status = int(getattr(resp, "status_code", 0) or 0)
+                except Exception:
+                    status = None
+
+                transient = bool(status and _is_transient_http(status))
+                if self._debug_enabled():
+                    self.logger.debug(
+                        f"vsphere: HTTPS attempt {attempt}/{retries_i+1} failed "
+                        f"status={status} transient={transient} err={_short_exc(e)}"
+                    )
+
+                # cleanup tmp between attempts
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except Exception:
+                    pass
+
+                if attempt > retries_i or not transient:
+                    break
+
+                # tiny backoff
+                time.sleep(min(2.0 * attempt, 8.0))
+                continue
+
+            except Exception as e:
+                last_err = e
+                if self._debug_enabled():
+                    self.logger.debug(
+                        f"vsphere: HTTPS attempt {attempt}/{retries_i+1} failed err={_short_exc(e)}"
+                    )
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except Exception:
+                    pass
+                break
+
+        raise VMwareError(f"HTTPS /folder download failed after {attempt} attempt(s): {_short_exc(last_err or Exception('unknown'))}")
 
     # ----------------------------------------------------------------------------------
 
@@ -579,6 +868,19 @@ class VsphereMode:
         if not vc_host or not vc_user or not vc_pass:
             raise Fatal(2, "vsphere: --vcenter, --vc-user, and --vc-password (or --vc-password-env) are required")
 
+        # Additive debug summary (no secrets)
+        if self._debug_enabled():
+            try:
+                self.logger.debug(
+                    "vsphere: connect params: "
+                    f"host={vc_host!r} user={vc_user!r} port={getattr(self.args,'vc_port', None)!r} "
+                    f"insecure={bool(getattr(self.args,'vc_insecure', False))} "
+                    f"dc_name={self._dc_name()!r} transport_pref={self._transport_preference()!r} "
+                    f"prefer_govmomi={self._prefer_govmomi()}"
+                )
+            except Exception:
+                pass
+
         client = VMwareClient(
             self.logger,
             vc_host,
@@ -588,12 +890,17 @@ class VsphereMode:
             insecure=self.args.vc_insecure,
         )
         try:
+            t0 = time.monotonic()
             client.connect()
+            if self._debug_enabled():
+                self.logger.debug(f"vsphere: connected in {_fmt_duration(time.monotonic()-t0)}")
         except VMwareError as e:
             raise Fatal(2, f"vsphere: Connection failed: {e}")
 
         try:
             action = self.args.vs_action
+            if self._debug_enabled():
+                self.logger.debug(f"vsphere: action={action!r}")
 
             # ------------------------------------------------------------------
             # list_vm_names: prefer govmomi/govc when present (more robust inventory)
@@ -614,6 +921,7 @@ class VsphereMode:
 
                 # ---- pyvmomi fallback (your original behavior)
                 try:
+                    t0 = time.monotonic()
                     content = client._content()
                     container = content.rootFolder
                     viewType = [vim.VirtualMachine]
@@ -661,6 +969,8 @@ class VsphereMode:
                             vms.append(properties)
                         vms = sorted(vms, key=lambda x: x.get("name", ""))
                         self.logger.info(f"VMs found: {len(vms)}")
+                        if self._debug_enabled():
+                            self.logger.debug(f"vsphere: pyvmomi inventory took {_fmt_duration(time.monotonic()-t0)}")
                         if self.args.json:
                             print(json.dumps(vms, indent=2, default=str))
                         else:
@@ -781,9 +1091,9 @@ class VsphereMode:
                     raise Fatal(2, "vsphere download_datastore_file: --datastore, --ds-path, --local-path are required")
                 local_path = Path(self.args.local_path).resolve()
                 dc_name = self._dc_name()
-                chunk_size = int(getattr(self.args, "chunk_size", 1024 * 1024))
+                chunk_size = int(getattr(self.args, "chunk_size", _DEFAULT_CHUNK_SIZE))
                 try:
-                    # Prefer VDDK when available; fallback to HTTPS folder
+                    t0 = time.monotonic()
                     self._download_one_file_prefer_vddk(
                         client=client,
                         vc_host=vc_host,
@@ -795,6 +1105,8 @@ class VsphereMode:
                         on_bytes=None,
                         chunk_size=chunk_size,
                     )
+                    if self._debug_enabled():
+                        self.logger.debug(f"vsphere: download_datastore_file took {_fmt_duration(time.monotonic()-t0)}")
                 except VMwareError as e:
                     raise Fatal(2, f"vsphere download_datastore_file: {e}")
                 output = {
@@ -803,7 +1115,9 @@ class VsphereMode:
                     "datastore": self.args.datastore,
                     "ds_path": self.args.ds_path,
                     "dc_name": dc_name,
-                    "transport": "vddk" if (self._transport_preference() == "vddk" and self._client_has_vddk(client)) else "https",
+                    "transport": "vddk"
+                    if (self._transport_preference() == "vddk" and self._client_has_vddk(client))
+                    else "https",
                 }
                 if self.args.json:
                     print(json.dumps(output, indent=2))
@@ -821,7 +1135,9 @@ class VsphereMode:
                 memory = self.args.memory
                 description = self.args.description
                 try:
-                    snap = client.create_snapshot(vm, self.args.name, quiesce=quiesce, memory=memory, description=description)
+                    snap = client.create_snapshot(
+                        vm, self.args.name, quiesce=quiesce, memory=memory, description=description
+                    )
                 except VMwareError as e:
                     raise Fatal(2, f"vsphere create_snapshot: {e}")
                 output = {
@@ -944,10 +1260,16 @@ class VsphereMode:
 
                 local_path = Path(self.args.local_path).resolve()
                 dc_name = self._dc_name()
-                chunk_size = int(getattr(self.args, "chunk_size", 1024 * 1024))
+                chunk_size = int(getattr(self.args, "chunk_size", _DEFAULT_CHUNK_SIZE))
+
+                if self._debug_enabled():
+                    self.logger.debug(
+                        f"vsphere: download_vm_disk vm={self.args.vm_name!r} disk_key={disk.key} "
+                        f"backing={file_name!r} parsed_ds=[{datastore}] ds_path={ds_path!r} -> {str(local_path)!r}"
+                    )
 
                 try:
-                    # Prefer VDDK when available; fallback to HTTPS folder
+                    t0 = time.monotonic()
                     self._download_one_file_prefer_vddk(
                         client=client,
                         vc_host=vc_host,
@@ -959,6 +1281,8 @@ class VsphereMode:
                         on_bytes=None,
                         chunk_size=chunk_size,
                     )
+                    if self._debug_enabled():
+                        self.logger.debug(f"vsphere: download_vm_disk took {_fmt_duration(time.monotonic()-t0)}")
                 except VMwareError as e:
                     raise Fatal(2, f"vsphere download_vm_disk: {e}")
 
@@ -970,7 +1294,9 @@ class VsphereMode:
                     "datastore": datastore,
                     "ds_path": ds_path,
                     "dc_name": dc_name,
-                    "transport": "vddk" if (self._transport_preference() == "vddk" and self._client_has_vddk(client)) else "https",
+                    "transport": "vddk"
+                    if (self._transport_preference() == "vddk" and self._client_has_vddk(client))
+                    else "https",
                 }
                 if self.args.json:
                     print(json.dumps(output, indent=2))
@@ -1012,7 +1338,10 @@ class VsphereMode:
                     vmx_path = None
 
                 if not vmx_path:
-                    raise Fatal(2, "vsphere download_only_vm: cannot determine VM folder (vm.summary.config.vmPathName missing)")
+                    raise Fatal(
+                        2,
+                        "vsphere download_only_vm: cannot determine VM folder (vm.summary.config.vmPathName missing)",
+                    )
 
                 ds_name, folder = self._parse_vm_datastore_dir(str(vmx_path))
 
@@ -1024,6 +1353,13 @@ class VsphereMode:
                         self.logger.info(f"download_only_vm: using vs_datastore_dir override: [{ds_name}] {folder or '.'}")
                     except Exception as e:
                         raise Fatal(2, f"vsphere download_only_vm: invalid vs_datastore_dir={override!r}: {e}")
+
+                if self._debug_enabled():
+                    self.logger.debug(
+                        f"download_only_vm: vm={self.args.vm_name!r} vmx_path={str(vmx_path)!r} "
+                        f"resolved=[{ds_name}] {folder or '.'} out_dir={str(out_dir)!r} "
+                        f"include={include_glob} exclude={exclude_glob} max_files={max_files} fail_on_missing={fail_on_missing}"
+                    )
 
                 ds_obj = self._find_datastore_obj(client, ds_name)
 
@@ -1101,6 +1437,7 @@ class VsphereMode:
                         if files_task is not None:
                             progress.update(files_task, description=f"downloading: {ds_path}")
 
+                    t0 = time.monotonic()
                     try:
                         self._download_one_file_prefer_vddk(
                             client=client,
@@ -1111,16 +1448,29 @@ class VsphereMode:
                             local_path=local_path,
                             verify_tls=verify_tls,
                             on_bytes=_on_bytes,
-                            chunk_size=int(getattr(self.args, "chunk_size", 1024 * 1024)),
+                            chunk_size=int(getattr(self.args, "chunk_size", _DEFAULT_CHUNK_SIZE)),
                         )
                         downloaded.append(ds_path)
                         if progress is not None and files_task is not None:
                             progress.advance(files_task, 1)
+                        if self._debug_enabled():
+                            try:
+                                sz = local_path.stat().st_size
+                            except Exception:
+                                sz = None
+                            self.logger.debug(
+                                f"download_only_vm: ok ds_path={ds_path!r} local={str(local_path)!r} "
+                                f"size={_fmt_bytes(sz)} dur={_fmt_duration(time.monotonic()-t0)}"
+                            )
                     except Exception as e:
                         msg = f"{ds_path}: {e}"
                         errors.append(msg)
                         if progress is not None and files_task is not None:
                             progress.update(files_task, description=f"error: {ds_path}")
+                        if self._debug_enabled():
+                            self.logger.debug(
+                                f"download_only_vm: fail ds_path={ds_path!r} dur={_fmt_duration(time.monotonic()-t0)} err={_short_exc(e)}"
+                            )
                         if fail_on_missing:
                             raise
 
@@ -1212,6 +1562,12 @@ class VsphereMode:
                     device_key = disk.key
                     change_id = getattr(self.args, "change_id", None)
 
+                    if self._debug_enabled():
+                        self.logger.debug(
+                            f"cbt_sync: vm={self.args.vm_name!r} device_key={device_key} snapshot={snap_name!r} "
+                            f"change_id={change_id!r} backing={file_name!r} ds=[{datastore}] ds_path={ds_path!r} local={str(local_disk)!r}"
+                        )
+
                     changed = client.query_changed_disk_areas(
                         vm,
                         snapshot=snap,
@@ -1240,6 +1596,9 @@ class VsphereMode:
                         done = 0
                         self.logger.info(f"Syncing {num_ranges} ranges ({total/(1024**2):.1f} MiB)")
 
+                        # Basic timeouts for CBT range reads
+                        timeout_tuple = _DEFAULT_HTTP_TIMEOUT
+
                         with open(local_disk, "rb+") as f:
                             for a in changed.changedDiskAreas:
                                 start = int(a.start)
@@ -1249,17 +1608,30 @@ class VsphereMode:
                                 h = dict(headers)
                                 h["Range"] = f"bytes={start}-{end}"
 
+                                t0 = time.monotonic()
                                 try:
-                                    r = requests.get(url, headers=h, verify=verify)
-                                    r.raise_for_status()
+                                    r = requests.get(url, headers=h, verify=verify, timeout=timeout_tuple)
+                                    if int(getattr(r, "status_code", 0) or 0) >= 400:
+                                        r.raise_for_status()
                                 except requests.RequestException as e:
                                     raise Fatal(2, f"vsphere cbt_sync: HTTP request failed: {e}")
 
                                 data = r.content
+                                if len(data) != length:
+                                    # Range responses can be shorter if server/proxy misbehaves
+                                    raise Fatal(
+                                        2,
+                                        f"vsphere cbt_sync: short read for range {start}-{end}: got={len(data)} expected={length}",
+                                    )
+
                                 f.seek(start)
                                 f.write(data)
 
                                 done += length
+                                if self._debug_enabled():
+                                    self.logger.debug(
+                                        f"CBT range {start}-{end} ({length} bytes) ok in {_fmt_duration(time.monotonic()-t0)}"
+                                    )
                                 if total:
                                     self.logger.debug(
                                         f"CBT sync: {done/(1024**2):.1f} MiB / {total/(1024**2):.1f} MiB ({(done/total)*100:.1f}%)"
@@ -1298,6 +1670,9 @@ class VsphereMode:
 
         finally:
             try:
+                t0 = time.monotonic()
                 client.disconnect()
+                if self._debug_enabled():
+                    self.logger.debug(f"vsphere: disconnected in {_fmt_duration(time.monotonic()-t0)}")
             except Exception as e:
                 self.logger.warning(f"Failed to disconnect: {e}")
