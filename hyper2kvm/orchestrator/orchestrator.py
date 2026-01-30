@@ -286,6 +286,19 @@ class Orchestrator:
 
     def run(self) -> None:
         """Main orchestration pipeline."""
+
+        # Welcome banner
+        self.logger.info("━" * 80)
+        self.logger.info("🚀 hyper2kvm - Production-Grade Hypervisor to KVM Migration Toolkit")
+        self.logger.info("   Built for the Enterprise Linux ecosystem (Fedora/RHEL/CentOS)")
+        self.logger.info("")
+        self.logger.info("   ✨ Features:")
+        self.logger.info("      • VMware vSphere integration powered by hypersdk")
+        self.logger.info("      • Offline guest fixes with libguestfs")
+        self.logger.info("      • Windows driver injection & registry editing")
+        self.logger.info("      • Deterministic fstab/grub repair for first-boot success")
+        self.logger.info("━" * 80)
+
         out_root = Path(self.args.output_dir).expanduser().resolve()
         U.ensure_dir(out_root)
 

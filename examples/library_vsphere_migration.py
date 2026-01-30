@@ -4,10 +4,13 @@
 Example: vSphere VM migration using hyper2kvm library.
 
 This example demonstrates:
-- Connecting to vCenter/ESXi
+- Connecting to vCenter/ESXi (powered by hypersdk - VMware's modern Python SDK)
 - Listing available VMs
 - Exporting a VM to local disk
 - Full orchestration workflow
+
+The vCenter integration leverages hypersdk for robust, type-safe VMware API access,
+providing enterprise-grade connectivity to vSphere infrastructure.
 
 Usage:
     export VCENTER_PASSWORD='your-password'
@@ -51,9 +54,10 @@ def migrate_from_vsphere(
     if not password:
         raise ValueError("VCENTER_PASSWORD environment variable not set")
 
-    logger.info(f"Connecting to vCenter: {vcenter_host}")
+    logger.info(f"🔌 Connecting to vCenter: {vcenter_host}")
+    logger.info("   Using hypersdk for enterprise-grade VMware API integration")
 
-    # Connect to vSphere
+    # Connect to vSphere (powered by hypersdk)
     client = VMwareClient(
         host=vcenter_host,
         user=user,
