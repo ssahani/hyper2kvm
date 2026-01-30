@@ -219,7 +219,7 @@ class NBDDeviceManager:
         Returns:
             Path to converted qcow2 file
         """
-        # Get original VMDK virtual size for verification
+        # Get original VMDK info for verification and space estimation
         try:
             result = subprocess.run(
                 ["qemu-img", "info", "--output=json", str(vmdk_path)],
@@ -227,9 +227,13 @@ class NBDDeviceManager:
             )
             vmdk_info = json.loads(result.stdout)
             original_virtual_size = vmdk_info.get("virtual-size", 0)
+            actual_disk_size = vmdk_info.get("actual-size", 0)
+            vmdk_createtype = vmdk_info.get("format-specific", {}).get("data", {}).get("create-type", "")
         except Exception as e:
             self.logger.warning(f"Could not get VMDK size: {e}")
             original_virtual_size = 0
+            actual_disk_size = 0
+            vmdk_createtype = ""
 
         # Create temp qcow2 file
         # Use /var/tmp instead of /tmp for large conversions (sparse VMDKs with -S 0 can be huge)
@@ -246,8 +250,15 @@ class NBDDeviceManager:
                 capture_output=True, text=True, check=True
             )
             avail_bytes = int(stat.stdout.strip().split('\n')[-1])
-            # Estimate needed space: virtual_size * 0.3 (qcow2 compression estimate for -S 0)
-            needed_bytes = int(original_virtual_size * 0.4)  # 40% safety margin
+
+            # Smart space estimation based on VMDK type
+            is_sparse = vmdk_createtype in ("monolithicSparse", "streamOptimized")
+            if is_sparse and actual_disk_size:
+                # For sparse VMDKs: use actual size * 2 (for RAW intermediate) + margin
+                needed_bytes = int(max(actual_disk_size * 2.5, original_virtual_size * 0.05))
+            else:
+                # For non-sparse: use virtual_size * 0.4 (qcow2 compression estimate)
+                needed_bytes = int(original_virtual_size * 0.4)
 
             if avail_bytes < needed_bytes:
                 self.logger.warning(
@@ -262,23 +273,74 @@ class NBDDeviceManager:
             self.logger.info(f"  Original virtual size: {original_virtual_size / (1024**3):.2f} GiB")
 
         try:
-            # Convert with progress
-            # CRITICAL: Use -S 0 to disable sparse detection for sparse VMDKs
-            # Without this, unallocated sparse regions won't be written to qcow2,
-            # causing I/O errors when LVM volumes span those regions
-            subprocess.run(
-                [
-                    "qemu-img", "convert",
-                    "-p",  # Progress
-                    "-S", "0",  # Disable sparse detection - write all blocks
-                    "-f", "vmdk",
-                    "-O", "qcow2",
-                    str(vmdk_path),
-                    str(temp_qcow2)
-                ],
-                check=True,
-                timeout=3600  # 1 hour max for large disks
-            )
+            # For monolithicSparse VMDKs, use RAW intermediate for much faster conversion
+            # Direct sparse VMDK → qcow2 with -S 0 is slow due to qcow2 metadata thrashing
+            # Better: VMDK → RAW (fast, streaming) → QCOW2 (final)
+
+            # Check if this is a sparse VMDK
+            is_sparse = vmdk_createtype in ("monolithicSparse", "streamOptimized")
+
+            if is_sparse:
+                # Two-step conversion for sparse VMDKs
+                temp_raw = temp_qcow2.with_suffix('.raw')
+
+                try:
+                    self.logger.info("  Using RAW intermediate for sparse VMDK (faster)")
+
+                    # Step 1: VMDK → RAW (fast, sequential writes)
+                    self.logger.info(f"  Step 1/2: VMDK → RAW")
+                    subprocess.run(
+                        [
+                            "qemu-img", "convert",
+                            "-p",  # Progress
+                            "-f", "vmdk",
+                            "-O", "raw",
+                            str(vmdk_path),
+                            str(temp_raw)
+                        ],
+                        check=True,
+                        timeout=3600
+                    )
+
+                    # Step 2: RAW → QCOW2 (sparse-aware)
+                    self.logger.info(f"  Step 2/2: RAW → QCOW2")
+                    subprocess.run(
+                        [
+                            "qemu-img", "convert",
+                            "-p",  # Progress
+                            "-S", "64k",  # Sparse-aware: detect 64k zero runs
+                            "-f", "raw",
+                            "-O", "qcow2",
+                            str(temp_raw),
+                            str(temp_qcow2)
+                        ],
+                        check=True,
+                        timeout=3600
+                    )
+
+                finally:
+                    # Cleanup RAW intermediate
+                    if temp_raw.exists():
+                        self.logger.debug(f"Removing RAW intermediate: {temp_raw}")
+                        temp_raw.unlink()
+            else:
+                # Direct conversion for non-sparse VMDKs
+                # CRITICAL: Use -S 0 to disable sparse detection
+                # Without this, unallocated sparse regions won't be written to qcow2,
+                # causing I/O errors when LVM volumes span those regions
+                subprocess.run(
+                    [
+                        "qemu-img", "convert",
+                        "-p",  # Progress
+                        "-S", "0",  # Disable sparse detection - write all blocks
+                        "-f", "vmdk",
+                        "-O", "qcow2",
+                        str(vmdk_path),
+                        str(temp_qcow2)
+                    ],
+                    check=True,
+                    timeout=3600  # 1 hour max for large disks
+                )
 
             # Verify converted size matches original
             if original_virtual_size:
