@@ -110,6 +110,12 @@ class ManifestOrchestrator:
             else:
                 self.logger.info("⏭️  VALIDATE stage disabled")
 
+            # Stage 6: LIBVIRT_INTEGRATION (optional - define domain and import disks)
+            if self.loader.is_libvirt_integration_enabled():
+                self._run_stage("libvirt_integration", self._stage_libvirt_integration)
+            else:
+                self.logger.info("⏭️  LIBVIRT_INTEGRATION stage disabled")
+
             # Finalize
             pipeline_duration = time.time() - pipeline_start
             self.reporter.set_duration(pipeline_duration)
@@ -433,6 +439,103 @@ class ManifestOrchestrator:
             "all_passed": all(r.get("integrity_check") == "passed" for r in validation_results),
             "validation_results": validation_results,
         }
+
+    def _stage_libvirt_integration(self) -> dict[str, Any]:
+        """Stage 6: Libvirt integration - define domain and import disks to pools."""
+        from ..libvirt import (
+            LIBVIRT_AVAILABLE,
+            LibvirtManager,
+            LibvirtManagerError,
+            PoolManager,
+            PoolManagerError,
+        )
+
+        if not LIBVIRT_AVAILABLE:
+            self.logger.warning(
+                "⚠️  Libvirt Python bindings not available. "
+                "Install with: pip install libvirt-python"
+            )
+            return {"enabled": False, "reason": "libvirt not available"}
+
+        libvirt_config = self.loader.get_libvirt_integration_config()
+
+        domain_xml_path = self.output_dir / "domain.xml"
+        if not domain_xml_path.exists():
+            self.logger.warning(f"⚠️  Domain XML not found: {domain_xml_path}")
+            return {"enabled": False, "reason": "domain XML not found"}
+
+        self.logger.info(f"🔧 Integrating with libvirt...")
+
+        results = {
+            "domain_defined": False,
+            "disks_imported": 0,
+            "snapshot_created": False,
+            "domain_started": False,
+        }
+
+        try:
+            # Define domain
+            if libvirt_config.get("define_domain", True):
+                with LibvirtManager(self.logger) as manager:
+                    domain = manager.define_domain(
+                        domain_xml_path,
+                        overwrite=libvirt_config.get("overwrite_domain", False),
+                    )
+                    results["domain_defined"] = True
+                    results["domain_name"] = domain.name()
+
+                    # Create snapshot if requested
+                    if libvirt_config.get("create_snapshot", False):
+                        snapshot_name = libvirt_config.get(
+                            "snapshot_name", "pre-first-boot"
+                        )
+                        manager.create_snapshot(
+                            domain,
+                            snapshot_name,
+                            description="Snapshot created by hyper2kvm before first boot",
+                        )
+                        results["snapshot_created"] = True
+                        results["snapshot_name"] = snapshot_name
+
+                    # Set autostart if requested
+                    if libvirt_config.get("autostart", False):
+                        manager.set_autostart(domain, True)
+                        results["autostart_enabled"] = True
+
+                    # Start domain if requested
+                    if libvirt_config.get("auto_start", False):
+                        manager.start_domain(domain)
+                        results["domain_started"] = True
+
+            # Import disks to pool if requested
+            pool_name = libvirt_config.get("import_to_pool")
+            if pool_name:
+                pool_path = libvirt_config.get(
+                    "pool_path", "/var/lib/libvirt/images"
+                )
+
+                with PoolManager(self.logger) as pool_mgr:
+                    pool = pool_mgr.ensure_pool(pool_name, pool_path)
+
+                    # Import each converted disk
+                    for disk_id, output_path in self.converted_disks.items():
+                        volume_name = f"{libvirt_config.get('vm_name', 'vm')}-{disk_id}"
+                        pool_mgr.import_disk(
+                            pool,
+                            output_path,
+                            volume_name,
+                            copy=libvirt_config.get("copy_disks", True),
+                            overwrite=libvirt_config.get("overwrite_volumes", False),
+                        )
+                        results["disks_imported"] += 1
+
+            self.logger.info("✅ Libvirt integration completed successfully")
+            return results
+
+        except (LibvirtManagerError, PoolManagerError) as e:
+            self.logger.error(f"❌ Libvirt integration failed: {e}")
+            self.reporter.add_error("libvirt_integration", str(e))
+            raise
 
     def _write_report(self, report: dict[str, Any]) -> None:
         """Write report to file."""

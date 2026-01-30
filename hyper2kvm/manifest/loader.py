@@ -455,6 +455,15 @@ class ManifestLoader:
         """Get global options."""
         return self.manifest.get("options", {})
 
+    def is_libvirt_integration_enabled(self) -> bool:
+        """Check if libvirt integration is enabled."""
+        libvirt_config = self.manifest.get("libvirt_integration", {})
+        return libvirt_config.get("enabled", False)
+
+    def get_libvirt_integration_config(self) -> dict[str, Any]:
+        """Get libvirt integration configuration."""
+        return self.manifest.get("libvirt_integration", {})
+
     def to_dict(self) -> dict[str, Any]:
         """Return the loaded manifest as a dictionary."""
         return self.manifest.copy()
