@@ -4,18 +4,20 @@
 from __future__ import annotations
 
 import fnmatch
-import os
-import re
 import subprocess
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from urllib.parse import quote
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ..core.exceptions import VMwareError
 from ..core.utils import U
-from .vmware_client import VMwareClient, V2VExportOptions
 from .govc_common import GovcRunner, normalize_ds_path
+from .vmware_client import V2VExportOptions, VMwareClient
+
+
+# --------------------------------------------------------------------------------------
+# Small generic helpers
+# --------------------------------------------------------------------------------------
 
 
 def _p(s: Optional[str]) -> Optional[Path]:
@@ -24,10 +26,36 @@ def _p(s: Optional[str]) -> Optional[Path]:
     return Path(s).expanduser()
 
 
-# Datastore path normalization (accepts "[ds] path" or "path")
 def _normalize_ds_path(datastore: str, ds_path: str) -> Tuple[str, str]:
-    # Backwards-compatible wrapper (the real logic lives in govc_common.py)
+    """Backwards-compatible wrapper; real logic lives in govc_common.normalize_ds_path()."""
     return normalize_ds_path(datastore, ds_path)
+
+
+def _arg_any(args: Any, *names: str, default: Any = None) -> Any:
+    """
+    Return the first present, non-empty attribute from args among names.
+    Useful to support legacy flags without infecting code with suffixes like "2".
+    """
+    for n in names:
+        if not n:
+            continue
+        v = getattr(args, n, None)
+        if v not in (None, ""):
+            return v
+    return default
+
+
+def _require(args: Any, name: str) -> Any:
+    """
+    Validate that argparse-like object has attribute AND it is non-None.
+    Keep this for action-specific required args (not global argparse requirements).
+    """
+    if not hasattr(args, name):
+        raise VMwareError(f"Missing required arg: {name}")
+    v = getattr(args, name)
+    if v is None:
+        raise VMwareError(f"Missing required arg: {name}")
+    return v
 
 
 def _merged_cfg(args: Any, conf: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -55,7 +83,7 @@ def _merged_cfg(args: Any, conf: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "vc_port": vc_port,
             "vc_insecure": vc_insecure,
             "dc_name": dc_name,
-            # aliases (some parts of your repo used vs_* historically)
+            # aliases (historical)
             "vs_host": vcenter,
             "vs_user": vc_user,
             "vs_password": vc_password,
@@ -69,27 +97,54 @@ def _merged_cfg(args: Any, conf: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return {k: v for k, v in cfg.items() if v is not None}
 
 
-def _json_enabled(args: Any) -> bool:
-    return bool(getattr(args, "json", False))
+def _as_payload(obj: Any) -> Any:
+    if is_dataclass(obj):
+        return asdict(obj)
+    return obj
 
 
-def _emit(args: Any, logger: Any, payload: Any, human: Optional[str] = None) -> None:
-    if _json_enabled(args):
-        print(U.json_dump(payload))
-    else:
-        if human:
-            logger.info("%s", human)
-        else:
-            logger.info("%s", U.json_dump(payload))
+# --------------------------------------------------------------------------------------
+# Output policy (single source of truth)
+# --------------------------------------------------------------------------------------
 
 
-def _require(args: Any, name: str) -> Any:
-    if not hasattr(args, name):
-        raise VMwareError(f"Missing required arg: {name}")
-    v = getattr(args, name)
-    if v is None:
-        raise VMwareError(f"Missing required arg: {name}")
-    return v
+class _Emitter:
+    """
+    Exactly one output style per action:
+      - --json => print JSON payload only
+      - non-json => log human lines (or a single human message)
+    """
+
+    def __init__(self, args: Any, logger: Any):
+        self.args = args
+        self.logger = logger
+
+    def json_enabled(self) -> bool:
+        return bool(getattr(self.args, "json", False))
+
+    def emit(self, payload: Any, *, human: Optional[Iterable[str]] = None, human_msg: Optional[str] = None) -> None:
+        payload = _as_payload(payload)
+        if self.json_enabled():
+            print(U.json_dump(payload))
+            return
+
+        if human is not None:
+            for line in human:
+                self.logger.info("%s", line)
+            return
+
+        if human_msg:
+            self.logger.info("%s", human_msg)
+            return
+
+        # fallback (still non-json, but structured)
+        self.logger.info("%s", U.json_dump(payload))
+
+
+# --------------------------------------------------------------------------------------
+# govc adapter (centralized subprocess execution)
+# --------------------------------------------------------------------------------------
+
 
 class GovmomiCLI(GovcRunner):
     """
@@ -97,19 +152,41 @@ class GovmomiCLI(GovcRunner):
 
     Preference policy (unchanged):
       - If govc exists AND user didn't disable it: prefer it for
-          * list_vm_names (inventory traversal can be more robust)
-          * download_datastore_file (datastore.download)
-          * datastore_ls + download_datastore_dir
+          * list_vm_names
+          * download_datastore_file
+          * datastore_ls / download_datastore_dir
       - Everything else stays in VMwareClient/pyvmomi.
     """
 
     def __init__(self, args: Any, logger: Any):
         super().__init__(logger=logger, args=args)
 
+    def _run_text(self, argv: List[str]) -> str:
+        """
+        Centralized subprocess runner for text output.
+        We intentionally do NOT scatter subprocess.run across the file.
+        """
+        full = [self.govc_bin] + list(argv)
+        try:
+            self.logger.debug("govc: %s", " ".join(full))
+        except Exception:
+            pass
+
+        p = subprocess.run(
+            full,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.env(),
+            text=True,
+        )
+        if p.returncode != 0:
+            raise VMwareError(f"govc failed ({p.returncode}): {p.stderr.strip()}")
+        return p.stdout or ""
+
     def list_vm_names(self) -> List[str]:
         """
         Prefer: govc find -type m -json .
-        Returns VM *names* (basename of inventory paths). This matches our CLI output expectation.
+        Returns VM *names* (basename of inventory paths).
         """
         data = self.run_json(["find", "-type", "m", "-json", "."]) or {}
         elems = data.get("Elements") or []
@@ -117,14 +194,6 @@ class GovmomiCLI(GovcRunner):
             elems = []
         names = [str(p).split("/")[-1] for p in elems if p]
         return sorted({n for n in names if n})
-
-    def datastore_ls(self, datastore: str, ds_dir: str) -> List[str]:
-        """
-        govc datastore.ls -ds <datastore> <dir/>
-        Returns filenames (non-recursive).
-        Accepts ds_dir in either "[ds] path" or "path" form.
-        """
-        return self.datastore_ls_text(datastore, ds_dir)
 
     def download_datastore_file(self, datastore: str, ds_path: str, local_path: Path) -> None:
         """
@@ -141,14 +210,67 @@ class GovmomiCLI(GovcRunner):
         if not remote:
             raise VMwareError("govc datastore.download: empty ds_path after normalization")
 
-        full = [self.govc_bin, "datastore.download", "-ds", str(ds), remote, str(local_path)]
-        try:
-            self.logger.debug("govc: %s", " ".join(full))
-        except Exception:
-            pass
-        p = subprocess.run(full, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env(), text=True)
-        if p.returncode != 0:
-            raise VMwareError(f"govc datastore.download failed ({p.returncode}): {p.stderr.strip()}")
+        # Use centralized runner
+        self._run_text(["datastore.download", "-ds", str(ds), remote, str(local_path)])
+
+    def _extract_names_from_ls_json(self, files: Any) -> List[str]:
+        """
+        Robust extraction of leaf names from govc datastore.ls -json output.
+        Shapes vary across govc versions and flags.
+        """
+        out: List[str] = []
+
+        if files is None:
+            return out
+
+        if isinstance(files, list):
+            items = files
+        else:
+            # sometimes dict with "Files" or similar
+            if isinstance(files, dict):
+                for k in ("Files", "files", "File", "file", "Elements", "elements"):
+                    v = files.get(k)
+                    if isinstance(v, list):
+                        items = v
+                        break
+                else:
+                    items = []
+            else:
+                items = []
+
+        for it in items:
+            if it is None:
+                continue
+            if isinstance(it, str):
+                out.append(Path(it).name)
+                continue
+            if isinstance(it, dict):
+                for k in ("Name", "name", "Path", "path", "File", "file"):
+                    v = it.get(k)
+                    if isinstance(v, str) and v.strip():
+                        out.append(Path(v).name)
+                        break
+                continue
+
+            # last-ditch
+            out.append(Path(str(it)).name)
+
+        # dedupe, keep stable-ish order
+        seen = set()
+        uniq: List[str] = []
+        for n in out:
+            if n and n not in seen:
+                uniq.append(n)
+                seen.add(n)
+        return uniq
+
+    def datastore_ls_names(self, datastore: str, ds_dir: str) -> List[str]:
+        """
+        govc datastore.ls -json -ds <datastore> <dir/>
+        Returns *leaf names* (non-recursive).
+        """
+        files = self.datastore_ls_json(datastore=datastore, ds_dir=ds_dir)
+        return self._extract_names_from_ls_json(files)
 
     def download_datastore_dir(
         self,
@@ -162,26 +284,22 @@ class GovmomiCLI(GovcRunner):
     ) -> Dict[str, Any]:
         """
         Non-recursive directory download using:
-          - govc datastore.ls
+          - govc datastore.ls -json
           - govc datastore.download (per file)
-
-        include/exclude are filename globs (not path globs) applied to the listed names.
         """
         ds, rel_dir = normalize_ds_path(datastore, ds_dir)
         rel_dir = rel_dir.rstrip("/") + "/"
-
         local_dir.mkdir(parents=True, exist_ok=True)
 
-        names = self.datastore_ls(ds, rel_dir)
+        names = self.datastore_ls_names(ds, rel_dir)
 
         picked: List[str] = []
         for n in names:
             ok = True
             if include_globs:
                 ok = any(fnmatch.fnmatch(n, g) for g in include_globs)
-            if ok and exclude_globs:
-                if any(fnmatch.fnmatch(n, g) for g in exclude_globs):
-                    ok = False
+            if ok and exclude_globs and any(fnmatch.fnmatch(n, g) for g in exclude_globs):
+                ok = False
             if ok:
                 picked.append(n)
             if len(picked) >= int(max_files or 5000):
@@ -202,448 +320,19 @@ class GovmomiCLI(GovcRunner):
             "files_downloaded": len(picked),
             "files": picked,
         }
+
+
 def _prefer_govc(args: Any, logger: Any) -> Optional[GovmomiCLI]:
     g = GovmomiCLI(args=args, logger=logger)
     return g if g.enabled() else None
 
 
-def _list_vm_names(client: VMwareClient, args: Any) -> Any:
-    # Prefer govc if present (inventory traversal can be “more correct”)
-    govc = _prefer_govc(args, client.logger)
-    if govc:
-        try:
-            names = govc.list_vm_names()
-            _emit(args, client.logger, {"vms": names, "provider": "govc"})
-            if not _json_enabled(args):
-                for n in names:
-                    client.logger.info("%s", n)
-            return names
-        except Exception as e:
-            client.logger.warning("govc list_vm_names failed; falling back to pyvmomi: %s", e)
+# --------------------------------------------------------------------------------------
+# Snapshot helpers (normalize snapshot object type)
+# --------------------------------------------------------------------------------------
 
-    names = client.list_vm_names()
-    _emit(args, client.logger, {"vms": names, "provider": "pyvmomi"})
-    if not _json_enabled(args):
-        for n in names:
-            client.logger.info("%s", n)
-    return names
 
-
-def _get_vm_by_name(client: VMwareClient, args: Any) -> Any:
-    name = _require(args, "name")
-    vm = client.get_vm_by_name(name)
-    if vm is None:
-        raise VMwareError(f"VM not found: {name!r}")
-
-    s = getattr(vm, "summary", None)
-    cfg = getattr(s, "config", None) if s else None
-    runtime = getattr(s, "runtime", None) if s else None
-    guest = getattr(s, "guest", None) if s else None
-
-    out = {
-        "name": getattr(vm, "name", None),
-        "moId": getattr(vm, "_moId", None),
-        "uuid": getattr(cfg, "uuid", None),
-        "instanceUuid": getattr(cfg, "instanceUuid", None),
-        "powerState": str(getattr(runtime, "powerState", None)),
-        "guestFullName": getattr(guest, "guestFullName", None),
-        "vmPathName": getattr(cfg, "vmPathName", None),
-        "datacenter": client.vm_datacenter_name(vm),
-        "esx_host": getattr(getattr(getattr(vm, "runtime", None), "host", None), "name", None),
-    }
-    _emit(args, client.logger, out)
-    return out
-
-
-def _vm_disks(client: VMwareClient, args: Any) -> Any:
-    vm_name = _require(args, "vm_name")
-    vm = client.get_vm_by_name(vm_name)
-    if vm is None:
-        raise VMwareError(f"VM not found: {vm_name!r}")
-
-    disks = client.vm_disks(vm)
-    out = []
-    for i, d in enumerate(disks):
-        label = getattr(getattr(d, "deviceInfo", None), "label", None)
-        key = getattr(d, "key", None)
-        cap = getattr(d, "capacityInKB", None)
-        backing = getattr(d, "backing", None)
-        fname = getattr(backing, "fileName", None) if backing else None
-        out.append(
-            {
-                "index": i,
-                "label": str(label) if label else None,
-                "device_key": int(key) if key is not None else None,
-                "capacity_kb": int(cap) if cap is not None else None,
-                "backing_file": str(fname) if fname else None,
-            }
-        )
-
-    _emit(args, client.logger, {"vm": vm_name, "disks": out})
-    return out
-
-
-def _select_disk(client: VMwareClient, args: Any) -> Any:
-    vm_name = _require(args, "vm_name")
-    label_or_index = getattr(args, "label_or_index", None)
-    vm = client.get_vm_by_name(vm_name)
-    if vm is None:
-        raise VMwareError(f"VM not found: {vm_name!r}")
-
-    d = client.select_disk(vm, label_or_index)
-    label = getattr(getattr(d, "deviceInfo", None), "label", None)
-    key = getattr(d, "key", None)
-    backing = getattr(d, "backing", None)
-    fname = getattr(backing, "fileName", None) if backing else None
-
-    out = {
-        "vm": vm_name,
-        "selector": label_or_index,
-        "label": str(label) if label else None,
-        "device_key": int(key) if key is not None else None,
-        "backing_file": str(fname) if fname else None,
-    }
-    _emit(args, client.logger, out)
-    return out
-
-
-def _download_datastore_file(client: VMwareClient, args: Any) -> Any:
-    datastore = _require(args, "datastore")
-    ds_path = _require(args, "ds_path")
-    local_path = Path(_require(args, "local_path")).expanduser()
-    chunk_size = int(getattr(args, "chunk_size", 1024 * 1024) or 1024 * 1024)
-    dc_name = getattr(args, "dc_name", None)
-
-    # Prefer govc datastore.download (fewer moving pieces) when available.
-    govc = _prefer_govc(args, client.logger)
-    if govc:
-        try:
-            govc.download_datastore_file(datastore=datastore, ds_path=ds_path, local_path=local_path)
-            out = {"ok": True, "local_path": str(local_path), "provider": "govc"}
-            _emit(args, client.logger, out)
-            return out
-        except Exception as e:
-            client.logger.warning("govc download_datastore_file failed; falling back to pyvmomi: %s", e)
-
-    client.download_datastore_file(
-        datastore=datastore,
-        ds_path=ds_path,
-        local_path=local_path,
-        dc_name=dc_name,
-        chunk_size=chunk_size,
-    )
-    out = {"ok": True, "local_path": str(local_path), "provider": "pyvmomi"}
-    _emit(args, client.logger, out)
-    return out
-
-
-def _datastore_ls(client: VMwareClient, args: Any) -> Any:
-    """
-    List files in a datastore directory using govc (preferred).
-    This is a vmdk2kvm convenience wrapper around:
-      govc datastore.ls -json -ds <datastore> <dir/>
-    """
-    datastore = _require(args, "datastore")
-    ds_dir = _require(args, "ds_dir")
-
-    govc = _prefer_govc(args, client.logger)
-    if not govc:
-        raise VMwareError("datastore_ls requires govc (install govc or disable this action)")
-
-    files = govc.datastore_ls_json(datastore=datastore, ds_dir=ds_dir)
-    out = {"ok": True, "provider": "govc", "datastore": datastore, "ds_dir": ds_dir, "files": files}
-    _emit(args, client.logger, out)
-    if not _json_enabled(args):
-        for f in files:
-            client.logger.info("%s", f)
-    return out
-
-
-def _download_datastore_dir(client: VMwareClient, args: Any) -> Any:
-    """
-    Download a datastore directory (non-recursive) via govc:
-      - list via datastore.ls -json
-      - download via datastore.download (per file)
-
-    Args:
-      --datastore <name>
-      --ds_dir <dir>          (supports "[ds] path/" or "path/")
-      --local_dir <path>
-      --include_glob <glob>   (repeatable; defaults to "*")
-      --exclude_glob <glob>   (repeatable)
-      --max_files <n>
-    """
-    datastore = _require(args, "datastore")
-    ds_dir = _require(args, "ds_dir")
-    local_dir = Path(_require(args, "local_dir")).expanduser()
-
-    include_globs = tuple(getattr(args, "include_glob", None) or []) or ("*",)
-    exclude_globs = tuple(getattr(args, "exclude_glob", None) or []) or ()
-    max_files = int(getattr(args, "max_files", 5000) or 5000)
-
-    govc = _prefer_govc(args, client.logger)
-    if not govc:
-        raise VMwareError("download_datastore_dir requires govc (install govc or disable this action)")
-
-    res = govc.download_datastore_dir(
-        datastore=datastore,
-        ds_dir=ds_dir,
-        local_dir=local_dir,
-        include_globs=include_globs,
-        exclude_globs=exclude_globs,
-        max_files=max_files,
-    )
-    _emit(args, client.logger, res)
-    return res
-
-
-def _create_snapshot(client: VMwareClient, args: Any) -> Any:
-    vm_name = _require(args, "vm_name")
-    snap_name = _require(args, "name")
-    quiesce = bool(getattr(args, "quiesce", True))
-    memory = bool(getattr(args, "memory", False))
-    description = getattr(args, "description", "Created by vmdk2kvm") or "Created by vmdk2kvm"
-
-    vm = client.get_vm_by_name(vm_name)
-    if vm is None:
-        raise VMwareError(f"VM not found: {vm_name!r}")
-
-    snap = client.create_snapshot(vm, snap_name, quiesce=quiesce, memory=memory, description=description)
-    out = {
-        "ok": True,
-        "vm": vm_name,
-        "snapshot_name": snap_name,
-        "snapshot_moref": client.snapshot_moref(snap),
-    }
-    _emit(args, client.logger, out)
-    return out
-
-
-def _enable_cbt(client: VMwareClient, args: Any) -> Any:
-    vm_name = _require(args, "vm_name")
-    vm = client.get_vm_by_name(vm_name)
-    if vm is None:
-        raise VMwareError(f"VM not found: {vm_name!r}")
-    client.enable_cbt(vm)
-    out = {"ok": True, "vm": vm_name, "cbt_enabled": True}
-    _emit(args, client.logger, out)
-    return out
-
-
-def _query_changed_disk_areas(client: VMwareClient, args: Any) -> Any:
-    vm_name = _require(args, "vm_name")
-    snapshot_name = _require(args, "snapshot_name")
-    start_offset = int(getattr(args, "start_offset", 0) or 0)
-    change_id = str(getattr(args, "change_id", "*") or "*")
-
-    device_key = getattr(args, "device_key", None)
-    disk_sel = getattr(args, "disk", None)
-
-    vm = client.get_vm_by_name(vm_name)
-    if vm is None:
-        raise VMwareError(f"VM not found: {vm_name!r}")
-
-    snap_tree = _find_snapshot_by_name(vm, snapshot_name)
-    if snap_tree is None:
-        raise VMwareError(f"Snapshot not found by name: {snapshot_name!r}")
-
-    if device_key is None:
-        d = client.select_disk(vm, disk_sel)
-        device_key = int(getattr(d, "key", 0) or 0)
-        if not device_key:
-            raise VMwareError("Could not resolve device_key from selected disk")
-
-    r = client.query_changed_disk_areas(
-        vm,
-        snapshot=snap_tree.snapshot,
-        device_key=int(device_key),
-        start_offset=start_offset,
-        change_id=change_id,
-    )
-
-    out = {
-        "vm": vm_name,
-        "snapshot": snapshot_name,
-        "device_key": int(device_key),
-        "start_offset": start_offset,
-        "change_id": change_id,
-        "changedArea_count": len(getattr(r, "changedArea", []) or []),
-        "length": int(getattr(r, "length", 0) or 0),
-    }
-    _emit(args, client.logger, out)
-    return out
-
-
-def _download_vm_disk(client: VMwareClient, args: Any) -> Any:
-    vm_name = _require(args, "vm_name")
-    disk_sel = getattr(args, "disk", None)
-    local_path = Path(_require(args, "local_path")).expanduser()
-    chunk_size = int(getattr(args, "chunk_size", 1024 * 1024) or 1024 * 1024)
-
-    vm = client.get_vm_by_name(vm_name)
-    if vm is None:
-        raise VMwareError(f"VM not found: {vm_name!r}")
-
-    d = client.select_disk(vm, disk_sel)
-    backing = client._vm_disk_backing_filename(d)  # usually "[datastore] folder/file.vmdk"
-    ds_name, rel_path = client.parse_backing_filename(backing)
-
-    # Prefer govc for the actual download if available.
-    govc = _prefer_govc(args, client.logger)
-    if govc:
-        try:
-            govc.download_datastore_file(datastore=ds_name, ds_path=rel_path, local_path=local_path)
-            out = {
-                "ok": True,
-                "vm": vm_name,
-                "disk": disk_sel,
-                "remote": backing,
-                "local_path": str(local_path),
-                "provider": "govc",
-            }
-            _emit(args, client.logger, out)
-            return out
-        except Exception as e:
-            client.logger.warning("govc download_vm_disk failed; falling back to pyvmomi: %s", e)
-
-    dc = client.resolve_datacenter_for_vm(vm_name, getattr(args, "dc_name", None))
-
-    client.download_datastore_file(
-        datastore=ds_name,
-        ds_path=rel_path,
-        local_path=local_path,
-        dc_name=dc,
-        chunk_size=chunk_size,
-    )
-
-    out = {"ok": True, "vm": vm_name, "disk": disk_sel, "remote": backing, "local_path": str(local_path), "provider": "pyvmomi"}
-    _emit(args, client.logger, out)
-    return out
-
-
-def _cbt_sync(client: VMwareClient, args: Any) -> Any:
-    """
-    Scaffold: enable CBT + snapshot + one-shot QueryChangedDiskAreas summary.
-    (Real delta patching requires VDDK/NBD reads + applying extents into the base image.)
-    """
-    vm_name = _require(args, "vm_name")
-    disk_sel = getattr(args, "disk", None)
-    local_path = Path(_require(args, "local_path")).expanduser()
-    enable = bool(getattr(args, "enable_cbt", False))
-    snapshot_name = getattr(args, "snapshot_name", "vmdk2kvm-cbt") or "vmdk2kvm-cbt"
-    change_id = str(getattr(args, "change_id", "*") or "*")
-
-    vm = client.get_vm_by_name(vm_name)
-    if vm is None:
-        raise VMwareError(f"VM not found: {vm_name!r}")
-
-    if enable:
-        client.enable_cbt(vm)
-
-    snap = client.create_snapshot(vm, snapshot_name, quiesce=True, memory=False)
-    d = client.select_disk(vm, disk_sel)
-    device_key = int(getattr(d, "key", 0) or 0)
-    if not device_key:
-        raise VMwareError("Could not resolve device_key for selected disk")
-
-    # base pull so you at least have a consistent local artifact
-    _download_vm_disk(
-        client,
-        _ArgsShim(
-            vm_name=vm_name,
-            disk=disk_sel,
-            local_path=str(local_path),
-            chunk_size=1024 * 1024,
-            dc_name=getattr(args, "dc_name", None),
-            json=getattr(args, "json", False),
-            vcenter=getattr(args, "vcenter", None),
-            vc_user=getattr(args, "vc_user", None),
-            vc_password=getattr(args, "vc_password", None),
-            vc_password_env=getattr(args, "vc_password_env", None),
-            vc_insecure=getattr(args, "vc_insecure", None),
-            govc_bin=getattr(args, "govc_bin", None),
-            no_govmomi=getattr(args, "no_govmomi", False),
-        ),
-    )
-
-    r = client.query_changed_disk_areas(
-        vm,
-        snapshot=snap,  # your vmware_client may accept VirtualMachineSnapshot or tree; adjust there if needed
-        device_key=device_key,
-        start_offset=0,
-        change_id=change_id,
-    )
-
-    out = {
-        "ok": True,
-        "vm": vm_name,
-        "disk": disk_sel,
-        "snapshot_moref": client.snapshot_moref(snap),
-        "device_key": device_key,
-        "change_id": change_id,
-        "changedArea_count": len(getattr(r, "changedArea", []) or []),
-    }
-    _emit(args, client.logger, out)
-    return out
-
-
-def _download_only_vm(client: VMwareClient, args: Any) -> Any:
-    """
-    VM folder pull via export_vm(download_only).
-    (If you want govc listing inside this flow, do it inside VMwareClient.export_vm.)
-    """
-    vm_name = _require(args, "vm_name")
-    out_dir = getattr(args, "output_dir", None) or getattr(args, "output_dir", "./out")
-    out_dir_path = Path(out_dir).expanduser()
-
-    include_globs = tuple(getattr(args, "vs_include_glob", None) or []) or ("*",)
-    exclude_globs = tuple(getattr(args, "vs_exclude_glob", None) or []) or ()
-
-    opt = V2VExportOptions(
-        vm_name=vm_name,
-        export_mode="download_only",
-        output_dir=out_dir_path,
-        datacenter=getattr(args, "dc_name", "auto") or "auto",
-        download_only_include_globs=include_globs,
-        download_only_exclude_globs=exclude_globs,
-        download_only_concurrency=int(getattr(args, "vs_concurrency", 4) or 4),
-        download_only_max_files=int(getattr(args, "vs_max_files", 5000) or 5000),
-        download_only_use_async_http=bool(getattr(args, "vs_use_async_http", True)),
-        download_only_fail_on_missing=bool(getattr(args, "vs_fail_on_missing", False)),
-    )
-
-    res = client.export_vm(opt)
-    out = {"ok": True, "vm": vm_name, "output_dir": str(res)}
-    _emit(args, client.logger, out)
-    return out
-
-
-def _vddk_download_disk(client: VMwareClient, args: Any) -> Any:
-    """
-    Routes to VMwareClient.export_vm(export_mode="vddk_download") which should call your vddk_client.
-    """
-    vm_name = _require(args, "vm_name")
-    disk_sel = getattr(args, "disk", None)
-    local_path = Path(_require(args, "local_path")).expanduser()
-
-    opt = V2VExportOptions(
-        vm_name=vm_name,
-        export_mode="vddk_download",
-        output_dir=local_path.parent,
-        vddk_download_disk=disk_sel,
-        vddk_download_output=local_path,
-        vddk_libdir=_p(getattr(args, "vs_vddk_libdir2", None)),
-        vddk_thumbprint=getattr(args, "vs_vddk_thumbprint2", None),
-        vddk_transports=getattr(args, "vs_vddk_transports2", None),
-        no_verify=bool(getattr(args, "vs_no_verify2", False)),
-    )
-
-    res = client.export_vm(opt)
-    out = {"ok": True, "vm": vm_name, "disk": disk_sel, "local_path": str(res)}
-    _emit(args, client.logger, out)
-    return out
-
-def _find_snapshot_by_name(vm_obj: Any, name: str) -> Optional[Any]:
+def _find_snapshot_tree_by_name(vm_obj: Any, name: str) -> Optional[Any]:
     target = (name or "").strip()
     if not target:
         return None
@@ -663,8 +352,445 @@ def _find_snapshot_by_name(vm_obj: Any, name: str) -> Optional[Any]:
     return None
 
 
+def _snapshot_ref_from_tree(node: Any) -> Any:
+    """
+    Normalize: always hand callers a VirtualMachineSnapshot-like reference if possible.
+    """
+    snap = getattr(node, "snapshot", None)
+    if snap is None:
+        # worst-case: callers can still try passing node, but we keep behavior predictable
+        return node
+    return snap
+
+
+# --------------------------------------------------------------------------------------
+# Command context (keeps actions tiny)
+# --------------------------------------------------------------------------------------
+
+
+class VsphereCommands:
+    def __init__(self, client: VMwareClient, args: Any):
+        self.client = client
+        self.args = args
+        self.logger = client.logger
+        self.emit = _Emitter(args, self.logger)
+
+    # ---- small shared helpers ----
+
+    def _vm_or_raise(self, vm_name: str) -> Any:
+        vm = self.client.get_vm_by_name(vm_name)
+        if vm is None:
+            raise VMwareError(f"VM not found: {vm_name!r}")
+        return vm
+
+    def _govc(self) -> Optional[GovmomiCLI]:
+        return _prefer_govc(self.args, self.logger)
+
+    def _govc_try(self, op: Callable[[GovmomiCLI], Any], *, warn: str) -> Tuple[bool, Any]:
+        g = self._govc()
+        if not g:
+            return (False, None)
+        try:
+            return (True, op(g))
+        except Exception as e:
+            self.logger.warning("%s: %s", warn, e)
+            return (False, None)
+
+    def _vm_summary_payload(self, vm: Any) -> Dict[str, Any]:
+        s = getattr(vm, "summary", None)
+        cfg = getattr(s, "config", None) if s else None
+        runtime = getattr(s, "runtime", None) if s else None
+        guest = getattr(s, "guest", None) if s else None
+
+        return {
+            "name": getattr(vm, "name", None),
+            "moId": getattr(vm, "_moId", None),
+            "uuid": getattr(cfg, "uuid", None),
+            "instanceUuid": getattr(cfg, "instanceUuid", None),
+            "powerState": str(getattr(runtime, "powerState", None)),
+            "guestFullName": getattr(guest, "guestFullName", None),
+            "vmPathName": getattr(cfg, "vmPathName", None),
+            "datacenter": self.client.vm_datacenter_name(vm),
+            "esx_host": getattr(getattr(getattr(vm, "runtime", None), "host", None), "name", None),
+        }
+
+    def _disk_payload(self, device: Any, index: int) -> Dict[str, Any]:
+        label = getattr(getattr(device, "deviceInfo", None), "label", None)
+        key = getattr(device, "key", None)
+        cap = getattr(device, "capacityInKB", None)
+        backing = getattr(device, "backing", None)
+        fname = getattr(backing, "fileName", None) if backing else None
+        return {
+            "index": index,
+            "label": str(label) if label else None,
+            "device_key": int(key) if key is not None else None,
+            "capacity_kb": int(cap) if cap is not None else None,
+            "backing_file": str(fname) if fname else None,
+        }
+
+    def _selected_disk_payload(self, vm_name: str, selector: Any, device: Any) -> Dict[str, Any]:
+        label = getattr(getattr(device, "deviceInfo", None), "label", None)
+        key = getattr(device, "key", None)
+        backing = getattr(device, "backing", None)
+        fname = getattr(backing, "fileName", None) if backing else None
+        return {
+            "vm": vm_name,
+            "selector": selector,
+            "label": str(label) if label else None,
+            "device_key": int(key) if key is not None else None,
+            "backing_file": str(fname) if fname else None,
+        }
+
+    def _resolve_snapshot_ref(self, vm: Any, snapshot_name: str) -> Any:
+        node = _find_snapshot_tree_by_name(vm, snapshot_name)
+        if node is None:
+            raise VMwareError(f"Snapshot not found by name: {snapshot_name!r}")
+        return _snapshot_ref_from_tree(node)
+
+    # ---- actions ----
+
+    def list_vm_names(self) -> Any:
+        used, names = self._govc_try(
+            lambda g: g.list_vm_names(),
+            warn="govc list_vm_names failed; falling back to pyvmomi",
+        )
+        provider = "govc" if used else "pyvmomi"
+        if not used:
+            names = self.client.list_vm_names()
+
+        payload = {"vms": names, "provider": provider}
+        self.emit.emit(payload, human=names)
+        return names
+
+    def get_vm_by_name(self) -> Any:
+        name = _require(self.args, "name")
+        vm = self._vm_or_raise(name)
+        out = self._vm_summary_payload(vm)
+        self.emit.emit(out)
+        return out
+
+    def vm_disks(self) -> Any:
+        vm_name = _require(self.args, "vm_name")
+        vm = self._vm_or_raise(vm_name)
+        disks = self.client.vm_disks(vm)
+        out = [self._disk_payload(d, i) for i, d in enumerate(disks)]
+        payload = {"vm": vm_name, "disks": out}
+        self.emit.emit(payload)
+        return out
+
+    def select_disk(self) -> Any:
+        vm_name = _require(self.args, "vm_name")
+        selector = getattr(self.args, "label_or_index", None)
+        vm = self._vm_or_raise(vm_name)
+        d = self.client.select_disk(vm, selector)
+        out = self._selected_disk_payload(vm_name, selector, d)
+        self.emit.emit(out)
+        return out
+
+    def download_datastore_file(self) -> Any:
+        datastore = _require(self.args, "datastore")
+        ds_path = _require(self.args, "ds_path")
+        local_path = Path(_require(self.args, "local_path")).expanduser()
+        chunk_size = int(getattr(self.args, "chunk_size", 1024 * 1024) or 1024 * 1024)
+        dc_name = getattr(self.args, "dc_name", None)
+
+        used, _ = self._govc_try(
+            lambda g: g.download_datastore_file(datastore=datastore, ds_path=ds_path, local_path=local_path),
+            warn="govc download_datastore_file failed; falling back to pyvmomi",
+        )
+        if used:
+            out = {"ok": True, "local_path": str(local_path), "provider": "govc"}
+            self.emit.emit(out, human_msg=str(local_path))
+            return out
+
+        self.client.download_datastore_file(
+            datastore=datastore,
+            ds_path=ds_path,
+            local_path=local_path,
+            dc_name=dc_name,
+            chunk_size=chunk_size,
+        )
+        out = {"ok": True, "local_path": str(local_path), "provider": "pyvmomi"}
+        self.emit.emit(out, human_msg=str(local_path))
+        return out
+
+    def datastore_ls(self) -> Any:
+        datastore = _require(self.args, "datastore")
+        ds_dir = _require(self.args, "ds_dir")
+
+        govc = self._govc()
+        if not govc:
+            raise VMwareError("datastore_ls requires govc (install govc or disable this action)")
+
+        # Return raw govc JSON structure, but also provide sane human lines.
+        files = govc.datastore_ls_json(datastore=datastore, ds_dir=ds_dir)
+        names = govc._extract_names_from_ls_json(files)
+
+        out = {"ok": True, "provider": "govc", "datastore": datastore, "ds_dir": ds_dir, "files": files}
+        self.emit.emit(out, human=names)
+        return out
+
+    def download_datastore_dir(self) -> Any:
+        datastore = _require(self.args, "datastore")
+        ds_dir = _require(self.args, "ds_dir")
+        local_dir = Path(_require(self.args, "local_dir")).expanduser()
+
+        include_globs = tuple(getattr(self.args, "include_glob", None) or []) or ("*",)
+        exclude_globs = tuple(getattr(self.args, "exclude_glob", None) or []) or ()
+        max_files = int(getattr(self.args, "max_files", 5000) or 5000)
+
+        govc = self._govc()
+        if not govc:
+            raise VMwareError("download_datastore_dir requires govc (install govc or disable this action)")
+
+        res = govc.download_datastore_dir(
+            datastore=datastore,
+            ds_dir=ds_dir,
+            local_dir=local_dir,
+            include_globs=include_globs,
+            exclude_globs=exclude_globs,
+            max_files=max_files,
+        )
+        self.emit.emit(res, human=res.get("files") or [])
+        return res
+
+    def create_snapshot(self) -> Any:
+        vm_name = _require(self.args, "vm_name")
+        snap_name = _require(self.args, "name")
+        quiesce = bool(getattr(self.args, "quiesce", True))
+        memory = bool(getattr(self.args, "memory", False))
+        description = getattr(self.args, "description", "Created by vmdk2kvm") or "Created by vmdk2kvm"
+
+        vm = self._vm_or_raise(vm_name)
+        snap = self.client.create_snapshot(vm, snap_name, quiesce=quiesce, memory=memory, description=description)
+
+        out = {"ok": True, "vm": vm_name, "snapshot_name": snap_name, "snapshot_moref": self.client.snapshot_moref(snap)}
+        self.emit.emit(out)
+        return out
+
+    def enable_cbt(self) -> Any:
+        vm_name = _require(self.args, "vm_name")
+        vm = self._vm_or_raise(vm_name)
+
+        self.client.enable_cbt(vm)
+        out = {"ok": True, "vm": vm_name, "cbt_enabled": True}
+        self.emit.emit(out)
+        return out
+
+    def query_changed_disk_areas(self) -> Any:
+        vm_name = _require(self.args, "vm_name")
+        snapshot_name = _require(self.args, "snapshot_name")
+        start_offset = int(getattr(self.args, "start_offset", 0) or 0)
+        change_id = str(getattr(self.args, "change_id", "*") or "*")
+
+        device_key = getattr(self.args, "device_key", None)
+        disk_sel = getattr(self.args, "disk", None)
+
+        vm = self._vm_or_raise(vm_name)
+        snapshot_ref = self._resolve_snapshot_ref(vm, snapshot_name)
+
+        if device_key is None:
+            d = self.client.select_disk(vm, disk_sel)
+            device_key = int(getattr(d, "key", 0) or 0)
+            if not device_key:
+                raise VMwareError("Could not resolve device_key from selected disk")
+
+        r = self.client.query_changed_disk_areas(
+            vm,
+            snapshot=snapshot_ref,
+            device_key=int(device_key),
+            start_offset=start_offset,
+            change_id=change_id,
+        )
+
+        out = {
+            "vm": vm_name,
+            "snapshot": snapshot_name,
+            "device_key": int(device_key),
+            "start_offset": start_offset,
+            "change_id": change_id,
+            "changedArea_count": len(getattr(r, "changedArea", []) or []),
+            "length": int(getattr(r, "length", 0) or 0),
+        }
+        self.emit.emit(out)
+        return out
+
+    def download_vm_disk(self) -> Any:
+        vm_name = _require(self.args, "vm_name")
+        disk_sel = getattr(self.args, "disk", None)
+        local_path = Path(_require(self.args, "local_path")).expanduser()
+        chunk_size = int(getattr(self.args, "chunk_size", 1024 * 1024) or 1024 * 1024)
+
+        vm = self._vm_or_raise(vm_name)
+        d = self.client.select_disk(vm, disk_sel)
+
+        backing = self.client._vm_disk_backing_filename(d)  # usually "[datastore] folder/file.vmdk"
+        ds_name, rel_path = self.client.parse_backing_filename(backing)
+
+        used, _ = self._govc_try(
+            lambda g: g.download_datastore_file(datastore=ds_name, ds_path=rel_path, local_path=local_path),
+            warn="govc download_vm_disk failed; falling back to pyvmomi",
+        )
+        if used:
+            out = {
+                "ok": True,
+                "vm": vm_name,
+                "disk": disk_sel,
+                "remote": backing,
+                "local_path": str(local_path),
+                "provider": "govc",
+            }
+            self.emit.emit(out, human_msg=str(local_path))
+            return out
+
+        dc = self.client.resolve_datacenter_for_vm(vm_name, getattr(self.args, "dc_name", None))
+        self.client.download_datastore_file(
+            datastore=ds_name,
+            ds_path=rel_path,
+            local_path=local_path,
+            dc_name=dc,
+            chunk_size=chunk_size,
+        )
+
+        out = {
+            "ok": True,
+            "vm": vm_name,
+            "disk": disk_sel,
+            "remote": backing,
+            "local_path": str(local_path),
+            "provider": "pyvmomi",
+        }
+        self.emit.emit(out, human_msg=str(local_path))
+        return out
+
+    def cbt_sync(self) -> Any:
+        """
+        Scaffold: enable CBT + snapshot + one-shot QueryChangedDiskAreas summary.
+        (Real delta patching requires VDDK/NBD reads + applying extents into the base image.)
+        """
+        vm_name = _require(self.args, "vm_name")
+        disk_sel = getattr(self.args, "disk", None)
+        local_path = Path(_require(self.args, "local_path")).expanduser()
+        enable = bool(getattr(self.args, "enable_cbt", False))
+        snapshot_name = getattr(self.args, "snapshot_name", "vmdk2kvm-cbt") or "vmdk2kvm-cbt"
+        change_id = str(getattr(self.args, "change_id", "*") or "*")
+
+        vm = self._vm_or_raise(vm_name)
+
+        if enable:
+            self.client.enable_cbt(vm)
+
+        snap = self.client.create_snapshot(vm, snapshot_name, quiesce=True, memory=False)
+
+        d = self.client.select_disk(vm, disk_sel)
+        device_key = int(getattr(d, "key", 0) or 0)
+        if not device_key:
+            raise VMwareError("Could not resolve device_key for selected disk")
+
+        # base pull so you at least have a consistent local artifact
+        self.download_vm_disk_with(vm_name=vm_name, disk_sel=disk_sel, local_path=local_path)
+
+        r = self.client.query_changed_disk_areas(
+            vm,
+            snapshot=snap,
+            device_key=device_key,
+            start_offset=0,
+            change_id=change_id,
+        )
+
+        out = {
+            "ok": True,
+            "vm": vm_name,
+            "disk": disk_sel,
+            "snapshot_moref": self.client.snapshot_moref(snap),
+            "device_key": device_key,
+            "change_id": change_id,
+            "changedArea_count": len(getattr(r, "changedArea", []) or []),
+        }
+        self.emit.emit(out)
+        return out
+
+    def download_vm_disk_with(self, *, vm_name: str, disk_sel: Any, local_path: Path) -> Any:
+        """
+        Internal reuse helper: call download_vm_disk logic without mutating self.args.
+        """
+        shim = _ArgsShim(
+            vm_name=vm_name,
+            disk=disk_sel,
+            local_path=str(local_path),
+            chunk_size=1024 * 1024,
+            dc_name=getattr(self.args, "dc_name", None),
+            json=getattr(self.args, "json", False),
+            vcenter=getattr(self.args, "vcenter", None),
+            vc_user=getattr(self.args, "vc_user", None),
+            vc_password=getattr(self.args, "vc_password", None),
+            vc_password_env=getattr(self.args, "vc_password_env", None),
+            vc_insecure=getattr(self.args, "vc_insecure", None),
+            govc_bin=getattr(self.args, "govc_bin", None),
+            no_govmomi=getattr(self.args, "no_govmomi", False),
+        )
+        # Create a temporary command context so emit policy stays consistent
+        tmp = VsphereCommands(self.client, shim)
+        return tmp.download_vm_disk()
+
+    def download_only_vm(self) -> Any:
+        vm_name = _require(self.args, "vm_name")
+        out_dir = getattr(self.args, "output_dir", None) or getattr(self.args, "output_dir", "./out")
+        out_dir_path = Path(out_dir).expanduser()
+
+        include_globs = tuple(getattr(self.args, "vs_include_glob", None) or []) or ("*",)
+        exclude_globs = tuple(getattr(self.args, "vs_exclude_glob", None) or []) or ()
+
+        opt = V2VExportOptions(
+            vm_name=vm_name,
+            export_mode="download_only",
+            output_dir=out_dir_path,
+            datacenter=getattr(self.args, "dc_name", "auto") or "auto",
+            download_only_include_globs=include_globs,
+            download_only_exclude_globs=exclude_globs,
+            download_only_concurrency=int(getattr(self.args, "vs_concurrency", 4) or 4),
+            download_only_max_files=int(getattr(self.args, "vs_max_files", 5000) or 5000),
+            download_only_use_async_http=bool(getattr(self.args, "vs_use_async_http", True)),
+            download_only_fail_on_missing=bool(getattr(self.args, "vs_fail_on_missing", False)),
+        )
+
+        res = self.client.export_vm(opt)
+        out = {"ok": True, "vm": vm_name, "output_dir": str(res)}
+        self.emit.emit(out, human_msg=str(res))
+        return out
+
+    def vddk_download_disk(self) -> Any:
+        vm_name = _require(self.args, "vm_name")
+        disk_sel = getattr(self.args, "disk", None)
+        local_path = Path(_require(self.args, "local_path")).expanduser()
+
+        # accept both new and legacy flag names
+        vddk_libdir = _p(_arg_any(self.args, "vddk_libdir", "vs_vddk_libdir2"))
+        vddk_thumbprint = _arg_any(self.args, "vddk_thumbprint", "vs_vddk_thumbprint2")
+        vddk_transports = _arg_any(self.args, "vddk_transports", "vs_vddk_transports2")
+        no_verify = bool(_arg_any(self.args, "no_verify", "vs_no_verify2", default=False))
+
+        opt = V2VExportOptions(
+            vm_name=vm_name,
+            export_mode="vddk_download",
+            output_dir=local_path.parent,
+            vddk_download_disk=disk_sel,
+            vddk_download_output=local_path,
+            vddk_libdir=vddk_libdir,
+            vddk_thumbprint=vddk_thumbprint,
+            vddk_transports=vddk_transports,
+            no_verify=no_verify,
+        )
+
+        res = self.client.export_vm(opt)
+        out = {"ok": True, "vm": vm_name, "disk": disk_sel, "local_path": str(res)}
+        self.emit.emit(out, human_msg=str(res))
+        return out
+
+
 class _ArgsShim:
     """Tiny shim so we can reuse action funcs without argparse objects."""
+
     def __init__(self, **kw: Any):
         for k, v in kw.items():
             setattr(self, k, v)
@@ -674,44 +800,38 @@ class _ArgsShim:
 # Router
 # --------------------------------------------------------------------------------------
 
-_ACTIONS: Dict[str, Callable[[VMwareClient, Any], Any]] = {
-    "list_vm_names": _list_vm_names,
-    "get_vm_by_name": _get_vm_by_name,
-    "vm_disks": _vm_disks,
-    "select_disk": _select_disk,
-    "download_datastore_file": _download_datastore_file,
-    "datastore_ls": _datastore_ls,
-    "download_datastore_dir": _download_datastore_dir,
-    "create_snapshot": _create_snapshot,
-    "enable_cbt": _enable_cbt,
-    "query_changed_disk_areas": _query_changed_disk_areas,
-    "download_vm_disk": _download_vm_disk,
-    "cbt_sync": _cbt_sync,
-    "download_only_vm": _download_only_vm,
-    "vddk_download_disk": _vddk_download_disk,
+
+_ACTIONS: Dict[str, str] = {
+    "list_vm_names": "list_vm_names",
+    "get_vm_by_name": "get_vm_by_name",
+    "vm_disks": "vm_disks",
+    "select_disk": "select_disk",
+    "download_datastore_file": "download_datastore_file",
+    "datastore_ls": "datastore_ls",
+    "download_datastore_dir": "download_datastore_dir",
+    "create_snapshot": "create_snapshot",
+    "enable_cbt": "enable_cbt",
+    "query_changed_disk_areas": "query_changed_disk_areas",
+    "download_vm_disk": "download_vm_disk",
+    "cbt_sync": "cbt_sync",
+    "download_only_vm": "download_only_vm",
+    "vddk_download_disk": "vddk_download_disk",
 }
 
 
-def run_vsphere_command(args: Any, conf: Optional[Dict[str, Any]], logger: Any) -> int:
-    """
-    Entry point for:  vmdk2kvm.py vsphere <action> ...
-
-    Expects:
-      - args.vs_action is set
-      - args has vcenter/vc_user/creds, etc.
-      - conf is merged config dict (may be empty)
-      - logger is your logger
-    """
+def _get_action_or_raise(args: Any) -> str:
     action = getattr(args, "vs_action", None)
     if not action:
         raise VMwareError("Missing vs_action (argparse should have required=True)")
-
+    action = str(action)
     if action not in _ACTIONS:
         raise VMwareError(f"vsphere: unknown action: {action}")
+    return action
 
+
+def _build_client(args: Any, conf: Optional[Dict[str, Any]], logger: Any) -> VMwareClient:
     cfg = _merged_cfg(args, conf)
-
-    client = VMwareClient.from_config(
+    return VMwareClient.from_config(
         logger=logger,
         cfg=cfg,
         port=getattr(args, "vc_port", None),
@@ -719,7 +839,20 @@ def run_vsphere_command(args: Any, conf: Optional[Dict[str, Any]], logger: Any) 
         timeout=None,
     )
 
+
+def run_vsphere_command(args: Any, conf: Optional[Dict[str, Any]], logger: Any) -> int:
+    """
+    Entry point for: vmdk2kvm.py vsphere <action> ...
+    """
+    action = _get_action_or_raise(args)
+    client = _build_client(args, conf, logger)
+
     with client:
-        _ACTIONS[action](client, args)
+        cmd = VsphereCommands(client, args)
+        meth_name = _ACTIONS[action]
+        meth = getattr(cmd, meth_name, None)
+        if not callable(meth):
+            raise VMwareError(f"vsphere: action not callable: {action} -> {meth_name}")
+        meth()
 
     return 0
