@@ -227,7 +227,8 @@ async def _ssh_stream_fetch_with_progress(
     sent = 0
 
     try:
-        assert proc.stdout is not None
+        if proc.stdout is None:
+            raise RuntimeError("Process stdout unexpectedly None")
         with tmp_local.open("wb") as f:
             while True:
                 chunk = await proc.stdout.read(read_chunk)

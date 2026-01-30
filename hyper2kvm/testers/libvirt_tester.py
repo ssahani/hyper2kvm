@@ -340,7 +340,8 @@ class LibvirtTest:
     ) -> Optional[Path]:
         if not fw.uefi:
             return None
-        assert ovmf is not None
+        if ovmf is None:
+            raise RuntimeError("OVMF firmware unexpectedly None for UEFI boot")
 
         nvram = disk.parent / f"{name}.VARS.fd"
         if not nvram.exists():
@@ -507,7 +508,8 @@ class LibvirtTest:
             f" <type arch='x86_64' machine='{dom.machine}'>hvm</type>",
         ]
         if fw.uefi:
-            assert ovmf is not None and nvram is not None
+            if ovmf is None or nvram is None:
+                raise RuntimeError("OVMF firmware or NVRAM unexpectedly None for UEFI boot")
             os_bits.append(f" <loader readonly='yes' type='pflash'>{ovmf.code}</loader>")
             os_bits.append(f" <nvram>{nvram}</nvram>")
         else:

@@ -777,7 +777,8 @@ class VDDKESXClient:
     def connect(self) -> None:
         """Connect to ESXi host using VDDK."""
         self._ensure_loaded()
-        assert self._lib is not None
+        if self._lib is None:
+            raise RuntimeError("VDDK library not loaded")
 
         s = self.spec
         self._preflight_debug()
@@ -918,7 +919,8 @@ class VDDKESXClient:
 
     def _open_ro(self, remote_vmdk: str) -> _VixDiskLibHandle:
         self._require_connected()
-        assert self._lib is not None
+        if self._lib is None:
+            raise RuntimeError("VDDK library not loaded")
 
         self.logger.debug("VDDK: Open RO %r", remote_vmdk)
 
@@ -938,7 +940,8 @@ class VDDKESXClient:
         return h
 
     def _close(self, h: _VixDiskLibHandle) -> None:
-        assert self._lib is not None
+        if self._lib is None:
+            raise RuntimeError("VDDK library not loaded")
         try:
             self._lib.VixDiskLib_Close(h)
         except Exception:
@@ -946,7 +949,8 @@ class VDDKESXClient:
 
     def _capacity_sectors(self, h: _VixDiskLibHandle) -> int:
         self._require_connected()
-        assert self._lib is not None
+        if self._lib is None:
+            raise RuntimeError("VDDK library not loaded")
 
         self.logger.debug("VDDK: GetInfo(handle=%r)", h)
 
@@ -985,7 +989,8 @@ class VDDKESXClient:
         cancel: Optional[CancelFn],
     ) -> None:
         """Read sectors with retry/backoff on likely transient errors."""
-        assert self._lib is not None
+        if self._lib is None:
+            raise RuntimeError("VDDK library not loaded")
 
         attempt = 0
         while True:
@@ -1055,7 +1060,8 @@ class VDDKESXClient:
         local_path is written atomically: <name>.part then rename.
         """
         self._require_connected()
-        assert self._lib is not None
+        if self._lib is None:
+            raise RuntimeError("VDDK library not loaded")
 
         remote_vmdk = (remote_vmdk or "").strip()
         if not remote_vmdk:

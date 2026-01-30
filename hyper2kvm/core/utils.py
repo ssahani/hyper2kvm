@@ -114,7 +114,8 @@ class U:
                     env=env,
                     cwd=str(cwd) if cwd is not None else None,
                 )
-                assert proc.stdout is not None
+                if proc.stdout is None:
+                    raise RuntimeError("Process stdout unexpectedly None")
                 out_lines: List[str] = []
                 for line in proc.stdout:
                     line = line.rstrip("\n")

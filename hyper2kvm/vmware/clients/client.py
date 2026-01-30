@@ -972,8 +972,8 @@ class VMwareClient:
             env=env,
             bufsize=1,
         )
-        assert proc.stdout is not None
-        assert proc.stderr is not None
+        if proc.stdout is None or proc.stderr is None:
+            raise RuntimeError("Process stdout/stderr unexpectedly None")
         if SELECT_AVAILABLE:
             try:
                 os.set_blocking(proc.stdout.fileno(), False)  # type: ignore[attr-defined]
@@ -983,8 +983,8 @@ class VMwareClient:
         return proc
 
     def _pump_lines_blocking(self, proc: Any) -> List[str]:
-        assert proc.stdout is not None
-        assert proc.stderr is not None
+        if proc.stdout is None or proc.stderr is None:
+            raise RuntimeError("Process stdout/stderr unexpectedly None")
         lines: List[str] = []
         out_line = proc.stdout.readline()
         err_line = proc.stderr.readline()
@@ -995,8 +995,8 @@ class VMwareClient:
         return lines
 
     def _pump_lines_select(self, proc: Any, *, timeout_s: float = 0.20) -> List[str]:
-        assert proc.stdout is not None
-        assert proc.stderr is not None
+        if proc.stdout is None or proc.stderr is None:
+            raise RuntimeError("Process stdout/stderr unexpectedly None")
         rlist = [proc.stdout, proc.stderr]
         try:
             ready, _, _ = select.select(rlist, [], [], timeout_s)  # type: ignore[union-attr]
@@ -1046,11 +1046,10 @@ class VMwareClient:
             return self._pump_lines_blocking(proc)
 
         if self._use_rich_progress():
-            assert self._rich_console is not None
-            assert Progress is not None
-            assert SpinnerColumn is not None
-            assert TextColumn is not None
-            assert TimeElapsedColumn is not None
+            if self._rich_console is None:
+                raise RuntimeError("Rich console unexpectedly None")
+            if Progress is None or SpinnerColumn is None or TextColumn is None or TimeElapsedColumn is None:
+                raise RuntimeError("Rich progress components not available")
 
             last_line = ""
             with Progress(

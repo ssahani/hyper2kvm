@@ -503,7 +503,8 @@ class GovcNfcExporter:
         )
 
         try:
-            assert p.stdout is not None
+            if p.stdout is None:
+                raise RuntimeError("Process stdout unexpectedly None")
             for raw in p.stdout:
                 if cancel and cancel():
                     self._terminate_process_group(self.logger, p)

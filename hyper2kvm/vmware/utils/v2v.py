@@ -159,8 +159,8 @@ def _popen_text(client: Any, argv: Sequence[str], *, env: Optional[Dict[str, str
         env=env,
         bufsize=1,
     )
-    assert proc.stdout is not None
-    assert proc.stderr is not None
+    if proc.stdout is None or proc.stderr is None:
+        raise RuntimeError("Process stdout/stderr unexpectedly None")
     if SELECT_AVAILABLE:
         try:
             os.set_blocking(proc.stdout.fileno(), False)  # type: ignore[attr-defined]
@@ -171,8 +171,8 @@ def _popen_text(client: Any, argv: Sequence[str], *, env: Optional[Dict[str, str
 
 
 def _pump_lines_blocking(client: Any, proc: subprocess.Popen) -> List[str]:
-    assert proc.stdout is not None
-    assert proc.stderr is not None
+    if proc.stdout is None or proc.stderr is None:
+        raise RuntimeError("Process stdout/stderr unexpectedly None")
     lines: List[str] = []
     out_line = proc.stdout.readline()
     err_line = proc.stderr.readline()
@@ -184,8 +184,8 @@ def _pump_lines_blocking(client: Any, proc: subprocess.Popen) -> List[str]:
 
 
 def _pump_lines_select(client: Any, proc: subprocess.Popen, *, timeout_s: float = 0.20) -> List[str]:
-    assert proc.stdout is not None
-    assert proc.stderr is not None
+    if proc.stdout is None or proc.stderr is None:
+        raise RuntimeError("Process stdout/stderr unexpectedly None")
     rlist = [proc.stdout, proc.stderr]
     try:
         ready, _, _ = select.select(rlist, [], [], timeout_s)  # type: ignore[union-attr]
@@ -238,11 +238,10 @@ def _run_logged_subprocess(client: Any, argv: Sequence[str], *, env: Optional[Di
         return _pump_lines_blocking(client, proc)
 
     if _use_rich_progress(client):
-        assert client._rich_console is not None
-        assert Progress is not None
-        assert SpinnerColumn is not None
-        assert TextColumn is not None
-        assert TimeElapsedColumn is not None
+        if client._rich_console is None:
+            raise RuntimeError("Rich console unexpectedly None")
+        if Progress is None or SpinnerColumn is None or TextColumn is None or TimeElapsedColumn is None:
+            raise RuntimeError("Rich progress components not available")
 
         last_line = ""
         with Progress(

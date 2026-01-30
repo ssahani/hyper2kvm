@@ -189,7 +189,8 @@ class Convert:
                 tmp_dst.unlink()
             except Exception:
                 pass
-        assert last_error is not None
+        if last_error is None:
+            raise RuntimeError("Conversion failed but error not captured")
         raise last_error
 
     @staticmethod
@@ -363,7 +364,8 @@ class Convert:
             text=False,
             bufsize=0,
         )
-        assert proc.stderr is not None
+        if proc.stderr is None:
+            raise RuntimeError("Process stderr unexpectedly None")
 
         fd = proc.stderr.fileno()
         nonblocking_ok = False

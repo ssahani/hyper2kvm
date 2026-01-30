@@ -205,8 +205,8 @@ class OfflineFSFix:
                 self.report.setdefault("analysis", {}).setdefault("stages", {})[name] = {
                     "duration_s": round(dt, 6),
                 }
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.debug(f"Failed to record stage timing for {name}: {e}")
 
     def _run_stage(
         self,
@@ -229,8 +229,8 @@ class OfflineFSFix:
                     self.report.setdefault("analysis", {}).setdefault("stages", {})[name].update(
                         {"ok": True, "error": None}
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.debug(f"Failed to record stage success for {name}: {e}")
                 self.logger.debug(f"Stage ok: {name}")
                 return out
             except Exception as e:
@@ -240,8 +240,8 @@ class OfflineFSFix:
                     self.report.setdefault("analysis", {}).setdefault("stages", {})[name].update(
                         {"ok": False, "error": str(e), "traceback": tb}
                     )
-                except Exception:
-                    pass
+                except Exception as e2:
+                    self.logger.debug(f"Failed to record stage error for {name}: {e2}")
                 if critical:
                     raise
                 return default  # type: ignore[return-value]
@@ -260,8 +260,8 @@ class OfflineFSFix:
             pass
         try:
             self.report.setdefault("analysis", {})["guestfs"] = info
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.debug(f"Failed to store guestfs info in report: {e}")
 
     # guestfs open/close helpers
     def open(self) -> guestfs.GuestFS:
@@ -269,8 +269,8 @@ class OfflineFSFix:
         if self.logger.isEnabledFor(logging.DEBUG):
             try:
                 g.set_trace(1)
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.debug(f"Failed to enable guestfs trace: {e}")
         # NOTE: read-only when dry_run (prevents accidental writes).
         g.add_drive_opts(str(self.image), readonly=self.dry_run)
         g.launch()
@@ -507,8 +507,8 @@ class OfflineFSFix:
         fsck_audit = filesystem_fixer.best_effort_fsck(self, g, dev)
         try:
             self.report.setdefault("analysis", {}).setdefault("mount", {})["fsck"] = fsck_audit
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.debug(f"Failed to store fsck audit in report: {e}")
 
         self._safe_umount_all(g)
         try:
@@ -800,8 +800,8 @@ class OfflineFSFix:
                         self.report.setdefault("analysis", {}).setdefault("mount", {})[
                             "bruteforce_failures"
                         ] = mount_failures
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.logger.debug(f"Failed to store mount failures in report: {e}")
                 return
             except Exception as e:
                 mount_failures.append({"device": dev, "error": f"best_root_mount_failed:{e}"})
@@ -844,8 +844,8 @@ class OfflineFSFix:
                         self.report.setdefault("analysis", {}).setdefault("mount", {})[
                             "bruteforce_failures"
                         ] = mount_failures
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.logger.debug(f"Failed to store mount failures in report: {e}")
                 return
             except Exception as e:
                 mount_failures.append({"device": f"{dev} subvol={sv}", "error": f"best_btrfs_mount_failed:{e}"})
@@ -854,8 +854,8 @@ class OfflineFSFix:
         if mount_failures:
             try:
                 self.report.setdefault("analysis", {}).setdefault("mount", {})["bruteforce_failures"] = mount_failures
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.debug(f"Failed to store mount failures in report: {e}")
 
         U.die(self.logger, "Failed to mount root filesystem.", 1)
 
@@ -1186,8 +1186,8 @@ class OfflineFSFix:
                         "skipped": "update_grub_disabled",
                         "duration_s": 0.0,
                     }
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.debug(f"Failed to record grub skip in report: {e}")
 
             # keep your existing mdraid_check()/inject_cloud_init() if they exist
             mdraid = self._run_stage(

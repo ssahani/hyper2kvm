@@ -234,7 +234,8 @@ class Flatten:
             last_err = subprocess.CalledProcessError(rc, cmd)
 
         _unlink_quiet(tmp_dst)
-        assert last_err is not None
+        if last_err is None:
+            raise RuntimeError("Conversion failed but error not captured")
         raise last_err
 
     # Attempts (NO --target-is-zero)
@@ -357,7 +358,8 @@ class Flatten:
             last_err = subprocess.CalledProcessError(rc, cmd)
 
         _unlink_quiet(tmp_dst)
-        assert last_err is not None
+        if last_err is None:
+            raise RuntimeError("Conversion failed but error not captured")
         raise last_err
 
     # qemu-img runner (robust stderr)
@@ -390,7 +392,8 @@ class Flatten:
             text=False,
             bufsize=0,
         )
-        assert process.stderr is not None
+        if process.stderr is None:
+            raise RuntimeError("Process stderr unexpectedly None")
 
         fd = process.stderr.fileno()
         try:
@@ -912,5 +915,6 @@ class Fetch:
                 _sleep_backoff(attempt)
 
         _unlink_quiet(tmp)
-        assert last_err is not None
+        if last_err is None:
+            raise RuntimeError("SCP download failed but error not captured")
         raise last_err

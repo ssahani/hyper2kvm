@@ -635,8 +635,8 @@ def _run_streaming(
             progress.stop()
         raise OvfToolNotFound(str(e)) from e
 
-    assert p.stdout is not None
-    assert p.stderr is not None
+    if p.stdout is None or p.stderr is None:
+        raise RuntimeError("Process stdout/stderr unexpectedly None")
 
     # Multiplex without threads to avoid deadlocks:
     # - Prefer select.select when available (POSIX).

@@ -214,7 +214,8 @@ def _run_govc_with_rich_spinner(
         ) as progress:
             task_id = progress.add_task(title, total=None)
 
-            assert proc.stdout is not None
+            if proc.stdout is None:
+                raise RuntimeError("Process stdout unexpectedly None")
             while True:
                 line = proc.stdout.readline()
                 if line:
