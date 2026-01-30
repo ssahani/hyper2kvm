@@ -194,9 +194,15 @@ report: /tmp/hyper2kvm-report.md
 24. **[🔧 Enhanced Chroot](24-Enhanced-Chroot.md)** - Bootloader regeneration with bind mounts
 25. **[🖥️ TUI Quickstart](25-TUI-Quickstart.md)** - Interactive Terminal User Interface guide (NEW!)
 
+### Developer Guides
+20. **[👨‍💻 TUI Development Guide](20-TUI-Development-Guide.md)** - Complete Textual TUI development reference (NEW!)
+21. **[📋 Migration Quick Reference](21-Migration-Quick-Reference.md)** - One-page cheat sheet for common migrations (NEW!)
+
 ### Advanced Topics
 11. **[🔧 Fstab Stabilization](11-Fstab-Stabilization.md)** - Converting device paths to stable UUIDs
 14. **[⚙️ Configuration Injection](14-Configuration-Injection-Guide.md)** - Pre-boot network, user, service, and script injection
+20. **[👨‍💻 TUI Development Guide](20-TUI-Development-Guide.md)** - Comprehensive guide for TUI development with Textual (NEW!)
+21. **[📋 Migration Quick Reference](21-Migration-Quick-Reference.md)** - One-page quick reference for common migration scenarios (NEW!)
 24. **[⚙️ Enhanced Chroot](24-Enhanced-Chroot.md)** - Reliable GRUB regeneration with pseudo-filesystems (NEW!)
 30. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere to KVM using direct export
 
