@@ -470,3 +470,287 @@ class SystemctlManager:
             List of dicts with mount information
         """
         return self.list_units("mount", all_units=True)
+
+    # Enhanced unit file operations
+
+    def cat_unit_file(self, unit: str) -> str:
+        """
+        Get the full content of a unit file including drop-ins.
+
+        Args:
+            unit: Unit name (e.g., "sshd.service")
+
+        Returns:
+            Full unit file content as string
+
+        Example:
+            content = manager.cat_unit_file("sshd.service")
+            if "PermitRootLogin" in content:
+                print("Root login configuration found")
+        """
+        try:
+            cmd = ["systemctl", "cat", unit, "--no-pager"]
+            result = self.command(cmd)
+            return result
+        except Exception as e:
+            self.logger.debug(f"systemctl cat {unit} failed: {e}")
+            return ""
+
+    def read_unit_file(self, unit: str) -> dict[str, dict[str, str]]:
+        """
+        Parse unit file configuration into structured format.
+
+        Args:
+            unit: Unit name
+
+        Returns:
+            Dict of sections, each containing key-value pairs
+            Example: {"Unit": {"Description": "...", ...}, "Service": {...}, ...}
+
+        Example:
+            config = manager.read_unit_file("nginx.service")
+            print(f"Type: {config.get('Service', {}).get('Type')}")
+            print(f"ExecStart: {config.get('Service', {}).get('ExecStart')}")
+        """
+        try:
+            content = self.cat_unit_file(unit)
+            if not content:
+                return {}
+
+            sections = {}
+            current_section = None
+
+            for line in content.splitlines():
+                line = line.strip()
+
+                # Skip comments and empty lines
+                if not line or line.startswith("#") or line.startswith(";"):
+                    continue
+
+                # Skip file markers from systemctl cat output
+                if line.startswith("# /") or line == "# (empty)":
+                    continue
+
+                # Section header
+                if line.startswith("[") and line.endswith("]"):
+                    current_section = line[1:-1]
+                    sections[current_section] = {}
+                    continue
+
+                # Key-value pair
+                if "=" in line and current_section:
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    # Handle multi-value keys (like ExecStartPre)
+                    if key in sections[current_section]:
+                        # Convert to list if not already
+                        existing = sections[current_section][key]
+                        if not isinstance(existing, list):
+                            sections[current_section][key] = [existing]
+                        sections[current_section][key].append(value)
+                    else:
+                        sections[current_section][key] = value
+
+            return sections
+
+        except Exception as e:
+            self.logger.debug(f"read_unit_file {unit} failed: {e}")
+            return {}
+
+    def get_unit_overrides(self, unit: str) -> list[str]:
+        """
+        Get list of drop-in override files for a unit.
+
+        Args:
+            unit: Unit name
+
+        Returns:
+            List of override file paths
+
+        Example:
+            overrides = manager.get_unit_overrides("sshd.service")
+            if overrides:
+                print(f"Unit has {len(overrides)} overrides")
+        """
+        try:
+            content = self.cat_unit_file(unit)
+            if not content:
+                return []
+
+            overrides = []
+            for line in content.splitlines():
+                # systemctl cat shows file paths as comments
+                if line.startswith("# /") and ".d/" in line:
+                    path = line[2:].strip()
+                    overrides.append(path)
+
+            return overrides
+
+        except Exception as e:
+            self.logger.debug(f"get_unit_overrides {unit} failed: {e}")
+            return []
+
+    def get_unit_dependencies_full(self, unit: str) -> dict[str, list[str]]:
+        """
+        Get comprehensive dependency information for a unit.
+
+        Args:
+            unit: Unit name
+
+        Returns:
+            Dict with different dependency types:
+            - requires: Units this unit requires
+            - wants: Units this unit wants
+            - required_by: Units requiring this unit
+            - wanted_by: Units wanting this unit
+            - conflicts: Units conflicting with this unit
+            - before: Units that must start before this unit
+            - after: Units that must start after this unit
+
+        Example:
+            deps = manager.get_unit_dependencies_full("nginx.service")
+            print(f"Requires: {deps['requires']}")
+            print(f"Required by: {deps['required_by']}")
+        """
+        try:
+            properties = self.show(unit)
+
+            dependencies = {
+                "requires": [],
+                "wants": [],
+                "required_by": [],
+                "wanted_by": [],
+                "conflicts": [],
+                "before": [],
+                "after": [],
+            }
+
+            # Parse dependency properties
+            dep_mapping = {
+                "Requires": "requires",
+                "Wants": "wants",
+                "RequiredBy": "required_by",
+                "WantedBy": "wanted_by",
+                "Conflicts": "conflicts",
+                "Before": "before",
+                "After": "after",
+            }
+
+            for prop_key, dep_key in dep_mapping.items():
+                value = properties.get(prop_key, "")
+                if value:
+                    # Dependencies are space-separated
+                    dependencies[dep_key] = [d for d in value.split() if d]
+
+            return dependencies
+
+        except Exception as e:
+            self.logger.debug(f"get_unit_dependencies_full {unit} failed: {e}")
+            return {
+                "requires": [],
+                "wants": [],
+                "required_by": [],
+                "wanted_by": [],
+                "conflicts": [],
+                "before": [],
+                "after": [],
+            }
+
+    def analyze_unit_conflicts(self) -> list[dict[str, Any]]:
+        """
+        Analyze all units for potential conflicts.
+
+        Returns:
+            List of dicts describing conflicts:
+            - unit1, unit2: Conflicting units
+            - reason: Why they conflict
+            - severity: conflict severity (high/medium/low)
+
+        Example:
+            conflicts = manager.analyze_unit_conflicts()
+            for conflict in conflicts:
+                print(f"⚠️  {conflict['unit1']} conflicts with {conflict['unit2']}")
+                print(f"   Reason: {conflict['reason']}")
+        """
+        try:
+            conflicts = []
+
+            # Get all services
+            services = self.list_units("service", all_units=True)
+
+            # Check each service for explicit conflicts
+            for service in services:
+                unit_name = service["unit"]
+                deps = self.get_unit_dependencies_full(unit_name)
+
+                for conflicting_unit in deps.get("conflicts", []):
+                    # Check if conflicting unit exists and is active
+                    if self.is_active(conflicting_unit):
+                        conflicts.append({
+                            "unit1": unit_name,
+                            "unit2": conflicting_unit,
+                            "reason": f"{unit_name} explicitly conflicts with {conflicting_unit}",
+                            "severity": "high",
+                        })
+
+            # Check for port conflicts (services listening on same port)
+            # This would require parsing ExecStart commands, which is complex
+            # For now, just return explicit conflicts
+
+            return conflicts
+
+        except Exception as e:
+            self.logger.debug(f"analyze_unit_conflicts failed: {e}")
+            return []
+
+    def get_unit_security_settings(self, unit: str) -> dict[str, Any]:
+        """
+        Extract security-related settings from a unit.
+
+        Args:
+            unit: Unit name
+
+        Returns:
+            Dict with security settings including:
+            - private_tmp: Whether unit uses private /tmp
+            - protect_system: System protection level
+            - protect_home: Home directory protection
+            - no_new_privileges: NoNewPrivileges setting
+            - user: User the service runs as
+            - capabilities: Linux capabilities
+
+        Example:
+            security = manager.get_unit_security_settings("nginx.service")
+            if not security.get("private_tmp"):
+                print("⚠️  Service does not use PrivateTmp")
+        """
+        try:
+            properties = self.show(unit)
+            config = self.read_unit_file(unit)
+
+            service_section = config.get("Service", {})
+
+            security_settings = {
+                "private_tmp": properties.get("PrivateTmp", "no") == "yes",
+                "protect_system": properties.get("ProtectSystem", ""),
+                "protect_home": properties.get("ProtectHome", ""),
+                "no_new_privileges": properties.get("NoNewPrivileges", "no") == "yes",
+                "user": properties.get("User", "root"),
+                "group": properties.get("Group", ""),
+                "capabilities": properties.get("CapabilityBoundingSet", ""),
+                "read_only_paths": service_section.get("ReadOnlyPaths", ""),
+                "inaccessible_paths": service_section.get("InaccessiblePaths", ""),
+                "private_devices": properties.get("PrivateDevices", "no") == "yes",
+                "protect_kernel_tunables": properties.get("ProtectKernelTunables", "no") == "yes",
+                "protect_control_groups": properties.get("ProtectControlGroups", "no") == "yes",
+                "restrict_namespaces": properties.get("RestrictNamespaces", "no") == "yes",
+                "lock_personality": properties.get("LockPersonality", "no") == "yes",
+            }
+
+            return security_settings
+
+        except Exception as e:
+            self.logger.debug(f"get_unit_security_settings {unit} failed: {e}")
+            return {}

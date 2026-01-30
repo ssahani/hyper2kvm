@@ -1789,6 +1789,118 @@ class VMCraft:
             raise RuntimeError("Not launched")
         return self._systemctl.list_mounts()
 
+    # Enhanced systemctl operations
+
+    def systemctl_cat_unit_file(self, unit: str) -> str:
+        """
+        Get full unit file content including drop-ins.
+
+        Args:
+            unit: Unit name (e.g., "sshd.service")
+
+        Returns:
+            Full unit file content
+
+        Example:
+            content = g.systemctl_cat_unit_file("nginx.service")
+            if "PrivateTmp" in content:
+                print("Service uses PrivateTmp")
+        """
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.cat_unit_file(unit)
+
+    def systemctl_read_unit_file(self, unit: str) -> dict[str, dict[str, str]]:
+        """
+        Parse unit file into structured configuration.
+
+        Args:
+            unit: Unit name
+
+        Returns:
+            Dict of sections with key-value pairs
+
+        Example:
+            config = g.systemctl_read_unit_file("sshd.service")
+            exec_start = config.get("Service", {}).get("ExecStart")
+            print(f"ExecStart: {exec_start}")
+        """
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.read_unit_file(unit)
+
+    def systemctl_get_unit_overrides(self, unit: str) -> list[str]:
+        """
+        Get list of drop-in override files for a unit.
+
+        Args:
+            unit: Unit name
+
+        Returns:
+            List of override file paths
+
+        Example:
+            overrides = g.systemctl_get_unit_overrides("sshd.service")
+            print(f"Unit has {len(overrides)} override(s)")
+        """
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.get_unit_overrides(unit)
+
+    def systemctl_get_unit_dependencies_full(self, unit: str) -> dict[str, list[str]]:
+        """
+        Get comprehensive dependency information for a unit.
+
+        Args:
+            unit: Unit name
+
+        Returns:
+            Dict with dependency types (requires, wants, conflicts, etc.)
+
+        Example:
+            deps = g.systemctl_get_unit_dependencies_full("nginx.service")
+            print(f"Requires: {deps['requires']}")
+            print(f"After: {deps['after']}")
+        """
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.get_unit_dependencies_full(unit)
+
+    def systemctl_analyze_unit_conflicts(self) -> list[dict[str, Any]]:
+        """
+        Analyze all units for potential conflicts.
+
+        Returns:
+            List of dicts describing conflicts
+
+        Example:
+            conflicts = g.systemctl_analyze_unit_conflicts()
+            for conflict in conflicts:
+                print(f"Conflict: {conflict['unit1']} vs {conflict['unit2']}")
+        """
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.analyze_unit_conflicts()
+
+    def systemctl_get_unit_security_settings(self, unit: str) -> dict[str, Any]:
+        """
+        Extract security-related settings from a unit.
+
+        Args:
+            unit: Unit name
+
+        Returns:
+            Dict with security settings (PrivateTmp, ProtectSystem, etc.)
+
+        Example:
+            security = g.systemctl_get_unit_security_settings("nginx.service")
+            if not security.get("private_tmp"):
+                print("⚠️  Service does not use PrivateTmp")
+        """
+        if not self._systemctl:
+            raise RuntimeError("Not launched")
+        return self._systemctl.get_unit_security_settings(unit)
+
     # === journalctl APIs ===
 
     def journalctl_query(
@@ -1848,6 +1960,82 @@ class VMCraft:
         if not self._journalctl:
             raise RuntimeError("Not launched")
         return self._journalctl.export(output_format, since)
+
+    # Enhanced journal operations
+
+    def journalctl_search(self, pattern: str, since: str | None = None, lines: int = 100) -> list[dict[str, str]]:
+        """
+        Search journal logs for a pattern.
+
+        Args:
+            pattern: Pattern to search for (grep-compatible regex)
+            since: Search logs since this time
+            lines: Maximum number of matching entries
+
+        Returns:
+            List of matching journal entries
+
+        Example:
+            # Search for authentication failures
+            failures = g.journalctl_search("authentication failure", since="1 day ago")
+            for entry in failures:
+                print(f"{entry['unit']}: {entry['message']}")
+        """
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.search(pattern, since, lines)
+
+    def journalctl_statistics(self) -> dict[str, Any]:
+        """
+        Get journal statistics and message counts.
+
+        Returns:
+            Dict with journal statistics
+
+        Example:
+            stats = g.journalctl_statistics()
+            print(f"Time range: {stats['time_range']}")
+        """
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.statistics()
+
+    def journalctl_vacuum(self, size: str | None = None, time: str | None = None, files: int | None = None) -> dict[str, str]:
+        """
+        Clean up old journal log files.
+
+        Args:
+            size: Keep only this much disk space (e.g., "500M")
+            time: Keep only logs newer than this (e.g., "1month")
+            files: Keep only this many journal files
+
+        Returns:
+            Dict with vacuum results
+
+        Example:
+            result = g.journalctl_vacuum(size="500M")
+        """
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.vacuum(size, time, files)
+
+    def journalctl_get_boot_time(self, boot: int | str = 0) -> dict[str, str]:
+        """
+        Get boot and shutdown time for a specific boot.
+
+        Args:
+            boot: Boot ID or offset (0=current, -1=previous)
+
+        Returns:
+            Dict with boot_time and shutdown_time
+
+        Example:
+            boot_info = g.journalctl_get_boot_time(0)
+            print(f"Boot time: {boot_info['boot_time']}")
+        """
+        if not self._journalctl:
+            raise RuntimeError("Not launched")
+        return self._journalctl.get_boot_time(boot)
 
     # === systemd-analyze APIs ===
 
