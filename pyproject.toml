@@ -25,7 +25,6 @@ keywords = [
     "azure",
     "hyper-v",
     "libvirt",
-    "virt-v2v",
     "cloud-migration",
 ]
 classifiers = [
