@@ -33,18 +33,25 @@ Added `StorageStackActivator.deactivate_all()` method that deactivates storage i
 def deactivate_all(self) -> None:
     """
     Deactivate entire storage stack.
-    
+
     Deactivates all storage layers in reverse order:
     1. LUKS devices
     2. LVM volume groups
     3. ZFS pools
     4. mdraid arrays
+    5. Final aggressive cleanup pass
     """
-    # Deactivate LUKS
-    # Deactivate LVM - vgchange -an --all
-    # Settle udev
-    # Export ZFS pools
-    # Stop mdraid arrays
+    # Targeted cleanup
+    # - Deactivate LUKS devices
+    # - Deactivate LVM - vgchange -an --all
+    # - Export ZFS pools
+    # - Stop mdraid arrays
+
+    # Final aggressive cleanup (catches stray resources)
+    # - umount -R /tmp/hyper2kvm-guestfs-*
+    # - vgchange -an --all (second pass)
+    # - dmsetup remove_all
+    # - udevadm settle
 ```
 
 Integrated into VMCraft shutdown sequence:
@@ -142,7 +149,13 @@ nbd._validate_image(Path('/home/ssahani/Downloads/centos8/64bit/centos8.vmdk'))
    - Validates images before NBD connection
    - Files: nbd.py
 
-3. **00d7a8e** - test: Add YAML configurations for RHEL/CentOS test scenarios
+3. **9a63d5d** - fix: Add aggressive final cleanup pass for stray resources
+   - Added recursive unmount: `umount -R /tmp/hyper2kvm-guestfs-*`
+   - Added dmsetup cleanup: `dmsetup remove_all`
+   - Added second LVM pass and final udev settle
+   - Files: storage.py
+
+4. **00d7a8e** - test: Add YAML configurations for RHEL/CentOS test scenarios
    - Added test YAML files
    - Files: test-*.yaml
 
