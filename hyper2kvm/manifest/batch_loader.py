@@ -267,6 +267,10 @@ class BatchLoader:
         """Get continue-on-error flag (default: True)."""
         return self.manifest.get("batch_metadata", {}).get("continue_on_error", True)
 
+    def get_metadata(self) -> dict[str, Any]:
+        """Get complete batch metadata dictionary."""
+        return self.manifest.get("batch_metadata", {})
+
     def get_shared_config(self) -> dict[str, Any]:
         """Get shared configuration applied to all VMs."""
         return self.manifest.get("shared_config", {})

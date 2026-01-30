@@ -75,13 +75,21 @@ class TestLibvirtXML:
 
     def test_detect_bios_firmware(self, tmp_path):
         """Test BIOS firmware detection (no loader)."""
-        xml_content = """<?xml version="1.0"?>
+        # Create dummy disk first
+        disk_path = tmp_path / "disk.qcow2"
+        disk_path.write_bytes(b"\x00" * 1024)
+
+        xml_content = f"""<?xml version="1.0"?>
 <domain type="kvm">
   <name>bios-vm</name>
   <os>
     <type arch="x86_64">hvm</type>
   </os>
   <devices>
+    <disk type="file" device="disk">
+      <source file="{disk_path}"/>
+      <target dev="vda"/>
+    </disk>
   </devices>
 </domain>"""
         xml_path = tmp_path / "bios.xml"
@@ -112,25 +120,26 @@ class TestLibvirtXML:
 
     def test_skip_cdrom_devices(self, tmp_path):
         """Test that CD-ROM devices are skipped."""
-        xml_content = """<?xml version="1.0"?>
+        # Create only the disk file
+        disk_path = tmp_path / "disk.qcow2"
+        disk_path.write_bytes(b"\x00" * 100)
+
+        xml_content = f"""<?xml version="1.0"?>
 <domain type="kvm">
   <name>test</name>
   <devices>
     <disk type="file" device="disk">
-      <source file="/tmp/disk.qcow2"/>
+      <source file="{disk_path}"/>
       <target dev="vda"/>
     </disk>
     <disk type="file" device="cdrom">
-      <source file="/tmp/cdrom.iso"/>
+      <source file="{tmp_path}/cdrom.iso"/>
       <target dev="sr0"/>
     </disk>
   </devices>
 </domain>"""
         xml_path = tmp_path / "test.xml"
         xml_path.write_text(xml_content)
-
-        # Create only the disk file
-        (tmp_path / "disk.qcow2").write_bytes(b"\x00" * 100)
 
         manifest = LibvirtXML.parse_domain_xml(
             None, xml_path, tmp_path, compute_checksums=False
@@ -197,7 +206,8 @@ class TestLibvirtXML:
 
     def test_missing_xml_file(self, tmp_path):
         """Test error when XML file doesn't exist."""
-        with pytest.raises(SystemExit):  # U.die calls sys.exit
+        from hyper2kvm.core.exceptions import Fatal
+        with pytest.raises(Fatal):
             LibvirtXML.parse_domain_xml(
                 None,
                 tmp_path / "nonexistent.xml",
@@ -206,14 +216,16 @@ class TestLibvirtXML:
 
     def test_invalid_xml_syntax(self, tmp_path):
         """Test error with invalid XML syntax."""
+        from hyper2kvm.core.exceptions import Fatal
         xml_path = tmp_path / "invalid.xml"
         xml_path.write_text("not valid xml <unclosed")
 
-        with pytest.raises(SystemExit):  # U.die calls sys.exit
+        with pytest.raises(Fatal):
             LibvirtXML.parse_domain_xml(None, xml_path, tmp_path)
 
     def test_no_disks_found(self, tmp_path):
         """Test error when no valid disks found."""
+        from hyper2kvm.core.exceptions import Fatal
         xml_content = """<?xml version="1.0"?>
 <domain type="kvm">
   <name>no-disks</name>
@@ -223,7 +235,7 @@ class TestLibvirtXML:
         xml_path = tmp_path / "nodisks.xml"
         xml_path.write_text(xml_content)
 
-        with pytest.raises(SystemExit):  # U.die calls sys.exit
+        with pytest.raises(Fatal):
             LibvirtXML.parse_domain_xml(None, xml_path, tmp_path)
 
     def test_multiple_disks_boot_order(self, tmp_path):
@@ -269,7 +281,11 @@ class TestLibvirtXML:
 
     def test_os_hint_extraction(self, tmp_path):
         """Test OS distro hint extraction from libosinfo."""
-        xml_content = """<?xml version="1.0"?>
+        # Create dummy disk
+        disk_path = tmp_path / "disk.qcow2"
+        disk_path.write_bytes(b"\x00" * 100)
+
+        xml_content = f"""<?xml version="1.0"?>
 <domain type="kvm">
   <name>rhel-vm</name>
   <metadata>
@@ -277,9 +293,12 @@ class TestLibvirtXML:
       <libosinfo:os id="http://redhat.com/rhel/9.0"/>
     </libosinfo:libosinfo>
   </metadata>
+  <os>
+    <type arch="x86_64">hvm</type>
+  </os>
   <devices>
     <disk type="file" device="disk">
-      <source file="/tmp/disk.qcow2"/>
+      <source file="{disk_path}"/>
       <target dev="vda"/>
     </disk>
   </devices>
@@ -287,22 +306,12 @@ class TestLibvirtXML:
         xml_path = tmp_path / "rhel.xml"
         xml_path.write_text(xml_content)
 
-        # Create dummy disk
-        (Path("/tmp") / "disk.qcow2").touch()
+        manifest = LibvirtXML.parse_domain_xml(
+            None, xml_path, tmp_path, compute_checksums=False
+        )
 
-        try:
-            manifest = LibvirtXML.parse_domain_xml(
-                None, xml_path, tmp_path, compute_checksums=False
-            )
-
-            # Should detect RHEL
-            assert "rhel" in manifest["os_hint"].lower()
-        finally:
-            # Cleanup
-            try:
-                (Path("/tmp") / "disk.qcow2").unlink()
-            except Exception:
-                pass
+        # Should detect RHEL
+        assert "rhel" in manifest["os_hint"].lower()
 
     def test_manifest_output_structure(self, tmp_path):
         """Test that generated manifest has correct structure."""

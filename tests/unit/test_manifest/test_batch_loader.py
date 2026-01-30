@@ -81,6 +81,8 @@ vms:
 
     def test_invalid_version(self):
         """Test that invalid version raises error."""
+        from hyper2kvm.manifest.batch_loader import BatchValidationError
+
         batch_data = {"batch_version": "2.0", "vms": []}
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -89,13 +91,15 @@ vms:
 
         try:
             loader = BatchLoader()
-            with pytest.raises(ValueError, match="Unsupported batch version"):
+            with pytest.raises(BatchValidationError, match="Unsupported batch version"):
                 loader.load(batch_path)
         finally:
             batch_path.unlink()
 
     def test_missing_required_fields(self):
         """Test that missing required fields raise error."""
+        from hyper2kvm.manifest.batch_loader import BatchValidationError
+
         batch_data = {"batch_version": "1.0"}  # Missing 'vms'
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -104,7 +108,7 @@ vms:
 
         try:
             loader = BatchLoader()
-            with pytest.raises(ValueError, match="missing required field"):
+            with pytest.raises(BatchValidationError, match="[Mm]issing required field"):
                 loader.load(batch_path)
         finally:
             batch_path.unlink()

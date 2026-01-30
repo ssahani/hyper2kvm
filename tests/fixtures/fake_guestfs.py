@@ -19,6 +19,12 @@ class FakeGuestFS:
         self._mounted_dev = None
         self._mount_local_started = False
 
+        # Add common systemd paths by default (for testing)
+        self.fs["/usr/lib/systemd/systemd"] = b""
+        self.fs["/usr/bin/systemctl"] = b""
+        self.dirs.add("/etc/systemd/system")
+        self.dirs.add("/usr/lib/systemd/system")
+
     def set_trace(self, *_a, **_k): return None
     def add_drive_opts(self, *_a, **_k): return None
     def launch(self): return None
@@ -38,6 +44,7 @@ class FakeGuestFS:
 
     def is_file(self, p): return p in self.fs
     def is_dir(self, p): return p in self.dirs
+    def exists(self, p): return p in self.fs or p in self.dirs
 
     def read_file(self, p): return self.fs[p]
     def write(self, p, data): self.fs[p] = bytes(data)
@@ -46,6 +53,9 @@ class FakeGuestFS:
 
     def mkdir_p(self, p): self.dirs.add(p)
     def chmod(self, *_a, **_k): return None
+    def ln_sf(self, target, link_name):
+        """Create a symlink (force overwrite)"""
+        self.fs[link_name] = f"link->{target}".encode() if isinstance(target, str) else b"link->" + target
 
     def mount(self, dev, mp):
         if mp != "/":

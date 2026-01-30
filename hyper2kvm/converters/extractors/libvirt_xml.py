@@ -150,7 +150,7 @@ class LibvirtXML:
             },
             "disks": disks,
             "firmware": {"type": firmware},
-            "os_hint": os_distro or os_type,
+            "os_hint": os_distro if os_distro != "unknown" else os_type,
         }
 
         # Add network metadata if present
@@ -289,7 +289,7 @@ class LibvirtXML:
 
     @staticmethod
     def _extract_disks(
-        logger: logging.Logger,
+        logger: logging.Logger | None,
         root: ET.Element,
         compute_checksums: bool,
     ) -> list[dict[str, Any]]:
@@ -331,11 +331,13 @@ class LibvirtXML:
 
             # Skip if disk doesn't exist
             if not disk_path.exists():
-                log_warning(f"Disk not found (skipping): {disk_path}")
+                if logger:
+                    logger.warning(f"Disk not found (skipping): {disk_path}")
                 continue
 
             if not disk_path.is_file():
-                log_warning(f"Disk is not a file (skipping): {disk_path}")
+                if logger:
+                    logger.warning(f"Disk is not a file (skipping): {disk_path}")
                 continue
 
             # Get disk format
@@ -362,7 +364,8 @@ class LibvirtXML:
             # Compute checksum if requested
             checksum = None
             if compute_checksums:
-                log_info(f"Computing SHA256 for {disk_id}...")
+                if logger:
+                    logger.info(f"Computing SHA256 for {disk_id}...")
                 checksum = LibvirtXML._compute_sha256(disk_path)
 
             disks.append({
@@ -381,7 +384,7 @@ class LibvirtXML:
 
     @staticmethod
     def _extract_networks(
-        logger: logging.Logger,
+        logger: logging.Logger | None,
         root: ET.Element,
     ) -> list[dict[str, Any]]:
         """
@@ -473,7 +476,7 @@ class LibvirtXML:
 
     @staticmethod
     def _write_manifest(
-        logger: logging.Logger,
+        logger: logging.Logger | None,
         manifest: dict[str, Any],
         output_path: Path,
     ) -> None:
@@ -498,7 +501,8 @@ class LibvirtXML:
             import os
             os.replace(tmp_path, str(output_path))
 
-            log_info(f"✅ Manifest written: {output_path}")
+            if logger:
+                logger.info(f"✅ Manifest written: {output_path}")
 
         except Exception:
             # Clean up temp file on error

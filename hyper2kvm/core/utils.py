@@ -33,8 +33,9 @@ except Exception:  # pragma: no cover
 
 class U:
     @staticmethod
-    def die(logger: logging.Logger, msg: str, code: int = 1) -> None:
-        logger.error(msg)
+    def die(logger: logging.Logger | None, msg: str, code: int = 1) -> None:
+        if logger:
+            logger.error(msg)
         raise Fatal(code, msg)
 
     @staticmethod
@@ -69,7 +70,9 @@ class U:
         return f"{n} B"
 
     @staticmethod
-    def banner(logger: logging.Logger, title: str) -> None:
+    def banner(logger: logging.Logger | None, title: str) -> None:
+        if not logger:
+            return
         line = "─" * max(10, len(title) + 2)
         logger.info(line)
         logger.info(f" {title}")

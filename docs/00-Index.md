@@ -20,6 +20,7 @@
 
 ### 👨‍🍳 Recipes & Workflows
 - **[📖 06-Cookbook](06-Cookbook.md)** - Common migration recipes
+- **[⚙️ 14-Configuration-Injection-Guide](14-Configuration-Injection-Guide.md)** - Pre-boot VM customization
 - **[☁️ 30-vSphere-Export](30-vSphere-Export.md)** - vSphere to KVM workflows
 
 ---
@@ -181,10 +182,12 @@ report: /tmp/hyper2kvm-report.md
 23. **[🦎 SUSE](23-SUSE.md)** - openSUSE/SUSE Linux migration
 
 ### Advanced Topics
+14. **[⚙️ Configuration Injection](14-Configuration-Injection-Guide.md)** - Pre-boot network, user, service, and script injection
 30. **[☁️ vSphere Export](30-vSphere-Export.md)** - vSphere to KVM using direct export
 
-### Troubleshooting
+### Troubleshooting & Development
 90. **[⚠️ Failure Modes](90-Failure-Modes.md)** - Troubleshooting guide
+95. **[🧪 Testing Guide](95-Testing-Guide.md)** - Testing infrastructure and best practices
 
 ---
 
@@ -279,9 +282,10 @@ See the main [README](../README.md) for contribution guidelines.
 4. **[⚠️ Failure Modes](90-Failure-Modes.md)** - Troubleshooting
 
 ### Recently Updated
+- **[14-Configuration-Injection-Guide](14-Configuration-Injection-Guide.md)** - NEW: Pre-boot VM customization
+- **[95-Testing-Guide](95-Testing-Guide.md)** - NEW: Complete testing guide (100% coverage)
 - **[20-RHEL-10](20-RHEL-10.md)** - Updated for RHEL 10 Beta
 - **[02-Installation](02-Installation.md)** - Added macOS & Windows WSL2
-- **[01-Architecture](01-Architecture.md)** - Complete rewrite
 
 ---
 
