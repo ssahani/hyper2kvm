@@ -5,79 +5,79 @@ Complete documentation for the hyper2kvm VM migration toolkit.
 ## Table of Contents
 
 ### Getting Started
-- **[Quick Start Guide](QUICKSTART.md)** - Get running in 5 minutes
-- **[Installation](INSTALL.md)** - Detailed installation instructions
-- **[CLI Reference](CLI_REFERENCE.md)** - Complete command-line reference
+- **[Quick Start Guide](03-Quick-Start.md)** - Get running in 5 minutes
+- **[Installation](02-Installation.md)** - Detailed installation instructions
+- **[CLI Reference](04-CLI-Reference.md)** - Complete command-line reference
 
 ### Core Concepts
-- **[Architecture](ARCHITECTURE.md)** - System design and components
-- **[YAML Configuration](YAML-EXAMPLES.md)** - Configuration file reference
+- **[Architecture](01-Architecture.md)** - System design and components
+- **[YAML Configuration](05-YAML-Examples.md)** - Configuration file reference
 
 ### Platform-Specific Guides
-- **[Windows Migration](WINDOWS.md)** - Windows VM conversion guide
-- **[PhotonOS](PHOTONOS.md)** - VMware PhotonOS migrations
-- **[RHEL 10](RHEL10.md)** - Red Hat Enterprise Linux 10
-- **[Ubuntu 24.04](ubuntu-24.04.03.md)** - Ubuntu migrations
-- **[SUSE](SUSE-TEST.MD)** - SUSE Linux conversions
+- **[Windows Migration](10-Windows-Guide.md)** - Windows VM conversion guide
+- **[PhotonOS](21-Photon-OS.md)** - VMware PhotonOS migrations
+- **[RHEL 10](20-RHEL-10.md)** - Red Hat Enterprise Linux 10
+- **[Ubuntu 24.04](22-Ubuntu-24.04.md)** - Ubuntu migrations
+- **[SUSE](23-SUSE.md)** - SUSE Linux conversions
 
 ### Advanced Topics
-- **[vSphere Integration](VSPEHERE-V2V-EXPORT.md)** - vSphere/ESXi export
-- **[vSphere Design](hyper2kvm-vsphere-design.md)** - vSphere architecture
-- **[Cookbook](cookbook.md)** - Recipes and examples
+- **[vSphere Integration](30-vSphere-V2V.md)** - vSphere/ESXi export
+- **[vSphere Design](07-vSphere-Design.md)** - vSphere architecture
+- **[Cookbook](06-Cookbook.md)** - Recipes and examples
 
 ### Troubleshooting
-- **[Failure Modes](FAILURE_MODES.md)** - Common problems and solutions
-- **[Windows Boot Cycle](windows-boot-cycle.md)** - Windows boot troubleshooting
-- **[Windows Network & Drivers](windows-network-and-drivers.md)** - Driver issues
-- **[Windows 10 Troubleshooting](windows-10-troubleshoot.md)** - Windows 10 specific
+- **[Failure Modes](90-Failure-Modes.md)** - Common problems and solutions
+- **[Windows Boot Cycle](11-Windows-Boot-Cycle.md)** - Windows boot troubleshooting
+- **[Windows Network & Drivers](13-Windows-Networking.md)** - Driver issues
+- **[Windows 10 Troubleshooting](12-Windows-Troubleshooting.md)** - Windows 10 specific
 
 ---
 
 ## Quick Links
 
 ### For New Users
-1. [Quick Start](QUICKSTART.md) - Start here!
+1. [Quick Start](03-Quick-Start.md) - Start here!
 2. [Examples](../examples/README.md) - 30+ working examples
-3. [Installation](INSTALL.md) - System setup
+3. [Installation](02-Installation.md) - System setup
 
 ### For Migration Projects
-1. [CLI Reference](CLI_REFERENCE.md) - All command options
-2. [YAML Examples](YAML-EXAMPLES.md) - Configuration templates
-3. [Cookbook](cookbook.md) - Common scenarios
+1. [CLI Reference](04-CLI-Reference.md) - All command options
+2. [YAML Examples](05-YAML-Examples.md) - Configuration templates
+3. [Cookbook](06-Cookbook.md) - Common scenarios
 
 ### For Troubleshooting
-1. [Failure Modes](FAILURE_MODES.md) - Error reference
-2. [Windows Guide](WINDOWS.md) - Windows issues
-3. [Architecture](ARCHITECTURE.md) - Understanding internals
+1. [Failure Modes](90-Failure-Modes.md) - Error reference
+2. [Windows Guide](10-Windows-Guide.md) - Windows issues
+3. [Architecture](01-Architecture.md) - Understanding internals
 
 ---
 
 ## Documentation by Task
 
 ### Converting a Linux VM
-1. Read [Quick Start](QUICKSTART.md) → "Linux VM" section
+1. Read [Quick Start](03-Quick-Start.md) → "Linux VM" section
 2. Check [Examples](../examples/README.md) → "Local Conversions"
-3. Review [CLI Reference](CLI_REFERENCE.md) for options
+3. Review [CLI Reference](04-CLI-Reference.md) for options
 
 ### Converting a Windows VM
-1. Read [Windows Migration](WINDOWS.md) - Complete guide
+1. Read [Windows Migration](10-Windows-Guide.md) - Complete guide
 2. Download VirtIO drivers (see Windows guide)
 3. Use [Examples](../examples/README.md) → "Windows with VirtIO"
-4. If issues: [Windows Troubleshooting](windows-10-troubleshoot.md)
+4. If issues: [Windows Troubleshooting](12-Windows-Troubleshooting.md)
 
 ### Migrating from ESXi/vSphere
-1. Read [vSphere Integration](VSPEHERE-V2V-EXPORT.md)
+1. Read [vSphere Integration](30-vSphere-V2V.md)
 2. Use [Examples](../examples/README.md) → "Fetch from ESXi"
-3. Check [vSphere Design](hyper2kvm-vsphere-design.md) for details
+3. Check [vSphere Design](07-vSphere-Design.md) for details
 
 ### Batch Migration of Many VMs
-1. Read [YAML Configuration](YAML-EXAMPLES.md)
+1. Read [YAML Configuration](05-YAML-Examples.md)
 2. Use [Examples](../examples/README.md) → "Batch Operations"
-3. Check [Cookbook](cookbook.md) for batch recipes
+3. Check [Cookbook](06-Cookbook.md) for batch recipes
 
 ### Troubleshooting Boot Failures
-1. Check [Failure Modes](FAILURE_MODES.md)
-2. For Windows: [Windows Boot Cycle](windows-boot-cycle.md)
+1. Check [Failure Modes](90-Failure-Modes.md)
+2. For Windows: [Windows Boot Cycle](11-Windows-Boot-Cycle.md)
 3. Enable debug: `--log-level DEBUG`
 4. Generate report: `--report migration-report.md`
 
@@ -88,29 +88,32 @@ Complete documentation for the hyper2kvm VM migration toolkit.
 ```
 docs/
 ├── README.md                          # This file - documentation index
-├── QUICKSTART.md                      # 5-minute getting started guide
-├── INSTALL.md                         # Detailed installation
-├── CLI_REFERENCE.md                   # Command-line reference
-├── ARCHITECTURE.md                    # System design
-├── YAML-EXAMPLES.md                   # Configuration examples
-├── cookbook.md                        # Recipes and howtos
-├── FAILURE_MODES.md                   # Troubleshooting guide
+├── 00-Index.md                        # Documentation index with navigation
+├── 01-Architecture.md                 # System design
+├── 02-Installation.md                 # Detailed installation
+├── 03-Quick-Start.md                  # 5-minute getting started guide
+├── 04-CLI-Reference.md                # Command-line reference
+├── 05-YAML-Examples.md                # Configuration examples
+├── 06-Cookbook.md                     # Recipes and howtos
+├── 07-vSphere-Design.md               # vSphere architecture
 │
 ├── Windows-Specific/
-│   ├── WINDOWS.md                     # Windows migration guide
-│   ├── windows-boot-cycle.md          # Boot troubleshooting
-│   ├── windows-network-and-drivers.md # Driver issues
-│   └── windows-10-troubleshoot.md     # Windows 10 specific
+│   ├── 10-Windows-Guide.md            # Windows migration guide
+│   ├── 11-Windows-Boot-Cycle.md       # Boot troubleshooting
+│   ├── 12-Windows-Troubleshooting.md  # Windows troubleshooting
+│   └── 13-Windows-Networking.md       # Driver issues
 │
 ├── Platform-Specific/
-│   ├── PHOTONOS.md                    # VMware PhotonOS
-│   ├── RHEL10.md                      # RHEL 10
-│   ├── ubuntu-24.04.03.md             # Ubuntu 24.04
-│   └── SUSE-TEST.MD                   # SUSE Linux
+│   ├── 20-RHEL-10.md                  # RHEL 10
+│   ├── 21-Photon-OS.md                # VMware PhotonOS
+│   ├── 22-Ubuntu-24.04.md             # Ubuntu 24.04
+│   └── 23-SUSE.md                     # SUSE Linux
 │
-└── Integration/
-    ├── VSPEHERE-V2V-EXPORT.md         # vSphere export
-    └── hyper2kvm-vsphere-design.md    # vSphere architecture
+├── Integration/
+│   └── 30-vSphere-V2V.md              # vSphere export
+│
+└── Troubleshooting/
+    └── 90-Failure-Modes.md            # Troubleshooting guide
 ```
 
 ---
@@ -122,7 +125,7 @@ docs/
 **Goal:** Convert a single Linux VMDK to QCOW2
 
 **Path:**
-1. [Quick Start](QUICKSTART.md) - Installation & first conversion
+1. [Quick Start](03-Quick-Start.md) - Installation & first conversion
 2. [Examples](../examples/README.md) - local-linux-basic.json
 3. Success! Now try more [examples](../examples/)
 
@@ -131,30 +134,30 @@ docs/
 **Goal:** Migrate 100+ VMs from VMware to KVM
 
 **Path:**
-1. [Architecture](ARCHITECTURE.md) - Understand the system
-2. [vSphere Integration](VSPEHERE-V2V-EXPORT.md) - Setup vSphere export
-3. [YAML Configuration](YAML-EXAMPLES.md) - Batch configuration
-4. [Cookbook](cookbook.md) - Batch migration recipes
-5. [Failure Modes](FAILURE_MODES.md) - Handle errors
+1. [Architecture](01-Architecture.md) - Understand the system
+2. [vSphere Integration](30-vSphere-V2V.md) - Setup vSphere export
+3. [YAML Configuration](05-YAML-Examples.md) - Batch configuration
+4. [Cookbook](06-Cookbook.md) - Batch migration recipes
+5. [Failure Modes](90-Failure-Modes.md) - Handle errors
 
 ### Scenario: Windows VM Won't Boot
 
 **Goal:** Fix boot issues after migration
 
 **Path:**
-1. [Windows Boot Cycle](windows-boot-cycle.md) - Understand Windows boot
-2. [Windows Troubleshooting](windows-10-troubleshoot.md) - Common fixes
-3. [Windows Network & Drivers](windows-network-and-drivers.md) - Driver issues
-4. [Failure Modes](FAILURE_MODES.md) - General troubleshooting
+1. [Windows Boot Cycle](11-Windows-Boot-Cycle.md) - Understand Windows boot
+2. [Windows Troubleshooting](12-Windows-Troubleshooting.md) - Common fixes
+3. [Windows Network & Drivers](13-Windows-Networking.md) - Driver issues
+4. [Failure Modes](90-Failure-Modes.md) - General troubleshooting
 
 ### Scenario: Enterprise Automation
 
 **Goal:** Automate migrations with CI/CD
 
 **Path:**
-1. [Architecture](ARCHITECTURE.md) - System components
-2. [YAML Configuration](YAML-EXAMPLES.md) - Config file format
-3. [CLI Reference](CLI_REFERENCE.md) - All options
+1. [Architecture](01-Architecture.md) - System components
+2. [YAML Configuration](05-YAML-Examples.md) - Config file format
+3. [CLI Reference](04-CLI-Reference.md) - All options
 4. See `.github/workflows/` for CI/CD examples
 
 ---

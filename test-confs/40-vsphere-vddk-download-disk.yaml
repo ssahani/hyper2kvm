@@ -1,47 +1,49 @@
-# -------------------------------------------------------------------
-# vddk-download-disk.yaml
-# Test: VDDK raw disk download (single VM disk, no virt-v2v)
+# ==============================================================================
+# vSphere VDDK Download - Single Disk
+# ==============================================================================
 #
-# Run:
-#   export VC_PASSWORD='your-vcenter-password'
-#   sudo -E ./hyper2kvm.py --config vddk-download-disk.yaml vsphere vddk_download_disk
-# -------------------------------------------------------------------
+# Downloads single VM disk using VDDK (no virt-v2v)
+#
+# Usage:
+#   export VC_PASSWORD='your-password'
+#   sudo -E hyper2kvm --config 40-vsphere-vddk-download-disk.yaml vsphere
+#
+# Features:
+#   - VDDK raw disk download
+#   - Direct disk access (faster than NFC)
+#   - No guest OS conversion
+# ==============================================================================
 
 command: vsphere
 
-# vCenter / ESXi control-plane (pyvmomi in vmware_client.py)
-vcenter: 192.168.73.42
+# vCenter / ESXi Connection (pyvmomi control-plane)
+vcenter: vcenter.example.com
 vc_user: administrator@vsphere.local
 vc_password_env: VC_PASSWORD
 vc_insecure: true
 vc_port: 443
 dc_name: ha-datacenter
 
-# required by subcommand dispatcher
+# Action
 vs_action: vddk_download_disk
 
-# target VM + disk selector
+# Target VM + Disk Selector
 vm_name: esx8.0-rhel10.0beta-x86_64-efi
 disk: 0
 
-# output file path (downloaded raw VMDK stream)
+# Output file path (downloaded raw VMDK stream)
 local_path: ./downloads/esx8.0-rhel10.0beta-x86_64-efi-disk0.vmdk
 
-# --- VDDK client knobs (vddk_client.py) ---
-# These map to argparse dests:
-#   --vddk-libdir      -> vs_vddk_libdir2
-#   --vddk-thumbprint  -> vs_vddk_thumbprint2
-#   --no-verify        -> vs_no_verify2
-#   --vddk-transports  -> vs_vddk_transports2
-vs_vddk_libdir2: /opt/vmware-vix-disklib-distrib
-# vs_vddk_thumbprint2: "aa:bb:cc:dd:ee:..."   # recommended if you *do* verify
-vs_no_verify2: true
-vs_vddk_transports2: "nbdssl:nbd"
+# VDDK Configuration
+# Note: Fixed field naming - using vs_vddk_libdir instead of vs_vddk_libdir2
+vs_vddk_libdir: /path/to/vmware-vix-disklib-distrib
+# vs_vddk_thumbprint: "AA:BB:CC:DD:EE:..."   # Recommended if you enable verification
+vs_no_verify: true
+vs_vddk_transports: "nbdssl:nbd"
 
-# logging / behavior
+# Logging / Output
 output_dir: ./out
 verbose: 2
 log_file: ./out/vddk-download.log
 json: true
 checksum: true
-
