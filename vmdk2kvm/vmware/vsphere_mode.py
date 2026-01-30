@@ -331,6 +331,7 @@ class VsphereMode:
         for attr in (
             "download_datastore_file_vddk",
             "download_disk_vddk",
+            "vddk_download_disk",
             "vddk_available",
             "has_vddk",
             "vddk",
