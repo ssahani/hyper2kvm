@@ -312,15 +312,14 @@ class SanityChecker:
             return
 
         try:
-            import guestfs  # type: ignore
+            from .guestfs_factory import create_guestfs
 
-            g = guestfs.GuestFS(python_return_dict=True)
+            g = create_guestfs(python_return_dict=True, backend='native')
             g.set_trace(0)
-            g.set_verbose(0)
             g.close()
-            self.report.notes["libguestfs"] = "OK"
+            self.report.notes["guestfs"] = "OK (native implementation)"
         except Exception as e:
-            self._add_err(ErrorKind.GUESTFS, f"libguestfs test failed: {e!s}")
+            self._add_err(ErrorKind.GUESTFS, f"guestfs test failed: {e!s}")
 
     def _iter_input_paths(self) -> Iterable[Path]:
         disks = getattr(self.args, "disks", None)

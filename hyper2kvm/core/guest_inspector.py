@@ -21,13 +21,19 @@ import re
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
-    import guestfs  # type: ignore
-    GUESTFS_AVAILABLE = True
-except ImportError:
-    GUESTFS_AVAILABLE = False
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
+
+from .guestfs_factory import create_guestfs
+GUESTFS_AVAILABLE = True  # Native implementation always available
 
 from .guest_identity import GuestDetector, GuestIdentity, GuestType
 from .utils import U
@@ -262,7 +268,7 @@ class ComprehensiveGuestInspector:
             return result
 
         # Now mount and extract detailed information
-        g = guestfs.GuestFS(python_return_dict=True)
+        g = create_guestfs(python_return_dict=True, backend='native')
 
         try:
             g.add_drive_opts(str(img_path), readonly=1 if readonly else 0)

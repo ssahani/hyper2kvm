@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
 
 try:
     import yaml  # type: ignore

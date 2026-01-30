@@ -7,14 +7,18 @@ to avoid duplication across modules.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
-    import guestfs  # type: ignore
-    GUESTFS_AVAILABLE = True
-except ImportError:  # pragma: no cover
-    guestfs = None  # type: ignore
-    GUESTFS_AVAILABLE = False
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
+
+GUESTFS_AVAILABLE = True  # Native implementation always available
 
 
 def guest_mkdir_p(g: guestfs.GuestFS, path: str, *, dry_run: bool = False) -> None:

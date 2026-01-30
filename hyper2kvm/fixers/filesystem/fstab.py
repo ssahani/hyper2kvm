@@ -9,7 +9,13 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
-    import guestfs  # type: ignore
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
 
 _BYPATH_PREFIX = "/dev/disk/by-path/"
 RE_BTRFSVOL = re.compile(r"^btrfsvol:(.+?)(?://@/|//@/|//)?(.*)$")

@@ -14,9 +14,17 @@ for configuration rewriting logic.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
+
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from ...core.utils import U

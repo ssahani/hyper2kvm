@@ -6,9 +6,16 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
 
 from ..core.utils import U
 from ..converters.qemu.converter import Convert

@@ -21,7 +21,14 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
 
 from ...core.utils import U, guest_ls_glob
 from .model import NetworkConfig, NetworkConfigType

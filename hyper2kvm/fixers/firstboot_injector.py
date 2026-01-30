@@ -18,9 +18,16 @@ from __future__ import annotations
 
 import os
 import stat
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
 
 
 def _guest_has_systemd(g: guestfs.GuestFS) -> bool:

@@ -28,7 +28,9 @@ def test_offline_fixer_runs_and_builds_report(monkeypatch, tmp_path):
     fake.listfs = {"/dev/sda2": "ext4"}
     fake.parts = ["/dev/sda2"]
 
-    monkeypatch.setattr(offline_fixer.guestfs, "GuestFS", lambda *a, **k: fake)
+    # Patch the factory to return our fake
+    from hyper2kvm.core import guestfs_factory
+    monkeypatch.setattr(guestfs_factory, "create_guestfs", lambda *a, **k: fake)
 
     monkeypatch.setattr(offline_fixer.network_fixer, "fix_network_config", lambda self, g: {"enabled": True, "changed": 0})
     monkeypatch.setattr(offline_fixer.grub_fixer, "remove_stale_device_map", lambda self, g: 0)

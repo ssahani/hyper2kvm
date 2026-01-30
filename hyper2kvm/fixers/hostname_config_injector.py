@@ -1,8 +1,16 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Hostname and hosts file configuration injector."""
 from __future__ import annotations
-from typing import Any
-import guestfs  # type: ignore
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
 
 def inject_hostname_config(self, g: guestfs.GuestFS) -> dict[str, Any]:
     """Configure hostname, domain, and /etc/hosts."""

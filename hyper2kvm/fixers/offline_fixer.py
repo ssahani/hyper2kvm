@@ -17,9 +17,18 @@ import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
+
+from ..core.guestfs_factory import create_guestfs
 
 from .. import __version__
 from ..core.recovery_manager import RecoveryManager
@@ -280,7 +289,7 @@ class OfflineFSFix:
 
     # guestfs open/close helpers
     def open(self) -> guestfs.GuestFS:
-        g = guestfs.GuestFS(python_return_dict=True)
+        g = create_guestfs(python_return_dict=True, backend='native')
         if self.logger.isEnabledFor(logging.DEBUG):
             try:
                 g.set_trace(1)

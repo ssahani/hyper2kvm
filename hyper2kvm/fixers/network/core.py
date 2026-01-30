@@ -8,9 +8,16 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
+
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
 
 from .backend import NetworkFixersBackend
 from .discovery import NetworkDiscovery

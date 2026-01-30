@@ -6,10 +6,18 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import guestfs  # type: ignore
+if TYPE_CHECKING:
+    try:
+        import guestfs
+    except ImportError:
+        from typing import Protocol
 
+        class guestfs:  # type: ignore
+            class GuestFS(Protocol): ...
+
+from .guestfs_factory import create_guestfs
 from .utils import U
 
 # Canonical Windows detection from your repo (fixers/windows/virtio/core.py)
@@ -516,9 +524,9 @@ class GuestDetector:
 
         Returns GuestIdentity or None if no OS roots.
         """
-        g: guestfs.GuestFS | None = None
+        g = None
         try:
-            g = guestfs.GuestFS(python_return_dict=True)
+            g = create_guestfs(python_return_dict=True, backend='native')
             g.add_drive_opts(str(img_path), readonly=bool(readonly))
             g.launch()
 
