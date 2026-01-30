@@ -564,6 +564,184 @@ class NBDDeviceManager:
         except Exception as e:
             raise RuntimeError(f"Image validation failed for {image_path.name}: {e}") from None
 
+    def validate_filesystems(
+        self,
+        image_path: str | Path,
+        *,
+        format: str | None = None,
+        check_partitions: bool = True,
+        run_fsck: bool = False,
+    ) -> dict[str, any]:
+        """
+        Perform deep filesystem validation by temporarily connecting image via NBD.
+
+        This performs structural validation beyond basic qemu-img checks:
+        1. Attaches image via qemu-nbd
+        2. Inspects partition table with lsblk
+        3. Optionally runs read-only fsck on partitions
+
+        WARNING: This is slower than basic validation and requires NBD device.
+        Use for thorough pre-migration validation or troubleshooting.
+
+        Args:
+            image_path: Path to disk image
+            format: Disk format hint (qcow2, vmdk, raw, etc.)
+            check_partitions: Verify partition table is readable (default: True)
+            run_fsck: Run read-only filesystem checks (default: False, slower)
+
+        Returns:
+            Validation report dict with partition info and fsck results
+
+        Raises:
+            RuntimeError: If validation fails or image is corrupted
+
+        Example:
+            nbd = NBDDeviceManager(logger)
+            report = nbd.validate_filesystems('/vms/test.vmdk', run_fsck=True)
+            print(report['partitions'])
+            print(report['fsck_results'])
+        """
+        image_path = Path(image_path).resolve()
+        if not image_path.exists():
+            raise FileNotFoundError(f"Disk image not found: {image_path}")
+
+        self.logger.info(f"Performing deep filesystem validation: {image_path.name}")
+
+        # First do basic image validation
+        metadata = self._validate_image(image_path)
+
+        # Temporarily connect to NBD for partition inspection
+        temp_nbd = None
+        report = {
+            "image": str(image_path),
+            "format": metadata.get("format", "unknown"),
+            "virtual_size_gb": metadata.get("virtual-size", 0) / (1024**3),
+            "actual_size_gb": metadata.get("actual-size", 0) / (1024**3),
+            "partitions": [],
+            "fsck_results": [],
+            "status": "unknown"
+        }
+
+        try:
+            # Find free NBD device
+            self._check_nbd_module()
+            for i in range(self.nbd_min, self.nbd_max + 1):
+                candidate = f"/dev/nbd{i}"
+                if self._is_nbd_free(candidate):
+                    temp_nbd = candidate
+                    break
+
+            if not temp_nbd:
+                raise RuntimeError("No free NBD device for validation")
+
+            self.logger.debug(f"Using temporary NBD device: {temp_nbd}")
+
+            # Connect image (read-only)
+            connect_cmd = ["qemu-nbd", "--read-only", "--connect", temp_nbd]
+            if format:
+                connect_cmd.extend(["--format", format])
+            connect_cmd.append(str(image_path))
+
+            run_sudo(self.logger, connect_cmd, check=True, capture=True)
+            time.sleep(1)  # Allow kernel to detect partitions
+
+            # Scan partitions
+            run_sudo(self.logger, ["partprobe", temp_nbd], check=False, capture=True)
+            time.sleep(0.5)
+
+            if check_partitions:
+                # Get partition information with lsblk
+                self.logger.debug("Inspecting partition table...")
+                lsblk_result = run_sudo(
+                    self.logger,
+                    ["lsblk", "-f", "-o", "NAME,FSTYPE,SIZE,LABEL,UUID,MOUNTPOINT", temp_nbd],
+                    check=True,
+                    capture=True
+                )
+                report["partition_table"] = lsblk_result.stdout
+
+                # Parse lsblk output for partition devices
+                partition_devices = []
+                for line in lsblk_result.stdout.splitlines()[1:]:  # Skip header
+                    line = line.strip()
+                    if line.startswith("├─") or line.startswith("└─"):
+                        # Extract device name (e.g., nbd0p1, nbd0p2)
+                        parts = line.split()
+                        if parts:
+                            dev_name = parts[0].replace("├─", "").replace("└─", "").strip()
+                            partition_devices.append(f"/dev/{dev_name}")
+                            report["partitions"].append({
+                                "device": dev_name,
+                                "info": " ".join(parts)
+                            })
+
+                self.logger.info(f"Found {len(partition_devices)} partitions")
+
+                # Optionally run fsck (read-only) on partitions
+                if run_fsck and partition_devices:
+                    self.logger.info("Running read-only filesystem checks (fsck -n)...")
+                    for part_dev in partition_devices:
+                        if not Path(part_dev).exists():
+                            continue
+
+                        try:
+                            fsck_result = run_sudo(
+                                self.logger,
+                                ["fsck", "-n", part_dev],  # -n = read-only, no fixes
+                                check=False,  # fsck may return non-zero even for clean FS
+                                capture=True,
+                                failure_log_level=logging.DEBUG
+                            )
+
+                            status = "clean" if fsck_result.returncode == 0 else "errors_found"
+                            report["fsck_results"].append({
+                                "partition": part_dev,
+                                "status": status,
+                                "exit_code": fsck_result.returncode,
+                                "output": fsck_result.stdout[:500]  # Truncate long output
+                            })
+
+                            if status == "errors_found":
+                                self.logger.warning(
+                                    f"Filesystem errors detected on {part_dev}:\n"
+                                    f"{fsck_result.stdout[:200]}"
+                                )
+                            else:
+                                self.logger.debug(f"Filesystem check passed: {part_dev}")
+
+                        except Exception as e:
+                            self.logger.debug(f"Could not check {part_dev}: {e}")
+                            report["fsck_results"].append({
+                                "partition": part_dev,
+                                "status": "check_failed",
+                                "error": str(e)
+                            })
+
+            report["status"] = "validated"
+            self.logger.info(f"✓ Deep validation completed for {image_path.name}")
+
+        except Exception as e:
+            report["status"] = "validation_failed"
+            report["error"] = str(e)
+            self.logger.error(f"Deep validation failed: {e}")
+            raise RuntimeError(f"Filesystem validation failed for {image_path.name}: {e}") from e
+
+        finally:
+            # Always disconnect
+            if temp_nbd:
+                try:
+                    run_sudo(
+                        self.logger,
+                        ["qemu-nbd", "--disconnect", temp_nbd],
+                        check=False,
+                        capture=True
+                    )
+                    self.logger.debug(f"Disconnected validation NBD: {temp_nbd}")
+                except Exception as e:
+                    self.logger.debug(f"Could not disconnect {temp_nbd}: {e}")
+
+        return report
+
     @retry_with_backoff(
         max_attempts=3,
         base_backoff_s=2.0,
