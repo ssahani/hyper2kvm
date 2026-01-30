@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config 50-daemon/daemon-watch.yaml
+#   sudo python hyper2kvm.py --config 50-daemon/daemon-watch.yaml
 
 command: daemon
 daemon: true

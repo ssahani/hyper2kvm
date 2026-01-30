@@ -1,8 +1,8 @@
-# YAML Configuration Examples for `vmdk2kvm.py` (Cookbook, with vSphere Control/Data Plane)
+# YAML Configuration Examples for `hyper2kvm.py` (Cookbook, with vSphere Control/Data Plane)
 
-This page is a **copy-paste cookbook** for running `vmdk2kvm.py` using YAML configs.
+This page is a **copy-paste cookbook** for running `hyper2kvm.py` using YAML configs.
 
-It covers the big three you already run in production (**local**, **live-fix**, **fetch-and-fix**) and adds the “missing” ones that show up in real migrations (**ova**, **ovf**, **daemon**, **vsphere/pyvmomi**, and **virt-v2v hybrid**). It also captures the **design intent** behind the knobs: `vmdk2kvm` splits vSphere into **control-plane** (inventory/orchestration) and **data-plane** (moving bytes), because mixing them is how tools become slow and haunted.
+It covers the big three you already run in production (**local**, **live-fix**, **fetch-and-fix**) and adds the “missing” ones that show up in real migrations (**ova**, **ovf**, **daemon**, **vsphere/pyvmomi**, and **virt-v2v hybrid**). It also captures the **design intent** behind the knobs: `hyper2kvm` splits vSphere into **control-plane** (inventory/orchestration) and **data-plane** (moving bytes), because mixing them is how tools become slow and haunted.
 
 > Tip: keep one `base.yaml` with defaults, and override per-customer / per-VM in a tiny overlay file.
 
@@ -31,13 +31,13 @@ It covers the big three you already run in production (**local**, **live-fix**, 
 Run a config by selecting a command (mode):
 
 ```bash
-sudo ./vmdk2kvm.py --config example.yaml local
+sudo ./hyper2kvm.py --config example.yaml local
 ````
 
 Merge multiple configs (later overrides earlier):
 
 ```bash
-sudo ./vmdk2kvm.py --config base.yaml --config overrides.yaml local
+sudo ./hyper2kvm.py --config base.yaml --config overrides.yaml local
 ```
 
 ### Multi-VM configs
@@ -379,7 +379,7 @@ compress: true
 compress_level: 6
 
 enable_recovery: true
-log_file: /var/log/vmdk2kvm-daemon.log
+log_file: /var/log/hyper2kvm-daemon.log
 verbose: 1
 ```
 
@@ -529,10 +529,10 @@ vc_insecure: true
 # snapshot
 vs_action: create_snapshot
 vm_name: myVM
-name: vmdk2kvm-pre-migration
+name: hyper2kvm-pre-migration
 quiesce: true
 memory: false
-description: "Created by vmdk2kvm"
+description: "Created by hyper2kvm"
 json: true
 ```
 
@@ -559,7 +559,7 @@ vc_insecure: true
 # query CBT ranges
 vs_action: query_changed_disk_areas
 vm_name: myVM
-snapshot_name: vmdk2kvm-cbt
+snapshot_name: hyper2kvm-cbt
 disk: 0
 start_offset: 0
 change_id: "*"
@@ -581,7 +581,7 @@ disk: 0
 local_path: ./downloads/myVM-disk0.vmdk
 
 enable_cbt: true
-snapshot_name: vmdk2kvm-cbt
+snapshot_name: hyper2kvm-cbt
 change_id: "*"
 
 dc_name: ha-datacenter
@@ -595,9 +595,9 @@ json: true
 This is the “best of both worlds” migration style:
 
 * use virt-v2v for conversion/extraction
-* then run `vmdk2kvm` fixers for deterministic post-fixes (fstab stabilization, GRUB root=, initramfs regen, cloud-init injection, etc.)
+* then run `hyper2kvm` fixers for deterministic post-fixes (fstab stabilization, GRUB root=, initramfs regen, cloud-init injection, etc.)
 
-### Pattern A: virt-v2v first, then vmdk2kvm post-fix
+### Pattern A: virt-v2v first, then hyper2kvm post-fix
 
 ```yaml
 command: local
@@ -683,7 +683,7 @@ dry_run: false
 Run:
 
 ```bash
-sudo ./vmdk2kvm.py --config base.yaml --config overrides.yaml local
+sudo ./hyper2kvm.py --config base.yaml --config overrides.yaml local
 ```
 
 ---

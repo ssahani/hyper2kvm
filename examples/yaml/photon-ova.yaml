@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config photon-ova.yaml
+#   sudo python hyper2kvm.py --config photon-ova.yaml
 
 ova: ./photon-hw15-5.0-dde71ec57.x86_64.ova
 output:

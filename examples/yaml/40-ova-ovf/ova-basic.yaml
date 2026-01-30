@@ -1,5 +1,5 @@
 # Modernized example (config-driven): run with
-#   sudo python vmdk2kvm.py --config 40-ova-ovf/ova-basic.yaml
+#   sudo python hyper2kvm.py --config 40-ova-ovf/ova-basic.yaml
 
 command: ova
 ova: /path/to/appliance.ova

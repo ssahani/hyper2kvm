@@ -27,7 +27,7 @@ Libvirt often runs QEMU under a confined user/service context. Even if the qcow2
 
 ```bash
 sudo mkdir -p /var/lib/libvirt/images
-sudo cp -a /home/ssahani/tt/vmdk2kvm/out/windows10-fixed.qcow2 /var/lib/libvirt/images/
+sudo cp -a /home/ssahani/tt/hyper2kvm/out/windows10-fixed.qcow2 /var/lib/libvirt/images/
 sudo chmod 644 /var/lib/libvirt/images/windows10-fixed.qcow2
 ```
 
@@ -192,7 +192,7 @@ Boot with SATA, install VirtIO drivers in Windows, then switch.
 If you want, I can also add the **follow-up section** that shows the *VirtIO version* of the same XML (disk bus virtio + virtio-net) and a minimal snippet for attaching a `virtio-win.iso` CDROM in libvirt.
 # WINDOWS.md — Windows Migration Deep Dive
 
-This document explains how `vmdk2kvm` handles Windows guests and **why each step exists**.
+This document explains how `hyper2kvm` handles Windows guests and **why each step exists**.
 
 ---
 
@@ -279,4 +279,4 @@ Caused by:
 - missing CDD
 - wrong storage driver selected
 
-`vmdk2kvm` fixes all three before first boot.
+`hyper2kvm` fixes all three before first boot.

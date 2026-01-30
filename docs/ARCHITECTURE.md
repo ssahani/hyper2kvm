@@ -1,6 +1,6 @@
-# ARCHITECTURE.md — vmdk2kvm Internal Architecture 🚀🔧💥
+# ARCHITECTURE.md — hyper2kvm Internal Architecture 🚀🔧💥
 ## Purpose 🎯✨
-This document dives deep into the **module-level architecture**, execution flow, and unbreakable invariants powering `vmdk2kvm`. 💥🔍  
+This document dives deep into the **module-level architecture**, execution flow, and unbreakable invariants powering `hyper2kvm`. 💥🔍  
 It's crafted for contributors, reviewers, and power users who crave insight into:  
 * **Where the magic (and logic) lives** 🧙‍♂️🛠️  
 * **How data and state flow like a well-oiled machine** ⚙️💨🔄  
@@ -45,7 +45,7 @@ This pipeline isn't just a suggestion—it's the law of the land for every migra
 ## Actual Repo Layout (Authoritative Blueprint) 🗺️📂🔥
 This mirrors the real-deal project structure—your single source of truth:  
 ```
-vmdk2kvm/ 🌳🚀
+hyper2kvm/ 🌳🚀
 ├── main.py 🚀🔥 (Entry point for all the action—kickstarts the magic)
 ├── __init__.py 🔌⚡ (Package initializer, wiring everything up)
 ├── cli/ 🛠️📜 (Command-line interface goodies for user-friendly interactions)

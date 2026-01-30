@@ -1,11 +1,11 @@
-# vSphere → virt-v2v Export (Download Only) with vmdk2kvm + pyvmomi (Control-plane) + virt-v2v/VDDK (Data-plane)
+# vSphere → virt-v2v Export (Download Only) with hyper2kvm + pyvmomi (Control-plane) + virt-v2v/VDDK (Data-plane)
 
 This document describes a **download-only export pipeline** that pulls a VM from **vCenter/vSphere** and exports its disks locally using **virt-v2v** (typically via **VDDK**).  
 The key idea is:
 
 - **pyvmomi** is used for **control-plane** (inventory, datacenter resolution, host-system compute path, optional snapshot hooks)
 - **virt-v2v** is used for **data-plane** (actually moving disk data from vSphere to local qcow2/raw)
-- **vmdk2kvm** orchestrates this flow, but **does NOT run** its internal conversion/post-conversion stages (download-only mode)
+- **hyper2kvm** orchestrates this flow, but **does NOT run** its internal conversion/post-conversion stages (download-only mode)
 
 ---
 
@@ -85,7 +85,7 @@ You *can* enable them later once you decide the host test harness.
 
 ```bash
 export VC_PASSWORD='xxyyxx'
-sudo -E ./vmdk2kvm.py --config v2v-rhel10.yaml vsphere list_vm_names
+sudo -E ./hyper2kvm.py --config v2v-rhel10.yaml vsphere list_vm_names
 ```
 
 ### Export/download VM (virt-v2v)
@@ -97,7 +97,7 @@ Example (adapt to your subcommand naming):
 
 ```bash
 export VC_PASSWORD='xxyyxxyxxyx'
-sudo -E ./vmdk2kvm.py --config v2v-rhel10.yaml vsphere export
+sudo -E ./hyper2kvm.py --config v2v-rhel10.yaml vsphere export
 ```
 
 ---
@@ -118,12 +118,12 @@ sudo -E ./vmdk2kvm.py --config v2v-rhel10.yaml vsphere export
 #
 # Run:
 #   export VC_PASSWORD='test@1234'
-#   sudo -E ./vmdk2kvm.py --config v2v-rhel10.yaml vsphere list_vm_names
+#   sudo -E ./hyper2kvm.py --config v2v-rhel10.yaml vsphere list_vm_names
 #   # (Orchestrator will still take the v2v-export path because vs_v2v:true)
 #
 # Notes:
 #   - This YAML is “download/export only”: it uses pyvmomi for control-plane and virt-v2v for data-plane.
-#   - vmdk2kvm will export the VM disks to local output_dir as qcow2 (or raw if out_format is changed).
+#   - hyper2kvm will export the VM disks to local output_dir as qcow2 (or raw if out_format is changed).
 #   - It does NOT run internal conversion steps (use_v2v:false) and does NOT run post_v2v (post_v2v:false).
 #   - If you enable smoke tests, ensure your host has libvirt/qemu/OVMF and that the image is compatible.
 
@@ -190,7 +190,7 @@ compress: true
 # ------------------------------------------------------------------
 # What happens AFTER v2v?
 # DOWNLOAD-ONLY mode:
-#   - do NOT run vmdk2kvm’s internal conversion via v2v
+#   - do NOT run hyper2kvm’s internal conversion via v2v
 #   - do NOT run post-v2v conversion
 # ------------------------------------------------------------------
 use_v2v: false
