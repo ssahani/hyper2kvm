@@ -47,8 +47,8 @@ class TemplateEngine:
 
             if var_name in variables:
                 value = variables[var_name]
-                # Convert to string (including None -> "None")
-                return str(value)
+                # Convert to string (None becomes empty string)
+                return str(value) if value is not None else ""
 
             # Variable not found
             if strict:
@@ -174,24 +174,27 @@ class TemplateEngine:
 
 
 def create_hook_context(
-    manifest_or_stage: dict[str, Any] | str,
+    manifest_or_stage: dict[str, Any] | str | None = None,
     vm_name: str | None = None,
     source_path: str | None = None,
     output_path: str | None = None,
+    stage: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
     """
     Create a standard context dictionary for hook variable substitution.
 
-    Can be called in two ways:
+    Can be called in multiple ways:
     1. With manifest dict: create_hook_context(manifest, **extra)
-    2. Legacy style: create_hook_context(stage, vm_name, source_path, output_path, **extra)
+    2. Legacy positional: create_hook_context(stage, vm_name, source_path, output_path, **extra)
+    3. Legacy keyword: create_hook_context(stage="pre_fix", vm_name="vm", **extra)
 
     Args:
-        manifest_or_stage: Either a manifest dictionary or a stage name string
+        manifest_or_stage: Either a manifest dictionary or a stage name string (optional)
         vm_name: VM name (used in legacy mode)
         source_path: Source disk path (used in legacy mode)
         output_path: Output disk path (can be passed in both modes)
+        stage: Stage name (keyword argument for backward compatibility)
         **extra: Additional context variables
 
     Returns:
@@ -223,7 +226,8 @@ def create_hook_context(
             source_path_from_manifest = disks[0].get("local_path", "")
 
         # Use manifest values, but allow override from parameters
-        stage = extra.pop("stage", "unknown")
+        if stage is None:
+            stage = extra.pop("stage", "unknown")
         vm_name = vm_name or vm_name_from_manifest
         source_path = source_path or source_path_from_manifest
 
@@ -236,8 +240,10 @@ def create_hook_context(
             extra["output_format"] = output_format
 
     else:
-        # Legacy mode - manifest_or_stage is actually the stage name
-        stage = manifest_or_stage
+        # Legacy mode
+        # If stage keyword arg provided, use it; otherwise use manifest_or_stage (positional)
+        if stage is None:
+            stage = manifest_or_stage if manifest_or_stage is not None else "unknown"
 
     context = {
         # Stage information
@@ -253,9 +259,9 @@ def create_hook_context(
         "output_path": output_path or "",
 
         # Derived path information
-        "source_dir": str(Path(source_path).parent) if source_path else "",
+        "source_dir": str(Path(source_path).parent) if source_path else ".",
         "source_filename": str(Path(source_path).name) if source_path else "",
-        "output_dir": str(Path(output_path).parent) if output_path else "",
+        "output_dir": str(Path(output_path).parent) if output_path else ".",
         "output_filename": str(Path(output_path).name) if output_path else "",
 
         # Environment

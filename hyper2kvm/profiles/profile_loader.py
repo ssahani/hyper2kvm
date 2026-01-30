@@ -97,7 +97,7 @@ class ProfileLoader:
             profile_path = Path(custom_profile_path) / f"{profile_name}.yaml"
             if profile_path.exists():
                 self.logger.debug(f"Loading custom profile: {profile_path}")
-                profile_data = self._load_and_resolve(profile_path)
+                profile_data = self._load_and_resolve(profile_path, custom_dir=Path(custom_profile_path))
                 # Cache custom profile with source path
                 self.cache.put(cache_key, profile_data, source_path=profile_path)
                 return profile_data
@@ -154,8 +154,13 @@ class ProfileLoader:
         except Exception as e:
             raise ProfileLoadError(f"Failed to load built-in profiles: {e}") from e
 
-    def _load_and_resolve(self, profile_path: Path) -> dict[str, Any]:
-        """Load a profile from file and resolve inheritance."""
+    def _load_and_resolve(self, profile_path: Path, custom_dir: Path | None = None) -> dict[str, Any]:
+        """Load a profile from file and resolve inheritance.
+
+        Args:
+            profile_path: Path to the profile file
+            custom_dir: Optional directory containing custom profiles for inheritance resolution
+        """
         try:
             if not YAML_AVAILABLE:
                 raise ProfileLoadError(
@@ -175,7 +180,7 @@ class ProfileLoader:
 
             # Resolve inheritance
             builtin_profiles = self._load_builtin_profiles()
-            return self._resolve_inheritance(profile_data, builtin_profiles)
+            return self._resolve_inheritance(profile_data, builtin_profiles, custom_dir=custom_dir)
 
         except Exception as e:
             raise ProfileLoadError(
@@ -187,6 +192,7 @@ class ProfileLoader:
         profile_data: dict[str, Any],
         available_profiles: dict[str, dict[str, Any]],
         _visited: set[str] | None = None,
+        custom_dir: Path | None = None,
     ) -> dict[str, Any]:
         """
         Resolve profile inheritance using 'extends' field.
@@ -195,6 +201,7 @@ class ProfileLoader:
             profile_data: Profile configuration
             available_profiles: Dictionary of available profiles
             _visited: Set of visited profile names (for cycle detection)
+            custom_dir: Optional directory to search for custom parent profiles
 
         Returns:
             Resolved profile with parent configurations merged
@@ -217,18 +224,34 @@ class ProfileLoader:
                 f"Circular inheritance detected: {parent_name} already visited"
             )
 
-        # Load parent profile
-        if parent_name not in available_profiles:
-            raise ProfileLoadError(
-                f"Parent profile '{parent_name}' not found (extended by profile)"
-            )
+        # Load parent profile - check custom dir first if provided
+        parent_data = None
+        if custom_dir:
+            parent_path = custom_dir / f"{parent_name}.yaml"
+            if parent_path.exists():
+                # Load custom parent profile
+                try:
+                    if not YAML_AVAILABLE:
+                        raise ProfileLoadError("PyYAML not installed")
+                    with open(parent_path, "r", encoding="utf-8") as f:
+                        parent_data = yaml.safe_load(f) or {}
+                except Exception as e:
+                    raise ProfileLoadError(
+                        f"Failed to load parent profile '{parent_name}' from {parent_path}: {e}"
+                    ) from e
 
-        parent_data = available_profiles[parent_name].copy()
+        # If not found in custom dir, check available_profiles (built-ins)
+        if parent_data is None:
+            if parent_name not in available_profiles:
+                raise ProfileLoadError(
+                    f"Parent profile '{parent_name}' not found (extended by profile)"
+                )
+            parent_data = available_profiles[parent_name].copy()
 
         # Recursively resolve parent's inheritance
         _visited.add(parent_name)
         resolved_parent = self._resolve_inheritance(
-            parent_data, available_profiles, _visited
+            parent_data, available_profiles, _visited, custom_dir=custom_dir
         )
         _visited.remove(parent_name)
 
@@ -278,10 +301,28 @@ class ProfileLoader:
 
         return self._merge_profiles(profile, overrides)
 
-    def list_builtin_profiles(self) -> list[str]:
-        """Get list of available built-in profile names."""
+    def list_builtin_profiles(self, custom_path: Path | None = None) -> list[str]:
+        """
+        Get list of available profile names.
+
+        Args:
+            custom_path: Optional path to custom profiles directory
+
+        Returns:
+            Sorted list of profile names (built-in + custom if path provided)
+        """
+        # Start with built-in profiles
         builtin_profiles = self._load_builtin_profiles()
-        return sorted(builtin_profiles.keys())
+        profile_names = set(builtin_profiles.keys())
+
+        # Add custom profiles if path provided
+        if custom_path:
+            custom_dir = Path(custom_path)
+            if custom_dir.exists() and custom_dir.is_dir():
+                for file_path in custom_dir.glob("*.yaml"):
+                    profile_names.add(file_path.stem)
+
+        return sorted(profile_names)
 
     def get_cache_statistics(self) -> dict[str, Any]:
         """

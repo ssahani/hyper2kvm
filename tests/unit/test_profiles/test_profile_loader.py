@@ -34,7 +34,7 @@ class TestProfileLoader:
         # But overrides some settings
         assert profile["pipeline"]["convert"]["compress"] is False
         assert profile["pipeline"]["validate"]["enabled"] is False
-        assert profile["output"]["format"] == "raw"
+        assert profile["output"]["format"] == "qcow2"  # Testing still uses qcow2
 
     def test_load_builtin_minimal_profile(self):
         """Test loading built-in minimal profile."""
@@ -61,14 +61,18 @@ class TestProfileLoader:
         loader = ProfileLoader()
         profile = loader.load_profile("windows")
 
-        assert profile["pipeline"]["fix"]["enabled"] is False
+        assert profile["pipeline"]["fix"]["enabled"] is True  # Windows profile enables fixes
+        assert profile["pipeline"]["fix"]["update_grub"] is False  # But skips GRUB
+        assert profile["pipeline"]["fix"]["regen_initramfs"] is False  # And initramfs
         assert profile["pipeline"]["convert"]["enabled"] is True
         assert profile["output"]["format"] == "qcow2"
 
     def test_profile_not_found(self):
         """Test that non-existent profile raises error."""
+        from hyper2kvm.profiles.profile_loader import ProfileLoadError
+
         loader = ProfileLoader()
-        with pytest.raises(ValueError, match="Profile 'nonexistent' not found"):
+        with pytest.raises(ProfileLoadError, match="Profile 'nonexistent' not found"):
             loader.load_profile("nonexistent")
 
     def test_custom_profile_loading(self):
@@ -95,6 +99,8 @@ class TestProfileLoader:
 
     def test_circular_inheritance_detection(self):
         """Test that circular inheritance is detected."""
+        from hyper2kvm.profiles.profile_loader import ProfileLoadError
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create profile A that extends B
             profile_a = {"extends": "profile_b"}
@@ -106,7 +112,7 @@ class TestProfileLoader:
                 yaml.dump(profile_b, f)
 
             loader = ProfileLoader()
-            with pytest.raises(ValueError, match="Circular inheritance detected"):
+            with pytest.raises(ProfileLoadError, match="Circular inheritance detected"):
                 loader.load_profile("profile_a", Path(tmpdir))
 
     def test_deep_inheritance_chain(self):
@@ -155,10 +161,10 @@ class TestProfileLoader:
 
             assert profile == standalone
 
-    def test_list_available_profiles(self):
+    def test_list_builtin_profiles(self):
         """Test listing available profiles."""
         loader = ProfileLoader()
-        profiles = loader.list_available_profiles()
+        profiles = loader.list_builtin_profiles()
 
         # Should include all built-in profiles
         assert "production" in profiles
@@ -179,7 +185,7 @@ class TestProfileLoader:
                     yaml.dump({"pipeline": {}}, f)
 
             loader = ProfileLoader()
-            profiles = loader.list_available_profiles(Path(tmpdir))
+            profiles = loader.list_builtin_profiles(Path(tmpdir))
 
             # Should include built-in + custom
             assert "production" in profiles

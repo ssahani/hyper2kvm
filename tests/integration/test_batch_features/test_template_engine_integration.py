@@ -416,7 +416,7 @@ class TestTemplateEngineEdgeCases:
         variables = {"value": None}
 
         result = engine.substitute(template, variables)
-        assert result == "Value: None"
+        assert result == "Value: "  # None becomes empty string
 
     def test_empty_variable_name(self):
         """Test empty variable name in placeholder."""
