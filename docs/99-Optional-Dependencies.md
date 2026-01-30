@@ -278,7 +278,7 @@ These are installed separately as binaries, not via pip:
 | Tool | Purpose | When Needed | Install Method |
 |------|---------|-------------|----------------|
 | **govc** | vSphere control plane (PRIMARY) | vSphere migrations (recommended) | Download binary from [GitHub releases](https://github.com/vmware/govmomi/releases) → /usr/local/bin |
-| **ovftool** | OVF/OVA export/import | vSphere migrations (alternative) | Download .bundle from [VMware](https://customerconnect.vmware.com/downloads/) |
+| **ovftool** | OVF/OVA export/import | vSphere migrations (alternative) | Download ZIP from [Broadcom](https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest) (v5.0.0) |
 | virt-v2v | Alternative migration engine | Optional experimental path | dnf install virt-v2v |
 | libvirt | VM testing and validation | Optional smoke tests | dnf install libvirt |
 
@@ -312,16 +312,27 @@ pip install hyper2kvm  # Just core
 #### Option 2: ovftool (Alternative)
 
 ```bash
-# Download OVF Tool from VMware Customer Connect (requires free VMware account)
-# URL: https://customerconnect.vmware.com/downloads/
-# Search for "VMware OVF Tool" and download the .bundle file
+# Download OVF Tool from Broadcom (VMware) - requires free account
+# URL: https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest
+#
+# Available downloads (version 5.0.0):
+# - Linux Zip:   24.79 MB (MD5: f64f2f40581a28f08ac86fc94020d206)
+# - macOS Zip:   19.77 MB (MD5: ea90568cdd08f90be22cac20b595b82a)
+# - Windows Zip: 27.03 MB (MD5: 108af3416ff81dde6d9a6e9f477989bf)
+# - Windows MSI: 28.77 MB (MD5: 4ae8ec7a24fa06048221d91a6aaeb492)
 
-# Install (example for version 4.6.0)
-chmod +x VMware-ovftool-4.6.0-*-lin.x86_64.bundle
-sudo ./VMware-ovftool-4.6.0-*-lin.x86_64.bundle --eulas-agreed
+# Download "OVF Tool for Linux Zip" and verify checksum
+md5sum ovftool-*.zip
+# Should match: f64f2f40581a28f08ac86fc94020d206
+
+# Extract and install
+unzip ovftool-*.zip
+sudo mv ovftool /usr/local/
+sudo ln -sf /usr/local/ovftool/ovftool /usr/local/bin/ovftool
 
 # Verify installation
 ovftool --version
+# Expected: VMware ovftool 5.0.0 (build-...)
 
 # No pip install needed for vSphere!
 pip install hyper2kvm  # Just core
@@ -329,9 +340,11 @@ pip install hyper2kvm  # Just core
 
 **Advantages:**
 - ✅ No Python dependencies
-- ✅ Official VMware tool
+- ✅ Official VMware/Broadcom tool
 - ✅ OVF/OVA export/import
 - ✅ Advanced features (compression, validation)
+- ✅ Latest version: 5.0.0
+- ✅ Cross-platform (Linux, macOS, Windows)
 
 #### Option 3: pyvmomi (Fallback)
 
