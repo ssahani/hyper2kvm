@@ -25,13 +25,13 @@
 - **Enterprise DNA:** Built on the same stack that powers mission-critical workloads globally
 
 **Perfect Fit for:**
-- 🏢 RHEL 8/9 infrastructure migrations
+- 🏢 RHEL 9/10 infrastructure migrations
 - 🔄 VMware to OpenStack transitions (RH OpenStack, RDO)
 - ☁️ Hybrid cloud deployments (AWS ← → On-Premises RHEL)
 - 🐧 Fedora workstation/server consolidation
 - 🎯 CentOS Stream development environments
 
-Whether you're running **Fedora 39**, **RHEL 9**, **CentOS Stream**, or **Rocky Linux**, hyper2kvm speaks your language natively - from NetworkManager to systemd-networkd, from dracut to grub2-mkconfig.
+Whether you're running **Fedora 43**, **RHEL 10**, **CentOS Stream**, or **Rocky Linux**, hyper2kvm speaks your language natively - from NetworkManager to systemd-networkd, from dracut to grub2-mkconfig.
 
 ---
 
