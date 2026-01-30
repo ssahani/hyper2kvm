@@ -67,6 +67,9 @@ class VMDKInspectionResult:
     # Risk analysis
     risks: List[Risk] = field(default_factory=list)
 
+    # Auto-fix tracking
+    fixed_vmdk_path: Optional[Path] = None  # Path to fixed VMDK if BusLogic was auto-fixed
+
     @property
     def size_bytes(self) -> Optional[int]:
         """Calculate disk size in bytes."""

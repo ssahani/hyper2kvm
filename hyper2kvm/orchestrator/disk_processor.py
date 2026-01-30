@@ -31,6 +31,8 @@ from ..core.utils import U
 from ..fixers.offline_fixer import OfflineFSFix
 from ..validation.vmdk_inspector import VMDKInspector, RiskLevel
 from ..vmware.utils.vmdk_parser import VMDK
+import shutil
+import tempfile
 
 
 class DiskProcessor:
@@ -283,6 +285,66 @@ class DiskProcessor:
         Log.trace(self.logger, "🔐 luks implicit enabled: %s", enabled)
         return enabled
 
+    def _fix_buslogic_controller(self, vmdk_path: Path) -> Path:
+        """
+        Fix BusLogic controller by rewriting VMDK descriptor to LSI Logic.
+
+        BusLogic has no KVM driver, but LSI Logic does. We can inject virtio
+        drivers for LSI Logic guests, so changing the descriptor makes migration possible.
+
+        Args:
+            vmdk_path: Original VMDK path
+
+        Returns:
+            Path to fixed VMDK (temporary copy with modified descriptor)
+        """
+        self.logger.info("")
+        self.logger.info("🔧 Auto-fixing BusLogic controller...")
+        self.logger.info("   Changing: ddb.adapterType = \"buslogic\" → \"lsilogic\"")
+
+        # Read original descriptor
+        with open(vmdk_path, 'r', errors='ignore') as f:
+            lines = f.readlines()
+
+        # Modify adapter type
+        modified = False
+        new_lines = []
+        for line in lines:
+            if 'ddb.adapterType' in line and 'buslogic' in line.lower():
+                # Change buslogic to lsilogic
+                new_line = line.replace('buslogic', 'lsilogic').replace('BusLogic', 'lsilogic')
+                new_lines.append(new_line)
+                modified = True
+                self.logger.info(f"   Old: {line.strip()}")
+                self.logger.info(f"   New: {new_line.strip()}")
+            else:
+                new_lines.append(line)
+
+        if not modified:
+            self.logger.warning("   ⚠️  BusLogic not found in descriptor, skipping fix")
+            return vmdk_path
+
+        # Create temporary fixed VMDK in workdir (avoid /tmp space issues)
+        workdir = getattr(self.args, 'workdir', None) or '/tmp'
+        temp_dir = Path(tempfile.mkdtemp(prefix='hyper2kvm-buslogic-fix-', dir=workdir))
+        fixed_vmdk = temp_dir / vmdk_path.name
+
+        # Write modified descriptor
+        with open(fixed_vmdk, 'w') as f:
+            f.writelines(new_lines)
+
+        # Copy extent file if it exists (for split VMDKs)
+        extent_file = vmdk_path.parent / (vmdk_path.stem + "-flat.vmdk")
+        if extent_file.exists():
+            fixed_extent = temp_dir / extent_file.name
+            shutil.copy2(extent_file, fixed_extent)
+            self.logger.info(f"   Copied extent: {extent_file.name}")
+
+        self.logger.info(f"   ✅ Fixed VMDK: {fixed_vmdk}")
+        self.logger.info("")
+
+        return fixed_vmdk
+
     def _inspect_vmdk(self, disk: Path) -> Any:
         """
         Perform pre-migration VMDK inspection.
@@ -353,6 +415,24 @@ class DiskProcessor:
             for risk in fatal_risks:
                 self.logger.warning(f"   ❌ {risk.message}")
 
+            # Check for BusLogic and auto-fix if detected
+            has_buslogic = any("buslogic" in r.message.lower() for r in fatal_risks)
+
+            if has_buslogic:
+                self.logger.warning("")
+                self.logger.warning("🔧 ATTEMPTING AUTOMATIC BUSLOGIC FIX...")
+                self.logger.warning("   Rewriting VMDK descriptor: BusLogic → LSI Logic")
+                self.logger.warning("   (LSI Logic has KVM driver + virtio injection support)")
+
+                try:
+                    fixed_vmdk = self._fix_buslogic_controller(disk)
+                    result.fixed_vmdk_path = fixed_vmdk
+                    self.logger.warning("   ✅ BusLogic auto-fix complete!")
+                    self.logger.warning(f"   Using fixed VMDK: {fixed_vmdk}")
+                except Exception as e:
+                    self.logger.error(f"   ❌ BusLogic auto-fix failed: {e}")
+                    self.logger.error("   Migration will continue with original VMDK")
+
             self.logger.warning("")
             self.logger.warning("💡 Recommended solutions:")
 
@@ -361,8 +441,12 @@ class DiskProcessor:
                     self.logger.warning("   → Consolidate snapshots in VMware before migration")
                     self.logger.warning("      (vSphere: Right-click VM → Snapshots → Consolidate)")
                 elif "buslogic" in risk.message.lower():
-                    self.logger.warning("   → Change controller from BusLogic to LSI Logic or PVSCSI in VMware")
-                    self.logger.warning("      (BusLogic has no KVM driver - VM may not boot)")
+                    if result.fixed_vmdk_path:
+                        self.logger.warning("   ✅ BusLogic auto-fixed: Descriptor rewritten to LSI Logic")
+                        self.logger.warning("      Migration will continue with virtio driver injection")
+                    else:
+                        self.logger.warning("   → Change controller from BusLogic to LSI Logic or PVSCSI in VMware")
+                        self.logger.warning("      (BusLogic has no KVM driver - VM may not boot)")
                 elif "extent" in risk.message.lower() and "missing" in risk.message.lower():
                     self.logger.warning("   → Verify all VMDK files are present (descriptor + extent)")
                     self.logger.warning("      (Re-export VM from vSphere if files are incomplete)")
@@ -371,8 +455,11 @@ class DiskProcessor:
                     self.logger.warning("      (Current extent file appears truncated or corrupted)")
 
             self.logger.warning("")
-            self.logger.warning("⚠️  CONTINUING MIGRATION DESPITE FATAL RISKS!")
-            self.logger.warning("    Guest may not boot - manual intervention may be required")
+            if result.fixed_vmdk_path:
+                self.logger.warning("✅ FATAL RISK AUTO-FIXED: Continuing migration with fixed VMDK")
+            else:
+                self.logger.warning("⚠️  CONTINUING MIGRATION DESPITE FATAL RISKS!")
+                self.logger.warning("    Guest may not boot - manual intervention may be required")
             self.logger.warning("=" * 70)
             self.logger.warning("")
 
@@ -436,7 +523,12 @@ class DiskProcessor:
         # Pre-migration VMDK inspection
         inspection_result = self._inspect_vmdk(disk)
 
-        working = disk
+        # Use fixed VMDK if BusLogic was auto-fixed
+        if inspection_result and hasattr(inspection_result, 'fixed_vmdk_path') and inspection_result.fixed_vmdk_path:
+            self.logger.info(f"📌 Using auto-fixed VMDK: {inspection_result.fixed_vmdk_path}")
+            working = inspection_result.fixed_vmdk_path
+        else:
+            working = disk
 
         # Flatten if requested
         if getattr(self.args, "flatten", False):
