@@ -105,13 +105,6 @@ class OfflineFSFix:
       - mdraid assemble (mdadm --assemble --scan --run) if available in appliance
       - best-effort ZFS import if zpool exists in appliance
       - stronger brute-force root choice via scoring (multi-root safety)
-
-    Orchestrator-level improvements:
-      - stage runner with timing + error capture per stage (report-friendly)
-      - safer Windows hooks gating (don’t run on Linux)
-      - optional gating for grub steps via flags (still delegated)
-      - richer guestfs introspection (best-effort) into report
-      - mount_local_run thread error collection + join safety
     """
 
     _BTRFS_COMMON_SUBVOLS = ["@", "@/", "@root", "@rootfs", "@/.snapshots/1/snapshot"]

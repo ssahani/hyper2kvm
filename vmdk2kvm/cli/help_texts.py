@@ -418,6 +418,37 @@ verbose: 1
 # # vddk_thumbprint: "AA:BB:CC:..."
 # no_verify: true
 #
+# ✅ NEW: NFC download mode (pyvmomi NFC lease streaming)
+# (useful when /folder is blocked and you don't want VDDK)
+#
+# Download a VM disk via NFC lease:
+# command: vsphere
+# vcenter: vcenter.example.com
+# vc_user: administrator@vsphere.local
+# vc_password_env: VC_PASSWORD
+# vc_insecure: true
+# vs_action: nfc_download_disk
+# vm_name: myVM
+# disk: 0
+# local_path: ./downloads/myVM-disk0-flat.vmdk
+# # optional tuning (if your implementation supports it):
+# # chunk_size: 4194304     # 4MiB
+# # vs_http_timeout: "10,600"
+# # vs_http_retries: 3
+#
+# Download ALL VM disks via NFC lease:
+# command: vsphere
+# vcenter: vcenter.example.com
+# vc_user: administrator@vsphere.local
+# vc_password_env: VC_PASSWORD
+# vc_insecure: true
+# vs_action: nfc_download_vm
+# vm_name: myVM
+# output_dir: ./downloads/myVM-nfc
+# # optional:
+# # include_glob: ["*.vmdk"]
+# # concurrency: 1
+#
 # Create a quiesced snapshot for safer reads:
 # command: vsphere
 # vcenter: vcenter.example.com
@@ -435,7 +466,7 @@ verbose: 1
 # govc_password_env: VC_PASSWORD   # (or govc_password:)
 # govc_insecure: true
 # govc_datacenter: data
-
+#
 # Enable CBT (Changed Block Tracking):
 # command: vsphere
 # vcenter: vcenter.example.com
@@ -540,6 +571,9 @@ verbose: 1
 # vSphere VDDK raw disk download:
 # sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure vddk_download_disk --vm-name myVM --disk 0 --local-path ./downloads/myVM-disk0.vmdk --vddk-libdir /opt/vmware-vix-disklib-distrib --no-verify
 #
+# vSphere NFC disk download:
+# sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure nfc_download_disk --vm-name myVM --disk 0 --local-path ./downloads/myVM-disk0-flat.vmdk
+#
 # vSphere -> virt-v2v export scaffold:
 # sudo ./vmdk2kvm.py vsphere --vcenter vcenter.example.com --vc-user administrator@vsphere.local --vc-password-env VC_PASSWORD --vc-insecure --vs-v2v --vs-vm myVM --vs-transport vddk --vs-vddk-libdir /opt/vmware-vix-disklib-distrib list_vm_names
 #
@@ -560,6 +594,7 @@ FEATURE_SUMMARY = """ • Inputs: local VMDK/VHD, remote ESXi fetch, OVA/OVF ext
  • Performance: parallel batch processing\n
  • vSphere export: experimental virt-v2v (VDDK) export hook\n
  • vSphere download-only: VM folder file pull via /folder (no inspection)\n
- • vSphere VDDK raw: single disk direct pull via VDDK client (no inspection)\n"""
+ • vSphere VDDK raw: single disk direct pull via VDDK client (no inspection)\n
+ • vSphere NFC: pyvmomi NFC lease streaming (useful when /folder is blocked)\n"""
 
 SYSTEMD_EXAMPLE = ""  # Empty if not needed; or add if there's more systemd text beyond the template
