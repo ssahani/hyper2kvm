@@ -3,6 +3,7 @@
 
 ## Table of Contents
 
+- [Prerequisites](#prerequisites)
 - [Overview](#overview)
 - [Design Principles](#design-principles)
   - [Control-Plane ≠ Data-Plane (Don’t Mix Them)](#control-plane-data-plane-dont-mix-them)
@@ -24,7 +25,14 @@
 - [CBT Sync in `hyper2kvm` (Control-Plane + Data-Plane Hybrid)](#cbt-sync-in-hyper2kvm-control-plane-data-plane-hybrid)
 - [Encoding + Typing Choices Used Across `hyper2kvm`](#encoding-typing-choices-used-across-hyper2kvm)
 - [Mode Selection Cheatsheet (for `hyper2kvm`)](#mode-selection-cheatsheet-for-hyper2kvm)
+- [Usage Examples](#usage-examples)
+  - [Example 1: Basic VM Export](#example-1-basic-vm-export)
+  - [Example 2: Download-Only Mode](#example-2-download-only-mode)
+  - [Example 3: VDDK Fast Transfer](#example-3-vddk-fast-transfer)
+  - [Example 4: Programmatic Usage](#example-4-programmatic-usage)
 - [Enhancements & Best Practices](#enhancements-best-practices)
+- [Next Steps](#next-steps)
+- [Getting Help](#getting-help)
 
 ---
 
