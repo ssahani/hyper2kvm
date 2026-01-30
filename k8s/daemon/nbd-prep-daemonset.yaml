@@ -73,14 +73,15 @@ spec:
               fieldPath: spec.nodeName
 
         securityContext:
-          # Capabilities needed for NBD operations
-          capabilities:
-            add:
-            - SYS_ADMIN    # For mount operations
-            - SYS_MODULE   # For modprobe
-          allowPrivilegeEscalation: false
-          # Note: This is NOT privileged: true
-          # We use scoped capabilities instead
+          # NBD operations require privileged access to /dev/nbd* devices
+          # SYS_ADMIN alone is not sufficient - qemu-nbd needs full device access
+          privileged: true
+          # Alternative with capabilities (less preferred but documented):
+          # capabilities:
+          #   add:
+          #   - SYS_ADMIN    # For mount and NBD operations
+          #   - SYS_MODULE   # For modprobe
+          # allowPrivilegeEscalation: true
 
         volumeMounts:
         # Host /dev for NBD devices
@@ -102,9 +103,10 @@ spec:
           mountPath: /var/lib/kubevirt-offline
 
         # Directory for disk images
+        # Note: qemu-nbd requires write access for file locking
         - name: imports
           mountPath: /var/lib/imports
-          readOnly: true
+          readOnly: false
 
         resources:
           requests:

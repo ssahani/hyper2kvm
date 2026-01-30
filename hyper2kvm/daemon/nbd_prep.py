@@ -135,6 +135,9 @@ class NBDPrepDaemon:
         """
         logger.info(f"Setting up NBD for job: {job_ref}")
 
+        nbd_device = None  # Track for cleanup on error
+        mount_path = None
+
         try:
             # Parse job ref
             namespace, job_name = job_ref.split('/')
@@ -189,6 +192,21 @@ class NBDPrepDaemon:
         except Exception as e:
             logger.error(f"NBD setup failed for {job_ref}: {e}")
             logger.debug(f"NBD setup error details", exc_info=True)
+
+            # Cleanup: Disconnect NBD if it was attached
+            if nbd_device:
+                try:
+                    logger.info(f"Cleaning up failed setup: disconnecting {nbd_device}")
+                    self.disconnect_nbd(nbd_device)
+                except Exception as cleanup_error:
+                    logger.error(f"Cleanup failed: {cleanup_error}")
+
+            # Cleanup: Unmount if mounted
+            if mount_path and self.is_mount_point(mount_path):
+                try:
+                    self.unmount(mount_path)
+                except:
+                    pass
 
             # Update node annotation with error
             try:
@@ -267,38 +285,48 @@ class NBDPrepDaemon:
                 logger.debug(f"{device} does not exist, skipping")
                 continue
 
-            # Method 2: Check /sys/block/nbdX/pid for active connection
-            # If pid file exists and contains non-zero PID, device is in use
+            # Method 2: Check /sys/block/nbdX/pid for active connection (if available)
+            # Note: This may not exist on all kernel versions
             pid_file = Path(f"/sys/block/nbd{i}/pid")
             if pid_file.exists():
                 try:
-                    pid = int(pid_file.read_text().strip())
-                    if pid > 0:
-                        logger.debug(f"{device} is in use (pid={pid})")
-                        continue
-                except (ValueError, OSError):
-                    pass
+                    pid_str = pid_file.read_text().strip()
+                    if pid_str:  # File has content
+                        pid = int(pid_str)
+                        if pid > 0:
+                            logger.debug(f"{device} is in use (pid={pid})")
+                            continue
+                except (ValueError, OSError) as e:
+                    logger.debug(f"{device} pid check failed: {e}")
 
-            # Method 3: Check with lsblk as fallback
+            # Method 3: Check with lsblk (most reliable)
+            # Use -b for bytes (more reliable than human-readable) and -o SIZE to get just size
             result = subprocess.run(
-                ["lsblk", "-n", device],
+                ["lsblk", "-n", "-b", "-o", "SIZE", device],
                 capture_output=True,
                 text=True
             )
 
             # If lsblk shows the device with size > 0, it's connected
             if result.returncode == 0 and result.stdout.strip():
-                # Check if it has a size (connected) vs just device node (free)
-                lines = [l for l in result.stdout.split('\n') if l.strip()]
-                if lines and 'nbd' in lines[0]:
-                    # Parse size (2nd column)
-                    parts = lines[0].split()
-                    if len(parts) >= 2 and parts[1] != '0B':
-                        logger.debug(f"{device} is in use (has size {parts[1]})")
+                try:
+                    size_bytes = int(result.stdout.strip())
+                    if size_bytes == 0:
+                        # Size is 0 bytes - device is free
+                        logger.debug(f"{device} is free (size=0)")
+                        return device
+                    else:
+                        # Device has a size - it's connected
+                        logger.debug(f"{device} is in use (size={size_bytes} bytes)")
                         continue
-
-            logger.debug(f"{device} appears free")
-            return device
+                except ValueError:
+                    # Can't parse size - assume free
+                    logger.debug(f"{device} has unparseable size, assuming free")
+                    return device
+            else:
+                # lsblk failed - assume free
+                logger.debug(f"{device} lsblk failed, assuming free")
+                return device
 
         logger.error("No free NBD devices found")
         return None
@@ -360,11 +388,12 @@ class NBDPrepDaemon:
     def mount_root_partition(self, nbd_device: str, job_name: str) -> str:
         """Find and mount root partition."""
         # Find largest partition (heuristic for root)
+        # Use -l for list mode (no tree characters), -p for full paths
         result = subprocess.run(
             [
                 "sh", "-c",
-                f"lsblk -n -o NAME,SIZE {nbd_device} | grep {Path(nbd_device).name}p | "
-                f"sort -k2 -hr | head -1 | awk '{{print \"/dev/\"$1}}'"
+                f"lsblk -n -l -p -o NAME,SIZE {nbd_device} | grep {Path(nbd_device).name}p | "
+                f"sort -k2 -hr | head -1 | awk '{{print $1}}'"
             ],
             capture_output=True,
             text=True,
@@ -374,6 +403,8 @@ class NBDPrepDaemon:
         root_part = result.stdout.strip()
         if not root_part:
             raise Exception("No partitions found")
+
+        logger.info(f"Selected root partition: {root_part}")
 
         # Create mount point
         mount_path = Path(MOUNT_BASE_PATH) / job_name

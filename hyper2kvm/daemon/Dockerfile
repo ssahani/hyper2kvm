@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     util-linux \
     mount \
     kmod \
+    parted \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
