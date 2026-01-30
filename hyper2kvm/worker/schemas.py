@@ -20,16 +20,16 @@ from pydantic import BaseModel, Field, field_validator
 class JobState(str, Enum):
     """Job lifecycle states."""
 
-    CREATED = "created"
-    VALIDATED = "validated"
-    QUEUED = "queued"
-    ASSIGNED = "assigned"
-    RUNNING = "running"
-    PROGRESSING = "progressing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    RETRYING = "retrying"
+    CREATED = "Created"
+    VALIDATED = "Validated"
+    QUEUED = "Queued"
+    ASSIGNED = "Assigned"
+    RUNNING = "Running"
+    PROGRESSING = "Progressing"
+    COMPLETED = "Completed"
+    FAILED = "Failed"
+    CANCELLED = "Cancelled"
+    RETRYING = "Retrying"
 
 
 class OperationType(str, Enum):

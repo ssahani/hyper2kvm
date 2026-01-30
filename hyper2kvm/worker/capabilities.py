@@ -13,8 +13,11 @@ import logging
 import os
 import platform
 import subprocess
+import tempfile
+import time
+from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +28,36 @@ class ExecutionMode:
     HOST = "host"
     SAFE_CONTAINER = "safe_container"
     PRIVILEGED_CONTAINER = "privileged_container"
+
+
+class CapabilityLevel(Enum):
+    """
+    Three-tier capability levels for migration operations.
+
+    Provides graceful degradation based on environment capabilities:
+    - Level 1: Basic conversion without NBD (kind, restrictive containers)
+    - Level 2: NBD inspection without partition mounting (partial NBD)
+    - Level 3: Full offline fixes with partition mounting (production)
+    """
+
+    USERSPACE_ONLY = 1      # Basic VMDK→QCOW2 conversion
+    NBD_INSPECTION = 2      # NBD device + partition reading
+    FULL_OFFLINE_FIXES = 3  # Complete migration with guest fixes
+
+    def __str__(self):
+        return self.name.lower().replace('_', '-')
+
+    def can_mount_partitions(self) -> bool:
+        """Check if this level supports mounting partitions."""
+        return self == CapabilityLevel.FULL_OFFLINE_FIXES
+
+    def can_inspect_disk(self) -> bool:
+        """Check if this level supports disk inspection via NBD."""
+        return self in (CapabilityLevel.NBD_INSPECTION, CapabilityLevel.FULL_OFFLINE_FIXES)
+
+    def can_convert(self) -> bool:
+        """Check if this level supports VMDK conversion."""
+        return True  # All levels support conversion
 
 
 class CapabilityDetector:
@@ -321,6 +354,311 @@ class CapabilityDetector:
                 return ExecutionMode.HOST
         else:
             return ExecutionMode.SAFE_CONTAINER
+
+    def detect_capability_level(self) -> CapabilityLevel:
+        """
+        Detect three-tier capability level for migration operations.
+
+        Progressive checks:
+        1. NBD module availability → USERSPACE_ONLY if unavailable
+        2. NBD device creation → USERSPACE_ONLY if fails
+        3. NBD partition devices → NBD_INSPECTION if missing, else FULL_OFFLINE_FIXES
+
+        Returns:
+            CapabilityLevel: Detected capability level
+        """
+        self.logger.info("🔍 Detecting migration capability level...")
+
+        # Check 1: NBD module available?
+        if not self._check_nbd_module():
+            self.logger.info("❌ NBD module unavailable")
+            return CapabilityLevel.USERSPACE_ONLY
+
+        # Check 2: NBD device accessible?
+        if not self._has_nbd_access():
+            self.logger.warning("⚠️  NBD module loaded but device inaccessible")
+            return CapabilityLevel.USERSPACE_ONLY
+
+        # Check 3: NBD partition devices supported?
+        if not self._check_nbd_partition_devices():
+            self.logger.info("⚠️  NBD device available but partition devices missing")
+            return CapabilityLevel.NBD_INSPECTION
+
+        # Full capabilities available
+        self.logger.info("✅ Full offline fix capabilities available")
+        return CapabilityLevel.FULL_OFFLINE_FIXES
+
+    def _check_nbd_module(self) -> bool:
+        """Check if NBD kernel module is available and loadable."""
+        try:
+            # First check if module is already loaded
+            result = subprocess.run(
+                ['lsmod'],
+                capture_output=True,
+                timeout=5,
+                text=True
+            )
+
+            if 'nbd' in result.stdout:
+                self.logger.debug("NBD module already loaded")
+                return True
+
+            # Try to load NBD module with partition support
+            result = subprocess.run(
+                ['modprobe', 'nbd', 'max_part=16'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                self.logger.info("✅ NBD module loaded successfully")
+                return True
+            else:
+                self.logger.debug(f"modprobe failed: {result.stderr.decode()}")
+                return False
+
+        except subprocess.TimeoutExpired:
+            self.logger.debug("NBD module load timed out")
+            return False
+        except FileNotFoundError:
+            self.logger.debug("modprobe command not found")
+            return False
+        except PermissionError:
+            self.logger.debug("Permission denied loading NBD module")
+            return False
+        except Exception as e:
+            self.logger.debug(f"NBD module check failed: {e}")
+            return False
+
+    def _check_nbd_partition_devices(self) -> bool:
+        """
+        Check if NBD partition devices are supported.
+
+        This is the critical check that differentiates Level 2 from Level 3.
+        Creates a small test image with partitions and checks if /dev/nbd0p1 appears.
+
+        Returns:
+            bool: True if partition devices are created, False otherwise
+        """
+        test_image = None
+        nbd_device = '/dev/nbd0'
+
+        try:
+            # Create a small test QCOW2 with a partition table
+            test_image = self._create_test_image()
+
+            if not test_image:
+                self.logger.debug("Failed to create test image")
+                return False
+
+            # Try to attach it to NBD
+            self.logger.debug("Attaching test image to NBD...")
+            result = subprocess.run(
+                ['qemu-nbd', '--connect', nbd_device, test_image],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode != 0:
+                self.logger.debug(f"Failed to attach test image: {result.stderr.decode()}")
+                return False
+
+            # Give udev time to create partition devices
+            time.sleep(2)
+
+            # Check if partition device was created
+            partition_device = Path(f'{nbd_device}p1')
+            partition_exists = partition_device.exists()
+
+            # Disconnect NBD
+            subprocess.run(
+                ['qemu-nbd', '--disconnect', nbd_device],
+                capture_output=True,
+                timeout=5
+            )
+
+            if partition_exists:
+                self.logger.info(f"✅ NBD partition devices supported ({nbd_device}p1 found)")
+                return True
+            else:
+                self.logger.info(f"❌ NBD partition devices NOT created ({nbd_device}p1 missing)")
+                return False
+
+        except subprocess.TimeoutExpired:
+            self.logger.debug("NBD partition check timed out")
+            return False
+        except FileNotFoundError:
+            self.logger.debug("qemu-nbd command not found")
+            return False
+        except Exception as e:
+            self.logger.debug(f"NBD partition check failed: {e}")
+            return False
+        finally:
+            # Ensure NBD is disconnected
+            try:
+                subprocess.run(
+                    ['qemu-nbd', '--disconnect', nbd_device],
+                    capture_output=True,
+                    timeout=5
+                )
+            except:
+                pass
+
+            # Clean up test image
+            if test_image and os.path.exists(test_image):
+                try:
+                    os.unlink(test_image)
+                except:
+                    pass
+
+    def _create_test_image(self) -> Optional[str]:
+        """
+        Create a small test QCOW2 image with a partition table.
+
+        Returns:
+            str: Path to test image, or None on failure
+        """
+        try:
+            # Create temporary file
+            fd, path = tempfile.mkstemp(suffix='.qcow2', prefix='nbd-test-')
+            os.close(fd)
+
+            # Create 10MB QCOW2 image
+            result = subprocess.run(
+                ['qemu-img', 'create', '-f', 'qcow2', path, '10M'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode != 0:
+                self.logger.debug(f"Failed to create test image: {result.stderr.decode()}")
+                os.unlink(path)
+                return None
+
+            # Use parted to create partition table
+            # First create GPT label
+            subprocess.run(
+                ['parted', '-s', path, 'mklabel', 'gpt'],
+                capture_output=True,
+                timeout=10
+            )
+
+            # Create one partition
+            subprocess.run(
+                ['parted', '-s', path, 'mkpart', 'primary', '1MiB', '9MiB'],
+                capture_output=True,
+                timeout=10
+            )
+
+            return path
+
+        except Exception as e:
+            self.logger.debug(f"Test image creation failed: {e}")
+            if path and os.path.exists(path):
+                os.unlink(path)
+            return None
+
+    def get_capability_level_report(self, level: CapabilityLevel) -> Dict[str, any]:
+        """
+        Get detailed capability report for a given level.
+
+        Args:
+            level: Capability level to report on
+
+        Returns:
+            dict: Capability report with operations, limitations, and recommendations
+        """
+        return {
+            'level': level.value,
+            'level_name': level.name,
+            'level_description': str(level),
+            'operations': self._get_available_operations(level),
+            'limitations': self._get_limitations(level),
+            'recommendations': self._get_recommendations(level)
+        }
+
+    def _get_available_operations(self, level: CapabilityLevel) -> List[str]:
+        """List operations available at given level."""
+        ops = {
+            CapabilityLevel.USERSPACE_ONLY: [
+                'vmdk_parsing',
+                'qcow2_conversion',
+                'compression',
+                'format_detection',
+                'descriptor_analysis'
+            ],
+            CapabilityLevel.NBD_INSPECTION: [
+                'vmdk_parsing',
+                'qcow2_conversion',
+                'compression',
+                'format_detection',
+                'descriptor_analysis',
+                'nbd_device_attach',
+                'partition_table_reading',
+                'filesystem_detection',
+                'lvm_metadata_inspection',
+                'disk_geometry_analysis'
+            ],
+            CapabilityLevel.FULL_OFFLINE_FIXES: [
+                'vmdk_parsing',
+                'qcow2_conversion',
+                'compression',
+                'format_detection',
+                'descriptor_analysis',
+                'nbd_device_attach',
+                'partition_table_reading',
+                'filesystem_detection',
+                'lvm_metadata_inspection',
+                'disk_geometry_analysis',
+                'partition_mounting',
+                'fstab_stabilization',
+                'initramfs_rebuild',
+                'grub_regeneration',
+                'network_configuration',
+                'vmware_tools_removal',
+                'virtio_driver_injection'
+            ]
+        }
+        return ops.get(level, [])
+
+    def _get_limitations(self, level: CapabilityLevel) -> List[str]:
+        """List limitations at given level."""
+        limitations = {
+            CapabilityLevel.USERSPACE_ONLY: [
+                'Cannot inspect disk partition table',
+                'Cannot detect guest filesystems',
+                'Cannot mount guest filesystems',
+                'Cannot apply offline fixes',
+                'Guest may not boot without manual intervention',
+                'Virtio drivers not injected'
+            ],
+            CapabilityLevel.NBD_INSPECTION: [
+                'Cannot mount partitions (partition devices unavailable)',
+                'Cannot apply offline fixes to guest filesystems',
+                'Guest may not boot without manual intervention',
+                'Virtio drivers not injected'
+            ],
+            CapabilityLevel.FULL_OFFLINE_FIXES: []
+        }
+        return limitations.get(level, [])
+
+    def _get_recommendations(self, level: CapabilityLevel) -> List[str]:
+        """Get recommendations based on detected level."""
+        recommendations = {
+            CapabilityLevel.USERSPACE_ONLY: [
+                'Deploy to production cluster with NBD support for full offline fixes',
+                'Test VM boot in development environment before production use',
+                'Consider manual virtio driver installation in guest',
+                'Use VM+k3s lab environment for realistic testing'
+            ],
+            CapabilityLevel.NBD_INSPECTION: [
+                'Deploy to production cluster for full offline fix capabilities',
+                'Current environment supports inspection but not guest modifications',
+                'Test VM boot before production deployment'
+            ],
+            CapabilityLevel.FULL_OFFLINE_FIXES: []
+        }
+        return recommendations.get(level, [])
 
 
 # Global detector instance

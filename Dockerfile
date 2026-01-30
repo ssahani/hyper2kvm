@@ -162,6 +162,14 @@ ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 # Stage 9: Worker Container (Worker Job Protocol daemon)
 FROM base-runtime AS worker
 
+# Install worker-specific system tools for offline fixes
+# Required for NBD partition detection and LVM operations
+RUN dnf install -y \
+    parted \
+    kpartx \
+    lvm2 \
+    && dnf clean all
+
 # Install worker-specific dependencies
 # Note: Adding minimal dependencies to avoid importing full hyper2kvm with Azure/vSphere
 RUN pip install --no-cache-dir \

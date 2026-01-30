@@ -35,7 +35,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from .capabilities import get_detector
+from .capabilities import CapabilityLevel, get_detector
 from .engine import WorkerEngine
 from .events import EventStream, get_event_store
 from .schemas import JobSpec, JobState, OperationType
@@ -256,7 +256,8 @@ def job_events(job_id: str, follow: bool, phase: Optional[str]):
 
 @worker_cli.command('capabilities')
 @click.option('--json-output', is_flag=True, help='Output as JSON')
-def show_capabilities(json_output: bool):
+@click.option('--detailed', '-d', is_flag=True, help='Show detailed capability level report')
+def show_capabilities(json_output: bool, detailed: bool):
     """Show worker capabilities."""
     detector = get_detector()
 
@@ -264,14 +265,85 @@ def show_capabilities(json_output: bool):
     capabilities = detector.detect_capabilities()
     sys_info = detector.get_system_info()
 
+    # Detect capability level for migration operations
+    capability_level = detector.detect_capability_level()
+    capability_report = detector.get_capability_level_report(capability_level)
+
     if json_output:
         output = {
             "execution_mode": mode,
             "capabilities": capabilities,
-            "system_info": sys_info
+            "system_info": sys_info,
+            "migration_capability_level": capability_report
         }
         console.print_json(data=output)
     else:
+        # Migration capability level table
+        level_table = Table(title="Migration Capability Level", show_header=False)
+        level_table.add_column("Property", style="cyan", width=25)
+        level_table.add_column("Value", style="yellow")
+
+        level_name = capability_report['level_name']
+        level_desc = capability_report['level_description']
+
+        # Color based on level
+        if capability_level == CapabilityLevel.FULL_OFFLINE_FIXES:
+            level_color = "green"
+            level_icon = "✅"
+        elif capability_level == CapabilityLevel.NBD_INSPECTION:
+            level_color = "yellow"
+            level_icon = "⚠️ "
+        else:
+            level_color = "red"
+            level_icon = "❌"
+
+        level_table.add_row(
+            "Detected Level",
+            f"[{level_color}]{level_icon} {level_name}[/{level_color}]"
+        )
+        level_table.add_row("Description", level_desc)
+        level_table.add_row(
+            "Available Operations",
+            f"{len(capability_report['operations'])} operations"
+        )
+
+        console.print(level_table)
+        console.print()
+
+        # Show detailed information if requested
+        if detailed:
+            # Operations table
+            ops_table = Table(title="Available Operations")
+            ops_table.add_column("Operation", style="cyan")
+
+            for op in capability_report['operations']:
+                ops_table.add_row(f"✓ {op}")
+
+            console.print(ops_table)
+            console.print()
+
+            # Limitations table
+            if capability_report['limitations']:
+                limit_table = Table(title="Limitations")
+                limit_table.add_column("Limitation", style="yellow")
+
+                for limitation in capability_report['limitations']:
+                    limit_table.add_row(f"⚠️  {limitation}")
+
+                console.print(limit_table)
+                console.print()
+
+            # Recommendations table
+            if capability_report['recommendations']:
+                rec_table = Table(title="Recommendations")
+                rec_table.add_column("Recommendation", style="blue")
+
+                for rec in capability_report['recommendations']:
+                    rec_table.add_row(f"💡 {rec}")
+
+                console.print(rec_table)
+                console.print()
+
         # Create capabilities table
         table = Table(title="Worker Capabilities")
         table.add_column("Capability", style="cyan")
