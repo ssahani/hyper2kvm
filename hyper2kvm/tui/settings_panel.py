@@ -6,6 +6,7 @@ Settings panel for configuring hyper2kvm defaults and preferences.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -24,6 +25,7 @@ from ..core.optional_imports import (
     RadioButton,
     RadioSet,
 )
+from .tui_config import load_tui_settings, save_tui_settings, get_default_settings
 
 if not TEXTUAL_AVAILABLE:
     raise ImportError("Textual required")
@@ -120,47 +122,56 @@ class SettingsPanel(Container):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.settings = self.load_default_settings()
+        self.logger = logging.getLogger(__name__)
+        self.settings = self._flatten_settings(load_tui_settings(logger=self.logger))
         self.modified = False
+
+    def _flatten_settings(self, nested_settings: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Flatten nested settings dict to flat dict for compatibility.
+
+        Args:
+            nested_settings: Nested settings dict from config file
+
+        Returns:
+            Flat settings dict
+        """
+        flat = {}
+        for category, values in nested_settings.items():
+            if isinstance(values, dict):
+                flat.update(values)
+            else:
+                flat[category] = values
+        return flat
+
+    def _unflatten_settings(self, flat_settings: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert flat settings dict back to nested structure for saving.
+
+        Args:
+            flat_settings: Flat settings dict
+
+        Returns:
+            Nested settings dict for config file
+        """
+        defaults = get_default_settings()
+        nested = {}
+
+        # Map flat keys back to nested structure
+        for category, category_defaults in defaults.items():
+            if isinstance(category_defaults, dict):
+                nested[category] = {}
+                for key in category_defaults.keys():
+                    if key in flat_settings:
+                        nested[category][key] = flat_settings[key]
+                    else:
+                        nested[category][key] = category_defaults[key]
+
+        return nested
 
     def load_default_settings(self) -> Dict[str, Any]:
         """Load default settings."""
-        return {
-            # General
-            "default_output_dir": "/tmp/hyper2kvm-output",
-            "log_level": "info",
-            "log_to_file": True,
-            "log_file_path": "/tmp/hyper2kvm.log",
-
-            # Migration
-            "default_format": "qcow2",
-            "enable_compression": True,
-            "parallel_migrations": 2,
-            "skip_existing": False,
-
-            # vSphere
-            "vcenter_host": "",
-            "vcenter_username": "",
-            "vcenter_save_credentials": False,
-            "vcenter_verify_ssl": True,
-
-            # Offline Fixes
-            "fstab_mode": "stabilize-all",
-            "regen_initramfs": True,
-            "update_grub": True,
-            "fix_network": True,
-            "enhanced_chroot": True,
-
-            # Performance
-            "max_concurrent_operations": 4,
-            "operation_timeout": 3600,
-            "network_timeout": 300,
-
-            # Advanced
-            "guestfs_backend": "vmcraft",
-            "debug_mode": False,
-            "verbose_output": False,
-        }
+        return self._flatten_settings(get_default_settings())
 
     def compose(self) -> ComposeResult:
         """Compose the settings panel UI."""
@@ -507,23 +518,30 @@ class SettingsPanel(Container):
             self.settings["debug_mode"] = self.query_one("#check_debug", Checkbox).value
             self.settings["verbose_output"] = self.query_one("#check_verbose", Checkbox).value
 
-            # TODO: Persist settings to config file
-            self.notify("Settings saved successfully", severity="information")
-            self.modified = False
+            # Convert flat settings to nested structure and persist to config file
+            nested_settings = self._unflatten_settings(self.settings)
+            if save_tui_settings(nested_settings, logger=self.logger):
+                self.notify("Settings saved successfully", severity="information")
+                self.modified = False
+            else:
+                self.notify("Failed to save settings to config file", severity="error")
 
         except Exception as e:
             self.notify(f"Failed to save settings: {e}", severity="error")
+            self.logger.exception("Error saving settings")
 
     def cancel_changes(self) -> None:
         """Cancel changes and revert to saved settings."""
         if self.modified:
-            self.notify("Changes discarded")
-            # TODO: Reload from saved config
+            # Reload from saved config
+            self.settings = self._flatten_settings(load_tui_settings(logger=self.logger))
+            self.notify("Changes discarded, settings reloaded")
+            self.modified = False
         else:
             self.notify("No changes to discard")
 
     def reset_to_defaults(self) -> None:
         """Reset all settings to defaults."""
         self.settings = self.load_default_settings()
-        self.notify("Settings reset to defaults", severity="warning")
-        # TODO: Recompose panel with default values
+        self.notify("Settings reset to defaults - click Save to persist", severity="warning")
+        self.modified = True
