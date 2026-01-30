@@ -21,10 +21,11 @@ def main() -> None:
                 orchestrator = ManifestOrchestrator(args.manifest, logger)
                 orchestrator.run()
                 rc = 0
+            except Fatal as e:
+                logger.error(str(e))
+                rc = e.code
             except Exception as e:
                 logger.error(f"Manifest pipeline failed: {e}")
-                import traceback
-                traceback.print_exc()
                 rc = 1
         else:
             # Use traditional workflow
@@ -34,6 +35,9 @@ def main() -> None:
             except Fatal as e:
                 logger.error(str(e))
                 rc = e.code
+            except Exception as e:
+                logger.error(f"Migration failed: {e}")
+                rc = 1
 
         sys.exit(int(rc))
 

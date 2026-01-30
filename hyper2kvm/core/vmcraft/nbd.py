@@ -603,6 +603,23 @@ class NBDDeviceManager:
                 run_sudo(self.logger, ["qemu-nbd", "--disconnect", nbd_device], check=False)
             except Exception:
                 pass
+
+            # Provide helpful error message for common VMDK issues
+            error_str = str(e)
+            if "invalid VMDK image descriptor" in error_str:
+                # User provided -flat.vmdk instead of descriptor file
+                if str(image_path).endswith("-flat.vmdk"):
+                    raise RuntimeError(
+                        f"Cannot open '{image_path}': This is a VMDK data file (-flat.vmdk).\n"
+                        f"You need the descriptor file (without -flat suffix).\n"
+                        f"Expected file: {str(image_path).replace('-flat.vmdk', '.vmdk')}"
+                    ) from None
+                else:
+                    raise RuntimeError(
+                        f"Invalid VMDK descriptor in '{image_path}'.\n"
+                        f"The VMDK descriptor file may be corrupted or in an unsupported format."
+                    ) from None
+
             # Re-raise the original exception to allow retry decorator to catch it
             raise
         except Exception as e:
