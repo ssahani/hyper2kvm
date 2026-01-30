@@ -193,7 +193,7 @@ See [docs/HYPERCTL_INTEGRATION.md](docs/HYPERCTL_INTEGRATION.md) and [INTEGRATIO
 - **Multi-Hypervisor Support:** VMware (vSphere, ESXi, Workstation), Hyper-V, AWS AMI, cloud images, raw disks 🔄
 - **Offline Fixing:** Deterministic repairs using libguestfs without booting the VM 🛠️
 - **Windows VirtIO Injection:** Automated driver injection with two-phase boot strategy 🪟
-- **Linux Bootloader Repair:** GRUB/GRUB2 regeneration for BIOS and UEFI systems 🐧
+- **Linux Bootloader Repair:** GRUB/GRUB2 regeneration for BIOS and UEFI systems with enhanced chroot (bind-mounted /proc, /dev, /sys for reliable bootloader operations) 🐧
 - **Network Stabilization:** Remove MAC pinning, clean VMware artifacts, support multiple network managers 🌐
 - **Snapshot Handling:** Intelligent flattening of VMware snapshot chains 📸
 - **Format Conversion:** VMDK, VHD/VHDX, QCOW2, RAW, VDI with compression support 💾
