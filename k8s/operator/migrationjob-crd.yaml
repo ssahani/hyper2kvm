@@ -1,0 +1,243 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: migrationjobs.hyper2kvm.io
+spec:
+  group: hyper2kvm.io
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - source
+                - destination
+              properties:
+                source:
+                  type: object
+                  description: Source VM disk specification
+                  properties:
+                    type:
+                      type: string
+                      enum: ["vmdk-url", "vmdk-pvc", "pvc"]
+                      description: Source type
+                    vmdk:
+                      type: object
+                      description: VMDK source specification
+                      properties:
+                        url:
+                          type: string
+                          description: HTTP(S) URL to VMDK file
+                        pvcName:
+                          type: string
+                          description: PVC containing VMDK file
+                        path:
+                          type: string
+                          description: Path within PVC to VMDK file
+                          default: "disk.vmdk"
+                    pvc:
+                      type: object
+                      description: Direct PVC source (already QCOW2)
+                      properties:
+                        name:
+                          type: string
+                          description: Source PVC name
+                migration:
+                  type: object
+                  description: Migration options
+                  properties:
+                    offlineFixes:
+                      type: object
+                      description: Offline fix configuration
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        fstabMode:
+                          type: string
+                          enum: ["none", "uuid-only", "stabilize-partitions", "stabilize-all"]
+                          default: "stabilize-all"
+                        fstabPreferPartuuid:
+                          type: boolean
+                          default: false
+                        grubFixes:
+                          type: boolean
+                          default: true
+                        initramfsRegen:
+                          type: boolean
+                          default: true
+                        initramfsModules:
+                          type: array
+                          items:
+                            type: string
+                          default:
+                            - virtio_blk
+                            - virtio_scsi
+                            - virtio_net
+                            - virtio_pci
+                        networkFixes:
+                          type: boolean
+                          default: true
+                    conversion:
+                      type: object
+                      description: Image conversion options
+                      properties:
+                        format:
+                          type: string
+                          enum: ["qcow2", "raw"]
+                          default: "qcow2"
+                        compress:
+                          type: boolean
+                          default: true
+                        compressionType:
+                          type: string
+                          enum: ["zstd", "zlib"]
+                          default: "zstd"
+                    nodeSelector:
+                      type: object
+                      description: Node selector for migration pod
+                      additionalProperties:
+                        type: string
+                destination:
+                  type: object
+                  description: Destination PVC specification
+                  required:
+                    - size
+                  properties:
+                    pvcName:
+                      type: string
+                      description: Destination PVC name (auto-generated if not specified)
+                    storageClass:
+                      type: string
+                      description: StorageClass for destination PVC
+                      default: "local-path"
+                    size:
+                      type: string
+                      description: Destination PVC size (e.g., "20Gi")
+                      pattern: '^[0-9]+[KMGT]i$'
+                    accessModes:
+                      type: array
+                      items:
+                        type: string
+                      default:
+                        - ReadWriteOnce
+                createVM:
+                  type: object
+                  description: Auto-create VirtualMachine after migration
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    name:
+                      type: string
+                      description: VM name (defaults to migration job name)
+                    cpu:
+                      type: string
+                      description: Number of CPU cores
+                      default: "2"
+                    memory:
+                      type: string
+                      description: Memory allocation
+                      default: "2Gi"
+                      pattern: '^[0-9]+[KMGT]i$'
+                    autoStart:
+                      type: boolean
+                      description: Auto-start VM after creation
+                      default: false
+                    networkType:
+                      type: string
+                      enum: ["pod", "masquerade", "bridge"]
+                      default: "masquerade"
+                cleanupPolicy:
+                  type: string
+                  enum: ["Always", "OnSuccess", "Never"]
+                  description: When to cleanup temporary resources
+                  default: "OnSuccess"
+                timeout:
+                  type: string
+                  description: Migration timeout (e.g., "30m")
+                  default: "1h"
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: ["Pending", "Uploading", "Preparing", "Migrating", "Creating", "Completed", "Failed"]
+                  description: Current migration phase
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                startTime:
+                  type: string
+                  format: date-time
+                completionTime:
+                  type: string
+                  format: date-time
+                sourcePVC:
+                  type: string
+                  description: Created source PVC name
+                destinationPVC:
+                  type: string
+                  description: Created destination PVC name
+                migrationPod:
+                  type: string
+                  description: Migration pod name
+                vmName:
+                  type: string
+                  description: Created VM name
+                message:
+                  type: string
+                  description: Human-readable status message
+                progress:
+                  type: object
+                  description: Migration progress details
+                  properties:
+                    sourceSize:
+                      type: string
+                    outputSize:
+                      type: string
+                    compressionRatio:
+                      type: string
+                    currentPhase:
+                      type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Source
+          type: string
+          jsonPath: .spec.source.type
+        - name: VM
+          type: string
+          jsonPath: .status.vmName
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: migrationjobs
+    singular: migrationjob
+    kind: MigrationJob
+    shortNames:
+      - mj
+      - mjob

@@ -20,6 +20,9 @@ from hyper2kvm.operator.job_assigner import JobAssigner
 # Import to ensure handlers are registered
 from hyper2kvm.operator import offlinefixjob_controller  # noqa: F401
 
+# MigrationJob controller (new K8s-native migration)
+from hyper2kvm.operator import migrationjob_controller  # noqa: F401
+
 __all__ = [
     'create_migration_job',
     'update_migration_job',

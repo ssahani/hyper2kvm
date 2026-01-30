@@ -1,0 +1,53 @@
+# Migration Container for K8s-Native Migrations
+# This container runs hyper2kvm inside Kubernetes to perform migrations
+
+FROM fedora:43
+
+LABEL org.opencontainers.image.source="https://github.com/hyper2kvm/hyper2kvm"
+LABEL org.opencontainers.image.description="hyper2kvm migration container for Kubernetes-native VM migrations"
+LABEL org.opencontainers.image.licenses="LGPL-3.0-or-later"
+
+# Install system dependencies
+RUN dnf install -y \
+    python3 \
+    python3-pip \
+    python3-devel \
+    qemu-img \
+    libguestfs \
+    libguestfs-tools \
+    nbd \
+    e2fsprogs \
+    xfsprogs \
+    btrfs-progs \
+    lvm2 \
+    cryptsetup \
+    parted \
+    gdisk \
+    dosfstools \
+    util-linux \
+    dracut \
+    grub2-tools \
+    systemd \
+    && dnf clean all
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir \
+    pyyaml \
+    jinja2 \
+    click \
+    rich \
+    kubernetes
+
+# Copy hyper2kvm source
+WORKDIR /app
+COPY . /app/
+
+# Install hyper2kvm
+RUN pip3 install --no-cache-dir -e .
+
+# Create working directories
+RUN mkdir -p /vmroot /output /source
+
+# Set entrypoint
+ENTRYPOINT ["h2kvmctl"]
+CMD ["--help"]
