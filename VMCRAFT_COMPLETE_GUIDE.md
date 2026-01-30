@@ -2,15 +2,15 @@
 
 ## 🚀 The Ultimate VM Disk Image Manipulation Library
 
-VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **160+ methods** across **27 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, and forensic analysis.
+VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **178+ methods** across **32 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, and forensic analysis.
 
 ## 📊 At a Glance
 
 | Metric | Value |
 |--------|-------|
-| **Total Methods** | 160+ |
-| **Modules** | 27 |
-| **Lines of Code** | ~10,546 |
+| **Total Methods** | 178+ |
+| **Modules** | 32 |
+| **Lines of Code** | ~12,700 |
 | **Performance** | **5-10x faster** than libguestfs |
 | **Supported OS** | Windows (NT-12), Linux (all major distros) |
 | **Launch Time** | ~1.9s (vs libguestfs: ~10-13s) |
@@ -484,7 +484,284 @@ summary = g.get_hardware_summary(hardware)
 - Oracle VirtualBox
 - Xen
 
-### 15. File Operations (30+ methods)
+### 15. Database Detection (3 methods) - NEW in v4.0
+
+Comprehensive database installation detection and analysis:
+
+**Supported Databases**:
+- MySQL/MariaDB (binary detection, config parsing, database enumeration)
+- PostgreSQL (binary detection, config parsing, role/database listing)
+- MongoDB (binary detection, config parsing, YAML support)
+- Redis (binary detection, config parsing, persistence settings)
+- SQLite (file detection: .db, .sqlite, .sqlite3)
+- Oracle Database (directory-based detection)
+- Microsoft SQL Server (binary detection for Linux)
+
+**Usage**:
+```python
+# Detect all databases
+databases = g.detect_databases()
+# {
+#   "mysql": {
+#     "installed": True,
+#     "type": "mysql",  # or "mariadb"
+#     "config_file": "/etc/my.cnf",
+#     "data_dir": "/var/lib/mysql",
+#     "port": 3306,
+#     "databases": ["app_db", "wordpress"]
+#   },
+#   "postgresql": {...},
+#   "mongodb": {...},
+#   "redis": {...},
+#   "sqlite_files": [{"path": "/var/app/db.sqlite3", "size_mb": 15.2}],
+#   "detected_count": 2
+# }
+
+# Get summary
+summary = g.get_database_summary(databases)
+# {
+#   "total_databases": 2,
+#   "mysql_installed": True,
+#   "postgresql_installed": False,
+#   "sqlite_file_count": 3
+# }
+
+# Security audit
+issues = g.check_database_security(databases)
+# [
+#   {
+#     "database": "mysql",
+#     "severity": "medium",
+#     "issue": "MySQL listening on all interfaces (0.0.0.0)",
+#     "recommendation": "Bind to specific interface or localhost"
+#   }
+# ]
+```
+
+### 16. Web Server Analysis (3 methods) - NEW in v4.0
+
+Web server detection and configuration analysis:
+
+**Supported Servers**:
+- Apache HTTP Server (httpd.conf, virtual hosts, modules, SSL)
+- Nginx (nginx.conf, server blocks, SSL)
+- Microsoft IIS (directory-based detection)
+- Lighttpd (lighttpd.conf, document root)
+- Apache Tomcat (CATALINA_HOME, webapps)
+
+**Usage**:
+```python
+# Detect web servers
+webservers = g.detect_webservers()
+# {
+#   "apache": {
+#     "installed": True,
+#     "config_file": "/etc/httpd/conf/httpd.conf",
+#     "listen_ports": ["80", "443"],
+#     "virtual_hosts": [
+#       {
+#         "server_name": "example.com",
+#         "document_root": "/var/www/html",
+#         "ssl": True
+#       }
+#     ],
+#     "modules": ["mod_ssl", "mod_rewrite"],
+#     "ssl_enabled": True
+#   },
+#   "nginx": {...},
+#   "detected_count": 2
+# }
+
+# Get summary
+summary = g.get_webserver_summary(webservers)
+
+# Security check
+issues = g.check_webserver_security(webservers)
+```
+
+### 17. Certificate Management (4 methods) - NEW in v4.0
+
+SSL/TLS certificate discovery and tracking:
+
+**Certificate Types**:
+- X.509 certificates (.crt, .pem, .cer)
+- Private keys (.key, .pem, encrypted/unencrypted)
+- PKCS#12 keystores (.p12, .pfx)
+- Java keystores (.jks, .keystore)
+
+**Search Locations**:
+- /etc/ssl/certs, /etc/pki/tls/certs
+- /etc/apache2/ssl, /etc/nginx/ssl
+- /etc/ssl/private (private keys)
+
+**Usage**:
+```python
+# Find all certificates
+certs = g.find_all_certificates()
+# {
+#   "certificates": [
+#     {
+#       "path": "/etc/nginx/ssl/example.com.crt",
+#       "type": "certificate",
+#       "format": "PEM",
+#       "size_bytes": 1234
+#     }
+#   ],
+#   "private_keys": [
+#     {
+#       "path": "/etc/nginx/ssl/example.com.key",
+#       "encrypted": False
+#     }
+#   ],
+#   "keystores": [...],
+#   "total_count": 15
+# }
+
+# Check expiration
+expiration = g.check_certificate_expiration(certs, warning_days=30)
+
+# Get summary
+summary = g.get_certificate_summary(certs)
+# {
+#   "total_certificates": 15,
+#   "total_private_keys": 10,
+#   "unencrypted_keys": 3  # Security risk!
+# }
+
+# Security audit
+issues = g.check_certificate_security(certs)
+```
+
+### 18. Container Analysis (4 methods) - NEW in v4.0
+
+Enhanced container runtime analysis beyond basic detection:
+
+**Supported Runtimes**:
+- Docker (containers, images, volumes, networks)
+- Podman (containers, images, storage)
+- containerd (data root detection)
+
+**Docker Analysis**:
+- Container enumeration (/var/lib/docker/containers/)
+- Image parsing (repositories.json, tags)
+- Volume detection (/var/lib/docker/volumes/)
+- Network configuration
+
+**Usage**:
+```python
+# Comprehensive analysis
+analysis = g.analyze_containers()
+# {
+#   "docker": {
+#     "installed": True,
+#     "data_root": "/var/lib/docker",
+#     "containers": [
+#       {
+#         "id": "abc123def456",
+#         "name": "web-app",
+#         "image": "nginx:latest",
+#         "state": "running"
+#       }
+#     ],
+#     "images": [
+#       {
+#         "repository": "nginx",
+#         "tag": "latest",
+#         "id": "xyz789"
+#       }
+#     ],
+#     "volumes": [...],
+#     "networks": [...]
+#   },
+#   "total_containers": 5,
+#   "total_images": 10
+# }
+
+# Get summary
+summary = g.get_container_summary(analysis)
+
+# List images
+images = g.list_container_images(analysis)
+# ["nginx:latest", "mysql:8.0", "redis:alpine"]
+
+# Security check
+issues = g.check_container_security(analysis)
+```
+
+### 19. Compliance Checking (4 methods) - NEW in v4.0
+
+System compliance and security hardening verification:
+
+**Compliance Standards**:
+- CIS Benchmarks (basic checks)
+- Password policy enforcement
+- File permission auditing
+- Network security settings
+- Logging and auditing configuration
+
+**Linux Checks** (18 checks):
+1. Password Policy (PWD-001): Minimum length configured
+2. Shadow Passwords (PWD-002): Shadow file exists
+3. File Permissions (PERM-*): /etc/passwd, /etc/shadow, /etc/group
+4. Empty Passwords (PWD-003): No accounts with empty passwords
+5. Root SSH Login (SSH-001): Root login disabled
+6. Firewall Enabled (NET-001): Firewall configuration present
+7. MAC System (SEC-001): SELinux/AppArmor enabled
+8. Logging Enabled (LOG-001): Syslog/journald active
+9. Unnecessary Services (SVC-*): telnet, rsh, ftp disabled
+10. Core Dumps (SEC-002): Core dumps disabled
+
+**Usage**:
+```python
+# Run compliance checks
+compliance = g.check_compliance(os_type="linux")
+# {
+#   "os_type": "linux",
+#   "checks": [
+#     {
+#       "id": "PWD-001",
+#       "category": "Authentication",
+#       "description": "Password minimum length configured",
+#       "status": "pass",  # or "fail", "warning"
+#       "severity": "medium",
+#       "details": "Minimum password length: 8"
+#     },
+#     {
+#       "id": "SSH-001",
+#       "category": "SSH Security",
+#       "status": "fail",
+#       "severity": "high",
+#       "recommendation": "Set PermitRootLogin to 'no'"
+#     }
+#   ],
+#   "passed": 12,
+#   "failed": 4,
+#   "warnings": 2,
+#   "score": 67,  # 0-100
+#   "grade": "D"  # A-F
+# }
+
+# Get summary
+summary = g.get_compliance_summary(compliance)
+# {
+#   "score": 67,
+#   "grade": "D",
+#   "critical_failures": 0,
+#   "high_failures": 2
+# }
+
+# Get failed checks only
+failed = g.get_failed_checks(compliance)
+
+# Get recommendations
+recommendations = g.get_recommendations(compliance)
+# [
+#   "[SSH-001] Set PermitRootLogin to 'no'",
+#   "[NET-001] Enable and configure a firewall"
+# ]
+```
+
+### 20. File Operations (30+ methods)
 
 **Basic Operations**:
 ```python
@@ -753,7 +1030,19 @@ with VMCraft() as g:
 - **v1.0**: Initial release (70 methods, 15 modules)
 - **v2.0**: Enhanced features (98 methods, 17 modules, +28 methods)
 - **v2.5**: Advanced features (130+ methods, 22 modules, +32 methods)
-- **v3.0**: Enterprise-grade features (**160+ methods, 27 modules, +30 methods**)
+- **v3.0**: Enterprise-grade features (160+ methods, 27 modules, +30 methods)
+  - Network configuration analysis
+  - Firewall analysis
+  - Scheduled task analysis
+  - SSH security analysis
+  - Log analysis
+  - Hardware detection
+- **v4.0**: Ultimate enterprise platform (**178+ methods, 32 modules, +18 methods**)
+  - Database detection (MySQL, PostgreSQL, MongoDB, Redis, SQLite, Oracle, MS SQL)
+  - Web server analysis (Apache, Nginx, IIS, Lighttpd, Tomcat)
+  - Certificate management (SSL/TLS, keystores, expiration tracking)
+  - Container analysis (Docker, Podman, containerd)
+  - Compliance checking (CIS benchmarks, security hardening)
 
 ## 🤝 Contributing
 

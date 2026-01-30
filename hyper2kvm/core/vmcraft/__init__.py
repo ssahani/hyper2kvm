@@ -39,6 +39,11 @@ from .scheduled_tasks import ScheduledTaskAnalyzer
 from .ssh_analyzer import SSHAnalyzer
 from .log_analyzer import LogAnalyzer
 from .hardware_detector import HardwareDetector
+from .database_detector import DatabaseDetector
+from .webserver_analyzer import WebServerAnalyzer
+from .certificate_manager import CertificateManager
+from .container_analyzer import ContainerAnalyzer
+from .compliance_checker import ComplianceChecker
 
 __all__ = [
     # Main API
@@ -64,4 +69,9 @@ __all__ = [
     "SSHAnalyzer",
     "LogAnalyzer",
     "HardwareDetector",
+    "DatabaseDetector",
+    "WebServerAnalyzer",
+    "CertificateManager",
+    "ContainerAnalyzer",
+    "ComplianceChecker",
 ]

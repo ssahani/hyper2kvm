@@ -44,6 +44,11 @@ from .hardware_detector import HardwareDetector
 from .backup import BackupManager
 from .security import SecurityAuditor
 from .optimization import DiskOptimizer
+from .database_detector import DatabaseDetector
+from .webserver_analyzer import WebServerAnalyzer
+from .certificate_manager import CertificateManager
+from .container_analyzer import ContainerAnalyzer
+from .compliance_checker import ComplianceChecker
 
 
 logger = logging.getLogger(__name__)
@@ -101,6 +106,11 @@ class VMCraft:
         self._backup_mgr: BackupManager | None = None
         self._security_auditor: SecurityAuditor | None = None
         self._disk_optimizer: DiskOptimizer | None = None
+        self._database_detector: DatabaseDetector | None = None
+        self._webserver_analyzer: WebServerAnalyzer | None = None
+        self._certificate_manager: CertificateManager | None = None
+        self._container_analyzer: ContainerAnalyzer | None = None
+        self._compliance_checker: ComplianceChecker | None = None
 
         # Log backend selection
         self.logger.debug("Using VMCraft backend (qemu-nbd + Linux tools)")
@@ -218,6 +228,11 @@ class VMCraft:
         self._backup_mgr = BackupManager(self.logger, self._mount_root)
         self._security_auditor = SecurityAuditor(self.logger, self._mount_root)
         self._disk_optimizer = DiskOptimizer(self.logger, self._mount_root)
+        self._database_detector = DatabaseDetector(self.logger, self._file_ops, self._mount_root)
+        self._webserver_analyzer = WebServerAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._certificate_manager = CertificateManager(self.logger, self._file_ops, self._mount_root)
+        self._container_analyzer = ContainerAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._compliance_checker = ComplianceChecker(self.logger, self._file_ops, self._mount_root)
 
         total_time = time.time() - start_time
         self._perf_metrics['total_launch'] = total_time
@@ -1358,6 +1373,128 @@ class VMCraft:
         if not self._hardware_detector:
             raise RuntimeError("Not launched")
         return self._hardware_detector.get_hardware_summary(hardware)
+
+    # Database Detection (database_detector.py)
+
+    def detect_databases(self) -> dict[str, Any]:
+        """Detect all database installations."""
+        if not self._database_detector:
+            raise RuntimeError("Not launched")
+        return self._database_detector.detect_databases()
+
+    def get_database_summary(self, databases: dict[str, Any]) -> dict[str, Any]:
+        """Get database summary."""
+        if not self._database_detector:
+            raise RuntimeError("Not launched")
+        return self._database_detector.get_database_summary(databases)
+
+    def check_database_security(self, databases: dict[str, Any]) -> list[dict[str, Any]]:
+        """Check database security settings."""
+        if not self._database_detector:
+            raise RuntimeError("Not launched")
+        return self._database_detector.check_database_security(databases)
+
+    # Web Server Analysis (webserver_analyzer.py)
+
+    def detect_webservers(self) -> dict[str, Any]:
+        """Detect all web server installations."""
+        if not self._webserver_analyzer:
+            raise RuntimeError("Not launched")
+        return self._webserver_analyzer.detect_webservers()
+
+    def get_webserver_summary(self, webservers: dict[str, Any]) -> dict[str, Any]:
+        """Get web server summary."""
+        if not self._webserver_analyzer:
+            raise RuntimeError("Not launched")
+        return self._webserver_analyzer.get_webserver_summary(webservers)
+
+    def check_webserver_security(self, webservers: dict[str, Any]) -> list[dict[str, Any]]:
+        """Check web server security settings."""
+        if not self._webserver_analyzer:
+            raise RuntimeError("Not launched")
+        return self._webserver_analyzer.check_webserver_security(webservers)
+
+    # Certificate Management (certificate_manager.py)
+
+    def find_all_certificates(self) -> dict[str, Any]:
+        """Find all certificate files."""
+        if not self._certificate_manager:
+            raise RuntimeError("Not launched")
+        return self._certificate_manager.find_certificates()
+
+    def check_certificate_expiration(
+        self,
+        certs: dict[str, Any],
+        warning_days: int = 30
+    ) -> dict[str, Any]:
+        """Check certificate expiration."""
+        if not self._certificate_manager:
+            raise RuntimeError("Not launched")
+        return self._certificate_manager.check_certificate_expiration(certs, warning_days)
+
+    def get_certificate_summary(self, certs: dict[str, Any]) -> dict[str, Any]:
+        """Get certificate summary."""
+        if not self._certificate_manager:
+            raise RuntimeError("Not launched")
+        return self._certificate_manager.get_certificate_summary(certs)
+
+    def check_certificate_security(self, certs: dict[str, Any]) -> list[dict[str, Any]]:
+        """Check certificate security issues."""
+        if not self._certificate_manager:
+            raise RuntimeError("Not launched")
+        return self._certificate_manager.check_certificate_security(certs)
+
+    # Container Analysis (container_analyzer.py)
+
+    def analyze_containers(self) -> dict[str, Any]:
+        """Analyze container installations comprehensively."""
+        if not self._container_analyzer:
+            raise RuntimeError("Not launched")
+        return self._container_analyzer.analyze_containers()
+
+    def get_container_summary(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Get container summary."""
+        if not self._container_analyzer:
+            raise RuntimeError("Not launched")
+        return self._container_analyzer.get_container_summary(analysis)
+
+    def list_container_images(self, analysis: dict[str, Any]) -> list[str]:
+        """List all container images."""
+        if not self._container_analyzer:
+            raise RuntimeError("Not launched")
+        return self._container_analyzer.list_container_images(analysis)
+
+    def check_container_security(self, analysis: dict[str, Any]) -> list[dict[str, Any]]:
+        """Check container security issues."""
+        if not self._container_analyzer:
+            raise RuntimeError("Not launched")
+        return self._container_analyzer.check_container_security(analysis)
+
+    # Compliance Checking (compliance_checker.py)
+
+    def check_compliance(self, os_type: str = "linux") -> dict[str, Any]:
+        """Run comprehensive compliance checks."""
+        if not self._compliance_checker:
+            raise RuntimeError("Not launched")
+        return self._compliance_checker.check_compliance(os_type)
+
+    def get_compliance_summary(self, compliance: dict[str, Any]) -> dict[str, Any]:
+        """Get compliance summary."""
+        if not self._compliance_checker:
+            raise RuntimeError("Not launched")
+        return self._compliance_checker.get_compliance_summary(compliance)
+
+    def get_failed_checks(self, compliance: dict[str, Any]) -> list[dict[str, Any]]:
+        """Get all failed compliance checks."""
+        if not self._compliance_checker:
+            raise RuntimeError("Not launched")
+        return self._compliance_checker.get_failed_checks(compliance)
+
+    def get_recommendations(self, compliance: dict[str, Any]) -> list[str]:
+        """Get all compliance recommendations."""
+        if not self._compliance_checker:
+            raise RuntimeError("Not launched")
+        return self._compliance_checker.get_recommendations(compliance)
 
     # Context manager support
 
