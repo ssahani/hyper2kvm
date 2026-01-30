@@ -636,11 +636,11 @@ else:
 **Step 2: Create Runner**
 
 ```python
-from hyper2kvm.vmware.transports import create_hyperctl_runner
+from hyper2kvm.vmware.transports import create_hyperctl_runner, HyperCtlRunner
 
 # Use environment variables for configuration
-# H2VISORD_URL, HYPERCTL_PATH
-runner = create_hyperctl_runner()
+# HYPERVISORD_URL, HYPERCTL_PATH
+runner = create_hyperctl_runner()  # Returns HyperCtlRunner instance
 
 # Or specify explicitly
 runner = create_hyperctl_runner(
