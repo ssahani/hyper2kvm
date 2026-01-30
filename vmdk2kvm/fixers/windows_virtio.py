@@ -48,15 +48,22 @@ class DriverType(Enum):
     RNG = "rng"
 
 
-class WindowsEdition(Enum):
+class WindowsRelease(Enum):
+    """
+    Windows release family (NOT edition like Pro/Home/Enterprise).
+
+    Why: "Edition" is ambiguous terminology in Windows land.
+    This enum describes the OS generation / release line.
+    """
     SERVER_2022 = "server_2022"
     SERVER_2019 = "server_2019"
     SERVER_2016 = "server_2016"
     SERVER_2012 = "server_2012"
     SERVER_2008 = "server_2008"
-    WINDOWS_12 = "windows_12"
+    WINDOWS_12 = "windows_12"  # heuristic/future bucket; best-effort only
     WINDOWS_11 = "windows_11"
     WINDOWS_10 = "windows_10"
+    WINDOWS_8_1 = "windows_8_1"
     WINDOWS_8 = "windows_8"
     WINDOWS_7 = "windows_7"
     WINDOWS_VISTA = "vista"
@@ -73,64 +80,169 @@ class DriverStartType(Enum):
 
 
 # ---------------------------
-# Plan + Driver model
+# Config (drivers + OS->bucket mapping)
 # ---------------------------
 
-@dataclass(frozen=True)
-class WindowsVirtioPlan:
-    arch_dir: str
-    os_bucket: str
-    edition: WindowsEdition
-    drivers_needed: Set[DriverType]
+DEFAULT_VIRTIO_CONFIG: Dict[str, Any] = {
+    # Default is Windows 11, not Windows 10.
+    "default_release": "windows_11",
+    "default_arch_dir": "amd64",
 
-    @classmethod
-    def default_needed(cls) -> Set[DriverType]:
-        return {DriverType.STORAGE, DriverType.NETWORK, DriverType.BALLOON}
+    # Release -> canonical bucket hint
+    "release_to_bucket": {
+        "windows_12": "w12",
+        "windows_11": "w11",
+        "windows_10": "w10",
+        "windows_8_1": "w8",
+        "windows_8": "w8",
+        "windows_7": "w7",
+        "vista": "vista",
+        "xp": "xp",
+        "server_2022": "w11",
+        "server_2019": "w10",
+        "server_2016": "w10",
+        "server_2012": "w8",
+        "server_2008": "w7",
+        "unknown": "w11",
+    },
 
+    # Release -> bucket candidates (fallback order)
+    "bucket_candidates": {
+        "windows_12": ["w12", "w11", "w10", "w8", "w7"],
+        "windows_11": ["w11", "w10", "w8", "w7"],
+        "windows_10": ["w10", "w11", "w8", "w7"],
+        "windows_8_1": ["w8", "w10", "w7"],
+        "windows_8": ["w8", "w10", "w7"],
+        "windows_7": ["w7", "w8", "w10"],
+        "vista": ["vista", "w7", "w8"],
+        "xp": ["xp", "w7"],
+        "server_2022": ["w11", "w10", "w8", "w7"],
+        "server_2019": ["w10", "w11", "w8", "w7"],
+        "server_2016": ["w10", "w11", "w8", "w7"],
+        "server_2012": ["w8", "w10", "w7"],
+        "server_2008": ["w7", "w8", "w10"],
+        "unknown": ["w11", "w10", "w8", "w7"],
+    },
 
-@dataclass
-class DriverFile:
-    name: str
-    type: DriverType
-    src_path: Path
-    dest_name: str
-
-    start_type: DriverStartType
-    service_name: str
-
-    pci_ids: List[str]
-    class_guid: str
-
-    package_dir: Optional[Path] = None
-    inf_path: Optional[Path] = None
-
-    bucket_used: Optional[str] = None
-    match_pattern: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "name": self.name,
-            "type": self.type.value,
-            "src_path": str(self.src_path),
-            "dest_name": self.dest_name,
-            "start_type": self.start_type.value,
-            "service_name": self.service_name,
-            "pci_ids": list(self.pci_ids),
-            "class_guid": self.class_guid,
-            "package_dir": str(self.package_dir) if self.package_dir else None,
-            "inf_path": str(self.inf_path) if self.inf_path else None,
-            "bucket_used": self.bucket_used,
-            "match_pattern": self.match_pattern,
-        }
-
-
-def _plan_to_dict(plan: WindowsVirtioPlan) -> Dict[str, Any]:
-    return {
-        "arch_dir": plan.arch_dir,
-        "os_bucket": plan.os_bucket,
-        "edition": plan.edition.value,
-        "drivers_needed": sorted([d.value for d in plan.drivers_needed]),
-    }
+    # Driver definitions live in config (extensible per vendor / custom PNP IDs).
+    "drivers": {
+        "storage": [
+            {
+                "name": "viostor",
+                "pattern": "viostor/{bucket}/{arch}/viostor.sys",
+                "inf_hint": "viostor.inf",
+                "service": "viostor",
+                "start": 0,  # BOOT
+                "class_guid": "{4D36E967-E325-11CE-BFC1-08002BE10318}",  # SCSIAdapter
+                "pci_ids": [
+                    "pci#ven_1af4&dev_1001&subsys_00081af4",
+                    "pci#ven_1af4&dev_1042&subsys_00081af4",
+                ],
+            },
+            {
+                "name": "vioscsi",
+                "pattern": "vioscsi/{bucket}/{arch}/vioscsi.sys",
+                "inf_hint": "vioscsi.inf",
+                "service": "vioscsi",
+                "start": 0,  # BOOT
+                "class_guid": "{4D36E967-E325-11CE-BFC1-08002BE10318}",  # SCSIAdapter
+                "pci_ids": [
+                    "pci#ven_1af4&dev_1004&subsys_00081af4",
+                    "pci#ven_1af4&dev_1048&subsys_00081af4",
+                ],
+            },
+        ],
+        "network": [
+            {
+                "name": "NetKVM",
+                "pattern": "NetKVM/{bucket}/{arch}/netkvm.sys",
+                "inf_hint": "netkvm.inf",
+                "service": "netkvm",
+                "start": 2,  # AUTO
+                "class_guid": "{4D36E972-E325-11CE-BFC1-08002BE10318}",  # Net
+                "pci_ids": [
+                    "pci#ven_1af4&dev_1000&subsys_00081af4",
+                    "pci#ven_1af4&dev_1041&subsys_00081af4",
+                ],
+            },
+        ],
+        "balloon": [
+            {
+                "name": "Balloon",
+                "pattern": "Balloon/{bucket}/{arch}/balloon.sys",
+                "inf_hint": "balloon.inf",
+                "service": "balloon",
+                "start": 2,  # AUTO
+                "class_guid": "{4D36E97D-E325-11CE-BFC1-08002BE10318}",  # System
+                "pci_ids": [
+                    "pci#ven_1af4&dev_1002&subsys_00051af4",
+                    "pci#ven_1af4&dev_1045&subsys_00051af4",
+                ],
+            },
+        ],
+        "gpu": [
+            {
+                "name": "viogpudo",
+                "pattern": "viogpudo/{bucket}/{arch}/viogpudo.sys",
+                "inf_hint": "viogpudo.inf",
+                "service": "viogpudo",
+                "start": 3,  # MANUAL
+                "class_guid": "{4D36E968-E325-11CE-BFC1-08002BE10318}",  # Display
+                "pci_ids": ["pci#ven_1af4&dev_1050&subsys_11001af4"],
+            },
+        ],
+        "input": [
+            {
+                "name": "vioinput",
+                "pattern": "vioinput/{bucket}/{arch}/vioinput.sys",
+                "inf_hint": "vioinput.inf",
+                "service": "vioinput",
+                "start": 3,  # MANUAL
+                "class_guid": "{4D36E96F-E325-11CE-BFC1-08002BE10318}",  # Mouse
+                "pci_ids": ["pci#ven_1af4&dev_1052&subsys_11001af4"],
+            },
+        ],
+        "filesystem": [
+            {
+                "name": "virtiofs",
+                "pattern": "virtiofs/{bucket}/{arch}/virtiofs.sys",
+                "inf_hint": "virtiofs.inf",
+                "service": "virtiofs",
+                "start": 1,  # SYSTEM
+                "class_guid": "{4D36E967-E325-11CE-BFC1-08002BE10318}",  # Storage-ish
+                "pci_ids": ["pci#ven_1af4&dev_105a&subsys_11001af4"],
+            },
+        ],
+        "serial": [
+            {
+                "name": "vioser",
+                "pattern": "vioser/{bucket}/{arch}/vioser.sys",
+                "inf_hint": "vioser.inf",
+                "service": "vioser",
+                "start": 3,  # MANUAL
+                "class_guid": "{4D36E978-E325-11CE-BFC1-08002BE10318}",  # Ports
+                "pci_ids": [
+                    "pci#ven_1af4&dev_1003&subsys_00031af4",
+                    "pci#ven_1af4&dev_1043&subsys_00031af4",
+                ],
+            },
+        ],
+        "rng": [
+            {
+                "name": "viorng",
+                "pattern": "viorng/{bucket}/{arch}/viorng.sys",
+                "inf_hint": "viorng.inf",
+                "service": "viorng",
+                "start": 2,  # AUTO
+                "class_guid": "{4D36E97D-E325-11CE-BFC1-08002BE10318}",  # System
+                "pci_ids": [
+                    "pci#ven_1af4&dev_1005&subsys_00041af4",
+                    "pci#ven_1af4&dev_1044&subsys_00041af4",
+                ],
+            },
+        ],
+    },
+}
 
 
 # ---------------------------
@@ -236,7 +348,279 @@ def _guest_write_text(g: guestfs.GuestFS, path: str, content: str, *, dry_run: b
     g.write(path, content.encode("utf-8", errors="ignore"))
 
 
+def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Deep merge dicts:
+      - dict values merge recursively
+      - lists are replaced (override wins)
+      - scalars replaced
+    """
+    out: Dict[str, Any] = dict(base)
+    for k, v in override.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge_dict(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _parse_start_type(v: Any) -> int:
+    if isinstance(v, int):
+        return v if 0 <= v <= 4 else DriverStartType.AUTO.value
+    if isinstance(v, str):
+        s = v.strip()
+        if re.fullmatch(r"\d+", s):
+            n = int(s)
+            return n if 0 <= n <= 4 else DriverStartType.AUTO.value
+        s2 = s.upper()
+        try:
+            return DriverStartType[s2].value
+        except Exception:
+            return DriverStartType.AUTO.value
+    return DriverStartType.AUTO.value
+
+
+def _validate_virtio_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize + validate config.
+
+    - Ensures drivers are lists of dicts with required keys
+    - Normalizes pci_ids to lowercase strings
+    - Normalizes start to int (0..4)
+    - Keeps class_guid/inf_hint as strings (inf_hint may be None)
+
+    Lists are NOT merged; if user overrides drivers.storage, they replace that list.
+    """
+    d = cfg.get("drivers")
+    if isinstance(d, dict):
+        for dtype, defs in list(d.items()):
+            if not isinstance(defs, list):
+                d.pop(dtype, None)
+                continue
+
+            cleaned: List[Dict[str, Any]] = []
+            for item in defs:
+                if not isinstance(item, dict):
+                    continue
+
+                name = str(item.get("name") or "").strip()
+                pattern = str(item.get("pattern") or "").strip()
+                service = str(item.get("service") or "").strip()
+                if not (name and pattern and service):
+                    continue
+
+                pci_ids = item.get("pci_ids") or []
+                if not isinstance(pci_ids, list):
+                    pci_ids = []
+                pci_ids = [str(x).strip().lower() for x in pci_ids if str(x).strip()]
+
+                start_val = _parse_start_type(item.get("start", DriverStartType.AUTO.value))
+
+                cleaned.append(
+                    {
+                        **item,
+                        "name": name,
+                        "pattern": pattern,
+                        "service": service,
+                        "pci_ids": pci_ids,
+                        "start": start_val,
+                        "class_guid": str(item.get("class_guid") or "").strip(),
+                        "inf_hint": (str(item.get("inf_hint") or "").strip() or None),
+                    }
+                )
+
+            d[dtype] = cleaned
+
+    return cfg
+
+
+def _load_virtio_config(self) -> Dict[str, Any]:
+    """
+    Load VirtIO config from JSON if provided, else fallback to baked defaults.
+
+    Supported override knobs on `self`:
+      - virtio_config_path: str|Path (JSON file)
+      - virtio_config: dict (already parsed)
+
+    Merge semantics:
+      - deep-merge dicts (drivers/release_to_bucket/bucket_candidates can be partially overridden)
+      - lists are replaced (so overriding drivers.storage replaces that list only)
+    """
+    logger = _safe_logger(self)
+
+    cfg: Dict[str, Any] = dict(DEFAULT_VIRTIO_CONFIG)
+
+    cfg_obj = getattr(self, "virtio_config", None)
+    if isinstance(cfg_obj, dict) and cfg_obj:
+        cfg = _deep_merge_dict(cfg, cfg_obj)
+        cfg = _validate_virtio_config(cfg)
+        _log(logger, logging.INFO, "Loaded VirtIO config from self.virtio_config (dict)")
+        return cfg
+
+    p = getattr(self, "virtio_config_path", None)
+    if p:
+        try:
+            jp = Path(str(p))
+            if jp.exists() and jp.is_file():
+                parsed = json.loads(jp.read_text(encoding="utf-8"))
+                if isinstance(parsed, dict):
+                    cfg = _deep_merge_dict(cfg, parsed)
+                    cfg = _validate_virtio_config(cfg)
+                    _log(logger, logging.INFO, "Loaded VirtIO config: %s", jp)
+                    return cfg
+        except Exception as e:
+            _log(logger, logging.WARNING, "VirtIO config load failed (%s): %s", p, e)
+
+    cfg = _validate_virtio_config(cfg)
+    return cfg
+
+
+# ---------------------------
+# Plan + Driver model
+# ---------------------------
+
+@dataclass(frozen=True)
+class WindowsVirtioPlan:
+    arch_dir: str
+    bucket_hint: str
+    release: WindowsRelease
+    drivers_needed: Set[DriverType]
+
+    @classmethod
+    def default_needed(cls) -> Set[DriverType]:
+        return {DriverType.STORAGE, DriverType.NETWORK, DriverType.BALLOON}
+
+
+@dataclass
+class DriverFile:
+    name: str
+    type: DriverType
+    src_path: Path
+    dest_name: str
+
+    start_type: DriverStartType
+    service_name: str
+
+    pci_ids: List[str]
+    class_guid: str
+
+    package_dir: Optional[Path] = None
+    inf_path: Optional[Path] = None
+
+    bucket_used: Optional[str] = None
+    match_pattern: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "type": self.type.value,
+            "src_path": str(self.src_path),
+            "dest_name": self.dest_name,
+            "start_type": self.start_type.value,
+            "service_name": self.service_name,
+            "pci_ids": list(self.pci_ids),
+            "class_guid": self.class_guid,
+            "package_dir": str(self.package_dir) if self.package_dir else None,
+            "inf_path": str(self.inf_path) if self.inf_path else None,
+            "bucket_used": self.bucket_used,
+            "match_pattern": self.match_pattern,
+        }
+
+
+def _plan_to_dict(plan: WindowsVirtioPlan) -> Dict[str, Any]:
+    return {
+        "arch_dir": plan.arch_dir,
+        "bucket_hint": plan.bucket_hint,
+        "release": plan.release.value,
+        "drivers_needed": sorted([d.value for d in plan.drivers_needed]),
+    }
+
+
+# ---------------------------
+# Windows path model (WindowsRoot + System32 + drivers + hives)
+# ---------------------------
+
+@dataclass(frozen=True)
+class WindowsSystemPaths:
+    # GuestFS paths (mounted filesystem paths, NOT Windows-style C:\ paths)
+    windows_dir: str            # e.g. "/Windows" or "/WINNT"
+    system32_dir: str           # e.g. "/Windows/System32"
+    drivers_dir: str            # e.g. "/Windows/System32/drivers"
+    config_dir: str             # e.g. "/Windows/System32/config"
+    temp_dir: str               # e.g. "/Windows/Temp"
+
+    system_hive: str            # e.g. "/Windows/System32/config/SYSTEM"
+    software_hive: str          # e.g. "/Windows/System32/config/SOFTWARE"
+
+
+def _find_windows_root(self, g: guestfs.GuestFS) -> Optional[str]:
+    logger = _safe_logger(self)
+    for p in ["/Windows", "/WINDOWS", "/winnt", "/WINNT"]:
+        try:
+            if g.is_dir(p):
+                _log(logger, logging.DEBUG, "Windows root: found %s", p)
+                return p
+        except Exception:
+            continue
+    _log(logger, logging.DEBUG, "Windows root: no direct hit")
+    return None
+
+
+def _resolve_windows_system_paths(self, g: guestfs.GuestFS) -> WindowsSystemPaths:
+    """
+    Resolve Windows directory + System32 + drivers/config/temp locations.
+
+    IMPORTANT:
+      - Assumes REAL Windows system volume (C:) is mounted at '/' already.
+      - Call _ensure_windows_root(...) first to avoid "wrong partition" surprises.
+    """
+    logger = _safe_logger(self)
+
+    win_dir = _find_windows_root(self, g) or "/Windows"
+    if not g.is_dir(win_dir):
+        _log(logger, logging.WARNING, "Windows dir not found at %s; defaulting to /Windows", win_dir)
+        win_dir = "/Windows"
+
+    system32 = f"{win_dir}/System32"
+    try:
+        if not g.is_dir(system32):
+            alt = f"{win_dir}/system32"
+            if g.is_dir(alt):
+                system32 = alt
+    except Exception:
+        pass
+
+    drivers = f"{system32}/drivers"
+    config = f"{system32}/config"
+    temp = f"{win_dir}/Temp"
+
+    return WindowsSystemPaths(
+        windows_dir=win_dir,
+        system32_dir=system32,
+        drivers_dir=drivers,
+        config_dir=config,
+        temp_dir=temp,
+        system_hive=f"{config}/SYSTEM",
+        software_hive=f"{config}/SOFTWARE",
+    )
+
+
+def _guestfs_to_windows_path(p: str) -> str:
+    """
+    Best-effort conversion for logs/UI: guestfs path under /Windows -> C:\\Windows\\...
+    If Windows dir is /WINNT, it still maps to C:\\WINNT\\...
+    """
+    if not p:
+        return p
+    s = p.replace("/", "\\")
+    if s.startswith("\\"):
+        s = s[1:]
+    return f"C:\\{s}"
+
+
+# ---------------------------
 # VirtIO source materialization (dir OR ISO)
+# ---------------------------
 
 @contextmanager
 def _materialize_virtio_source(self, virtio_path: Path):
@@ -319,7 +703,9 @@ def _materialize_virtio_source(self, virtio_path: Path):
             pass
 
 
-# Windows detection + version
+# ---------------------------
+# Windows detection + version/build
+# ---------------------------
 
 def is_windows(self, g: guestfs.GuestFS) -> bool:
     logger = _safe_logger(self)
@@ -366,20 +752,117 @@ def is_windows(self, g: guestfs.GuestFS) -> bool:
         return False
 
 
-def _find_windows_root(self, g: guestfs.GuestFS) -> Optional[str]:
-    logger = _safe_logger(self)
-    for p in ["/Windows", "/WINDOWS", "/winnt", "/WINNT"]:
+def _hivex_call_known(g: guestfs.GuestFS, fn_name: str, args: Tuple[Any, ...], *, allow_drop_handle: bool, allow_noargs: bool) -> Any:
+    """
+    Call guestfs hivex_* function with binding compatibility.
+
+    Rules:
+      - Always try the provided args first.
+      - If TypeError and allow_drop_handle is True and first arg looks like a handle,
+        retry without the first arg.
+      - If still TypeError and allow_noargs is True, retry with no args.
+      - Otherwise raise the last TypeError without calling again.
+    """
+    fn = getattr(g, fn_name, None)
+    if fn is None:
+        raise AttributeError(fn_name)
+
+    last_te: Optional[TypeError] = None
+
+    try:
+        return fn(*args)
+    except TypeError as te:
+        last_te = te
+
+    if allow_drop_handle and args and isinstance(args[0], int):
         try:
-            if g.is_dir(p):
-                _log(logger, logging.DEBUG, "Windows root: found %s", p)
-                return p
+            return fn(*args[1:])
+        except TypeError as te:
+            last_te = te
+
+    if allow_noargs:
+        try:
+            return fn()
+        except TypeError as te:
+            last_te = te
+
+    assert last_te is not None
+    raise last_te
+
+
+def _read_windows_build_from_software_hive(self, g: guestfs.GuestFS, software_hive_path: str) -> Optional[int]:
+    """
+    Read Windows build number from SOFTWARE hive:
+      HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\CurrentBuildNumber (or CurrentBuild)
+
+    Uses guestfs hivex API (no extra deps). Handle-vs-global-hive differences are normalized.
+    """
+    logger = _safe_logger(self)
+
+    try:
+        if not g.is_file(software_hive_path):
+            return None
+    except Exception:
+        return None
+
+    h: Optional[int] = None
+    try:
+        # hivex_open: handle-based in many bindings; global-hive in some.
+        try:
+            h = _hivex_call_known(g, "hivex_open", (software_hive_path, 0), allow_drop_handle=False, allow_noargs=False)
+        except TypeError:
+            # some bindings may be hivex_open(path)
+            h = _hivex_call_known(g, "hivex_open", (software_hive_path,), allow_drop_handle=False, allow_noargs=False)
+
+        # hivex_root: may be hivex_root(h) or hivex_root()
+        root = _hivex_call_known(g, "hivex_root", (h,), allow_drop_handle=True, allow_noargs=True)
+
+        # children: often hivex_node_get_child(h, node, name) or hivex_node_get_child(node, name)
+        node = _hivex_call_known(g, "hivex_node_get_child", (h, root, "Microsoft"), allow_drop_handle=True, allow_noargs=False)
+        if not node:
+            return None
+        node = _hivex_call_known(g, "hivex_node_get_child", (h, node, "Windows NT"), allow_drop_handle=True, allow_noargs=False)
+        if not node:
+            return None
+        node = _hivex_call_known(g, "hivex_node_get_child", (h, node, "CurrentVersion"), allow_drop_handle=True, allow_noargs=False)
+        if not node:
+            return None
+
+        def _val(name: str) -> Optional[str]:
+            try:
+                v = _hivex_call_known(g, "hivex_node_get_value", (h, node, name), allow_drop_handle=True, allow_noargs=False)
+                if not v:
+                    return None
+                raw = _hivex_call_known(g, "hivex_value_string", (h, v), allow_drop_handle=True, allow_noargs=False)
+                s = U.to_text(raw)
+                return s.strip() if s else None
+            except Exception:
+                return None
+
+        for key in ("CurrentBuildNumber", "CurrentBuild"):
+            s = _val(key)
+            if not s:
+                continue
+            m = re.search(r"(\d{4,6})", s)
+            if m:
+                return int(m.group(1))
+        return None
+
+    except Exception as e:
+        _log(logger, logging.DEBUG, "hivex build read failed: %s", e)
+        return None
+    finally:
+        # hivex_close: may be hivex_close(h) or hivex_close()
+        try:
+            if h is not None:
+                _hivex_call_known(g, "hivex_close", (h,), allow_drop_handle=True, allow_noargs=True)
+            else:
+                _hivex_call_known(g, "hivex_close", tuple(), allow_drop_handle=False, allow_noargs=True)
         except Exception:
-            continue
-    _log(logger, logging.DEBUG, "Windows root: no direct hit")
-    return None
+            pass
 
 
-def _windows_version_info(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+def _windows_version_info(self, g: guestfs.GuestFS, paths: Optional["WindowsSystemPaths"] = None) -> Dict[str, Any]:
     logger = _safe_logger(self)
     info: Dict[str, Any] = {
         "windows": True,
@@ -393,18 +876,15 @@ def _windows_version_info(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     }
 
     root = getattr(self, "inspect_root", None)
-    if not root:
-        _log(logger, logging.DEBUG, "Windows info: inspect_root missing")
-        return info
-
-    try:
-        info["arch"] = U.to_text(g.inspect_get_arch(root))
-        info["major"] = g.inspect_get_major_version(root)
-        info["minor"] = g.inspect_get_minor_version(root)
-        info["product_name"] = U.to_text(g.inspect_get_product_name(root))
-        info["distro"] = U.to_text(g.inspect_get_distro(root))
-    except Exception as e:
-        _log(logger, logging.DEBUG, "Windows info: inspect getters failed: %s", e)
+    if root:
+        try:
+            info["arch"] = U.to_text(g.inspect_get_arch(root))
+            info["major"] = g.inspect_get_major_version(root)
+            info["minor"] = g.inspect_get_minor_version(root)
+            info["product_name"] = U.to_text(g.inspect_get_product_name(root))
+            info["distro"] = U.to_text(g.inspect_get_distro(root))
+        except Exception as e:
+            _log(logger, logging.DEBUG, "Windows info: inspect getters failed: %s", e)
 
     arch = (info.get("arch") or "").lower()
     if arch in ("x86_64", "amd64", "arm64", "aarch64"):
@@ -414,46 +894,97 @@ def _windows_version_info(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     else:
         info["bits"] = 64
 
+    # Best-effort: read build number from SOFTWARE hive (post-8.1, major/minor isn't reliable)
+    try:
+        if paths is None:
+            paths = _resolve_windows_system_paths(self, g)
+        build = _read_windows_build_from_software_hive(self, g, paths.software_hive)
+        if build:
+            info["build"] = build
+    except Exception as e:
+        _log(logger, logging.DEBUG, "Windows info: build read failed: %s", e)
+
     return info
 
 
-def _detect_windows_edition(self, win_info: Dict[str, Any]) -> WindowsEdition:
-    major = _to_int(win_info.get("major"))
-    minor = _to_int(win_info.get("minor"))
+def _detect_windows_release(self, win_info: Dict[str, Any], cfg: Dict[str, Any]) -> WindowsRelease:
+    """
+    Detect Windows release family.
+
+    Priority:
+      1) product_name hints (best signal)
+      2) build number for Win10/Win11 split (>=22000 => Win11+)
+      3) major/minor only for older OSes (<=8.1 era)
+      4) config default (Windows 11)
+
+    NOTE: Any "Windows 12" mapping is best-effort heuristic only.
+    """
     product = _normalize_product_name(str(win_info.get("product_name", "") or ""))
+    build = _to_int(win_info.get("build"), default=0)
+    major = _to_int(win_info.get("major"), default=0)
+    minor = _to_int(win_info.get("minor"), default=0)
 
-    # Servers
+    # Servers by name (prefer explicit string)
     if "server 2022" in product:
-        return WindowsEdition.SERVER_2022
+        return WindowsRelease.SERVER_2022
     if "server 2019" in product:
-        return WindowsEdition.SERVER_2019
+        return WindowsRelease.SERVER_2019
     if "server 2016" in product:
-        return WindowsEdition.SERVER_2016
+        return WindowsRelease.SERVER_2016
     if "server 2012" in product:
-        return WindowsEdition.SERVER_2012
+        return WindowsRelease.SERVER_2012
     if "server 2008" in product:
-        return WindowsEdition.SERVER_2008
+        return WindowsRelease.SERVER_2008
 
-    # Clients (future-ish bucket)
-    if "windows 12" in product or major >= 12:
-        return WindowsEdition.WINDOWS_12
-    if "windows 11" in product or major >= 11:
-        return WindowsEdition.WINDOWS_11
-    if "windows 10" in product or major == 10:
-        return WindowsEdition.WINDOWS_10
-    if major == 6 and minor >= 2:
-        return WindowsEdition.WINDOWS_8
+    # Clients by name
+    if "windows 12" in product:
+        return WindowsRelease.WINDOWS_12
+    if "windows 11" in product:
+        return WindowsRelease.WINDOWS_11
+    if "windows 10" in product:
+        return WindowsRelease.WINDOWS_11 if build >= 22000 else WindowsRelease.WINDOWS_10
+    if "windows 8.1" in product:
+        return WindowsRelease.WINDOWS_8_1
+    if "windows 8" in product:
+        return WindowsRelease.WINDOWS_8
+    if "windows 7" in product:
+        return WindowsRelease.WINDOWS_7
+    if "vista" in product:
+        return WindowsRelease.WINDOWS_VISTA
+    if "xp" in product:
+        return WindowsRelease.WINDOWS_XP
+
+    # Build-based split (post 8.1, version lies)
+    if build:
+        # Heuristic: 11+ is >= 22000, 10 is typically >= 10240 and < 22000
+        if build >= 26000:
+            return WindowsRelease.WINDOWS_12
+        if build >= 22000:
+            return WindowsRelease.WINDOWS_11
+        if build >= 10240:
+            return WindowsRelease.WINDOWS_10
+
+    # Major/minor only for older families
+    if major == 6 and minor == 3:
+        return WindowsRelease.WINDOWS_8_1
+    if major == 6 and minor == 2:
+        return WindowsRelease.WINDOWS_8
     if major == 6 and minor == 1:
-        return WindowsEdition.WINDOWS_7
+        return WindowsRelease.WINDOWS_7
     if major == 6 and minor == 0:
-        return WindowsEdition.WINDOWS_VISTA
+        return WindowsRelease.WINDOWS_VISTA
     if major == 5:
-        return WindowsEdition.WINDOWS_XP
+        return WindowsRelease.WINDOWS_XP
 
-    return WindowsEdition.UNKNOWN
+    # Config default
+    d = str(cfg.get("default_release", "windows_11")).strip().lower()
+    try:
+        return WindowsRelease(d)
+    except Exception:
+        return WindowsRelease.WINDOWS_11
 
 
-def _norm_arch_to_dir(arch: str) -> str:
+def _norm_arch_to_dir(arch: str, cfg: Dict[str, Any]) -> str:
     a = (arch or "").lower().strip()
     mapping = {
         "x86_64": "amd64",
@@ -466,54 +997,33 @@ def _norm_arch_to_dir(arch: str) -> str:
         "arm64": "arm64",
         "aarch64": "arm64",
     }
-    return mapping.get(a, "amd64")
+    return mapping.get(a, str(cfg.get("default_arch_dir", "amd64")))
 
 
-# ---------------------------
-# Bucket fallback logic
-# ---------------------------
-
-def _bucket_candidates(edition: WindowsEdition) -> List[str]:
-    if edition == WindowsEdition.WINDOWS_12:
-        return ["w12", "w11", "w10", "w8", "w7"]
-    if edition == WindowsEdition.WINDOWS_11:
-        return ["w11", "w10", "w8", "w7"]
-    if edition in (WindowsEdition.WINDOWS_10, WindowsEdition.SERVER_2022, WindowsEdition.SERVER_2019, WindowsEdition.SERVER_2016):
-        return ["w10", "w11", "w8", "w7"]
-    if edition in (WindowsEdition.WINDOWS_8, WindowsEdition.SERVER_2012):
-        return ["w8", "w10", "w7"]
-    if edition in (WindowsEdition.WINDOWS_7, WindowsEdition.SERVER_2008):
-        return ["w7", "w8", "w10"]
-    if edition == WindowsEdition.WINDOWS_VISTA:
-        return ["vista", "w7", "w8"]
-    if edition == WindowsEdition.WINDOWS_XP:
-        return ["xp", "w7"]
+def _bucket_candidates(release: WindowsRelease, cfg: Dict[str, Any]) -> List[str]:
+    m = cfg.get("bucket_candidates") or {}
+    if isinstance(m, dict):
+        c = m.get(release.value)
+        if isinstance(c, list) and c:
+            return [str(x) for x in c]
     return ["w11", "w10", "w8", "w7"]
 
 
-def _choose_driver_plan(self, win_info: Dict[str, Any]) -> WindowsVirtioPlan:
+def _bucket_hint(release: WindowsRelease, cfg: Dict[str, Any]) -> str:
+    m = cfg.get("release_to_bucket") or {}
+    if isinstance(m, dict):
+        v = m.get(release.value)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return "w11"
+
+
+def _choose_driver_plan(self, win_info: Dict[str, Any], cfg: Dict[str, Any]) -> WindowsVirtioPlan:
     logger = _safe_logger(self)
 
-    edition = _detect_windows_edition(self, win_info)
-    arch_dir = _norm_arch_to_dir(str(win_info.get("arch") or "amd64"))
-
-    edition_to_bucket = {
-        WindowsEdition.SERVER_2022: "w10",
-        WindowsEdition.SERVER_2019: "w10",
-        WindowsEdition.SERVER_2016: "w10",
-        WindowsEdition.SERVER_2012: "w8",
-        WindowsEdition.SERVER_2008: "w7",
-        WindowsEdition.WINDOWS_12: "w12",
-        WindowsEdition.WINDOWS_11: "w11",
-        WindowsEdition.WINDOWS_10: "w10",
-        WindowsEdition.WINDOWS_8: "w8",
-        WindowsEdition.WINDOWS_7: "w7",
-        WindowsEdition.WINDOWS_VISTA: "vista",
-        WindowsEdition.WINDOWS_XP: "xp",
-        WindowsEdition.UNKNOWN: "w10",
-    }
-
-    os_bucket = edition_to_bucket.get(edition, "w10")
+    release = _detect_windows_release(self, win_info, cfg)
+    arch_dir = _norm_arch_to_dir(str(win_info.get("arch") or ""), cfg)
+    hint = _bucket_hint(release, cfg)
     drivers_needed = WindowsVirtioPlan.default_needed()
 
     if getattr(self, "enable_virtio_gpu", False):
@@ -529,157 +1039,90 @@ def _choose_driver_plan(self, win_info: Dict[str, Any]) -> WindowsVirtioPlan:
 
     plan = WindowsVirtioPlan(
         arch_dir=arch_dir,
-        os_bucket=os_bucket,
-        edition=edition,
+        bucket_hint=hint,
+        release=release,
         drivers_needed=drivers_needed,
     )
 
     _log(
         logger,
         logging.INFO,
-        "🧩 Windows plan: edition=%s arch=%s bucket_hint=%s candidates=%s drivers=%s",
-        plan.edition.value,
+        "🧩 Windows plan: release=%s arch=%s bucket_hint=%s candidates=%s drivers=%s",
+        plan.release.value,
         plan.arch_dir,
-        plan.os_bucket,
-        _bucket_candidates(plan.edition),
+        plan.bucket_hint,
+        _bucket_candidates(plan.release, cfg),
         sorted([d.value for d in plan.drivers_needed]),
     )
     return plan
 
 
-# Driver discovery + staging
+# ---------------------------
+# Driver discovery + staging (config-driven)
+# ---------------------------
 
 def _is_probably_driver_payload(p: Path) -> bool:
     ext = p.suffix.lower()
     return ext in (".inf", ".cat", ".sys", ".dll", ".mui")
 
 
-def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan) -> List[DriverFile]:
+def _get_driver_definitions(cfg: Dict[str, Any], dt: DriverType) -> List[Dict[str, Any]]:
+    d = cfg.get("drivers") or {}
+    if not isinstance(d, dict):
+        return []
+    arr = d.get(dt.value)
+    if not isinstance(arr, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for item in arr:
+        if isinstance(item, dict) and item.get("name") and item.get("pattern") and item.get("service"):
+            out.append(item)
+    return out
+
+
+def _warn_if_driver_defs_suspicious(self, cfg: Dict[str, Any]) -> None:
+    """
+    Emit warnings for malformed driver definitions that will likely break registry binding.
+    Especially important for storage drivers.
+    """
+    logger = _safe_logger(self)
+    for dt in DriverType:
+        defs = _get_driver_definitions(cfg, dt)
+        for dfn in defs:
+            name = str(dfn.get("name") or "")
+            service = str(dfn.get("service") or "")
+            class_guid = str(dfn.get("class_guid") or "")
+            pci_ids = dfn.get("pci_ids") or []
+            if dt == DriverType.STORAGE:
+                if not class_guid:
+                    _log(logger, logging.WARNING, "Config: storage driver %s/%s missing class_guid (SYSTEM hive edits may be incomplete)", name, service)
+                if not pci_ids:
+                    _log(logger, logging.WARNING, "Config: storage driver %s/%s missing pci_ids (CDD population will be incomplete)", name, service)
+            else:
+                if not class_guid:
+                    _log(logger, logging.DEBUG, "Config: driver %s/%s missing class_guid", name, service)
+
+
+def _pick_best_match(paths: List[Path]) -> Path:
+    """
+    Pick best candidate among multiple matches:
+      1) shortest path (usually most specific / canonical)
+      2) newest mtime
+      3) lexical tie-break
+    """
+    def _key(p: Path) -> Tuple[int, float, str]:
+        try:
+            mt = p.stat().st_mtime
+        except Exception:
+            mt = 0.0
+        return (len(str(p)), -mt, str(p))
+    return sorted(paths, key=_key)[0]
+
+
+def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan, cfg: Dict[str, Any]) -> List[DriverFile]:
     logger = _safe_logger(self)
     drivers: List[DriverFile] = []
-    buckets = _bucket_candidates(plan.edition)
-
-    storage_class_guid = "{4D36E967-E325-11CE-BFC1-08002BE10318}"   # SCSIAdapter
-    net_class_guid = "{4D36E972-E325-11CE-BFC1-08002BE10318}"       # Net
-    balloon_class_guid = "{4D36E97D-E325-11CE-BFC1-08002BE10318}"   # System
-
-    driver_configs: Dict[DriverType, List[Dict[str, Any]]] = {
-        DriverType.STORAGE: [
-            {
-                "name": "viostor",
-                "pattern": "viostor/{bucket}/{arch}/viostor.sys",
-                "inf_hint": "viostor.inf",
-                "service": "viostor",
-                "start": DriverStartType.BOOT,
-                "pci_ids": [
-                    "pci#ven_1af4&dev_1001&subsys_00081af4",
-                    "pci#ven_1af4&dev_1042&subsys_00081af4",
-                ],
-                "class_guid": storage_class_guid,
-            },
-            {
-                "name": "vioscsi",
-                "pattern": "vioscsi/{bucket}/{arch}/vioscsi.sys",
-                "inf_hint": "vioscsi.inf",
-                "service": "vioscsi",
-                "start": DriverStartType.BOOT,
-                "pci_ids": [
-                    "pci#ven_1af4&dev_1004&subsys_00081af4",
-                    "pci#ven_1af4&dev_1048&subsys_00081af4",
-                ],
-                "class_guid": storage_class_guid,
-            },
-        ],
-        DriverType.NETWORK: [
-            {
-                "name": "NetKVM",
-                "pattern": "NetKVM/{bucket}/{arch}/netkvm.sys",
-                "inf_hint": "netkvm.inf",
-                "service": "netkvm",
-                "start": DriverStartType.AUTO,
-                "pci_ids": [
-                    "pci#ven_1af4&dev_1000&subsys_00081af4",
-                    "pci#ven_1af4&dev_1041&subsys_00081af4",
-                ],
-                "class_guid": net_class_guid,
-            },
-        ],
-        DriverType.BALLOON: [
-            {
-                "name": "Balloon",
-                "pattern": "Balloon/{bucket}/{arch}/balloon.sys",
-                "inf_hint": "balloon.inf",
-                "service": "balloon",
-                "start": DriverStartType.AUTO,
-                "pci_ids": [
-                    "pci#ven_1af4&dev_1002&subsys_00051af4",
-                    "pci#ven_1af4&dev_1045&subsys_00051af4",
-                ],
-                "class_guid": balloon_class_guid,
-            },
-        ],
-        DriverType.GPU: [
-            {
-                "name": "viogpudo",
-                "pattern": "viogpudo/{bucket}/{arch}/viogpudo.sys",
-                "inf_hint": "viogpudo.inf",
-                "service": "viogpudo",
-                "start": DriverStartType.MANUAL,
-                "pci_ids": ["pci#ven_1af4&dev_1050&subsys_11001af4"],
-                "class_guid": "{4D36E968-E325-11CE-BFC1-08002BE10318}",
-            },
-        ],
-        DriverType.INPUT: [
-            {
-                "name": "vioinput",
-                "pattern": "vioinput/{bucket}/{arch}/vioinput.sys",
-                "inf_hint": "vioinput.inf",
-                "service": "vioinput",
-                "start": DriverStartType.MANUAL,
-                "pci_ids": ["pci#ven_1af4&dev_1052&subsys_11001af4"],
-                "class_guid": "{4D36E96F-E325-11CE-BFC1-08002BE10318}",
-            },
-        ],
-        DriverType.FILESYSTEM: [
-            {
-                "name": "virtiofs",
-                "pattern": "virtiofs/{bucket}/{arch}/virtiofs.sys",
-                "inf_hint": "virtiofs.inf",
-                "service": "virtiofs",
-                "start": DriverStartType.SYSTEM,
-                "pci_ids": ["pci#ven_1af4&dev_105a&subsys_11001af4"],
-                "class_guid": storage_class_guid,
-            },
-        ],
-        DriverType.SERIAL: [
-            {
-                "name": "vioser",
-                "pattern": "vioser/{bucket}/{arch}/vioser.sys",
-                "inf_hint": "vioser.inf",
-                "service": "vioser",
-                "start": DriverStartType.MANUAL,
-                "pci_ids": [
-                    "pci#ven_1af4&dev_1003&subsys_00031af4",
-                    "pci#ven_1af4&dev_1043&subsys_00031af4",
-                ],
-                "class_guid": "{4D36E978-E325-11CE-BFC1-08002BE10318}",
-            },
-        ],
-        DriverType.RNG: [
-            {
-                "name": "viorng",
-                "pattern": "viorng/{bucket}/{arch}/viorng.sys",
-                "inf_hint": "viorng.inf",
-                "service": "viorng",
-                "start": DriverStartType.AUTO,
-                "pci_ids": [
-                    "pci#ven_1af4&dev_1005&subsys_00041af4",
-                    "pci#ven_1af4&dev_1044&subsys_00041af4",
-                ],
-                "class_guid": balloon_class_guid,
-            },
-        ],
-    }
+    buckets = _bucket_candidates(plan.release, cfg)
 
     search_patterns = [
         "{pattern}",
@@ -689,12 +1132,11 @@ def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan) ->
         "{driver}/*/*/{arch}/*.sys",
     ]
 
-    def _try_candidate_glob(base: Path, pat: str) -> Optional[Path]:
+    def _glob_all(base: Path, pat: str) -> List[Path]:
         try:
-            matches = sorted([p for p in base.glob(pat) if p.is_file()])
-            return matches[0] if matches else None
+            return sorted([p for p in base.glob(pat) if p.is_file()])
         except Exception:
-            return None
+            return []
 
     def _find_inf_near_sys(sys_path: Path, inf_hint: Optional[str]) -> Optional[Path]:
         pkg = sys_path.parent
@@ -716,32 +1158,56 @@ def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan) ->
         _log(logger, logging.INFO, "VirtIO materialized dir: %s", base)
 
         for driver_type in sorted(plan.drivers_needed, key=lambda d: d.value):
-            cfgs = driver_configs.get(driver_type, [])
-            if not cfgs:
+            defs = _get_driver_definitions(cfg, driver_type)
+            if not defs:
                 continue
 
-            for cfg in cfgs:
-                driver_name = cfg["name"]
-                service = cfg["service"]
-                found = False
+            for dfn in defs:
+                driver_name = str(dfn.get("name") or "")
+                service = str(dfn.get("service") or "")
+                pattern_tmpl = str(dfn.get("pattern") or "")
+                inf_hint = dfn.get("inf_hint") or None
+                class_guid = str(dfn.get("class_guid") or "")
+                pci_ids = [str(x).lower() for x in (dfn.get("pci_ids") or []) if str(x).strip()]
 
+                start_val = _parse_start_type(dfn.get("start", DriverStartType.AUTO.value))
+                try:
+                    start_enum = DriverStartType(start_val)
+                except ValueError:
+                    start_enum = DriverStartType.AUTO
+
+                found = False
                 for bucket in buckets:
                     if found:
                         break
 
+                    canonical = pattern_tmpl.format(bucket=bucket, arch=plan.arch_dir)
+
                     for tmpl in search_patterns:
-                        canonical = cfg["pattern"].format(bucket=bucket, arch=plan.arch_dir)
                         pat = tmpl.format(
                             pattern=canonical,
                             driver=driver_name,
                             bucket=bucket,
                             arch=plan.arch_dir,
                         )
-                        src = _try_candidate_glob(base, pat)
-                        if src is None:
+
+                        matches = _glob_all(base, pat)
+                        if not matches:
                             continue
 
-                        infp = _find_inf_near_sys(src, cfg.get("inf_hint"))
+                        src = matches[0]
+                        if len(matches) > 1:
+                            src = _pick_best_match(matches)
+                            _log(
+                                logger,
+                                logging.WARNING,
+                                "Multiple matches for %s (picked %s): %s",
+                                pat,
+                                src,
+                                [str(m) for m in matches[:10]],
+                            )
+
+                        infp = _find_inf_near_sys(src, str(inf_hint) if inf_hint else None)
                         pkg_dir = src.parent
 
                         drivers.append(
@@ -750,25 +1216,17 @@ def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan) ->
                                 type=driver_type,
                                 src_path=src,
                                 dest_name=f"{service}.sys",
-                                start_type=cfg["start"],
+                                start_type=start_enum,
                                 service_name=service,
-                                pci_ids=list(cfg["pci_ids"]),
-                                class_guid=cfg["class_guid"],
+                                pci_ids=pci_ids,
+                                class_guid=class_guid,
                                 package_dir=pkg_dir,
                                 inf_path=infp,
                                 bucket_used=bucket,
                                 match_pattern=pat,
                             )
                         )
-                        _log(
-                            logger,
-                            logging.INFO,
-                            "📦 Found driver: type=%s name=%s bucket=%s -> %s",
-                            driver_type.value,
-                            driver_name,
-                            bucket,
-                            src,
-                        )
+                        _log(logger, logging.INFO, "📦 Found driver: type=%s service=%s bucket=%s -> %s", driver_type.value, service, bucket, src)
                         if infp:
                             _log(logger, logging.INFO, "📄 INF: %s", infp)
                         else:
@@ -778,20 +1236,14 @@ def _discover_virtio_drivers(self, virtio_src: Path, plan: WindowsVirtioPlan) ->
 
                 if not found:
                     lvl = logging.WARNING if driver_type == DriverType.STORAGE else logging.INFO
-                    _log(
-                        logger,
-                        lvl,
-                        "Driver not found: type=%s name=%s arch=%s buckets=%s",
-                        driver_type.value,
-                        driver_name,
-                        plan.arch_dir,
-                        buckets,
-                    )
+                    _log(logger, lvl, "Driver not found: type=%s name=%s arch=%s buckets=%s", driver_type.value, driver_name, plan.arch_dir, buckets)
 
     return drivers
 
 
+# ---------------------------
 # Public: BCD backup + hints (offline-safe)
+# ---------------------------
 
 def windows_bcd_actual_fix(self, g: guestfs.GuestFS) -> Dict[str, Any]:
     logger = _safe_logger(self)
@@ -853,65 +1305,52 @@ def windows_bcd_actual_fix(self, g: guestfs.GuestFS) -> Dict[str, Any]:
 
     return {"windows": True, "bcd": "found", "stores": found, "backups": backups, "notes": notes}
 
-# Public: VirtIO injection
 
-def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+# ---------------------------
+# Injection pipeline (split into smaller functions)
+# ---------------------------
+
+def _virtio_preflight(self, g: guestfs.GuestFS) -> Tuple[Optional[Path], Optional[Dict[str, Any]]]:
     logger = _safe_logger(self)
-
-    dry_run = bool(getattr(self, "dry_run", False))
-    force_overwrite = bool(getattr(self, "force_virtio_overwrite", False))
     virtio_dir = getattr(self, "virtio_drivers_dir", None)
-    export_report = bool(getattr(self, "export_report", False))
-
     if not virtio_dir:
         _log(logger, logging.INFO, "VirtIO inject: virtio_drivers_dir not set -> skip")
-        return {"injected": False, "reason": "virtio_drivers_dir_not_set"}
+        return None, {"injected": False, "reason": "virtio_drivers_dir_not_set"}
 
     virtio_src = Path(str(virtio_dir))
     if not virtio_src.exists():
-        return {"injected": False, "reason": "virtio_drivers_dir_not_found", "path": str(virtio_src)}
+        return None, {"injected": False, "reason": "virtio_drivers_dir_not_found", "path": str(virtio_src)}
     if not (virtio_src.is_dir() or virtio_src.suffix.lower() == ".iso"):
-        return {"injected": False, "reason": "virtio_drivers_dir_invalid", "path": str(virtio_src)}
+        return None, {"injected": False, "reason": "virtio_drivers_dir_invalid", "path": str(virtio_src)}
 
     if not is_windows(self, g):
-        return {"injected": False, "reason": "not_windows"}
+        return None, {"injected": False, "reason": "not_windows"}
     if not getattr(self, "inspect_root", None):
-        return {"injected": False, "reason": "no_inspect_root"}
+        return None, {"injected": False, "reason": "no_inspect_root"}
 
-    _log_mountpoints_best_effort(logger, g)
+    return virtio_src, None
 
-    # Ensure we're operating on the REAL Windows system volume (C:) mounted at /
-    # This prevents "copied to wrong partition" failures.
+
+def _virtio_ensure_system_volume(self, g: guestfs.GuestFS) -> WindowsSystemPaths:
+    logger = _safe_logger(self)
     with _step(logger, "🧭 Ensure Windows system volume mounted (C: -> /)"):
-        # SYSTEM hive existence is the strongest anchor that /Windows is real.
         _ensure_windows_root(logger, g, hint_hive_path="/Windows/System32/config/SYSTEM")
+    return _resolve_windows_system_paths(self, g)
 
-    windows_root = _find_windows_root(self, g) or "/Windows"
-    if not windows_root or not g.is_dir(windows_root):
-        return {"injected": False, "reason": "no_windows_root"}
 
-    win_info = _windows_version_info(self, g)
-    plan = _choose_driver_plan(self, win_info)
+def _virtio_ensure_temp_dir(self, g: guestfs.GuestFS, paths: WindowsSystemPaths, *, dry_run: bool) -> None:
+    logger = _safe_logger(self)
+    with _step(logger, "📁 Ensure Windows Temp dir exists"):
+        try:
+            _guest_mkdir_p(g, paths.temp_dir, dry_run=dry_run)
+        except Exception as e:
+            _log(logger, logging.WARNING, "Temp dir ensure failed (%s): %s", paths.temp_dir, e)
 
-    with _step(logger, "🔎 Discover VirtIO drivers"):
-        drivers = _discover_virtio_drivers(self, virtio_src, plan)
 
-    if not drivers:
-        return {
-            "injected": False,
-            "reason": "no_drivers_found",
-            "virtio_dir": str(virtio_src),
-            "windows_info": win_info,
-            "plan": _plan_to_dict(plan),
-            "buckets_tried": _bucket_candidates(plan.edition),
-        }
-
-    # Critical sanity: storage drivers missing is almost always fatal for boot.
-    storage_services = sorted({d.service_name for d in drivers if d.type == DriverType.STORAGE})
-    if not storage_services:
-        _log(logger, logging.ERROR, "No storage drivers discovered (viostor/vioscsi). Boot is likely to fail.")
-
-    result: Dict[str, Any] = {
+def _virtio_init_result(self, virtio_src: Path, win_info: Dict[str, Any], plan: WindowsVirtioPlan, paths: WindowsSystemPaths) -> Dict[str, Any]:
+    dry_run = bool(getattr(self, "dry_run", False))
+    force_overwrite = bool(getattr(self, "force_virtio_overwrite", False))
+    return {
         "injected": False,
         "success": False,
         "dry_run": bool(dry_run),
@@ -919,8 +1358,16 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         "windows": win_info,
         "plan": _plan_to_dict(plan),
         "virtio_dir": str(virtio_src),
-        "windows_root": windows_root,
-        "drivers_found": [d.to_dict() for d in drivers],
+        "windows_paths": {
+            "windows_dir": paths.windows_dir,
+            "system32_dir": paths.system32_dir,
+            "drivers_dir": paths.drivers_dir,
+            "config_dir": paths.config_dir,
+            "temp_dir": paths.temp_dir,
+            "system_hive": paths.system_hive,
+            "software_hive": paths.software_hive,
+        },
+        "drivers_found": [],
         "files_copied": [],
         "packages_staged": [],
         "registry_changes": {},
@@ -932,18 +1379,19 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         "notes": [],
     }
 
-    # ---- Copy SYS into System32\drivers ----
-    drivers_target_dir = f"{windows_root}/System32/drivers"
+
+def _virtio_copy_sys_binaries(self, g: guestfs.GuestFS, result: Dict[str, Any], paths: WindowsSystemPaths, drivers: List[DriverFile]) -> None:
+    logger = _safe_logger(self)
+    dry_run = bool(result.get("dry_run"))
+    force_overwrite = bool(result.get("force_overwrite"))
+
     with _step(logger, "🧱 Ensure System32\\drivers exists"):
-        try:
-            if not g.is_dir(drivers_target_dir) and not dry_run:
-                g.mkdir_p(drivers_target_dir)
-        except Exception as e:
-            return {**result, "reason": f"drivers_dir_error: {e}"}
+        if not g.is_dir(paths.drivers_dir) and not dry_run:
+            g.mkdir_p(paths.drivers_dir)
 
     with _step(logger, "📦 Upload .sys driver binaries"):
         for drv in drivers:
-            dest_path = f"{drivers_target_dir}/{drv.dest_name}"
+            dest_path = f"{paths.drivers_dir}/{drv.dest_name}"
             try:
                 src_size = drv.src_path.stat().st_size
                 host_hash = _sha256_path(drv.src_path)
@@ -985,7 +1433,6 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
                 if not dry_run:
                     g.upload(str(drv.src_path), dest_path)
 
-                # Optional verify for critical storage drivers (cheap + high value)
                 verify = None
                 if drv.type == DriverType.STORAGE and not dry_run:
                     try:
@@ -1030,10 +1477,18 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
                 result["warnings"].append(msg)
                 _log(logger, logging.WARNING, "%s", msg)
 
-    # ---- Stage packages for firstboot pnputil (C:\vmdk2kvm\drivers\virtio\...) ----
-    # IMPORTANT: /vmdk2kvm maps to C:\vmdk2kvm (NOT /Windows/vmdk2kvm).
+
+def _virtio_stage_packages(self, g: guestfs.GuestFS, result: Dict[str, Any], drivers: List[DriverFile]) -> Tuple[str, str]:
+    """
+    Stage INF/CAT/DLL payloads so firstboot can pnputil /install them.
+
+    Returns (staging_root_guestfs_path, devicepath_append_string)
+    """
+    logger = _safe_logger(self)
+    dry_run = bool(result.get("dry_run"))
+
     staging_root = "/vmdk2kvm/drivers/virtio"
-    devicepath_append = r"%SystemDrive%\vmdk2kvm\drivers\virtio"  # safer than %SystemRoot%\vmdk2kvm\...
+    devicepath_append = r"%SystemDrive%\vmdk2kvm\drivers\virtio"
 
     with _step(logger, "📁 Stage driver packages (INF/CAT/DLL) for PnP"):
         try:
@@ -1098,38 +1553,45 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
                 result["warnings"].append(msg)
                 _log(logger, logging.WARNING, "%s", msg)
 
-    # Stage a setup.cmd for manual run (optional emergency lever)
-    if result["packages_staged"]:
-        setup_script = "/vmdk2kvm/setup.cmd"
-        script_content = "@echo off\r\n"
-        script_content += "echo Installing staged VirtIO drivers...\r\n"
-        for staged in result["packages_staged"]:
-            inf = staged.get("inf")
-            if inf:
-                inf_name = Path(str(inf)).name
-                # NOTE: setup.cmd is run inside Windows, so use C:\ paths
-                script_content += (
-                    f'pnputil /add-driver "C:\\vmdk2kvm\\drivers\\virtio\\{staged["service"]}\\{inf_name}" /install\r\n'
-                )
-        script_content += "echo Done.\r\n"
-        try:
-            with _step(logger, "🧾 Stage manual setup.cmd (optional)"):
-                _guest_write_text(g, setup_script, script_content, dry_run=dry_run)
-            result["setup_script"] = {"path": setup_script, "content": script_content}
-            result["artifacts"].append({"kind": "setup_cmd", "dst": setup_script, "action": "written" if not dry_run else "dry_run"})
-        except Exception as e:
-            msg = f"Failed to stage setup.cmd: {e}"
-            result["warnings"].append(msg)
-            _log(logger, logging.WARNING, "%s", msg)
+    return staging_root, devicepath_append
 
-    # ---- Registry edits (SYSTEM) ----
-    system_hive = f"{windows_root}/System32/config/SYSTEM"
+
+def _virtio_stage_manual_setup_cmd(self, g: guestfs.GuestFS, result: Dict[str, Any]) -> None:
+    logger = _safe_logger(self)
+    dry_run = bool(result.get("dry_run"))
+
+    if not result.get("packages_staged"):
+        return
+
+    setup_script = "/vmdk2kvm/setup.cmd"
+    script_content = "@echo off\r\n"
+    script_content += "echo Installing staged VirtIO drivers...\r\n"
+    for staged in result["packages_staged"]:
+        inf = staged.get("inf")
+        if inf:
+            inf_name = Path(str(inf)).name
+            script_content += f'pnputil /add-driver "C:\\vmdk2kvm\\drivers\\virtio\\{staged["service"]}\\{inf_name}" /install\r\n'
+    script_content += "echo Done.\r\n"
+
+    try:
+        with _step(logger, "🧾 Stage manual setup.cmd (optional)"):
+            _guest_write_text(g, setup_script, script_content, dry_run=dry_run)
+        result["setup_script"] = {"path": setup_script, "content": script_content}
+        result["artifacts"].append({"kind": "setup_cmd", "dst": setup_script, "action": "written" if not dry_run else "dry_run"})
+    except Exception as e:
+        msg = f"Failed to stage setup.cmd: {e}"
+        result["warnings"].append(msg)
+        _log(logger, logging.WARNING, "%s", msg)
+
+
+def _virtio_edit_registry_system(self, g: guestfs.GuestFS, result: Dict[str, Any], paths: WindowsSystemPaths, drivers: List[DriverFile]) -> None:
+    logger = _safe_logger(self)
     with _step(logger, "🧬 Edit SYSTEM hive (Services + CDD + StartOverride)"):
         try:
             reg_res = edit_system_hive(
                 self,
                 g,
-                system_hive,
+                paths.system_hive,
                 drivers,
                 driver_type_storage_value=DriverType.STORAGE.value,
                 boot_start_value=DriverStartType.BOOT.value,
@@ -1143,12 +1605,13 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             result["warnings"].append(msg)
             _log(logger, logging.WARNING, "%s", msg)
 
-    # ---- DevicePath append (SOFTWARE) ----
+
+def _virtio_update_devicepath(self, g: guestfs.GuestFS, result: Dict[str, Any], paths: WindowsSystemPaths, devicepath_append: str) -> None:
+    logger = _safe_logger(self)
     with _step(logger, "🧩 Update SOFTWARE DevicePath (PnP discovery)"):
         try:
-            software_hive = f"{windows_root}/System32/config/SOFTWARE"
-            if result["packages_staged"]:
-                dp_res = append_devicepath_software_hive(self, g, software_hive, devicepath_append)
+            if result.get("packages_staged"):
+                dp_res = append_devicepath_software_hive(self, g, paths.software_hive, devicepath_append)
                 result["devicepath_changes"] = dp_res
                 if not dp_res.get("success", True):
                     _log(logger, logging.WARNING, "DevicePath update reported errors: %s", dp_res.get("errors"))
@@ -1161,37 +1624,50 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             result["warnings"].append(msg)
             _log(logger, logging.WARNING, "%s", msg)
 
-    # ---- Firstboot service (preferred over RunOnce) ----
-    if result["packages_staged"]:
-        with _step(logger, "🛠️ Provision firstboot service (pnputil /install + logging)"):
-            try:
-                fb = provision_firstboot_payload_and_service(
-                    self,
-                    g,
-                    system_hive_path=system_hive,
-                    service_name="vmdk2kvm-firstboot",
-                    guest_dir="/vmdk2kvm",
-                    log_path="/Windows/Temp/vmdk2kvm-firstboot.log",
-                    driver_stage_dir=staging_root,
-                    extra_cmd=None,
-                    remove_vmware_tools=True,
-                )
-                result["firstboot"] = fb
-                if not fb.get("success", True):
-                    msg = f"Firstboot provisioning failed: {fb.get('errors')}"
-                    result["warnings"].append(msg)
-                    _log(logger, logging.WARNING, "%s", msg)
-                else:
-                    _log(logger, logging.INFO, "Firstboot installed: service=vmdk2kvm-firstboot log=C:\\Windows\\Temp\\vmdk2kvm-firstboot.log")
-            except Exception as e:
-                result["firstboot"] = {"success": False, "error": str(e)}
-                msg = f"Firstboot provisioning exception: {e}"
+
+def _virtio_provision_firstboot(self, g: guestfs.GuestFS, result: Dict[str, Any], paths: WindowsSystemPaths, staging_root: str) -> None:
+    logger = _safe_logger(self)
+    if not result.get("packages_staged"):
+        result["firstboot"] = {"skipped": True, "reason": "no_packages_staged"}
+        return
+
+    log_path_guestfs = f"{paths.temp_dir}/vmdk2kvm-firstboot.log"
+
+    with _step(logger, "🛠️ Provision firstboot service (pnputil /install + logging)"):
+        try:
+            fb = provision_firstboot_payload_and_service(
+                self,
+                g,
+                system_hive_path=paths.system_hive,
+                service_name="vmdk2kvm-firstboot",
+                guest_dir="/vmdk2kvm",
+                log_path=log_path_guestfs,
+                driver_stage_dir=staging_root,
+                extra_cmd=None,
+                remove_vmware_tools=True,
+            )
+            result["firstboot"] = fb
+            if not fb.get("success", True):
+                msg = f"Firstboot provisioning failed: {fb.get('errors')}"
                 result["warnings"].append(msg)
                 _log(logger, logging.WARNING, "%s", msg)
-    else:
-        result["firstboot"] = {"skipped": True, "reason": "no_packages_staged"}
+            else:
+                _log(
+                    logger,
+                    logging.INFO,
+                    "Firstboot installed: service=%s log=%s",
+                    "vmdk2kvm-firstboot",
+                    _guestfs_to_windows_path(log_path_guestfs),
+                )
+        except Exception as e:
+            result["firstboot"] = {"success": False, "error": str(e)}
+            msg = f"Firstboot provisioning exception: {e}"
+            result["warnings"].append(msg)
+            _log(logger, logging.WARNING, "%s", msg)
 
-    # ---- BCD backup/hints ----
+
+def _virtio_bcd_backup(self, g: guestfs.GuestFS, result: Dict[str, Any]) -> None:
+    logger = _safe_logger(self)
     with _step(logger, "🧷 BCD store discovery + backup"):
         try:
             result["bcd_changes"] = windows_bcd_actual_fix(self, g)
@@ -1201,8 +1677,13 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             result["warnings"].append(msg)
             _log(logger, logging.WARNING, "%s", msg)
 
-    # ---- Success criteria ----
-    sys_ok = any(x.get("action") in ("copied", "dry_run", "skipped") for x in result["files_copied"])
+
+def _virtio_finalize(self, result: Dict[str, Any], drivers: List[DriverFile], *, plan: WindowsVirtioPlan, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    logger = _safe_logger(self)
+
+    result["drivers_found"] = [d.to_dict() for d in drivers]
+
+    sys_ok = any(x.get("action") in ("copied", "dry_run", "skipped") for x in result.get("files_copied", []))
     reg_ok = bool(result.get("registry_changes", {}).get("success"))
     result["injected"] = bool(sys_ok and reg_ok)
     result["success"] = result["injected"]
@@ -1217,13 +1698,18 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         storage_missing.append("vioscsi")
 
     result["notes"] += [
-        "Storage: attempts to inject BOTH viostor + vioscsi (if present) and forces BOOT start in SYSTEM hive.",
+        "Release detection: prefers ProductName + build number (CurrentBuildNumber/CurrentBuild) over major/minor.",
+        "Config-driven: driver definitions + OS(bucket) mapping live in JSON (override via virtio_config_path / virtio_config).",
+        "Config merge: dicts deep-merge; lists are replaced (override wins).",
+        "Default release fallback: Windows 11.",
+        "Driver discovery: canonical pattern first; fallback globs warn on multiple matches and pick a best candidate.",
+        "Storage: injects viostor + vioscsi when present and forces BOOT start in SYSTEM hive.",
         "Registry: StartOverride removed when found (can silently disable boot drivers).",
         "CDD: CriticalDeviceDatabase populated for virtio storage PCI IDs to ensure early binding.",
-        f"Driver discovery buckets: {_bucket_candidates(plan.edition)}",
+        f"Driver discovery buckets: {_bucket_candidates(plan.release, cfg)}",
         f"Storage drivers found: {storage_found} missing: {storage_missing}",
         r"Staging: payload staged under C:\vmdk2kvm\drivers\virtio and installed via firstboot service (pnputil).",
-        r"Logs: C:\Windows\Temp\vmdk2kvm-firstboot.log (firstboot) and service name vmdk2kvm-firstboot.",
+        r"Logs: see the 'firstboot' section for the exact log path.",
     ]
 
     if storage_missing:
@@ -1231,6 +1717,7 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
         result["warnings"].append(msg)
         _log(logger, logging.WARNING, "%s", msg)
 
+    export_report = bool(getattr(self, "export_report", False))
     if export_report:
         report_path = "virtio_inject_report.json"
         try:
@@ -1244,6 +1731,95 @@ def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
             _log(logger, logging.WARNING, "%s", msg)
 
     return result
+
+
+# ---------------------------
+# Public: VirtIO injection
+# ---------------------------
+
+def inject_virtio_drivers(self, g: guestfs.GuestFS) -> Dict[str, Any]:
+    logger = _safe_logger(self)
+
+    virtio_src, early = _virtio_preflight(self, g)
+    if early is not None:
+        return early
+    assert virtio_src is not None
+
+    cfg = _load_virtio_config(self)
+    _warn_if_driver_defs_suspicious(self, cfg)
+
+    _log_mountpoints_best_effort(logger, g)
+
+    # 1) Ensure correct system volume
+    paths = _virtio_ensure_system_volume(self, g)
+    if not paths.windows_dir or not g.is_dir(paths.windows_dir):
+        return {"injected": False, "reason": "no_windows_root", "windows_dir": paths.windows_dir}
+
+    # 2) Ensure temp dir exists for logging/service payloads
+    dry_run = bool(getattr(self, "dry_run", False))
+    _virtio_ensure_temp_dir(self, g, paths, dry_run=dry_run)
+
+    # 3) Collect version/build info (now that paths are resolved)
+    win_info = _windows_version_info(self, g, paths=paths)
+
+    # 4) Build plan using config (default Windows 11)
+    plan = _choose_driver_plan(self, win_info, cfg)
+
+    # 5) Discover drivers using config (vendors can extend JSON)
+    with _step(logger, "🔎 Discover VirtIO drivers"):
+        drivers = _discover_virtio_drivers(self, virtio_src, plan, cfg)
+
+    if not drivers:
+        return {
+            "injected": False,
+            "reason": "no_drivers_found",
+            "virtio_dir": str(virtio_src),
+            "windows_info": win_info,
+            "plan": _plan_to_dict(plan),
+            "buckets_tried": _bucket_candidates(plan.release, cfg),
+            "windows_paths": {
+                "windows_dir": paths.windows_dir,
+                "system32_dir": paths.system32_dir,
+                "drivers_dir": paths.drivers_dir,
+                "config_dir": paths.config_dir,
+                "temp_dir": paths.temp_dir,
+            },
+        }
+
+    # Critical sanity: storage drivers missing is almost always fatal for boot.
+    storage_services = sorted({d.service_name for d in drivers if d.type == DriverType.STORAGE})
+    if not storage_services:
+        _log(logger, logging.ERROR, "No storage drivers discovered. Boot is likely to fail.")
+
+    # 6) Initialize result
+    result = _virtio_init_result(self, virtio_src, win_info, plan, paths)
+
+    # 7) Copy SYS into System32\drivers
+    try:
+        _virtio_copy_sys_binaries(self, g, result, paths, drivers)
+    except Exception as e:
+        return {**result, "reason": f"sys_copy_failed: {e}"}
+
+    # 8) Stage packages (INF/CAT/DLL) for pnputil firstboot
+    staging_root, devicepath_append = _virtio_stage_packages(self, g, result, drivers)
+
+    # 9) Optional emergency setup.cmd
+    _virtio_stage_manual_setup_cmd(self, g, result)
+
+    # 10) Registry edits (SYSTEM)
+    _virtio_edit_registry_system(self, g, result, paths, drivers)
+
+    # 11) DevicePath update (SOFTWARE)
+    _virtio_update_devicepath(self, g, result, paths, devicepath_append)
+
+    # 12) Firstboot service to install INF payloads
+    _virtio_provision_firstboot(self, g, result, paths, staging_root)
+
+    # 13) BCD backup/hints
+    _virtio_bcd_backup(self, g, result)
+
+    # 14) Finalize + export report (optional)
+    return _virtio_finalize(self, result, drivers, plan=plan, cfg=cfg)
 
 
 class WindowsFixer:
