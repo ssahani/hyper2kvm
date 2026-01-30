@@ -54,6 +54,11 @@ from .license_detector import LicenseDetector
 from .performance_analyzer import PerformanceAnalyzer
 from .migration_planner import MigrationPlanner
 from .dependency_mapper import DependencyMapper
+from .forensic_analyzer import ForensicAnalyzer
+from .data_discovery import DataDiscovery
+from .config_tracker import ConfigTracker
+from .network_topology import NetworkTopology
+from .storage_analyzer import StorageAnalyzer
 
 __all__ = [
     # Main API
@@ -94,4 +99,9 @@ __all__ = [
     "PerformanceAnalyzer",
     "MigrationPlanner",
     "DependencyMapper",
+    "ForensicAnalyzer",
+    "DataDiscovery",
+    "ConfigTracker",
+    "NetworkTopology",
+    "StorageAnalyzer",
 ]

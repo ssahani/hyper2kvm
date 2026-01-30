@@ -59,6 +59,11 @@ from .license_detector import LicenseDetector
 from .performance_analyzer import PerformanceAnalyzer
 from .migration_planner import MigrationPlanner
 from .dependency_mapper import DependencyMapper
+from .forensic_analyzer import ForensicAnalyzer
+from .data_discovery import DataDiscovery
+from .config_tracker import ConfigTracker
+from .network_topology import NetworkTopology
+from .storage_analyzer import StorageAnalyzer
 
 
 logger = logging.getLogger(__name__)
@@ -131,6 +136,11 @@ class VMCraft:
         self._performance_analyzer: PerformanceAnalyzer | None = None
         self._migration_planner: MigrationPlanner | None = None
         self._dependency_mapper: DependencyMapper | None = None
+        self._forensic_analyzer: ForensicAnalyzer | None = None
+        self._data_discovery: DataDiscovery | None = None
+        self._config_tracker: ConfigTracker | None = None
+        self._network_topology: NetworkTopology | None = None
+        self._storage_analyzer: StorageAnalyzer | None = None
 
         # Log backend selection
         self.logger.debug("Using VMCraft backend (qemu-nbd + Linux tools)")
@@ -263,6 +273,11 @@ class VMCraft:
         self._performance_analyzer = PerformanceAnalyzer(self.logger, self._file_ops, self._mount_root)
         self._migration_planner = MigrationPlanner(self.logger, self._file_ops, self._mount_root)
         self._dependency_mapper = DependencyMapper(self.logger, self._file_ops, self._mount_root)
+        self._forensic_analyzer = ForensicAnalyzer(self.logger, self._file_ops, self._mount_root)
+        self._data_discovery = DataDiscovery(self.logger, self._file_ops, self._mount_root)
+        self._config_tracker = ConfigTracker(self.logger, self._file_ops, self._mount_root)
+        self._network_topology = NetworkTopology(self.logger, self._file_ops, self._mount_root)
+        self._storage_analyzer = StorageAnalyzer(self.logger, self._file_ops, self._mount_root)
 
         total_time = time.time() - start_time
         self._perf_metrics['total_launch'] = total_time
@@ -1822,6 +1837,228 @@ class VMCraft:
         if not self._dependency_mapper:
             raise RuntimeError("Not launched")
         return self._dependency_mapper.get_port_security_analysis(mapping)
+
+    # Forensic Analysis (forensic_analyzer.py)
+
+    def analyze_forensics(self, os_type: str = "linux") -> dict[str, Any]:
+        """Perform comprehensive forensic analysis."""
+        if not self._forensic_analyzer:
+            raise RuntimeError("Not launched")
+        return self._forensic_analyzer.analyze_forensics(os_type)
+
+    def get_forensic_summary(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Get forensic analysis summary."""
+        if not self._forensic_analyzer:
+            raise RuntimeError("Not launched")
+        return self._forensic_analyzer.get_forensic_summary(analysis)
+
+    def generate_forensic_timeline(self, hours: int = 24) -> list[dict[str, Any]]:
+        """Generate file activity timeline."""
+        if not self._forensic_analyzer:
+            raise RuntimeError("Not launched")
+        return self._forensic_analyzer.generate_timeline(hours)
+
+    def detect_rootkit_indicators(self) -> list[dict[str, Any]]:
+        """Detect rootkit indicators."""
+        if not self._forensic_analyzer:
+            raise RuntimeError("Not launched")
+        return self._forensic_analyzer.detect_rootkit_indicators()
+
+    def analyze_browser_history(self) -> dict[str, Any]:
+        """Analyze browser history artifacts."""
+        if not self._forensic_analyzer:
+            raise RuntimeError("Not launched")
+        return self._forensic_analyzer.analyze_browser_history()
+
+    def find_recently_accessed_files(self, days: int = 7) -> list[dict[str, Any]]:
+        """Find files accessed in the last N days."""
+        if not self._forensic_analyzer:
+            raise RuntimeError("Not launched")
+        return self._forensic_analyzer.find_recently_accessed_files(days)
+
+    def detect_data_exfiltration_indicators(self) -> list[dict[str, Any]]:
+        """Detect potential data exfiltration indicators."""
+        if not self._forensic_analyzer:
+            raise RuntimeError("Not launched")
+        return self._forensic_analyzer.detect_data_exfiltration_indicators()
+
+    # Data Discovery (data_discovery.py)
+
+    def discover_sensitive_data(self) -> dict[str, Any]:
+        """Discover sensitive data comprehensively."""
+        if not self._data_discovery:
+            raise RuntimeError("Not launched")
+        return self._data_discovery.discover_sensitive_data()
+
+    def get_data_discovery_summary(self, discovery: dict[str, Any]) -> dict[str, Any]:
+        """Get data discovery summary."""
+        if not self._data_discovery:
+            raise RuntimeError("Not launched")
+        return self._data_discovery.get_discovery_summary(discovery)
+
+    def classify_data_sensitivity(self, discovery: dict[str, Any]) -> dict[str, Any]:
+        """Classify discovered data by sensitivity level."""
+        if not self._data_discovery:
+            raise RuntimeError("Not launched")
+        return self._data_discovery.classify_data_sensitivity(discovery)
+
+    def get_compliance_report(self, discovery: dict[str, Any]) -> dict[str, Any]:
+        """Generate compliance report (GDPR, CCPA)."""
+        if not self._data_discovery:
+            raise RuntimeError("Not launched")
+        return self._data_discovery.get_compliance_report(discovery)
+
+    # Configuration Tracking (config_tracker.py)
+
+    def track_configurations(self, os_type: str = "linux") -> dict[str, Any]:
+        """Track all system configurations."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.track_configurations(os_type)
+
+    def create_config_baseline(self, tracking: dict[str, Any]) -> dict[str, Any]:
+        """Create configuration baseline."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.create_baseline(tracking)
+
+    def detect_config_drift(
+        self,
+        baseline: dict[str, Any],
+        current: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Detect configuration drift from baseline."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.detect_drift(baseline, current)
+
+    def validate_best_practices(self) -> list[dict[str, Any]]:
+        """Validate configurations against best practices."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.validate_best_practices()
+
+    def get_config_summary(self, tracking: dict[str, Any]) -> dict[str, Any]:
+        """Get configuration tracking summary."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.get_config_summary(tracking)
+
+    def analyze_config_security(self) -> list[dict[str, Any]]:
+        """Analyze configuration security."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.analyze_config_security()
+
+    def compare_configs(
+        self,
+        config1_path: str,
+        config2_path: str
+    ) -> dict[str, Any]:
+        """Compare two configuration files."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.compare_configs(config1_path, config2_path)
+
+    def generate_config_documentation(self, tracking: dict[str, Any]) -> dict[str, Any]:
+        """Generate configuration documentation."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.generate_config_documentation(tracking)
+
+    def get_config_backup_recommendations(self, tracking: dict[str, Any]) -> list[dict[str, Any]]:
+        """Get configuration backup recommendations."""
+        if not self._config_tracker:
+            raise RuntimeError("Not launched")
+        return self._config_tracker.get_config_backup_recommendations(tracking)
+
+    # Network Topology (network_topology.py)
+
+    def map_network_topology(self) -> dict[str, Any]:
+        """Map complete network topology."""
+        if not self._network_topology:
+            raise RuntimeError("Not launched")
+        return self._network_topology.map_network_topology()
+
+    def get_topology_summary(self, topology: dict[str, Any]) -> dict[str, Any]:
+        """Get network topology summary."""
+        if not self._network_topology:
+            raise RuntimeError("Not launched")
+        return self._network_topology.get_topology_summary(topology)
+
+    def analyze_network_redundancy(self, topology: dict[str, Any]) -> dict[str, Any]:
+        """Analyze network redundancy."""
+        if not self._network_topology:
+            raise RuntimeError("Not launched")
+        return self._network_topology.analyze_network_redundancy(topology)
+
+    def detect_network_segmentation(self, topology: dict[str, Any]) -> dict[str, Any]:
+        """Detect network segmentation."""
+        if not self._network_topology:
+            raise RuntimeError("Not launched")
+        return self._network_topology.detect_network_segmentation(topology)
+
+    def generate_topology_graph(self, topology: dict[str, Any]) -> dict[str, Any]:
+        """Generate topology graph data for visualization."""
+        if not self._network_topology:
+            raise RuntimeError("Not launched")
+        return self._network_topology.generate_topology_graph(topology)
+
+    def get_network_policy_summary(self) -> dict[str, Any]:
+        """Get network policy summary."""
+        if not self._network_topology:
+            raise RuntimeError("Not launched")
+        return self._network_topology.get_network_policy_summary()
+
+    # Storage Analysis (storage_analyzer.py)
+
+    def analyze_storage_advanced(self) -> dict[str, Any]:
+        """Analyze storage comprehensively."""
+        if not self._storage_analyzer:
+            raise RuntimeError("Not launched")
+        return self._storage_analyzer.analyze_storage()
+
+    def get_storage_summary(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Get storage summary."""
+        if not self._storage_analyzer:
+            raise RuntimeError("Not launched")
+        return self._storage_analyzer.get_storage_summary(analysis)
+
+    def get_capacity_planning(self, analysis: dict[str, Any]) -> dict[str, Any]:
+        """Get storage capacity planning recommendations."""
+        if not self._storage_analyzer:
+            raise RuntimeError("Not launched")
+        return self._storage_analyzer.get_capacity_planning(analysis)
+
+    def analyze_storage_performance(self) -> dict[str, Any]:
+        """Analyze storage performance indicators."""
+        if not self._storage_analyzer:
+            raise RuntimeError("Not launched")
+        return self._storage_analyzer.analyze_storage_performance()
+
+    def detect_storage_tiering(self) -> dict[str, Any]:
+        """Detect storage tiering configuration."""
+        if not self._storage_analyzer:
+            raise RuntimeError("Not launched")
+        return self._storage_analyzer.detect_storage_tiering()
+
+    def estimate_deduplication_ratio(self) -> dict[str, Any]:
+        """Estimate potential deduplication ratio."""
+        if not self._storage_analyzer:
+            raise RuntimeError("Not launched")
+        return self._storage_analyzer.estimate_deduplication_ratio()
+
+    def analyze_raid_health(self, analysis: dict[str, Any]) -> list[dict[str, Any]]:
+        """Analyze RAID array health."""
+        if not self._storage_analyzer:
+            raise RuntimeError("Not launched")
+        return self._storage_analyzer.analyze_raid_health(analysis)
+
+    def get_storage_optimization_recommendations(self, analysis: dict[str, Any]) -> list[dict[str, Any]]:
+        """Get storage optimization recommendations."""
+        if not self._storage_analyzer:
+            raise RuntimeError("Not launched")
+        return self._storage_analyzer.get_optimization_recommendations(analysis)
 
     # Context manager support
 

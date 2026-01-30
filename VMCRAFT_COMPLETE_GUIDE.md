@@ -2,15 +2,15 @@
 
 ## 🚀 The Ultimate VM Disk Image Manipulation Library
 
-VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **203+ methods** across **42 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, forensic analysis, operational intelligence, vulnerability scanning, license compliance, performance optimization, and migration planning.
+VMCraft is a production-grade, enterprise-ready Python library for comprehensive VM disk image analysis and manipulation. With **237+ methods** across **47 specialized modules**, VMCraft provides everything needed for VM migrations, security audits, compliance checking, forensic analysis, operational intelligence, vulnerability scanning, license compliance, performance optimization, migration planning, incident response, data discovery, configuration management, network topology, and advanced storage analysis.
 
 ## 📊 At a Glance
 
 | Metric | Value |
 |--------|-------|
-| **Total Methods** | 203+ |
-| **Modules** | 42 |
-| **Lines of Code** | ~17,900 |
+| **Total Methods** | 237+ |
+| **Modules** | 47 |
+| **Lines of Code** | ~20,500 |
 | **Performance** | **5-10x faster** than libguestfs |
 | **Supported OS** | Windows (NT-12), Linux (all major distros) |
 | **Launch Time** | ~1.9s (vs libguestfs: ~10-13s) |
@@ -1016,16 +1016,21 @@ with VMCraft() as g:
 
 ## 🏆 Key Advantages
 
-✅ **203+ Methods** - Comprehensive API surface
+✅ **237+ Methods** - Comprehensive API surface (industry-leading)
 ✅ **5-10x Faster** - NBD-based architecture
 ✅ **Production-Ready** - Tested with real VMs
 ✅ **100% Compatible** - Drop-in libguestfs replacement
-✅ **42 Modules** - Clean, maintainable architecture
+✅ **47 Modules** - Clean, maintainable architecture
 ✅ **Advanced Features** - Windows services, apps, search, export
 ✅ **Enterprise-Grade** - Security, audit, compliance, vulnerability scanning
 ✅ **Migration Planning** - Automated migration planning with risk assessment
 ✅ **License Compliance** - OSS license detection and SBOM generation
 ✅ **Performance Analysis** - Resource optimization and cloud cost estimation
+✅ **Forensic Analysis** - Incident response, malware detection, timeline analysis
+✅ **Data Discovery** - PII detection, credential scanning, GDPR/CCPA compliance
+✅ **Configuration Management** - Drift detection, baseline comparison, best practices
+✅ **Network Topology** - Advanced network mapping, VPN detection, VLAN analysis
+✅ **Storage Optimization** - RAID analysis, thin provisioning, deduplication
 ✅ **Well-Documented** - Comprehensive guides and examples
 
 ## 📈 Version History
@@ -1052,12 +1057,18 @@ with VMCraft() as g:
   - Application framework detection (Python, Node.js, Java, PHP, Ruby, Go, .NET)
   - Cloud integration (AWS, Azure, GCP, cloud-init, monitoring agents)
   - Monitoring agents (Prometheus, Datadog, ELK Stack, Zabbix, APM tools)
-- **v6.0**: Advanced security & migration platform (**203+ methods, 42 modules, +25 methods**)
+- **v6.0**: Advanced security & migration platform (203+ methods, 42 modules, +25 methods)
   - Vulnerability scanning (CVE detection, EOL software, patch status, ransomware indicators)
   - License detection (OSS licenses, SBOM generation, compliance risk, copyleft detection)
   - Performance analysis (resource usage, bottleneck detection, sizing recommendations, cloud cost estimation)
   - Migration planning (platform compatibility, task sequencing, risk assessment, rollback planning)
   - Dependency mapping (service dependencies, network ports, critical services, dependency graphs)
+- **v7.0**: Forensic & advanced infrastructure platform (**237+ methods, 47 modules, +34 methods**)
+  - Forensic analysis (incident response, malware detection, timeline analysis, rootkit detection, browser history, data exfiltration)
+  - Data discovery (PII detection, credential scanning, API key detection, GDPR/CCPA compliance, data classification)
+  - Configuration tracking (drift detection, baseline comparison, best practices validation, config security, documentation generation)
+  - Network topology (advanced network mapping, VPN detection, VLAN analysis, redundancy analysis, topology visualization)
+  - Storage analysis (RAID health, thin provisioning, deduplication estimation, tiering detection, capacity planning, performance analysis)
 
 ## 🤝 Contributing
 
