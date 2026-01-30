@@ -845,8 +845,8 @@ g.aug_init()  # Uses mount root automatically
 
 - [VMCraft Complete Guide](vmcraft/complete-guide.md) - Full VMCraft API reference
 - [VMCraft Advanced Features](vmcraft/advanced-features.md) - Advanced usage patterns
-- [Augeas Documentation](http://augeas.net/docs/index.html) - Official Augeas docs
-- [Augeas Path Guide](http://augeas.net/docs/paths.html) - Path expression syntax
+- [Augeas Documentation](https://augeas.net/docs/index.html) - Official Augeas docs
+- [Augeas Path Guide](https://augeas.net/docs/paths.html) - Path expression syntax
 
 ---
 

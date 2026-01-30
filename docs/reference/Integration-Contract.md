@@ -25,7 +25,7 @@ This document defines the **integration contract** between **hypersdk** (daemon/
 
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "Artifact Manifest",
   "description": "Contract between hypersdk and hyper2kvm for VM migration artifacts",
   "type": "object",
