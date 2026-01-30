@@ -15,34 +15,19 @@ from typing import Any, Dict, Optional
 
 import guestfs  # type: ignore
 
-# Import shared logging utilities
-from ..core.logging_utils import safe_logger, emoji_for_level, log_with_emoji, log_step
-# Import shared guest utilities
-from ..core.guest_utils import guest_mkdir_p, guest_write_text, deep_merge_dict
+# Import shared logging utilities (use directly, no wrappers)
+from ..core.logging_utils import safe_logger as _safe_logger_base, emoji_for_level as _emoji, log_with_emoji as _log, log_step as _step
+# Import shared guest utilities (use directly, no wrappers)
+from ..core.guest_utils import guest_mkdir_p as _guest_mkdir_p, guest_write_text as _guest_write_text, deep_merge_dict as _deep_merge_dict
 
 
 # ---------------------------
-# Logging helpers (wrappers for shared utilities)
+# Logging helpers
 # ---------------------------
 
 def _safe_logger(self) -> logging.Logger:
-    """Get logger from instance or create default."""
-    return safe_logger(self, "hyper2kvm.windows_virtio")
-
-
-def _emoji(level: int) -> str:
-    """Return emoji for log level."""
-    return emoji_for_level(level)
-
-
-def _log(logger: logging.Logger, level: int, msg: str, *args: Any) -> None:
-    """Log with emoji prefix."""
-    log_with_emoji(logger, level, msg, *args)
-
-
-def _step(logger: logging.Logger, title: str):
-    """Context manager for logging and timing operation steps."""
-    return log_step(logger, title)
+    """Get logger from instance or create default for windows_virtio modules."""
+    return _safe_logger_base(self, "hyper2kvm.windows_virtio")
 
 
 # ---------------------------
@@ -109,18 +94,3 @@ def _log_mountpoints_best_effort(logger: logging.Logger, g: guestfs.GuestFS) -> 
         _log(logger, logging.DEBUG, "guestfs mountpoints=%r", mps)
     except Exception:
         pass
-
-
-def _guest_mkdir_p(g: guestfs.GuestFS, path: str, *, dry_run: bool) -> None:
-    """Wrapper for backward compatibility - calls shared guest_mkdir_p."""
-    return guest_mkdir_p(g, path, dry_run=dry_run)
-
-
-def _guest_write_text(g: guestfs.GuestFS, path: str, content: str, *, dry_run: bool) -> None:
-    """Wrapper for backward compatibility - calls shared guest_write_text."""
-    return guest_write_text(g, path, content, dry_run=dry_run)
-
-
-def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Wrapper for backward compatibility - calls shared deep_merge_dict."""
-    return deep_merge_dict(base, override)

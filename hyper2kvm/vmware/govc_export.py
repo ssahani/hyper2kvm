@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
 from ..core.exceptions import VMwareError
-from .vmware_utils import is_tty as _is_tty, create_console as _create_console
+from .vmware_utils import is_tty as _is_tty
 
 try:  # pragma: no cover
     from rich.console import Console
@@ -96,8 +96,13 @@ class GovcExportError(VMwareError):
 # UI helpers (Rich if possible, otherwise plain prints)
 # -----------------------------------------------------------------------------
 def _console(logger: Any) -> Optional[Any]:
-    """Wrapper for backward compatibility - calls shared create_console. Logger param kept for API compat."""
-    return _create_console()
+    """Create Rich Console if available and running in TTY. Logger param kept for API compat."""
+    if not (RICH_AVAILABLE and _is_tty()):
+        return None
+    try:
+        return Console(stderr=False)
+    except Exception:
+        return None
 
 
 def _print_panel(logger: Any, title: str, body: str = "") -> None:

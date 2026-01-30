@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
-from ..vmware.vmware_utils import is_tty as _check_tty
+from ..vmware.vmware_utils import is_tty
 
 # Optional: colors
 try:
@@ -57,8 +57,8 @@ _LEVEL_COLOR = {
 
 
 def _is_tty() -> bool:
-    """Wrapper for backward compatibility - uses shared is_tty with stderr."""
-    return _check_tty(sys.stderr)
+    """Check if stderr is a TTY (for logging output)."""
+    return is_tty(sys.stderr)
 
 
 def _supports_unicode() -> bool:

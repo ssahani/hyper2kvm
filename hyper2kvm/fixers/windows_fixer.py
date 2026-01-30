@@ -17,7 +17,7 @@ from typing import Any, Dict
 
 import guestfs  # type: ignore
 
-from ..core.logging_utils import safe_logger
+from ..core.logging_utils import safe_logger as _safe_logger_base
 from .windows_virtio import (
     inject_virtio_drivers,
     is_windows,
@@ -29,7 +29,7 @@ from .windows_network_fixer import retain_windows_network_config
 
 def _safe_logger(self) -> logging.Logger:
     """Wrapper for backward compatibility - calls shared safe_logger."""
-    return safe_logger(self, "hyper2kvm.windows_fixer")
+    return _safe_logger_base(self, "hyper2kvm.windows_fixer")
 
 
 class WindowsFixer:
