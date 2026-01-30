@@ -77,6 +77,7 @@ from .audit_trail import AuditTrail
 from .resource_orchestrator import ResourceOrchestrator
 from .systemd import SystemctlManager, JournalctlManager, SystemdAnalyzer, SystemConfigManager
 from .systemd_mgr import SystemdManager
+from .systemd_networkd import SystemdNetworkdManager
 from .enhanced_inspection import EnhancedInspector
 
 
@@ -177,6 +178,7 @@ class VMCraft:
         self._systemd_analyze: SystemdAnalyzer | None = None
         self._sysconfig: SystemConfigManager | None = None
         self._systemd_mgr: SystemdManager | None = None
+        self._systemd_networkd: SystemdNetworkdManager | None = None
 
         # Enhanced inspection (initialized after launch)
         self._enhanced_inspector: EnhancedInspector | None = None
@@ -337,6 +339,7 @@ class VMCraft:
         self._systemd_analyze = SystemdAnalyzer(self.command_quiet, self.logger)
         self._sysconfig = SystemConfigManager(self.command_quiet, self.logger)
         self._systemd_mgr = SystemdManager(self.logger, str(self._mount_root))
+        self._systemd_networkd = SystemdNetworkdManager(self.logger, str(self._mount_root))
 
         # Initialize enhanced inspector
         self._enhanced_inspector = EnhancedInspector(
@@ -6687,6 +6690,108 @@ class VMCraft:
         if not self._systemd_mgr:
             raise RuntimeError("Not launched")
         return self._systemd_mgr.is_service_enabled(service)
+
+    # ==================================================================================
+    # Systemd-networkd APIs (Phase 2 - Network Configuration Management)
+    # ==================================================================================
+
+    def networkd_create_network_file(
+        self,
+        name: str,
+        match: dict[str, str],
+        network: dict[str, Any],
+        dhcp: str | None = None
+    ) -> dict[str, Any]:
+        """Create .network file in /etc/systemd/network/."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.create_network_file(name, match, network, dhcp)
+
+    def networkd_create_netdev_file(
+        self,
+        name: str,
+        kind: str,
+        netdev_config: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create .netdev file for virtual devices."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.create_netdev_file(name, kind, netdev_config)
+
+    def networkd_create_link_file(
+        self,
+        name: str,
+        match: dict[str, str],
+        link: dict[str, str]
+    ) -> dict[str, Any]:
+        """Create .link file for device naming."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.create_link_file(name, match, link)
+
+    def networkd_remove_network_file(self, name: str) -> dict[str, Any]:
+        """Remove .network file."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.remove_network_file(name)
+
+    def networkd_list_network_files(self) -> list[dict[str, Any]]:
+        """List all systemd-networkd configuration files."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.list_network_files()
+
+    def networkd_parse_network_file(self, name: str) -> dict[str, Any]:
+        """Parse existing .network file."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.parse_network_file(name)
+
+    def networkd_migrate_from_ifcfg(self, interface: str) -> dict[str, Any]:
+        """Migrate from ifcfg-* to systemd-networkd."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.migrate_from_ifcfg(interface)
+
+    def networkd_migrate_from_networkmanager(self) -> dict[str, Any]:
+        """Migrate NetworkManager connections to systemd-networkd."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.migrate_from_networkmanager()
+
+    def networkd_create_dhcp_network(self, interface: str) -> dict[str, Any]:
+        """Create simple DHCP configuration for interface."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.create_dhcp_network(interface)
+
+    def networkd_create_static_network(
+        self,
+        interface: str,
+        address: str,
+        gateway: str,
+        dns: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Create static IP configuration."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.create_static_network(interface, address, gateway, dns)
+
+    def networkd_create_bridge_network(
+        self,
+        bridge_name: str,
+        interfaces: list[str]
+    ) -> dict[str, Any]:
+        """Create bridge configuration."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.create_bridge_network(bridge_name, interfaces)
+
+    def networkd_enable_networkd(self) -> dict[str, Any]:
+        """Enable and start systemd-networkd."""
+        if not self._systemd_networkd:
+            raise RuntimeError("Not launched")
+        return self._systemd_networkd.enable_networkd()
 
     # ==================================================================================
     # Context manager support
