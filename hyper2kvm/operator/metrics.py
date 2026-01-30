@@ -271,6 +271,9 @@ class OperatorMetrics:
             buckets=[1, 5, 10, 30, 60, 300, 600, 1800, 3600, 7200]
         )
 
+        # Initialize migration-specific metrics
+        self.__init_migration_metrics__()
+
         logger.info(f"Operator metrics initialized for {operator_id}")
 
     # Reconciliation methods
@@ -478,3 +481,169 @@ class OperatorMetrics:
             wait_time: Wait time in seconds
         """
         self.dependency_wait_time.labels(namespace=namespace).observe(wait_time)
+
+    # Migration-specific metrics (MigrationJob CRD)
+
+    def __init_migration_metrics__(self):
+        """Initialize migration-specific metrics."""
+        # Migration lifecycle
+        self.migrations_total = Counter(
+            'hyper2kvm_migrations_total',
+            'Total number of migration jobs created',
+            ['namespace', 'source_type']
+        )
+
+        self.migrations_succeeded = Counter(
+            'hyper2kvm_migrations_succeeded_total',
+            'Total number of successful migrations',
+            ['namespace', 'source_type']
+        )
+
+        self.migrations_failed = Counter(
+            'hyper2kvm_migrations_failed_total',
+            'Total number of failed migrations',
+            ['namespace', 'source_type', 'reason']
+        )
+
+        self.migrations_active = Gauge(
+            'hyper2kvm_migrations_active',
+            'Number of currently active migrations',
+            ['namespace', 'phase']
+        )
+
+        self.migration_duration_seconds = Histogram(
+            'hyper2kvm_migration_duration_seconds',
+            'Time taken to complete a migration',
+            ['namespace', 'source_type'],
+            buckets=[60, 300, 600, 1200, 1800, 3600, 7200]  # 1m, 5m, 10m, 20m, 30m, 1h, 2h
+        )
+
+        # Multi-disk metrics
+        self.multi_disk_migrations_total = Counter(
+            'hyper2kvm_multi_disk_migrations_total',
+            'Total number of multi-disk migrations',
+            ['namespace', 'disk_count']
+        )
+
+        self.disk_migration_duration_seconds = Histogram(
+            'hyper2kvm_disk_migration_duration_seconds',
+            'Time taken to migrate a single disk',
+            ['namespace', 'disk_index'],
+            buckets=[30, 60, 120, 300, 600, 1200, 1800]
+        )
+
+        # Dry-run metrics
+        self.dry_run_validations_total = Counter(
+            'hyper2kvm_dry_run_validations_total',
+            'Total number of dry-run validations',
+            ['namespace', 'result']  # result: success, failure
+        )
+
+        self.dry_run_issues_found = Counter(
+            'hyper2kvm_dry_run_issues_found_total',
+            'Total number of issues found in dry-run',
+            ['namespace', 'issue_type']
+        )
+
+        # Conversion metrics
+        self.conversion_compression_ratio = Histogram(
+            'hyper2kvm_conversion_compression_ratio',
+            'Compression ratio achieved (original_size / compressed_size)',
+            ['namespace', 'format'],
+            buckets=[1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
+        )
+
+        # VM metrics
+        self.vms_created_total = Counter(
+            'hyper2kvm_vms_created_total',
+            'Total number of VMs created',
+            ['namespace', 'auto_started']
+        )
+
+        self.vms_running = Gauge(
+            'hyper2kvm_vms_running',
+            'Number of VMs currently running',
+            ['namespace']
+        )
+
+    # Migration methods
+
+    def record_migration_created(self, namespace: str, source_type: str):
+        """Record that a migration was created."""
+        self.migrations_total.labels(
+            namespace=namespace,
+            source_type=source_type
+        ).inc()
+
+    def record_migration_succeeded(self, namespace: str, source_type: str, duration: float):
+        """Record a successful migration."""
+        self.migrations_succeeded.labels(
+            namespace=namespace,
+            source_type=source_type
+        ).inc()
+        self.migration_duration_seconds.labels(
+            namespace=namespace,
+            source_type=source_type
+        ).observe(duration)
+
+    def record_migration_failed(self, namespace: str, source_type: str, reason: str):
+        """Record a failed migration."""
+        self.migrations_failed.labels(
+            namespace=namespace,
+            source_type=source_type,
+            reason=reason
+        ).inc()
+
+    def update_active_migrations(self, namespace: str, phase: str, count: int):
+        """Update the count of active migrations in a phase."""
+        self.migrations_active.labels(
+            namespace=namespace,
+            phase=phase
+        ).set(count)
+
+    def record_multi_disk_migration(self, namespace: str, disk_count: int):
+        """Record a multi-disk migration."""
+        self.multi_disk_migrations_total.labels(
+            namespace=namespace,
+            disk_count=str(disk_count)
+        ).inc()
+
+    def record_disk_migration_duration(self, namespace: str, disk_index: int, duration: float):
+        """Record duration for migrating a single disk."""
+        self.disk_migration_duration_seconds.labels(
+            namespace=namespace,
+            disk_index=str(disk_index)
+        ).observe(duration)
+
+    def record_dry_run_validation(self, namespace: str, success: bool):
+        """Record a dry-run validation."""
+        result = 'success' if success else 'failure'
+        self.dry_run_validations_total.labels(
+            namespace=namespace,
+            result=result
+        ).inc()
+
+    def record_dry_run_issue(self, namespace: str, issue_type: str):
+        """Record an issue found during dry-run."""
+        self.dry_run_issues_found.labels(
+            namespace=namespace,
+            issue_type=issue_type
+        ).inc()
+
+    def record_compression_ratio(self, namespace: str, format: str, ratio: float):
+        """Record compression ratio."""
+        self.conversion_compression_ratio.labels(
+            namespace=namespace,
+            format=format
+        ).observe(ratio)
+
+    def record_vm_created(self, namespace: str, auto_started: bool):
+        """Record VM creation."""
+        self.vms_created_total.labels(
+            namespace=namespace,
+            auto_started=str(auto_started).lower()
+        ).inc()
+
+    def update_running_vms(self, namespace: str, count: int):
+        """Update running VM count."""
+        self.vms_running.labels(namespace=namespace).set(count)

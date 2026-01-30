@@ -24,11 +24,11 @@ spec:
                   properties:
                     type:
                       type: string
-                      enum: ["vmdk-url", "vmdk-pvc", "pvc"]
+                      enum: ["vmdk-url", "vmdk-pvc", "pvc", "multi-disk"]
                       description: Source type
                     vmdk:
                       type: object
-                      description: VMDK source specification
+                      description: VMDK source specification (single disk)
                       properties:
                         url:
                           type: string
@@ -47,6 +47,47 @@ spec:
                         name:
                           type: string
                           description: Source PVC name
+                    disks:
+                      type: array
+                      description: Multiple disk sources (for multi-disk VMs)
+                      items:
+                        type: object
+                        required:
+                          - name
+                        properties:
+                          name:
+                            type: string
+                            description: Disk name (e.g., os-disk, data-disk)
+                          type:
+                            type: string
+                            enum: ["vmdk-url", "vmdk-pvc", "pvc"]
+                            description: Source type for this disk
+                          vmdk:
+                            type: object
+                            description: VMDK source for this disk
+                            properties:
+                              url:
+                                type: string
+                              pvcName:
+                                type: string
+                              path:
+                                type: string
+                                default: "disk.vmdk"
+                          pvc:
+                            type: object
+                            description: PVC source for this disk
+                            properties:
+                              name:
+                                type: string
+                          bootOrder:
+                            type: integer
+                            description: Boot order (1 = first boot disk)
+                            minimum: 1
+                          bus:
+                            type: string
+                            enum: ["virtio", "sata", "scsi"]
+                            default: "virtio"
+                            description: Disk bus type
                 migration:
                   type: object
                   description: Migration options
@@ -106,19 +147,17 @@ spec:
                 destination:
                   type: object
                   description: Destination PVC specification
-                  required:
-                    - size
                   properties:
                     pvcName:
                       type: string
-                      description: Destination PVC name (auto-generated if not specified)
+                      description: Destination PVC name (auto-generated if not specified, for single-disk)
                     storageClass:
                       type: string
                       description: StorageClass for destination PVC
                       default: "local-path"
                     size:
                       type: string
-                      description: Destination PVC size (e.g., "20Gi")
+                      description: Destination PVC size (e.g., "20Gi", for single-disk)
                       pattern: '^[0-9]+[KMGT]i$'
                     accessModes:
                       type: array
@@ -126,6 +165,34 @@ spec:
                         type: string
                       default:
                         - ReadWriteOnce
+                    pvcs:
+                      type: array
+                      description: Multiple PVC destinations (for multi-disk VMs)
+                      items:
+                        type: object
+                        required:
+                          - name
+                          - size
+                        properties:
+                          name:
+                            type: string
+                            description: PVC name for this disk
+                          diskName:
+                            type: string
+                            description: Corresponding source disk name
+                          storageClass:
+                            type: string
+                            description: StorageClass for this PVC
+                          size:
+                            type: string
+                            description: PVC size
+                            pattern: '^[0-9]+[KMGT]i$'
+                          accessModes:
+                            type: array
+                            items:
+                              type: string
+                            default:
+                              - ReadWriteOnce
                 createVM:
                   type: object
                   description: Auto-create VirtualMachine after migration
@@ -162,12 +229,36 @@ spec:
                   type: string
                   description: Migration timeout (e.g., "30m")
                   default: "1h"
+                dryRun:
+                  type: boolean
+                  description: Validate migration without executing (dry-run mode)
+                  default: false
+                validationOptions:
+                  type: object
+                  description: Additional validation options for dry-run
+                  properties:
+                    checkStorageAvailability:
+                      type: boolean
+                      description: Check if storage class has sufficient capacity
+                      default: true
+                    checkNodeResources:
+                      type: boolean
+                      description: Check if nodes have sufficient resources
+                      default: true
+                    checkKubeVirt:
+                      type: boolean
+                      description: Check if KubeVirt is installed (for VM creation)
+                      default: true
+                    checkNBDCapability:
+                      type: boolean
+                      description: Check if NBD-capable nodes exist
+                      default: true
             status:
               type: object
               properties:
                 phase:
                   type: string
-                  enum: ["Pending", "Uploading", "Preparing", "Migrating", "Creating", "Completed", "Failed"]
+                  enum: ["Pending", "Validating", "Uploading", "Preparing", "Migrating", "Creating", "Completed", "Failed", "DryRunCompleted"]
                   description: Current migration phase
                 conditions:
                   type: array
@@ -218,6 +309,65 @@ spec:
                       type: string
                     currentPhase:
                       type: string
+                dryRunValidation:
+                  type: object
+                  description: Dry-run validation results
+                  properties:
+                    valid:
+                      type: boolean
+                      description: Whether dry-run validation passed
+                    errors:
+                      type: array
+                      description: Validation errors found
+                      items:
+                        type: string
+                    warnings:
+                      type: array
+                      description: Validation warnings
+                      items:
+                        type: string
+                    checks:
+                      type: object
+                      description: Individual check results
+                      properties:
+                        storageAvailable:
+                          type: boolean
+                        nodeResources:
+                          type: boolean
+                        kubeVirtInstalled:
+                          type: boolean
+                        nbdCapable:
+                          type: boolean
+                multiDiskProgress:
+                  type: object
+                  description: Multi-disk migration progress
+                  properties:
+                    totalDisks:
+                      type: integer
+                      description: Total number of disks to migrate
+                    completedDisks:
+                      type: integer
+                      description: Number of disks completed
+                    currentDisk:
+                      type: string
+                      description: Currently migrating disk name
+                    diskStatus:
+                      type: array
+                      description: Status of each disk
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          phase:
+                            type: string
+                            enum: ["Pending", "Uploading", "Migrating", "Completed", "Failed"]
+                          pvcName:
+                            type: string
+                          size:
+                            type: string
+                          error:
+                            type: string
       subresources:
         status: {}
       additionalPrinterColumns:
