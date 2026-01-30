@@ -25,7 +25,7 @@ from .. import __version__
 from ..core.recovery_manager import RecoveryManager
 from ..core.utils import U, blinking_progress, guest_has_cmd, guest_ls_glob
 from ..core.validation_suite import ValidationSuite
-from .fstab_rewriter import (
+from .filesystem.fstab import (
     IGNORE_MOUNTPOINTS,
     _BYPATH_PREFIX,
     Change,
@@ -35,12 +35,17 @@ from .fstab_rewriter import (
 )
 from .report_writer import write_report
 
-# Delegated fixers (keep OfflineFSFix “thin”)
-from . import filesystem_fixer  # type: ignore
+# Delegated fixers (keep OfflineFSFix "thin")
+from .filesystem import fixer as filesystem_fixer  # type: ignore
 from . import network_fixer  # type: ignore
-from . import grub_fixer  # type: ignore
-from . import windows_fixer  # type: ignore
-from .offline_vmware_tools_remover import OfflineVmwareToolsRemover
+from .bootloader import grub as grub_fixer  # type: ignore
+from .windows import fixer as windows_fixer  # type: ignore
+from .offline.vmware_tools_remover import OfflineVmwareToolsRemover
+
+# Extracted modules for focused functionality
+from .offline.spec_converter import SpecConverter
+from .offline.config_rewriter import FstabCrypttabRewriter
+from .offline.validation import OfflineValidationManager
 
 
 _T = TypeVar("_T")
@@ -179,6 +184,21 @@ class OfflineFSFix:
 
         # Timings/metrics stash
         self._timings: Dict[str, float] = {}
+
+        # Initialize helper modules (composition over inheritance)
+        self._spec_converter = SpecConverter(
+            fstab_mode=self.fstab_mode,
+            root_dev=None,  # Will be set after root detection
+        )
+        self._config_rewriter = FstabCrypttabRewriter(
+            logger=self.logger,
+            spec_converter=self._spec_converter,
+            dry_run=self.dry_run,
+            no_backup=self.no_backup,
+            print_fstab=self.print_fstab,
+            fstab_mode=self.fstab_mode,
+        )
+        self._validation_manager = OfflineValidationManager(logger=self.logger)
 
     # ---------------------------------------------------------------------
     # stage runner (timing + per-stage error capture)
@@ -862,270 +882,35 @@ class OfflineFSFix:
     # ---------------------------------------------------------------------
     @staticmethod
     def _normalize_validation_results(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        norm: Dict[str, Dict[str, Any]] = {}
-        for name, v in (raw or {}).items():
-            if isinstance(v, dict):
-                passed = bool(v.get("passed", v.get("ok", False)))
-                critical = bool(v.get("critical", False))
-                details = v.get("details")
-                if details is None:
-                    details = {k: v[k] for k in v.keys() if k not in ("passed", "ok", "critical")}
-                norm[name] = {"passed": passed, "critical": critical, "details": details}
-            elif isinstance(v, bool):
-                norm[name] = {"passed": v, "critical": False, "details": {}}
-            else:
-                norm[name] = {"passed": False, "critical": False, "details": {"raw": repr(v)}}
-        return norm
+        """Delegate to validation manager."""
+        return OfflineValidationManager.normalize_validation_results(raw)
 
     @staticmethod
     def _summarize_validation(norm: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-        total = len(norm)
-        passed = sum(1 for r in norm.values() if r.get("passed"))
-        failed = total - passed
-        critical_failed = sum(1 for r in norm.values() if r.get("critical") and not r.get("passed"))
-        return {"total": total, "passed": passed, "failed": failed, "critical_failed": critical_failed, "ok": failed == 0}
+        """Delegate to validation manager."""
+        return OfflineValidationManager.summarize_validation(norm)
 
     # ---------------------------------------------------------------------
-    # backup helper
+    # Configuration rewriting (delegated to modules)
     # ---------------------------------------------------------------------
     def backup_file(self, g: guestfs.GuestFS, path: str) -> None:
-        if self.no_backup or self.dry_run:
-            return
-        try:
-            if not g.is_file(path):
-                return
-        except Exception:
-            return
-        b = f"{path}.backup.hyper2kvm.{U.now_ts()}"
-        try:
-            g.cp(path, b)
-            self.logger.debug(f"Backup: {path} -> {b}")
-        except Exception as e:
-            self.logger.warning(f"Backup failed for {path}: {e}")
+        """Delegate to config rewriter."""
+        self._config_rewriter.backup_file(g, path)
 
-    # ---------------------------------------------------------------------
-    # spec conversion logic (offline)
-    # ---------------------------------------------------------------------
     def convert_spec(self, g: guestfs.GuestFS, spec: str) -> Tuple[str, str]:
-        original = spec
-        # btrfsvol:/dev/XXX//@/path -> treat stable mapping for underlying dev
-        if spec.startswith("btrfsvol:"):
-            dev, _sv = parse_btrfsvol_spec(spec)
-            spec = dev.strip()
-        if Ident.is_stable(spec):
-            return original, "already-stable"
-        # by-path -> real dev -> stable
-        if spec.startswith(_BYPATH_PREFIX):
-            mapped: Optional[str] = None
-            try:
-                rp = U.to_text(g.realpath(spec)).strip()
-                if rp.startswith("/dev/"):
-                    mapped = rp
-            except Exception:
-                mapped = None
-            # If still not mapped, try inference helper (root_dev optional)
-            if not mapped:
-                mapped = Ident.infer_partition_from_bypath(spec, self.root_dev) if self.root_dev else None
-            if not mapped:
-                return original, "by-path-unresolved"
-            blk = Ident.g_blkid_map(g, mapped)
-            stable = Ident.choose_stable(blk)
-            if stable:
-                return stable, f"mapped:{mapped}"
-            return original, f"mapped:{mapped} no-id"
-        # STABILIZE_ALL: rewrite any /dev/* to stable
-        if self.fstab_mode == FstabMode.STABILIZE_ALL and spec.startswith("/dev/"):
-            blk = Ident.g_blkid_map(g, spec)
-            stable = Ident.choose_stable(blk)
-            if stable:
-                return stable, f"blkid:{spec}"
-            return original, "dev-no-id"
-        return original, "unchanged"
+        """Delegate to spec converter."""
+        # Update root_dev in spec_converter if it's been detected
+        if self.root_dev and self._spec_converter.root_dev != self.root_dev:
+            self._spec_converter.root_dev = self.root_dev
+        return self._spec_converter.convert_spec(g, spec)
 
-    # ---------------------------------------------------------------------
-    # fstab rewrite + /tmp sanity
-    # ---------------------------------------------------------------------
     def rewrite_fstab(self, g: guestfs.GuestFS) -> Tuple[int, List[Change], Dict[str, Any]]:
-        fstab = "/etc/fstab"
-        if self.fstab_mode == FstabMode.NOOP:
-            self.logger.info("fstab: mode=noop (skipping)")
-            return 0, [], {"reason": "noop"}
-        try:
-            if not g.is_file(fstab):
-                self.logger.warning("fstab: /etc/fstab not found; skipping")
-                return 0, [], {"reason": "missing"}
-        except Exception:
-            self.logger.warning("fstab: /etc/fstab check failed; skipping")
-            return 0, [], {"reason": "missing"}
+        """Delegate to config rewriter."""
+        return self._config_rewriter.rewrite_fstab(g)
 
-        before = U.to_text(g.read_file(fstab))
-        if self.print_fstab:
-            print("\n--- /etc/fstab (before) ---\n" + before)
-
-        lines = before.splitlines()
-        out_lines: List[str] = []
-        changes: List[Change] = []
-        total = 0
-        entries = 0
-        bypath = 0
-
-        with Progress(
-            TextColumn("{task.description}"),
-            BarColumn(),
-            TextColumn("{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-        ) as progress:
-            task = progress.add_task("Processing fstab lines", total=len(lines))
-            for idx, line in enumerate(lines, 1):
-                total += 1
-                s = line.strip()
-                if not s or s.startswith("#"):
-                    out_lines.append(line)
-                    progress.update(task, advance=1)
-                    continue
-                cols = s.split()
-                if len(cols) < 4:
-                    out_lines.append(line)
-                    progress.update(task, advance=1)
-                    continue
-                spec, mp = cols[0], cols[1]
-                if mp in IGNORE_MOUNTPOINTS:
-                    out_lines.append(line)
-                    progress.update(task, advance=1)
-                    continue
-
-                entries += 1
-                if spec.startswith(_BYPATH_PREFIX):
-                    bypath += 1
-
-                if self.fstab_mode == FstabMode.BYPATH_ONLY and not (
-                    spec.startswith(_BYPATH_PREFIX) or spec.startswith("btrfsvol:")
-                ):
-                    out_lines.append(line)
-                    progress.update(task, advance=1)
-                    continue
-
-                new_spec, reason = self.convert_spec(g, spec)
-                if new_spec != spec:
-                    cols[0] = new_spec
-                    out_lines.append("\t".join(cols))
-                    changes.append(Change(idx, mp, spec, new_spec, reason))
-                else:
-                    out_lines.append(line)
-                progress.update(task, advance=1)
-
-        audit = {
-            "total_lines": total,
-            "entries": entries,
-            "bypath_entries": bypath,
-            "changed_entries": len(changes),
-        }
-        self.logger.info(
-            f"fstab scan: total_lines={total} entries={entries} bypath_entries={bypath} changed_entries={len(changes)}"
-        )
-
-        # /tmp sanity (common for some minimal images)
-        try:
-            if not g.is_dir("/tmp"):
-                self.logger.info("Fixing /tmp: creating directory inside guest")
-                if not self.dry_run:
-                    g.mkdir_p("/tmp")
-                if not self.dry_run:
-                    try:
-                        g.chmod(0o1777, "/tmp")
-                    except Exception:
-                        pass
-        except Exception as e:
-            self.logger.warning(f"/tmp sanity fix failed: {e}")
-
-        if not changes:
-            if self.print_fstab:
-                print("\n--- /etc/fstab (after - unchanged) ---\n" + before)
-            return 0, [], audit
-
-        for ch in changes:
-            self.logger.info(f"fstab line {ch.line_no}: {ch.old} -> {ch.new} ({ch.mountpoint}) [{ch.reason}]")
-
-        after = "\n".join(out_lines) + "\n"
-        if self.print_fstab:
-            print("\n--- /etc/fstab (after) ---\n" + after)
-
-        if self.dry_run:
-            self.logger.info(f"fstab: DRY-RUN: would apply {len(changes)} change(s).")
-            return len(changes), changes, audit
-
-        self.backup_file(g, fstab)
-        g.write(fstab, after.encode("utf-8"))
-        self.logger.info(f"/etc/fstab updated ({len(changes)} changes).")
-        return len(changes), changes, audit
-
-    # ---------------------------------------------------------------------
-    # crypttab rewrite (LUKS)
-    # ---------------------------------------------------------------------
     def rewrite_crypttab(self, g: guestfs.GuestFS) -> int:
-        path = "/etc/crypttab"
-        try:
-            if not g.is_file(path):
-                return 0
-        except Exception:
-            return 0
-
-        before = U.to_text(g.read_file(path))
-        out: List[str] = []
-        changed = 0
-        lines = before.splitlines()
-
-        with Progress(
-            TextColumn("{task.description}"),
-            BarColumn(),
-            TextColumn("{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-        ) as progress:
-            task = progress.add_task("Processing crypttab lines", total=len(lines))
-            for line in lines:
-                s = line.strip()
-                if not s or s.startswith("#"):
-                    out.append(line)
-                    progress.update(task, advance=1)
-                    continue
-                cols = s.split()
-                if len(cols) < 2:
-                    out.append(line)
-                    progress.update(task, advance=1)
-                    continue
-                name, spec = cols[0], cols[1]
-                if Ident.is_stable(spec):
-                    out.append(line)
-                    progress.update(task, advance=1)
-                    continue
-                if self.fstab_mode == FstabMode.BYPATH_ONLY and not (
-                    spec.startswith(_BYPATH_PREFIX) or spec.startswith("btrfsvol:")
-                ):
-                    out.append(line)
-                    progress.update(task, advance=1)
-                    continue
-                new_spec, reason = self.convert_spec(g, spec)
-                if new_spec != spec:
-                    cols[1] = new_spec
-                    out.append(" ".join(cols))
-                    changed += 1
-                    self.logger.info(f"crypttab: {name}: {spec} -> {new_spec} [{reason}]")
-                else:
-                    out.append(line)
-                progress.update(task, advance=1)
-
-        if changed == 0:
-            return 0
-        after = "\n".join(out) + "\n"
-        if self.dry_run:
-            self.logger.info(f"crypttab: DRY-RUN: would apply {changed} change(s).")
-            return changed
-        self.backup_file(g, path)
-        g.write(path, after.encode("utf-8"))
-        self.logger.info(f"/etc/crypttab updated ({changed} changes).")
-        return changed
+        """Delegate to config rewriter."""
+        return self._config_rewriter.rewrite_crypttab(g)
 
     # ---------------------------------------------------------------------
     # Filesystem fixer (delegated)
@@ -1286,64 +1071,12 @@ class OfflineFSFix:
     # disk usage analysis
     # ---------------------------------------------------------------------
     def analyze_disk_space(self, g: guestfs.GuestFS) -> Dict[str, Any]:
-        try:
-            stats = g.statvfs("/")
-            total = stats["bsize"] * stats["blocks"]
-            free = stats["bsize"] * stats["bfree"]
-            used = total - free
-            used_pct = (used / total) * 100 if total > 0 else 0.0
-            out = {
-                "analysis": "success",
-                "total_gb": total / (1024**3),
-                "used_gb": used / (1024**3),
-                "free_gb": free / (1024**3),
-                "used_percent": round(used_pct, 1),
-                "recommend_resize": used_pct > 80,
-                "recommend_cleanup": used_pct > 90,
-            }
-            if out["recommend_resize"]:
-                self.logger.warning(f"Disk usage {used_pct:.1f}% - consider resizing disk")
-            if out["recommend_cleanup"]:
-                self.logger.warning(f"Disk usage {used_pct:.1f}% - critical, cleanup recommended")
-            return out
-        except Exception as e:
-            self.logger.debug(f"Disk analysis failed: {e}")
-            return {"analysis": "failed", "error": str(e)}
+        """Delegate to validation manager."""
+        return self._validation_manager.analyze_disk_space(g)
 
-    # ---------------------------------------------------------------------
-    # validation suite
-    # ---------------------------------------------------------------------
     def create_validation_suite(self, g: guestfs.GuestFS) -> ValidationSuite:
-        suite = ValidationSuite(self.logger)
-
-        def check_fstab_exists(_context):
-            try:
-                return g.is_file("/etc/fstab")
-            except Exception:
-                return False
-
-        def check_boot_files(_context):
-            for p in ("/boot", "/boot/grub", "/boot/grub2", "/boot/efi", "/efi"):
-                try:
-                    if g.is_dir(p):
-                        return True
-                except Exception:
-                    continue
-            return False
-
-        def check_kernel_presence(_context):
-            kernels = guest_ls_glob(g, "/boot/vmlinuz-*")
-            return len(kernels) > 0
-
-        def check_initramfs_tools(_context):
-            tools = ["dracut", "update-initramfs", "mkinitcpio"]
-            return any(guest_has_cmd(g, t) for t in tools)
-
-        suite.add_check("fstab_exists", check_fstab_exists, critical=True)
-        suite.add_check("boot_files_present", check_boot_files, critical=True)
-        suite.add_check("kernel_present", check_kernel_presence, critical=True)
-        suite.add_check("initramfs_tools", check_initramfs_tools, critical=False)
-        return suite
+        """Delegate to validation manager."""
+        return self._validation_manager.create_validation_suite(g)
 
     # ---------------------------------------------------------------------
     # resizing (image-level)

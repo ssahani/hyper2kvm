@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
+from ..vmware.utils.utils import is_tty
+
 # Optional: colors
 try:
     from termcolor import colored as _colored  # type: ignore
@@ -55,10 +57,8 @@ _LEVEL_COLOR = {
 
 
 def _is_tty() -> bool:
-    try:
-        return sys.stderr.isatty()
-    except Exception:
-        return False
+    """Check if stderr is a TTY (for logging output)."""
+    return is_tty(sys.stderr)
 
 
 def _supports_unicode() -> bool:

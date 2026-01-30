@@ -12,7 +12,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Literal, Optional
-from xml.sax.saxutils import escape as _xml_escape
+
+from ..core.xml_utils import xml_escape as _xml
+from .libvirt_utils import sanitize_name as _sanitize_name
 
 
 Firmware = Literal["bios", "uefi"]
@@ -25,26 +27,8 @@ ClockOffset = Literal["utc", "localtime"]
 # Small utilities
 # --------------------------------------------------------------------------------------
 
-_SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._+-]+")
 _DEFAULT_IMAGES_DIR = Path("/var/lib/libvirt/images")
 _DEFAULT_NVRAM_DIR = Path("/var/lib/libvirt/qemu/nvram")
-
-
-def _sanitize_name(s: str) -> str:
-    """
-    Keep libvirt-friendly name component:
-      - allow: A-Za-z0-9._+-
-      - everything else => '-'
-      - trim '-' edges
-    """
-    s = (s or "").strip()
-    s = _SAFE_NAME_RE.sub("-", s).strip("-")
-    return s or "vm"
-
-
-def _xml(s: object) -> str:
-    """Escape for XML text/attribute contexts."""
-    return _xml_escape(str(s), entities={"'": "&apos;", '"': "&quot;"})
 
 
 def _default_libvirt_images_dir() -> Path:
