@@ -396,6 +396,14 @@ class VMCraft:
         except Exception as e:
             self.logger.warning(f"   Error during umount_all: {e}")
 
+        # Deactivate storage stack (LVM, LUKS, ZFS, mdraid)
+        if self._storage_activator:
+            try:
+                self._storage_activator.deactivate_all()
+                self.logger.info("   Storage stack deactivated")
+            except Exception as e:
+                self.logger.warning(f"   Error deactivating storage: {e}")
+
         # Disconnect NBD
         if self._nbd_manager:
             try:

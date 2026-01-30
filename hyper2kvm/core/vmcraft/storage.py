@@ -827,3 +827,79 @@ class StorageStackActivator:
         audit["luks"] = self.luks_unlocker.unlock(nbd_device=self.nbd_device)
 
         return audit
+
+    def deactivate_all(self) -> None:
+        """
+        Deactivate entire storage stack.
+
+        Deactivates all storage layers in reverse order:
+        1. LUKS devices
+        2. LVM volume groups
+        3. ZFS pools
+        4. mdraid arrays
+        """
+        self.logger.debug("Deactivating storage stack...")
+
+        # Deactivate LUKS
+        try:
+            if _has_command("cryptsetup"):
+                # Close all LUKS devices with our prefix
+                result = run_sudo(self.logger, ["dmsetup", "ls", "--target", "crypt"],
+                                check=False, capture=True, failure_log_level=logging.DEBUG)
+                if result and result.stdout:
+                    for line in result.stdout.splitlines():
+                        if self.luks_unlocker.luks_mapper_prefix in line:
+                            dev_name = line.split()[0]
+                            run_sudo(self.logger, ["cryptsetup", "close", dev_name],
+                                   check=False, capture=True, failure_log_level=logging.DEBUG)
+                            self.logger.debug(f"Closed LUKS device: {dev_name}")
+        except Exception as e:
+            self.logger.debug(f"LUKS cleanup warning: {e}")
+
+        # Deactivate LVM - deactivate ALL volume groups
+        try:
+            if _has_command("vgchange"):
+                self.logger.debug("Deactivating all LVM volume groups...")
+                run_sudo(self.logger, ["vgchange", "-an", "--all"],
+                       check=False, capture=True, failure_log_level=logging.DEBUG)
+                self.logger.debug("LVM volume groups deactivated")
+        except Exception as e:
+            self.logger.debug(f"LVM deactivation warning: {e}")
+
+        # Settle udev after LVM deactivation
+        try:
+            if _has_command("udevadm"):
+                run_sudo(self.logger, ["udevadm", "settle"],
+                       check=False, capture=True, failure_log_level=logging.DEBUG)
+        except Exception:
+            pass
+
+        # ZFS pools - export any imported pools
+        try:
+            if _has_command("zpool"):
+                result = run_sudo(self.logger, ["zpool", "list", "-H", "-o", "name"],
+                                check=False, capture=True, failure_log_level=logging.DEBUG)
+                if result and result.stdout:
+                    for pool in result.stdout.splitlines():
+                        pool = pool.strip()
+                        if pool:
+                            run_sudo(self.logger, ["zpool", "export", pool],
+                                   check=False, capture=True, failure_log_level=logging.DEBUG)
+                            self.logger.debug(f"Exported ZFS pool: {pool}")
+        except Exception as e:
+            self.logger.debug(f"ZFS cleanup warning: {e}")
+
+        # mdraid - stop any arrays we started
+        try:
+            if _has_command("mdadm"):
+                result = run_sudo(self.logger, ["cat", "/proc/mdstat"],
+                                check=False, capture=True, failure_log_level=logging.DEBUG)
+                if result and result.stdout and "md" in result.stdout:
+                    # Stop all md devices
+                    run_sudo(self.logger, ["mdadm", "--stop", "--scan"],
+                           check=False, capture=True, failure_log_level=logging.DEBUG)
+                    self.logger.debug("Stopped mdraid arrays")
+        except Exception as e:
+            self.logger.debug(f"mdraid cleanup warning: {e}")
+
+        self.logger.debug("Storage stack deactivated")
