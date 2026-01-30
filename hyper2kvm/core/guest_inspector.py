@@ -89,6 +89,50 @@ class DiskUsage:
 
 
 @dataclass
+class Partition:
+    """Partition information."""
+    device: str
+    number: int | None = None
+    size_bytes: int | None = None
+    filesystem_type: str | None = None
+    label: str | None = None
+    uuid: str | None = None
+    bootable: bool = False
+
+
+@dataclass
+class Application:
+    """Installed application (Windows) or package (Linux)."""
+    name: str
+    version: str | None = None
+    vendor: str | None = None
+    install_date: str | None = None
+    install_location: str | None = None
+    size_bytes: int | None = None
+
+
+@dataclass
+class FirewallRule:
+    """Firewall rule information."""
+    name: str
+    enabled: bool = False
+    direction: str | None = None  # inbound, outbound
+    action: str | None = None  # allow, deny
+    protocol: str | None = None
+    port: str | None = None
+
+
+@dataclass
+class ScheduledTask:
+    """Scheduled task or cron job."""
+    name: str
+    command: str | None = None
+    schedule: str | None = None
+    user: str | None = None
+    enabled: bool = True
+
+
+@dataclass
 class GuestInspectionResult:
     """Complete guest inspection result."""
 
@@ -120,11 +164,36 @@ class GuestInspectionResult:
     # Disk usage
     disk_usage: list[DiskUsage] = field(default_factory=list)
 
+    # Partitions and filesystems
+    partitions: list[Partition] = field(default_factory=list)
+    filesystems: list[str] = field(default_factory=list)
+    mount_points: dict[str, str] = field(default_factory=dict)  # device -> mount point
+
+    # Applications (Windows) or detailed packages (Linux)
+    applications: list[Application] = field(default_factory=list)
+    application_count: int = 0
+
+    # Firewall
+    firewall_rules: list[FirewallRule] = field(default_factory=list)
+    firewall_enabled: bool | None = None
+
+    # Scheduled tasks
+    scheduled_tasks: list[ScheduledTask] = field(default_factory=list)
+
+    # Environment and configuration
+    environment_variables: dict[str, str] = field(default_factory=dict)
+    selinux_status: str | None = None  # enforcing, permissive, disabled
+
     # Additional metadata
     kernel_modules: list[str] = field(default_factory=list)
     boot_parameters: str | None = None
     timezone: str | None = None
     locale: str | None = None
+
+    # Windows-specific
+    windows_product_name: str | None = None
+    windows_build_number: str | None = None
+    windows_install_date: str | None = None
 
     # Raw metadata
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -199,6 +268,10 @@ class ComprehensiveGuestInspector:
             g.add_drive_opts(str(img_path), readonly=1 if readonly else 0)
             g.launch()
 
+            # Extract partition and filesystem information (before mounting)
+            result.partitions = self._extract_partitions(g)
+            result.filesystems = self._extract_filesystems(g)
+
             # Get root filesystem
             roots = g.inspect_os()
             if not roots:
@@ -210,6 +283,7 @@ class ComprehensiveGuestInspector:
 
             # Mount the filesystem
             mounts = self._get_mount_points(g, root)
+            result.mount_points = mounts
             for mp, dev in mounts.items():
                 try:
                     g.mount_ro(dev, mp) if readonly else g.mount(dev, mp)
@@ -250,10 +324,33 @@ class ComprehensiveGuestInspector:
                 result.timezone = self._extract_timezone_linux(g)
                 result.locale = self._extract_locale_linux(g)
 
+                # Extended Linux info (guestfish-like)
+                result.scheduled_tasks = self._extract_cron_jobs_linux(g)
+                result.firewall_rules = self._extract_firewall_rules_linux(g)
+                result.selinux_status = self._extract_selinux_status_linux(g)
+                result.environment_variables = self._extract_environment_linux(g)
+
             elif result.identity.type == GuestType.WINDOWS:
+                # Windows info extraction
                 if network_info:
                     result.network_interfaces = self._extract_network_interfaces_windows(g)
-                # TODO: Add Windows-specific extraction methods
+                    result.hostname = self._extract_hostname_windows(g)
+
+                # Windows Registry-based extraction
+                result.applications = self._extract_applications_windows(g)
+                result.application_count = len(result.applications)
+
+                result.windows_product_name = self._extract_windows_product_name(g)
+                result.windows_build_number = self._extract_windows_build_number(g)
+                result.windows_install_date = self._extract_windows_install_date(g)
+
+                if user_info:
+                    result.user_accounts = self._extract_users_windows(g)
+                    result.user_count = len(result.user_accounts)
+
+                result.scheduled_tasks = self._extract_scheduled_tasks_windows(g)
+                result.firewall_rules = self._extract_firewall_rules_windows(g)
+                result.environment_variables = self._extract_environment_windows(g)
 
         except Exception as e:
             self.logger.error(f"Inspection failed: {e}", exc_info=True)
@@ -759,13 +856,379 @@ class ComprehensiveGuestInspector:
 
         return None
 
-    # Windows extraction methods (stubs for now)
+    # General extraction methods (both Linux and Windows)
+
+    def _extract_partitions(self, g: guestfs.GuestFS) -> list[Partition]:
+        """Extract partition information from disk."""
+        partitions = []
+
+        try:
+            devices = g.list_devices()
+            for device in devices:
+                try:
+                    # Get partitions for this device
+                    parts = g.list_partitions()
+                    for part in parts:
+                        if not part.startswith(device):
+                            continue
+
+                        partition = Partition(device=part)
+
+                        # Try to get partition number
+                        try:
+                            partition.number = g.part_to_partnum(part)
+                        except Exception:
+                            pass
+
+                        # Try to get size
+                        try:
+                            partition.size_bytes = g.blockdev_getsize64(part)
+                        except Exception:
+                            pass
+
+                        # Try to get filesystem type
+                        try:
+                            partition.filesystem_type = g.vfs_type(part)
+                        except Exception:
+                            pass
+
+                        # Try to get label
+                        try:
+                            partition.label = g.vfs_label(part)
+                        except Exception:
+                            pass
+
+                        # Try to get UUID
+                        try:
+                            partition.uuid = g.vfs_uuid(part)
+                        except Exception:
+                            pass
+
+                        partitions.append(partition)
+                except Exception as e:
+                    self.logger.debug(f"Failed to get partitions for {device}: {e}")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to extract partition information: {e}")
+
+        return partitions
+
+    def _extract_filesystems(self, g: guestfs.GuestFS) -> list[str]:
+        """Extract list of filesystems."""
+        filesystems = []
+
+        try:
+            parts = g.list_partitions()
+            for part in parts:
+                try:
+                    fs_type = g.vfs_type(part)
+                    if fs_type and fs_type not in filesystems:
+                        filesystems.append(fs_type)
+                except Exception:
+                    pass
+        except Exception as e:
+            self.logger.debug(f"Failed to extract filesystems: {e}")
+
+        return filesystems
+
+    # Extended Linux extraction methods
+
+    def _extract_cron_jobs_linux(self, g: guestfs.GuestFS) -> list[ScheduledTask]:
+        """Extract cron jobs from Linux guest."""
+        tasks = []
+
+        try:
+            # System crontabs
+            for cron_file in ["/etc/crontab"]:
+                if g.exists(cron_file):
+                    try:
+                        content = g.cat(cron_file)
+                        for line in content.splitlines():
+                            line = line.strip()
+                            if not line or line.startswith("#"):
+                                continue
+
+                            # Parse cron format: minute hour day month dow user command
+                            parts = line.split(None, 6)
+                            if len(parts) >= 7:
+                                task = ScheduledTask(
+                                    name=f"cron: {parts[6][:50]}...",
+                                    command=parts[6],
+                                    schedule=f"{parts[0]} {parts[1]} {parts[2]} {parts[3]} {parts[4]}",
+                                    user=parts[5]
+                                )
+                                tasks.append(task)
+                    except Exception:
+                        pass
+
+            # User crontabs in /var/spool/cron
+            if g.exists("/var/spool/cron"):
+                try:
+                    cron_files = g.ls("/var/spool/cron")
+                    for username in cron_files:
+                        cron_path = f"/var/spool/cron/{username}"
+                        if g.is_file(cron_path):
+                            content = g.cat(cron_path)
+                            for line in content.splitlines():
+                                line = line.strip()
+                                if not line or line.startswith("#"):
+                                    continue
+
+                                # Parse cron format: minute hour day month dow command
+                                parts = line.split(None, 5)
+                                if len(parts) >= 6:
+                                    task = ScheduledTask(
+                                        name=f"cron ({username}): {parts[5][:50]}...",
+                                        command=parts[5],
+                                        schedule=f"{parts[0]} {parts[1]} {parts[2]} {parts[3]} {parts[4]}",
+                                        user=username
+                                    )
+                                    tasks.append(task)
+                except Exception:
+                    pass
+
+        except Exception as e:
+            self.logger.debug(f"Failed to extract cron jobs: {e}")
+
+        return tasks
+
+    def _extract_firewall_rules_linux(self, g: guestfs.GuestFS) -> list[FirewallRule]:
+        """Extract firewall rules from Linux guest."""
+        rules = []
+
+        try:
+            # Try iptables-save output
+            if g.exists("/etc/iptables/rules.v4"):
+                try:
+                    content = g.cat("/etc/iptables/rules.v4")
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if line.startswith("-A"):
+                            # Parse iptables rule
+                            rule = FirewallRule(
+                                name=line[:60],
+                                enabled=True,
+                                direction="inbound" if "INPUT" in line else "outbound" if "OUTPUT" in line else "forward",
+                                action="allow" if "ACCEPT" in line else "deny" if "DROP" in line or "REJECT" in line else None
+                            )
+                            rules.append(rule)
+                except Exception:
+                    pass
+
+            # Try firewalld (RHEL/CentOS/Fedora)
+            if g.exists("/etc/firewalld/zones"):
+                try:
+                    zones = g.ls("/etc/firewalld/zones")
+                    for zone in zones:
+                        if zone.endswith(".xml"):
+                            zone_path = f"/etc/firewalld/zones/{zone}"
+                            content = g.cat(zone_path)
+                            # Basic XML parsing for services
+                            import re
+                            services = re.findall(r'<service name="([^"]+)"', content)
+                            for service in services:
+                                rule = FirewallRule(
+                                    name=f"{zone}: {service}",
+                                    enabled=True,
+                                    action="allow"
+                                )
+                                rules.append(rule)
+                except Exception:
+                    pass
+
+        except Exception as e:
+            self.logger.debug(f"Failed to extract firewall rules: {e}")
+
+        return rules
+
+    def _extract_selinux_status_linux(self, g: guestfs.GuestFS) -> str | None:
+        """Extract SELinux status."""
+        try:
+            if g.exists("/etc/selinux/config"):
+                content = g.cat("/etc/selinux/config")
+                match = re.search(r'^SELINUX=(.+)$', content, re.MULTILINE)
+                if match:
+                    return match.group(1).strip().lower()
+        except Exception:
+            pass
+
+        return None
+
+    def _extract_environment_linux(self, g: guestfs.GuestFS) -> dict[str, str]:
+        """Extract system environment variables."""
+        env_vars = {}
+
+        try:
+            # /etc/environment
+            if g.exists("/etc/environment"):
+                content = g.cat("/etc/environment")
+                for line in content.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+
+                    key, value = line.split("=", 1)
+                    env_vars[key.strip()] = value.strip().strip('"')
+
+            # /etc/profile.d
+            if g.exists("/etc/profile.d"):
+                try:
+                    profile_files = g.glob_expand("/etc/profile.d/*.sh")
+                    for pfile in profile_files[:5]:  # Limit to first 5
+                        content = g.cat(pfile)
+                        # Look for export statements
+                        for match in re.finditer(r'export\s+([A-Z_][A-Z0-9_]*)=(.+)', content):
+                            key = match.group(1)
+                            value = match.group(2).strip().strip('"').strip("'")
+                            env_vars[key] = value
+                except Exception:
+                    pass
+
+        except Exception as e:
+            self.logger.debug(f"Failed to extract environment variables: {e}")
+
+        return env_vars
+
+    # Windows extraction methods
 
     def _extract_network_interfaces_windows(self, g: guestfs.GuestFS) -> list[NetworkInterface]:
         """Extract network interface information from Windows guest."""
         interfaces = []
 
-        # TODO: Parse Windows registry for network adapter information
-        # HKLM\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}
+        # Windows network config is in registry, which is complex to parse
+        # For now, return empty list
+        # TODO: Implement Windows registry parsing for network adapters
+        # HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces
 
         return interfaces
+
+    def _extract_hostname_windows(self, g: guestfs.GuestFS) -> str | None:
+        """Extract hostname from Windows guest."""
+        # Windows hostname is in registry
+        # HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName
+        # For now, return None
+        # TODO: Implement Windows registry parsing
+
+        return None
+
+    def _extract_applications_windows(self, g: guestfs.GuestFS) -> list[Application]:
+        """Extract installed applications from Windows registry."""
+        applications = []
+
+        # Windows applications are in:
+        # HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
+        # HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall (64-bit)
+        # This requires parsing the Windows registry hives
+
+        # For now, we'll add a note that this requires registry parsing
+        # TODO: Implement using hivex library to parse SOFTWARE registry hive
+
+        try:
+            # Check if Windows Program Files directory exists
+            if g.exists("/Program Files"):
+                try:
+                    programs = g.ls("/Program Files")
+                    for program in programs[:50]:  # Limit to 50
+                        app = Application(
+                            name=program,
+                            install_location=f"C:\\Program Files\\{program}"
+                        )
+                        applications.append(app)
+                except Exception:
+                    pass
+
+            if g.exists("/Program Files (x86)"):
+                try:
+                    programs = g.ls("/Program Files (x86)")
+                    for program in programs[:50]:  # Limit to 50
+                        app = Application(
+                            name=program,
+                            install_location=f"C:\\Program Files (x86)\\{program}"
+                        )
+                        applications.append(app)
+                except Exception:
+                    pass
+        except Exception as e:
+            self.logger.debug(f"Failed to extract Windows applications: {e}")
+
+        return applications
+
+    def _extract_windows_product_name(self, g: guestfs.GuestFS) -> str | None:
+        """Extract Windows product name."""
+        # Stored in registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProductName
+        # TODO: Implement registry parsing
+        return None
+
+    def _extract_windows_build_number(self, g: guestfs.GuestFS) -> str | None:
+        """Extract Windows build number."""
+        # Stored in registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuildNumber
+        # TODO: Implement registry parsing
+        return None
+
+    def _extract_windows_install_date(self, g: guestfs.GuestFS) -> str | None:
+        """Extract Windows installation date."""
+        # Stored in registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\InstallDate
+        # TODO: Implement registry parsing
+        return None
+
+    def _extract_users_windows(self, g: guestfs.GuestFS) -> list[UserAccount]:
+        """Extract user accounts from Windows."""
+        users = []
+
+        # Windows users are in SAM registry hive
+        # For now, check for user profile directories
+        try:
+            if g.exists("/Users"):
+                user_dirs = g.ls("/Users")
+                for username in user_dirs:
+                    if username not in ("Public", "Default", "Default User", "All Users"):
+                        user = UserAccount(
+                            username=username,
+                            home=f"C:\\Users\\{username}"
+                        )
+                        users.append(user)
+        except Exception as e:
+            self.logger.debug(f"Failed to extract Windows users: {e}")
+
+        return users
+
+    def _extract_scheduled_tasks_windows(self, g: guestfs.GuestFS) -> list[ScheduledTask]:
+        """Extract Windows scheduled tasks."""
+        tasks = []
+
+        # Windows scheduled tasks are in C:\Windows\System32\Tasks
+        try:
+            if g.exists("/Windows/System32/Tasks"):
+                task_files = g.find("/Windows/System32/Tasks")
+                for task_path in task_files[:20]:  # Limit to 20
+                    if g.is_file(task_path):
+                        task_name = task_path.replace("/Windows/System32/Tasks/", "")
+                        task = ScheduledTask(
+                            name=task_name,
+                            command=None  # Would need to parse XML
+                        )
+                        tasks.append(task)
+        except Exception as e:
+            self.logger.debug(f"Failed to extract Windows scheduled tasks: {e}")
+
+        return tasks
+
+    def _extract_firewall_rules_windows(self, g: guestfs.GuestFS) -> list[FirewallRule]:
+        """Extract Windows firewall rules."""
+        rules = []
+
+        # Windows Firewall rules are in registry
+        # HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy
+        # TODO: Implement registry parsing
+
+        return rules
+
+    def _extract_environment_windows(self, g: guestfs.GuestFS) -> dict[str, str]:
+        """Extract Windows environment variables."""
+        env_vars = {}
+
+        # Windows environment variables are in registry
+        # HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment
+        # TODO: Implement registry parsing
+
+        return env_vars

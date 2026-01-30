@@ -31,6 +31,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 from hyper2kvm.core.guest_inspector import (
     ComprehensiveGuestInspector,
     GUESTFS_AVAILABLE,
+    Partition,
+    Application,
+    FirewallRule,
+    ScheduledTask,
 )
 
 # Orange theme colors (matching TUI dashboard)
@@ -259,6 +263,113 @@ def print_result(result, args):
         print(bold_orange(f"Kernel Boot Parameters"))
         print(orange("─" * 80))
         print(f"  {result.boot_parameters}")
+        print()
+
+    # Partitions and Filesystems
+    if result.partitions and args.verbose:
+        print(bold_orange(f"Partitions ({len(result.partitions)} found)"))
+        print(orange("─" * 80))
+        for part in result.partitions:
+            print(f"  Device: {part.device}")
+            if part.number is not None:
+                print(f"    Partition #: {part.number}")
+            if part.size_bytes:
+                print(f"    Size: {format_bytes(part.size_bytes)}")
+            if part.filesystem_type:
+                print(f"    Filesystem: {part.filesystem_type}")
+            if part.label:
+                print(f"    Label: {part.label}")
+            if part.uuid:
+                print(f"    UUID: {part.uuid}")
+            if part.bootable:
+                print(f"    Bootable: Yes")
+            print()
+
+    if result.filesystems and args.verbose:
+        print(bold_orange(f"Filesystems"))
+        print(orange("─" * 80))
+        print(f"  Types: {', '.join(result.filesystems)}")
+        print()
+
+    # Applications (Windows) or extended packages
+    if result.applications and args.verbose:
+        print(bold_orange(f"Applications ({len(result.applications)} found)"))
+        print(orange("─" * 80))
+        for app in result.applications[:20]:
+            print(f"  {app.name}")
+            if app.version:
+                print(f"    Version: {app.version}")
+            if app.vendor:
+                print(f"    Vendor: {app.vendor}")
+            if app.install_location:
+                print(f"    Location: {app.install_location}")
+            print()
+        if len(result.applications) > 20:
+            print(f"  ... and {len(result.applications) - 20} more")
+            print()
+
+    # Firewall Rules
+    if result.firewall_rules and args.verbose:
+        print(bold_orange(f"Firewall Rules ({len(result.firewall_rules)} found)"))
+        print(orange("─" * 80))
+        for rule in result.firewall_rules[:15]:
+            status = "✓ enabled" if rule.enabled else "✗ disabled"
+            print(f"  {rule.name:50} {status}")
+            if rule.direction:
+                print(f"    Direction: {rule.direction}")
+            if rule.action:
+                print(f"    Action: {rule.action}")
+            if rule.protocol:
+                print(f"    Protocol: {rule.protocol}")
+            if rule.port:
+                print(f"    Port: {rule.port}")
+        if len(result.firewall_rules) > 15:
+            print(f"  ... and {len(result.firewall_rules) - 15} more")
+        print()
+
+    # Scheduled Tasks / Cron Jobs
+    if result.scheduled_tasks and args.verbose:
+        print(bold_orange(f"Scheduled Tasks ({len(result.scheduled_tasks)} found)"))
+        print(orange("─" * 80))
+        for task in result.scheduled_tasks[:10]:
+            print(f"  {task.name}")
+            if task.schedule:
+                print(f"    Schedule: {task.schedule}")
+            if task.user:
+                print(f"    User: {task.user}")
+            if task.command:
+                print(f"    Command: {task.command[:60]}...")
+            print()
+        if len(result.scheduled_tasks) > 10:
+            print(f"  ... and {len(result.scheduled_tasks) - 10} more")
+            print()
+
+    # SELinux (Linux only)
+    if result.selinux_status and args.verbose:
+        print(bold_orange(f"SELinux Status"))
+        print(orange("─" * 80))
+        print(f"  Status: {result.selinux_status}")
+        print()
+
+    # Environment Variables
+    if result.environment_variables and args.verbose:
+        print(bold_orange(f"Environment Variables ({len(result.environment_variables)} found)"))
+        print(orange("─" * 80))
+        for key, value in list(result.environment_variables.items())[:10]:
+            print(f"  {key}={value}")
+        if len(result.environment_variables) > 10:
+            print(f"  ... and {len(result.environment_variables) - 10} more")
+        print()
+
+    # Windows-specific info
+    if result.windows_product_name:
+        print(bold_orange(f"Windows Information"))
+        print(orange("─" * 80))
+        print(f"  Product: {result.windows_product_name}")
+        if result.windows_build_number:
+            print(f"  Build: {result.windows_build_number}")
+        if result.windows_install_date:
+            print(f"  Install Date: {result.windows_install_date}")
         print()
 
     # Summary
