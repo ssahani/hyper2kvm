@@ -10,7 +10,7 @@
 #     they fit better in OfflineFSFix orchestration (or a dedicated hv_tools_fixer.py).
 #
 # Operational constraints:
-#   - We operate offline via libguestfs, not a real booted system.
+#   - We operate offline via VMCraft, not a real booted system.
 #   - Avoid workflows that require efivars/proc/sys being mounted.
 #   - Best-effort: failures must not hard-fail the overall conversion.
 #
@@ -131,7 +131,7 @@ def _glob(g: guestfs.GuestFS, pattern: str) -> list[str]:
 
 def _run_guestfs_cmd(self, g: guestfs.GuestFS, cmd: list[str]) -> tuple[bool, str]:
     """
-    Best-effort command execution via libguestfs appliance.
+    Best-effort command execution via VMCraft.
 
     For bootloader commands (grub2-mkconfig, update-grub, etc.), uses command_with_mounts
     to provide /proc, /dev, /sys access. Falls back to command_quiet for other commands.

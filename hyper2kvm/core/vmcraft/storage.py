@@ -3,8 +3,7 @@
 """
 Storage stack activation for LVM, LUKS, mdraid, and ZFS.
 
-Mirrors existing OfflineMountEngine patterns but uses native Linux tools
-instead of libguestfs.
+Uses native Linux tools for comprehensive storage management.
 """
 
 from __future__ import annotations

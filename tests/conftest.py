@@ -22,7 +22,7 @@ pytest_plugins = ["tests.fixtures.test_images"]
 @pytest.fixture
 def use_native_guestfs(monkeypatch):
     """
-    Force tests to use native GuestFS implementation instead of libguestfs.
+    Force tests to use native VMCraft implementation.
 
     Usage:
         def test_something(use_native_guestfs):
@@ -32,29 +32,14 @@ def use_native_guestfs(monkeypatch):
     monkeypatch.setenv('HYPER2KVM_GUESTFS_BACKEND', 'native')
 
 
-@pytest.fixture
-def use_libguestfs(monkeypatch):
-    """
-    Force tests to use libguestfs implementation (if available).
-
-    Usage:
-        def test_something(use_libguestfs):
-            # This test will use libguestfs backend
-            pass
-    """
-    monkeypatch.setenv('HYPER2KVM_GUESTFS_BACKEND', 'libguestfs')
-
-
 @pytest.fixture(params=['native'])
 def guestfs_backend(request, monkeypatch):
     """
-    Parametrized fixture to run tests with different GuestFS backends.
-
-    Currently only tests 'native' backend since libguestfs is being removed.
+    Parametrized fixture to run tests with VMCraft backend.
 
     Usage:
         def test_something(guestfs_backend):
-            # This test will run once with native backend
+            # This test will run with native backend
             # request.param will be 'native'
             pass
     """

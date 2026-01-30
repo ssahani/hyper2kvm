@@ -8,7 +8,7 @@ Coordinates OS detection across Linux and Windows systems:
 - Mounts and inspects partitions
 - Delegates to OS-specific detectors
 - Caches inspection results
-- Provides libguestfs-compatible inspection API
+- Provides comprehensive OS inspection API
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ class OSInspector:
     OS inspection orchestrator.
 
     Manages OS detection across multiple filesystems and OS types.
-    Provides libguestfs-compatible inspection API.
+    Provides comprehensive OS inspection capabilities.
     """
 
     def __init__(

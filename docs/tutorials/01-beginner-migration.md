@@ -28,7 +28,6 @@ By the end of this tutorial, you will:
 
 ### Required Software
 - Python 3.10+
-- libguestfs-tools
 - qemu-img
 - libvirt (optional, for running VMs)
 
@@ -57,8 +56,6 @@ hyper2kvm version 1.0.0
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-    python3-guestfs \
-    libguestfs-tools \
     qemu-utils \
     libvirt-clients \
     libvirt-daemon-system
@@ -67,8 +64,6 @@ sudo apt-get install -y \
 **Fedora/RHEL**:
 ```bash
 sudo dnf install -y \
-    python3-libguestfs \
-    libguestfs-tools \
     qemu-img \
     libvirt-client \
     libvirt-daemon

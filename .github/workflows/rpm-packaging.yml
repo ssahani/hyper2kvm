@@ -93,7 +93,6 @@ jobs:
           python3-pyyaml \
           python3-requests \
           python3-pyvmomi \
-          libguestfs-tools \
           qemu-img
 
     - name: Build RPM package
@@ -202,7 +201,6 @@ jobs:
           python3-pyyaml \
           python3-requests \
           python3-pyvmomi \
-          libguestfs-tools \
           qemu-img
 
     - name: Download RPM artifact

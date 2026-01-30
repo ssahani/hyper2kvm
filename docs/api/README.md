@@ -9,7 +9,7 @@ Comprehensive API documentation for all Hyper2KVM modules and features.
 ### VMCraft API
 **[Complete Documentation](vmcraft-api.md)**
 
-Guest filesystem manipulation API with 480+ methods providing near-complete libguestfs parity (74% coverage).
+Guest filesystem manipulation API with 480+ comprehensive methods for VM manipulation.
 
 **Key Features**:
 - Filesystem operations (mount, read, write, edit)

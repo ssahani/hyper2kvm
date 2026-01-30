@@ -31,8 +31,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          python3-guestfs \
-          libguestfs-tools \
           qemu-utils \
           qemu-system-x86 \
           libvirt-daemon-system \
@@ -107,7 +105,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          libguestfs-tools \
           qemu-utils \
           libvirt-daemon-system \
           libvirt-clients

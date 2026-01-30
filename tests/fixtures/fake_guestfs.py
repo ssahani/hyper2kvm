@@ -4,7 +4,7 @@ from __future__ import annotations
 
 class FakeGuestFS:
     '''
-    Tiny libguestfs-ish fake for unit tests.
+    Tiny VMCraft-like fake for unit tests.
     Only implements methods these tests need.
     '''
     def __init__(self):

@@ -3,13 +3,13 @@
 """
 VMCraft: Python library for VM disk image manipulation.
 
-Drop-in replacement for libguestfs that uses:
+Comprehensive VM manipulation using:
 - qemu-nbd for disk image access
 - Native Linux tools (mount, lvm, cryptsetup, etc.)
 - Python file I/O for guest filesystem operations
 
-This module provides a modular, maintainable architecture while preserving
-complete backward compatibility with the original monolithic implementation.
+This module provides a modular, maintainable architecture with 480+ methods
+for comprehensive VM manipulation and configuration.
 """
 
 # Export main VMCraft class for backward compatibility

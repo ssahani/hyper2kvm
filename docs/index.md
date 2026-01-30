@@ -88,7 +88,7 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 
 ### 🏆 Key Capabilities
 
-- ✅ **480+ VMCraft APIs** - Near-complete libguestfs parity (74% coverage)
+- ✅ **480+ VMCraft APIs** - Comprehensive VM manipulation capabilities
 - ✅ **Live Migration** - <5s downtime for suitable workloads with HyperSDK
 - ✅ **Automated Fixes** - Bootloader, network, fstab, drivers automatically configured
 - ✅ **Multi-OS Support** - Windows, Linux (RHEL, Ubuntu, SUSE, Photon), BSD

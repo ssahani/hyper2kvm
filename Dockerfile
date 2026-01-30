@@ -15,8 +15,6 @@ RUN dnf update -y && \
         python3 \
         python3-pip \
         python3-devel \
-        python3-libguestfs \
-        libguestfs-tools \
         qemu-img \
         qemu-system-x86 \
         libvirt-daemon \

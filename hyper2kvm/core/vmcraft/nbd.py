@@ -4,7 +4,7 @@
 NBD (Network Block Device) management for exposing disk images as block devices.
 
 Uses qemu-nbd to connect disk images (qcow2, vmdk, vdi, vhd, raw) to /dev/nbdX devices,
-enabling native Linux tools to access and modify VM disk images without libguestfs.
+enabling native Linux tools to access and modify VM disk images.
 """
 
 from __future__ import annotations

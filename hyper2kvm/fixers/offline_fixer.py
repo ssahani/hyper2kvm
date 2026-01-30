@@ -812,7 +812,7 @@ class OfflineFSFix:
         # Filter out known non-root devices and resolve by-path devices
         filtered = []
         for d in out:
-            # Skip libguestfs appliance loop devices
+            # Skip VMCraft loop devices
             if d.startswith("/dev/loop"):
                 self.logger.debug(f"Filtering out loop device: {d}")
                 continue

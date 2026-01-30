@@ -88,10 +88,10 @@ logger = logging.getLogger(__name__)
 
 class VMCraft:
     """
-    Native implementation of guestfs.GuestFS API.
+    Native VM disk manipulation API.
 
-    Uses qemu-nbd + Linux tools instead of libguestfs appliance.
-    Compatible with existing code that uses guestfs.GuestFS(python_return_dict=True).
+    Uses qemu-nbd + Linux tools for comprehensive guest filesystem access.
+    Provides 480+ methods for VM manipulation and configuration.
 
     This is the main entry point that coordinates all specialized modules.
     """
