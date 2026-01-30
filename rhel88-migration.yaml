@@ -1,0 +1,19 @@
+command: local
+vmdk: /home/esx8.0-rhel8.8-with-thin-provision/esx8.0-rhel8.8-with-thin-provision-disk1.vmdk
+output_dir: /home/hyper2kvm-test
+to_output: rhel88.qcow2
+out_format: qcow2
+fstab_mode: stabilize-all
+regen_initramfs: true
+compress: true
+
+# Enable debug logging
+verbosity: 2
+debug: true
+
+# Optional: Enable post-migration testing
+# libvirt_test: true
+# vm_name: rhel88-test
+# memory: 2048
+# vcpus: 2
+# timeout: 300

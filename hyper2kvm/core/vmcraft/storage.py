@@ -35,14 +35,17 @@ class LVMActivator:
     """
 
     @staticmethod
-    def activate(logger: logging.Logger) -> dict[str, Any]:
+    def activate(logger: logging.Logger, nbd_device: str | None = None) -> dict[str, Any]:
         """
-        Activate LVM volumes.
+        Activate LVM volumes from NBD device.
+
+        Args:
+            nbd_device: Optional NBD device path (e.g., "/dev/nbd0") to scan only NBD-related PVs
 
         Returns:
-            Audit dict: {"attempted": bool, "ok": bool, "error": str | None}
+            Audit dict: {"attempted": bool, "ok": bool, "error": str | None, "vgs": list}
         """
-        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None}
+        audit: dict[str, Any] = {"attempted": False, "ok": False, "error": None, "vgs": []}
 
         if not _has_command("vgscan") or not _has_command("vgchange"):
             audit["error"] = "lvm_tools_not_available"
@@ -51,21 +54,55 @@ class LVMActivator:
         audit["attempted"] = True
 
         try:
-            # Deactivate any stale volume groups first
-            run_sudo(logger, ["vgchange", "-an"], check=False, capture=True)
-
-            # Refresh physical volume cache (critical for NBD device changes)
-            if _has_command("pvscan"):
+            # Refresh physical volume cache for NBD devices
+            if _has_command("pvscan") and nbd_device:
+                # Scan only NBD partitions to avoid affecting host LVM
+                import glob
+                nbd_parts = glob.glob(f"{nbd_device}p*")
+                for part in nbd_parts:
+                    run_sudo(logger, ["pvscan", "--cache", part], check=False, capture=True)
+            elif _has_command("pvscan"):
                 run_sudo(logger, ["pvscan", "--cache"], check=True, capture=True)
 
-            # Scan for volume groups with cache refresh
+            # Scan for volume groups
             run_sudo(logger, ["vgscan", "--cache"], check=True, capture=True)
 
-            # Activate all volume groups
-            run_sudo(logger, ["vgchange", "-ay"], check=True, capture=True)
+            # Find VGs that use NBD device PVs
+            vgs_to_activate = []
+            if nbd_device and _has_command("pvs"):
+                try:
+                    result = run_sudo(
+                        logger,
+                        ["pvs", "--noheadings", "-o", "vg_name,pv_name"],
+                        check=True,
+                        capture=True
+                    )
+                    for line in result.stdout.strip().split('\n'):
+                        parts = line.strip().split()
+                        if len(parts) >= 2:
+                            vg_name, pv_name = parts[0], parts[1]
+                            if nbd_device in pv_name:
+                                vgs_to_activate.append(vg_name)
+                    vgs_to_activate = list(set(vgs_to_activate))  # Remove duplicates
+                    logger.info(f"Found VGs on {nbd_device}: {vgs_to_activate}")
+                except Exception as e:
+                    logger.debug(f"Could not determine VGs from NBD device: {e}")
+
+            # Activate only NBD-related VGs, or all if not NBD-specific
+            if vgs_to_activate:
+                for vg in vgs_to_activate:
+                    try:
+                        run_sudo(logger, ["vgchange", "-ay", vg], check=True, capture=True)
+                        logger.info(f"Activated VG: {vg}")
+                    except Exception as e:
+                        logger.warning(f"Failed to activate VG {vg}: {e}")
+                audit["vgs"] = vgs_to_activate
+            else:
+                # Fallback: activate all (original behavior for non-NBD contexts)
+                run_sudo(logger, ["vgchange", "-ay"], check=True, capture=True)
+                logger.info("Activated all volume groups")
 
             audit["ok"] = True
-            logger.info("LVM volumes activated successfully")
             return audit
 
         except Exception as e:
@@ -475,12 +512,12 @@ class LUKSUnlocker:
             self.logger.warning(f"Failed to detect LUKS devices: {e}")
             return []
 
-    def unlock(self, lvm_activator: LVMActivator | None = None) -> dict[str, Any]:
+    def unlock(self, nbd_device: str | None = None) -> dict[str, Any]:
         """
         Unlock LUKS devices.
 
         Args:
-            lvm_activator: LVM activator to re-run after unlocking (LUKS may contain LVM)
+            nbd_device: Optional NBD device for LVM re-activation after unlocking
 
         Returns:
             Audit dict with detailed unlock results
@@ -556,9 +593,9 @@ class LUKSUnlocker:
                 audit["errors"].append({"device": dev, "error": str(e)})
                 self.logger.warning(f"LUKS: failed to open {dev}: {e}")
 
-        # After opening LUKS, LVM may appear
-        if audit["opened"] and lvm_activator:
-            _ = lvm_activator.activate(self.logger)
+        # After opening LUKS, LVM may appear - re-activate
+        if audit["opened"]:
+            _ = LVMActivator.activate(self.logger, nbd_device=nbd_device)
 
         return audit
 
@@ -698,6 +735,7 @@ class StorageStackActivator:
             luks_mapper_prefix: Prefix for LUKS mapper device names
         """
         self.logger = logger
+        self.nbd_device: str | None = None  # Set by VMCraft when needed
         self.luks_unlocker = LUKSUnlocker(
             logger,
             luks_enable=luks_enable,
@@ -720,10 +758,10 @@ class StorageStackActivator:
         audit["mdraid"] = MDRaidAssembler.activate(self.logger)
         audit["zfs"] = ZFSImporter.activate(self.logger)
 
-        lvm_activator = LVMActivator()
-        audit["lvm"] = lvm_activator.activate(self.logger)
+        # Pass NBD device to LVM activator for device-specific scanning
+        audit["lvm"] = LVMActivator.activate(self.logger, nbd_device=self.nbd_device)
 
-        # LUKS last because it may contain LVM
-        audit["luks"] = self.luks_unlocker.unlock(lvm_activator=lvm_activator)
+        # LUKS last because it may contain LVM (pass nbd_device for re-activation)
+        audit["luks"] = self.luks_unlocker.unlock(nbd_device=self.nbd_device)
 
         return audit

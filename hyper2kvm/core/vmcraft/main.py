@@ -270,6 +270,7 @@ class VMCraft:
         # Activate storage stack
         storage_start = time.time()
         self._storage_activator = StorageStackActivator(self.logger)
+        self._storage_activator.nbd_device = self._nbd_device  # Set NBD device for LVM filtering
         self._storage_audit = self._storage_activator.activate_all()
         storage_time = time.time() - storage_start
         self._perf_metrics['storage_activation'] = storage_time
@@ -3872,12 +3873,12 @@ class VMCraft:
 
     def vgscan(self) -> None:
         """Scan for LVM volume groups."""
-        LVMActivator.activate(self.logger)
+        LVMActivator.activate(self.logger, nbd_device=self._nbd_device)
 
     def vgchange_activate_all(self, enable: bool | int) -> None:
         """Activate all volume groups."""
         if enable:
-            LVMActivator.activate(self.logger)
+            LVMActivator.activate(self.logger, nbd_device=self._nbd_device)
 
     def lvs(self) -> list[str]:
         """List logical volumes."""

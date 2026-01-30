@@ -2,11 +2,11 @@
   "analysis": {
     "disk": {
       "analysis": "success",
-      "free_gb": 503.8830146789551,
+      "free_gb": 503.8827133178711,
       "recommend_cleanup": false,
       "recommend_resize": false,
       "total_gb": 509.990234375,
-      "used_gb": 6.107219696044922,
+      "used_gb": 6.107521057128906,
       "used_percent": 1.2
     },
     "filesystem_repair": {
@@ -21,10 +21,10 @@
     },
     "fstab_changes": [],
     "guest": {
-      "inspect_root": "/dev/nbd2p2",
+      "inspect_root": "/dev/nbd3p2",
       "os_release": "NAME=\"openSUSE Leap\"\nVERSION=\"15.4\"\nID=\"opensuse-leap\"\nID_LIKE=\"suse opensuse\"\nVERSION_ID=\"15.4\"\nPRETTY_NAME=\"openSUSE Leap 15.4\"\nANSI_COLOR=\"0;32\"\nCPE_NAME=\"cpe:/o:opensuse:leap:15.4\"\nBUG_REPORT_URL=\"https://bugs.opensuse.org\"\nHOME_URL=\"https://www.opensuse.org/\"\nDOCUMENTATION_URL=\"https://en.opensuse.org/Portal:Leap\"\nLOGO=\"distributor-logo-Leap\"\n",
       "root_btrfs_subvol": null,
-      "root_dev": "/dev/nbd2p2"
+      "root_dev": "/dev/nbd3p2"
     },
     "guestfs": {},
     "luks": {
@@ -46,12 +46,12 @@
     "mount": {
       "bruteforce_failures": [
         {
-          "device": "/dev/nbd2p1",
-          "error": "Command failed: sudo mount /dev/nbd2p1 /tmp/hyper2kvm-guestfs-qxk3ohiu (command=sudo mount /dev/nbd2p1 /tmp/hyper2kvm-guestfs-qxk3ohiu, returncode=32, stdout=None, stderr=mount: /tmp/hyper2kvm-guestfs-qxk3ohiu: fsconfig() failed: Can't find a SQUASHFS superblock on nbd2p1.\n       dmesg(1) may have more information after failed mount system call.\n)"
+          "device": "/dev/nbd3p1",
+          "error": "Command failed: sudo mount /dev/nbd3p1 /tmp/hyper2kvm-guestfs-y11kl0mn (command=sudo mount /dev/nbd3p1 /tmp/hyper2kvm-guestfs-y11kl0mn, returncode=32, stdout=None, stderr=mount: /tmp/hyper2kvm-guestfs-y11kl0mn: wrong fs type, bad option, bad superblock on /dev/nbd3p1, missing codepage or helper program, or other error.\n       dmesg(1) may have more information after fa)"
         },
         {
-          "device": "/dev/nbd2p3",
-          "error": "Command failed: sudo mount /dev/nbd2p3 /tmp/hyper2kvm-guestfs-qxk3ohiu (command=sudo mount /dev/nbd2p3 /tmp/hyper2kvm-guestfs-qxk3ohiu, returncode=32, stdout=None, stderr=mount: /tmp/hyper2kvm-guestfs-qxk3ohiu: unknown filesystem type 'swap'.\n       dmesg(1) may have more information after failed mount system call.\n)"
+          "device": "/dev/nbd3p3",
+          "error": "Command failed: sudo mount /dev/nbd3p3 /tmp/hyper2kvm-guestfs-y11kl0mn (command=sudo mount /dev/nbd3p3 /tmp/hyper2kvm-guestfs-y11kl0mn, returncode=32, stdout=None, stderr=mount: /tmp/hyper2kvm-guestfs-y11kl0mn: unknown filesystem type 'swap'.\n       dmesg(1) may have more information after failed mount system call.\n)"
         }
       ]
     },
@@ -70,8 +70,8 @@
               "-o",
               "/boot/grub2/grub.cfg"
             ],
-            "ok": false,
-            "out": "Command failed: sudo chroot /tmp/hyper2kvm-guestfs-qxk3ohiu grub2-mkconfig -o /boot/grub2/grub.cfg (command=sudo chroot /tmp/hyper2kvm-guestfs-qxk3ohiu grub2-mkconfig -o /boot/grub2/grub.cfg, returncode=1, stdout=None, stderr=awk: fatal: cannot open file `/proc/self/mountinfo' for reading (No such file or directory)\n/usr/sbin/grub2-probe: error: cannot find a device for / (is /dev mounted?).\n)"
+            "ok": true,
+            "out": ""
           },
           {
             "cmd": [
@@ -79,7 +79,7 @@
               "--recheck"
             ],
             "ok": false,
-            "out": "Command failed: sudo chroot /tmp/hyper2kvm-guestfs-qxk3ohiu grub2-install --recheck (command=sudo chroot /tmp/hyper2kvm-guestfs-qxk3ohiu grub2-install --recheck, returncode=1, stdout=None, stderr=Installing for i386-pc platform.\ngrub2-install: error: install device isn't specified.\n)"
+            "out": "Command failed: sudo chroot /tmp/hyper2kvm-guestfs-y11kl0mn grub2-install --recheck (command=sudo chroot /tmp/hyper2kvm-guestfs-y11kl0mn grub2-install --recheck, returncode=1, stdout=None, stderr=Installing for x86_64-efi platform.\ngrub2-install: error: cannot find EFI directory.\n)"
           },
           {
             "cmd": [
@@ -184,76 +184,76 @@
     },
     "stages": {
       "detect_windows": {
-        "duration_s": 0.000186
+        "duration_s": 0.000282
       },
       "disk_analysis": {
-        "duration_s": 5.5e-05
+        "duration_s": 6.3e-05
       },
       "filesystem_repair": {
-        "duration_s": 0.000177
+        "duration_s": 0.000154
       },
       "fix_network": {
-        "duration_s": 1.968493
+        "duration_s": 1.979008
       },
       "grub_remove_device_map": {
-        "duration_s": 0.00035
+        "duration_s": 0.000375
       },
       "grub_update_root": {
-        "duration_s": 0.070479
+        "duration_s": 0.070333
       },
       "guestfs_sync": {
-        "duration_s": 1.5e-05
+        "duration_s": 1.3e-05
       },
       "inject_cloud_init": {
-        "duration_s": 3e-06
+        "duration_s": 7e-06
       },
       "inject_firstboot": {
-        "duration_s": 1.7e-05
+        "duration_s": 2.3e-05
       },
       "inject_hostname_config": {
-        "duration_s": 1e-05
-      },
-      "inject_network_config": {
-        "duration_s": 0.00021
-      },
-      "inject_service_config": {
         "duration_s": 1.2e-05
       },
+      "inject_network_config": {
+        "duration_s": 0.000443
+      },
+      "inject_service_config": {
+        "duration_s": 1.4e-05
+      },
       "inject_user_config": {
-        "duration_s": 0.000131
+        "duration_s": 0.000151
       },
       "luks_unlock": {
-        "duration_s": 2e-05
+        "duration_s": 2.4e-05
       },
       "lvm_activate": {
-        "duration_s": 0.771634
+        "duration_s": 0.878457
       },
       "mdraid_check": {
-        "duration_s": 8e-06
+        "duration_s": 1.3e-05
       },
       "mount_root": {
-        "duration_s": 2.845026
+        "duration_s": 2.927724
       },
       "read_os_release": {
-        "duration_s": 0.00168
+        "duration_s": 0.00189
       },
       "regen_initramfs_and_bootloader": {
-        "duration_s": 21.311994
+        "duration_s": 28.961649
       },
       "rewrite_crypttab": {
-        "duration_s": 5.9e-05
+        "duration_s": 9.7e-05
       },
       "rewrite_fstab": {
-        "duration_s": 0.007713
+        "duration_s": 0.010495
       },
       "storage_stack": {
-        "duration_s": 0.89809
+        "duration_s": 1.004619
       },
       "validation": {
-        "duration_s": 0.625462
+        "duration_s": 0.931165
       },
       "vmware_tools_removal": {
-        "duration_s": 5e-06
+        "duration_s": 7e-06
       }
     },
     "storage_stack": {
@@ -274,30 +274,30 @@
       }
     },
     "timings": {
-      "detect_windows": 0.0001862049102783203,
-      "disk_analysis": 5.459785461425781e-05,
-      "filesystem_repair": 0.0001766681671142578,
-      "fix_network": 1.9684927463531494,
-      "grub_remove_device_map": 0.0003504753112792969,
-      "grub_update_root": 0.07047915458679199,
-      "guestfs_sync": 1.4781951904296875e-05,
-      "inject_cloud_init": 3.337860107421875e-06,
-      "inject_firstboot": 1.7404556274414062e-05,
-      "inject_hostname_config": 1.049041748046875e-05,
-      "inject_network_config": 0.000209808349609375,
-      "inject_service_config": 1.1920928955078125e-05,
-      "inject_user_config": 0.0001308917999267578,
-      "luks_unlock": 2.0265579223632812e-05,
-      "lvm_activate": 0.7716338634490967,
-      "mdraid_check": 7.62939453125e-06,
-      "mount_root": 2.8450257778167725,
-      "read_os_release": 0.0016796588897705078,
-      "regen_initramfs_and_bootloader": 21.311994314193726,
-      "rewrite_crypttab": 5.8650970458984375e-05,
-      "rewrite_fstab": 0.007712841033935547,
-      "storage_stack": 0.8980903625488281,
-      "validation": 0.6254618167877197,
-      "vmware_tools_removal": 5.245208740234375e-06
+      "detect_windows": 0.00028204917907714844,
+      "disk_analysis": 6.270408630371094e-05,
+      "filesystem_repair": 0.0001544952392578125,
+      "fix_network": 1.9790079593658447,
+      "grub_remove_device_map": 0.0003745555877685547,
+      "grub_update_root": 0.07033276557922363,
+      "guestfs_sync": 1.2874603271484375e-05,
+      "inject_cloud_init": 6.9141387939453125e-06,
+      "inject_firstboot": 2.3126602172851562e-05,
+      "inject_hostname_config": 1.1920928955078125e-05,
+      "inject_network_config": 0.00044274330139160156,
+      "inject_service_config": 1.3589859008789062e-05,
+      "inject_user_config": 0.00015091896057128906,
+      "luks_unlock": 2.4318695068359375e-05,
+      "lvm_activate": 0.8784568309783936,
+      "mdraid_check": 1.33514404296875e-05,
+      "mount_root": 2.9277241230010986,
+      "read_os_release": 0.0018897056579589844,
+      "regen_initramfs_and_bootloader": 28.961649179458618,
+      "rewrite_crypttab": 9.655952453613281e-05,
+      "rewrite_fstab": 0.010495185852050781,
+      "storage_stack": 1.0046186447143555,
+      "validation": 0.9311645030975342,
+      "vmware_tools_removal": 6.67572021484375e-06
     },
     "virtio": {
       "enabled": false,
@@ -371,20 +371,20 @@
     "dry_run": false,
     "fstab_mode": "stabilize-all",
     "image": "/home/ssahani/vmware/Clone of openSUSE_Leap_15.4_VM_LinuxVMImages.COM/openSUSE_Leap_15.4_VM_LinuxVMImages.COM-cl1.vmdk",
-    "inspect_root": "/dev/nbd2p2",
+    "inspect_root": "/dev/nbd3p2",
     "no_backup": false,
     "print_fstab": false,
     "regen_initramfs": true,
     "remove_vmware_tools": false,
     "resize": null,
     "root_btrfs_subvol": null,
-    "root_dev": "/dev/nbd2p2",
+    "root_dev": "/dev/nbd3p2",
     "timestamps": {
-      "end": "2026-01-26T08:52:18.565589",
-      "start": "2026-01-26T08:51:48.022978"
+      "end": "2026-01-27T15:37:00.419911",
+      "start": "2026-01-27T15:36:21.562299"
     },
     "update_grub": true,
-    "version": "0.1.0",
+    "version": "0.2.0",
     "virtio_drivers_dir": null
   },
   "schema": "hyper2kvm.report.v1",
@@ -411,7 +411,7 @@
     },
     "image": "/home/ssahani/vmware/Clone of openSUSE_Leap_15.4_VM_LinuxVMImages.COM/openSUSE_Leap_15.4_VM_LinuxVMImages.COM-cl1.vmdk",
     "root_btrfs_subvol": null,
-    "root_dev": "/dev/nbd2p2"
+    "root_dev": "/dev/nbd3p2"
   },
   "tools": {
     "python": {
@@ -487,7 +487,7 @@
           "initramfs_tools": {
             "attempts": 1,
             "critical": false,
-            "duration_s": 0.136,
+            "duration_s": 0.135,
             "mode": "inprocess",
             "passed": true,
             "result": true,
@@ -501,7 +501,7 @@
           "kernel_present": {
             "attempts": 1,
             "critical": true,
-            "duration_s": 0.488,
+            "duration_s": 0.795,
             "mode": "inprocess",
             "passed": true,
             "result": true,
@@ -527,17 +527,17 @@
               "total": 4
             }
           },
-          "duration_s": 0.625,
+          "duration_s": 0.93,
           "failed": 0,
           "skipped": 0,
           "slowest": [
             {
-              "duration_s": 0.488,
+              "duration_s": 0.795,
               "mode": "inprocess",
               "name": "kernel_present"
             },
             {
-              "duration_s": 0.136,
+              "duration_s": 0.135,
               "mode": "inprocess",
               "name": "initramfs_tools"
             },
