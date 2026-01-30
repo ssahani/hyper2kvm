@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/virtio/core.py
-# -*- coding: utf-8 -*-
 """
 Windows VirtIO driver injection for VMware to KVM migration.
 """

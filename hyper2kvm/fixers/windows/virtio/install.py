@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/virtio/install.py
-# -*- coding: utf-8 -*-
 """
 VirtIO driver installation pipeline stages.
 

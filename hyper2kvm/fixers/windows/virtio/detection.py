@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/virtio/detection.py
-# -*- coding: utf-8 -*-
 """Windows version detection and driver plan selection"""
 from __future__ import annotations
 

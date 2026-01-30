@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/vmware/vsphere/govc.py
-# -*- coding: utf-8 -*-
 """govc CLI wrapper and utility functions for vSphere operations"""
 from __future__ import annotations
 

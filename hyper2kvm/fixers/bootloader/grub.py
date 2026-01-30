@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/bootloader/grub.py
-# -*- coding: utf-8 -*-
 # GRUB/root= stabilization + device.map cleanup + initramfs + bootloader regen
 # Linux-only. Windows logic stays in windows_fixer.py.
 #

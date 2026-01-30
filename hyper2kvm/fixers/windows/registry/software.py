@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/registry/software.py
-# -*- coding: utf-8 -*-
 """
 SOFTWARE hive editing for DevicePath and RunOnce entries.
 

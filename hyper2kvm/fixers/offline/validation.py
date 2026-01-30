@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/offline/validation.py
-# -*- coding: utf-8 -*-
 """
 Post-fix validation and health checks for offline guest modifications.
 

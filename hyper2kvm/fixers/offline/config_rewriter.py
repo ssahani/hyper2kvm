@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/offline/config_rewriter.py
-# -*- coding: utf-8 -*-
 """
 In-guest configuration file rewriting (fstab, crypttab).
 

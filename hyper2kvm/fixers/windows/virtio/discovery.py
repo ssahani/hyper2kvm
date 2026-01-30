@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/virtio/discovery.py
 """VirtIO driver file discovery and matching"""
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import logging

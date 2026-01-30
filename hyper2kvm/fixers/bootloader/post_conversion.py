@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/bootloader/post_conversion.py
-# -*- coding: utf-8 -*-
 """
 Post-conversion boot hardening for Linux guests.
 

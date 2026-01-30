@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/offline/spec_converter.py
-# -*- coding: utf-8 -*-
 """
 Device identifier and fstab/crypttab spec conversion utilities.
 

@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/offline/mount.py
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import logging

@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/registry/firstboot.py
-# -*- coding: utf-8 -*-
 """
 First-boot provisioning for Windows VMs.
 

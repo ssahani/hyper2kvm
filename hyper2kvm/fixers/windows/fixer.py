@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/fixer.py
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 """

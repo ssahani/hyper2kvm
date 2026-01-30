@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/virtio/config.py
-# -*- coding: utf-8 -*-
 """Configuration and validation for Windows VirtIO driver injection"""
 
 from __future__ import annotations

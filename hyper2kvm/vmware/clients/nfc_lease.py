@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/vmware/clients/nfc_lease.py
-# -*- coding: utf-8 -*-
 """
 NFC export/download via govc CLI (govmomi).
 

@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/vmware/vsphere/command.py
-# -*- coding: utf-8 -*-
 """
 vSphere command orchestration for hyper2kvm.
 """

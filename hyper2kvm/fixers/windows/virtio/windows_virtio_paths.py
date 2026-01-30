@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/virtio/paths.py
-# -*- coding: utf-8 -*-
 """Path resolution utilities for Windows filesystem operations"""
 
 from __future__ import annotations

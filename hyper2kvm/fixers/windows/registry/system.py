@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # hyper2kvm/fixers/windows/registry/system.py
-# -*- coding: utf-8 -*-
 """
 SYSTEM hive editing for driver installation and control settings.
 
