@@ -20,7 +20,7 @@ from ..converters.vhd_extractor import VHD
 from ..core.exceptions import Fatal
 from ..core.logger import Log
 from ..core.utils import U
-from ..fixers.live_fixer import LiveFixer
+from ..fixers.live.fixer import LiveFixer
 from ..ssh.ssh_client import SSHClient
 from ..ssh.ssh_config import SSHConfig
 
