@@ -1,5 +1,10 @@
 # Migration Container for K8s-Native Migrations
 # This container runs hyper2kvm inside Kubernetes to perform migrations
+#
+# Uses VMCraft backend (hyper2kvm's native Python implementation)
+# - No libguestfs dependency
+# - Faster startup (~2s vs ~10s)
+# - Pure Python with qemu-nbd for disk access
 
 FROM fedora:43
 
@@ -7,26 +12,35 @@ LABEL org.opencontainers.image.source="https://github.com/hyper2kvm/hyper2kvm"
 LABEL org.opencontainers.image.description="hyper2kvm migration container for Kubernetes-native VM migrations"
 LABEL org.opencontainers.image.licenses="LGPL-3.0-or-later"
 
-# Install system dependencies
+# Force VMCraft backend (default, but explicit)
+ENV HYPER2KVM_GUESTFS_BACKEND=vmcraft
+
+# Install minimal system dependencies for VMCraft backend
+# VMCraft is hyper2kvm's native Python implementation - no libguestfs needed!
 RUN dnf install -y \
+    # Core Python
     python3 \
     python3-pip \
-    python3-devel \
+    # Image conversion and NBD client
     qemu-img \
-    libguestfs \
-    libguestfs-tools \
-    nbd \
+    qemu-kvm-core \
+    # Filesystem tools (for VMCraft mount operations)
     e2fsprogs \
     xfsprogs \
     btrfs-progs \
-    lvm2 \
-    cryptsetup \
-    parted \
-    gdisk \
     dosfstools \
     util-linux \
+    # LVM and encryption support
+    lvm2 \
+    cryptsetup \
+    # Partitioning tools
+    parted \
+    gdisk \
+    # Boot configuration tools (for offline fixes)
     dracut \
+    dracut-network \
     grub2-tools \
+    # systemd (for systemd-related operations)
     systemd \
     && dnf clean all
 

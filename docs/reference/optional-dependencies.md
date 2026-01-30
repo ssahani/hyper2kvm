@@ -18,7 +18,7 @@ This installs only core dependencies:
 
 **What works with minimal installation:**
 - ✅ Local VMDK/VHD/QCOW2 conversion
-- ✅ Offline guest OS fixes (requires system libguestfs)
+- ✅ Offline guest OS fixes (using VMCraft - pure Python, no libguestfs needed)
 - ✅ All core migration functionality
 - ❌ Progress bars (fallback to simple logging)
 - ❌ vSphere integration (requires optional vsphere extras)
@@ -111,12 +111,18 @@ pip install hyper2kvm[ui,vsphere,azure]
 
 ## System Dependencies
 
-Regardless of Python package installation method, these system packages are required:
+hyper2kvm uses **VMCraft** (pure Python) by default - no libguestfs needed!
 
 ### Required
-- `qemu-img` - Disk format conversion
-- `python3-libguestfs` - Offline guest filesystem access
-- `libguestfs-tools` - Guest inspection utilities
+- `qemu-img` - Disk format conversion (VMDK→QCOW2)
+- `qemu-nbd` - NBD device access (included in `qemu-kvm-core` or `qemu-utils`)
+
+### Recommended for Offline Fixes
+- `dracut` - Initramfs regeneration (for boot fixes)
+- `grub2-tools` - GRUB configuration updates
+- `e2fsprogs`, `xfsprogs`, `btrfs-progs` - Filesystem tools
+- `lvm2` - LVM support
+- `cryptsetup` - LUKS encryption support
 
 ### Optional
 - `libvirt` - For running smoke tests
@@ -126,8 +132,17 @@ Regardless of Python package installation method, these system packages are requ
 ## RHEL 10 Installation Example
 
 ```bash
-# Install system dependencies (all available in RHEL 10 base repos)
-sudo dnf install -y python3-libguestfs libguestfs-tools qemu-img python3-pyyaml
+# Install minimal system dependencies (all available in RHEL 10 base repos)
+sudo dnf install -y \
+    qemu-img \
+    qemu-kvm-core \
+    dracut \
+    grub2-tools \
+    e2fsprogs \
+    xfsprogs \
+    btrfs-progs \
+    lvm2 \
+    python3-pyyaml
 
 # Install hyper2kvm (minimal - only click from PyPI)
 pip install --user hyper2kvm
@@ -274,12 +289,18 @@ Rich is not available in RHEL 10 base repositories. Options:
 
 | Package | RHEL Package Name | Purpose | Required |
 |---------|-------------------|---------|----------|
-| libguestfs | python3-libguestfs | Guest filesystem access | ✅ Yes |
+| qemu-img | qemu-img | Disk conversion (VMDK→QCOW2) | ✅ Yes |
+| qemu-kvm | qemu-kvm-core | NBD client (qemu-nbd) | ✅ Yes |
 | PyYAML | python3-pyyaml | YAML config parsing | ✅ Yes |
-| qemu-img | qemu-img | Disk conversion | ✅ Yes |
-| libguestfs-tools | libguestfs-tools | Guest inspection | ✅ Yes |
-| requests | python3-requests | HTTP client | Optional |
-| urllib3 | python3-urllib3 | HTTP utilities | Optional |
+| dracut | dracut | Initramfs regeneration | ⚡ Recommended |
+| grub2-tools | grub2-tools | GRUB configuration | ⚡ Recommended |
+| e2fsprogs | e2fsprogs | ext2/ext3/ext4 filesystem tools | ⚡ Recommended |
+| xfsprogs | xfsprogs | XFS filesystem tools | ⚡ Recommended |
+| lvm2 | lvm2 | LVM support | ⚡ Recommended |
+| btrfs-progs | btrfs-progs | Btrfs filesystem tools | ⚡ Recommended |
+| cryptsetup | cryptsetup | LUKS encryption support | ⚡ Recommended |
+| requests | python3-requests | HTTP client | ⭕ Optional |
+| urllib3 | python3-urllib3 | HTTP utilities | ⭕ Optional |
 
 ### NOT in RHEL 10 - Require PyPI
 
@@ -450,15 +471,23 @@ pip install hyper2kvm[azure]  # Includes all Azure SDKs
 
 **Option 1: Minimal (Most Restrictive Environment)**
 ```bash
-# System packages only
-sudo dnf install -y python3-libguestfs libguestfs-tools qemu-img python3-pyyaml
+# System packages only (VMCraft backend - no libguestfs needed)
+sudo dnf install -y \
+    qemu-img \
+    qemu-kvm-core \
+    dracut \
+    grub2-tools \
+    e2fsprogs \
+    xfsprogs \
+    lvm2 \
+    python3-pyyaml
 
 # Minimal pip install (only click)
 pip install --user hyper2kvm
 
 # Works for:
 # ✅ Local VMDK/VHD/QCOW2 conversion
-# ✅ All offline guest fixes
+# ✅ All offline guest fixes (VMCraft backend)
 # ✅ All core functionality
 # ❌ No progress bars (logs instead)
 # ❌ No vSphere direct integration
@@ -467,8 +496,16 @@ pip install --user hyper2kvm
 
 **Option 2: With UI (Recommended)**
 ```bash
-# System packages
-sudo dnf install -y python3-libguestfs libguestfs-tools qemu-img python3-pyyaml
+# System packages (VMCraft backend)
+sudo dnf install -y \
+    qemu-img \
+    qemu-kvm-core \
+    dracut \
+    grub2-tools \
+    e2fsprogs \
+    xfsprogs \
+    lvm2 \
+    python3-pyyaml
 
 # With Rich for better UX
 pip install --user hyper2kvm[ui]
@@ -554,7 +591,7 @@ make rpm  # or rpmbuild -ba hyper2kvm.spec
 sudo dnf install ./hyper2kvm-*.rpm
 ```
 
-The RPM includes all Python dependencies bundled, requiring only system packages like libguestfs.
+The RPM includes all Python dependencies bundled, requiring only system packages like qemu-img and dracut.
 
 ### Checking Available Features
 
