@@ -635,6 +635,31 @@ Special thanks to all [contributors](https://github.com/ssahani/hyper2kvm/graphs
 
 ---
 
+## Related Projects
+
+### 🔍 [GuestKit](https://github.com/ssahani/guestkit)
+
+**Pure-Rust VM disk inspection with AI-powered diagnostics**
+
+GuestKit provides instant insight into VM disk images without booting:
+- ✅ Zero-boot inspection - Analyze disks offline
+- ✅ AI-powered diagnostics - Explain what's inside, what's broken, and how to fix it
+- ✅ Pre-migration validation - Detect issues before migration starts
+- ✅ Rust performance - Fast, safe, memory-efficient
+- ✅ Complementary to hyper2kvm - Use together for comprehensive migration workflows
+
+**Use Case:** Run GuestKit inspection before hyper2kvm migration to identify potential issues early.
+
+```bash
+# Inspect VM before migration
+guestkit inspect /vms/server.vmdk --format json > inspection-report.json
+
+# Review issues, then migrate with hyper2kvm
+h2kvmctl --config migration.yaml
+```
+
+---
+
 **Made with ❤️ for reliable VM migrations**
 
 **Get Started**: [Documentation Hub](docs/index.md) | [Quick Start Tutorial](docs/tutorials/01-beginner-migration.md)

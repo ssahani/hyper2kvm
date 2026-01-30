@@ -21,7 +21,7 @@
 
 ## Overview
 
-The **hyper2kvm ecosystem** is a comprehensive VM migration solution consisting of two main projects:
+The **hyper2kvm ecosystem** is a comprehensive VM migration solution consisting of three main projects:
 
 ### 1. **hyper2kvm** (Python)
 **Repository:** https://github.com/ssahani/hyper2kvm
@@ -52,6 +52,35 @@ High-performance vSphere export provider with daemon architecture offering 3-5x 
 - Real-time progress tracking
 - Background daemon mode
 - Job queue management
+
+### 3. **guestkit** (Rust) 🔍
+**Repository:** https://github.com/ssahani/guestkit
+**Language:** Rust 1.70+
+
+Pure-Rust VM disk inspection with AI-powered diagnostics for zero-boot, zero-agent instant insight into VM disk images.
+
+**Key Features:**
+- Zero-boot inspection - Analyze disks offline without starting the VM
+- AI-powered diagnostics - Explain what's inside, what's broken, and what to fix
+- Pre-migration validation - Detect issues before migration starts
+- Pure Rust - Fast, safe, memory-efficient implementation
+- No agents required - Direct disk inspection
+- Complementary to hyper2kvm - Use together for comprehensive migration workflows
+
+**Use Case:** Run GuestKit inspection **before** hyper2kvm migration to identify potential issues early and plan fixes accordingly.
+
+**Workflow Integration:**
+```bash
+# 1. Inspect VM before migration
+guestkit inspect /vms/production-db.vmdk --format json > inspection.json
+
+# 2. Review findings (OS type, issues, recommendations)
+cat inspection.json | jq '.findings'
+
+# 3. Plan migration strategy based on inspection
+# 4. Run migration with appropriate fixes
+h2kvmctl --config migration.yaml
+```
 
 ---
 
