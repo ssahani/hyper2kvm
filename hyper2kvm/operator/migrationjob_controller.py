@@ -43,8 +43,8 @@ ANNOTATION_CLEANUP = "migration.hyper2kvm.io/cleanup"
 LABEL_NBD_CAPABLE = "hyper2kvm.io/nbd-capable"
 LABEL_MIGRATION_JOB = "migration.hyper2kvm.io/job"
 
-# Migration container image
-MIGRATION_IMAGE = "ghcr.io/hyper2kvm/migration:latest"
+# Migration container image (optimized VMCraft version)
+MIGRATION_IMAGE = "hyper2kvm-migration:optimized"
 
 
 @kopf.on.create('hyper2kvm.io', 'v1alpha1', 'migrationjobs')

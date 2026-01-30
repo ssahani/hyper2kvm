@@ -7,27 +7,17 @@ Includes controllers for MigrationJob and OfflineFixJob CRDs.
 
 __version__ = "1.5.0"
 
-from hyper2kvm.operator.controller import (
-    create_migration_job,
-    update_migration_job,
-    delete_migration_job,
-    reconcile_migration_job
-)
+# Import worker-based components (for OfflineFixJob)
 from hyper2kvm.operator.worker_registry import WorkerRegistry
 from hyper2kvm.operator.job_assigner import JobAssigner
 
-# OfflineFixJob controller is registered via kopf decorators
-# Import to ensure handlers are registered
+# OfflineFixJob controller (worker-based model)
 from hyper2kvm.operator import offlinefixjob_controller  # noqa: F401
 
-# MigrationJob controller (new K8s-native migration)
+# MigrationJob controller (K8s-native model - replaces old controller.py)
 from hyper2kvm.operator import migrationjob_controller  # noqa: F401
 
 __all__ = [
-    'create_migration_job',
-    'update_migration_job',
-    'delete_migration_job',
-    'reconcile_migration_job',
     'WorkerRegistry',
     'JobAssigner',
 ]
