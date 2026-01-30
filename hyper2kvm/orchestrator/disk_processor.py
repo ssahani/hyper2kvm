@@ -133,6 +133,60 @@ class DiskProcessor:
             Log.trace(self.logger, "💥 cloud-init load exception", exc_info=True)
             return None
 
+    def _load_firstboot_config(self) -> dict[str, Any] | None:
+        """Load firstboot scripts configuration if specified."""
+        import json
+
+        from ..config.config_loader import YAML_AVAILABLE, yaml
+
+        p = getattr(self.args, "firstboot_scripts", None)
+        if not p:
+            Log.trace(self.logger, "🚀 firstboot: no config provided")
+            return None
+        try:
+            config_path = Path(p).expanduser().resolve()
+            if not config_path.exists():
+                self.logger.warning(f"Firstboot config not found: {config_path}")
+                return None
+            Log.trace(self.logger, "🚀 firstboot: loading %s", config_path)
+            if config_path.suffix.lower() == ".json":
+                return json.loads(config_path.read_text(encoding="utf-8"))
+            if YAML_AVAILABLE:
+                return yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            self.logger.warning("YAML not available, cannot load firstboot config")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to load firstboot config: {e}")
+            Log.trace(self.logger, "💥 firstboot load exception", exc_info=True)
+            return None
+
+    def _load_network_config_inject(self) -> dict[str, Any] | None:
+        """Load network configuration injection if specified."""
+        import json
+
+        from ..config.config_loader import YAML_AVAILABLE, yaml
+
+        p = getattr(self.args, "network_config_inject", None)
+        if not p:
+            Log.trace(self.logger, "🌐 network-config-inject: no config provided")
+            return None
+        try:
+            config_path = Path(p).expanduser().resolve()
+            if not config_path.exists():
+                self.logger.warning(f"Network config inject file not found: {config_path}")
+                return None
+            Log.trace(self.logger, "🌐 network-config-inject: loading %s", config_path)
+            if config_path.suffix.lower() == ".json":
+                return json.loads(config_path.read_text(encoding="utf-8"))
+            if YAML_AVAILABLE:
+                return yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            self.logger.warning("YAML not available, cannot load network config inject")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to load network config inject: {e}")
+            Log.trace(self.logger, "💥 network-config-inject load exception", exc_info=True)
+            return None
+
     def _is_luks_enabled(self) -> bool:
         """Check if LUKS unlocking is enabled."""
         if hasattr(self.args, "luks_enable"):
@@ -198,6 +252,24 @@ class DiskProcessor:
                 sorted(cloud_init_data.keys()) if isinstance(cloud_init_data, dict) else type(cloud_init_data).__name__,
             )
 
+        # Load firstboot scripts config
+        firstboot_data = self._load_firstboot_config()
+        if firstboot_data is not None:
+            Log.trace(
+                self.logger,
+                "🚀 firstboot loaded: keys=%s",
+                sorted(firstboot_data.keys()) if isinstance(firstboot_data, dict) else type(firstboot_data).__name__,
+            )
+
+        # Load network config inject
+        network_config_data = self._load_network_config_inject()
+        if network_config_data is not None:
+            Log.trace(
+                self.logger,
+                "🌐 network-config-inject loaded: keys=%s",
+                sorted(network_config_data.keys()) if isinstance(network_config_data, dict) else type(network_config_data).__name__,
+            )
+
         # Offline fixes
         Log.step(self.logger, "Offline filesystem fixes")
         fixer = OfflineFSFix(
@@ -212,6 +284,8 @@ class DiskProcessor:
             report_path=report_path,
             remove_vmware_tools=getattr(self.args, "remove_vmware_tools", False),
             inject_cloud_init=cloud_init_data,
+            firstboot_scripts=firstboot_data,
+            network_config_inject=network_config_data,
             recovery_manager=self.recovery_manager,
             resize=getattr(self.args, "resize", None),
             virtio_drivers_dir=getattr(self.args, "virtio_drivers_dir", None),
@@ -221,6 +295,10 @@ class DiskProcessor:
             luks_keyfile=getattr(self.args, "luks_keyfile", None),
             luks_mapper_prefix=getattr(self.args, "luks_mapper_prefix", "hyper2kvm-crypt"),
         )
+
+        # Pass initramfs_add_drivers to fixer if specified
+        if hasattr(self.args, "initramfs_add_drivers") and self.args.initramfs_add_drivers:
+            fixer.initramfs_add_drivers = self.args.initramfs_add_drivers
         fixer.run()
         Log.ok(self.logger, "Offline fixes complete")
 

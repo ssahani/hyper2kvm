@@ -43,6 +43,8 @@ from .offline.validation import OfflineValidationManager
 from .offline.vmware_tools_remover import OfflineVmwareToolsRemover
 from .report_writer import write_report
 from .windows import fixer as windows_fixer  # type: ignore
+from . import firstboot_injector  # type: ignore
+from . import network_config_injector  # type: ignore
 
 _T = TypeVar("_T")
 
@@ -122,6 +124,8 @@ class OfflineFSFix:
         report_path: Path | None,
         remove_vmware_tools: bool = False,
         inject_cloud_init: dict[str, Any] | None = None,
+        firstboot_scripts: dict[str, Any] | None = None,
+        network_config_inject: dict[str, Any] | None = None,
         recovery_manager: RecoveryManager | None = None,
         resize: str | None = None,
         virtio_drivers_dir: str | None = None,
@@ -145,6 +149,8 @@ class OfflineFSFix:
         self.report_path = Path(report_path) if report_path else None
         self.remove_vmware_tools = bool(remove_vmware_tools)
         self.inject_cloud_init_data = inject_cloud_init or {}
+        self.firstboot_config = firstboot_scripts or {}
+        self.network_config_inject = network_config_inject or {}
         self.recovery_manager = recovery_manager
         self.resize = resize
         self.virtio_drivers_dir = virtio_drivers_dir
@@ -1205,6 +1211,20 @@ class OfflineFSFix:
                 default={"enabled": False},
             )
 
+            # firstboot scripts injection (Linux only)
+            firstboot = self._run_stage(
+                "inject_firstboot",
+                lambda: firstboot_injector.inject_firstboot(self, g),
+                default={"injected": False, "reason": "not_attempted"},
+            )
+
+            # network config injection (Linux only)
+            network_config_inject_result = self._run_stage(
+                "inject_network_config",
+                lambda: network_config_injector.inject_network_config(self, g),
+                default={"injected": False, "reason": "not_attempted"},
+            )
+
             # Windows hooks: only run on Windows
             is_win = self._run_stage("detect_windows", lambda: self.is_windows(g), default=False)
             if is_win:
@@ -1253,6 +1273,8 @@ class OfflineFSFix:
                 "grub_device_map_removed": c_devmap,
                 "vmware_tools_removed": vmware_removal,
                 "cloud_init_injected": cloud_init,
+                "firstboot_scripts_injected": firstboot,
+                "network_config_injected": network_config_inject_result,
             }
             self.report["analysis"]["fstab_audit"] = fstab_audit
             self.report["analysis"]["fstab_changes"] = [vars(x) for x in fstab_changes]

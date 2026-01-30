@@ -36,6 +36,7 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # no_backup: false # keep backups in guest unless explicitly disabled
 # no_grub: false # set true to skip grub root=/device.map cleanup
 # regen_initramfs: true # best-effort initramfs+grub regen
+# initramfs_add_drivers: "nvme e1000e" # additional drivers for initramfs (Linux)
 # remove_vmware_tools: true # linux guests only
 #
 # Convert policy:
@@ -46,6 +47,22 @@ YAML_EXAMPLE = r"""# hyper2kvm configuration examples (YAML)
 # compress: true
 # compress_level: 6 # 1-9
 # resize: +10G # enlarge only: +10G or set total: 50G
+#
+# Linux driver injection (initramfs customization):
+# initramfs_add_drivers: "nvme e1000e mlx5_core" # space-separated module names
+# # OR use YAML list:
+# initramfs_add_drivers:
+#   - nvme
+#   - e1000e
+#   - mlx5_core
+#   - ixgbe
+# # Default includes: virtio, virtio_ring, virtio_blk, virtio_scsi, virtio_net,
+# # virtio_pci, nvme, ahci, sd_mod, dm_mod, dm_crypt, xts
+# # Use initramfs_add_drivers to add hardware-specific drivers like:
+# #   - Network: e1000e, ixgbe, mlx5_core, i40e, bnx2x
+# #   - Storage: megaraid_sas, mpt3sas, hpsa, aacraid
+# #   - RAID: md_mod, raid0, raid1, raid10, raid456
+# #   - Filesystem: ext4, xfs, btrfs
 #
 # Windows extras:
 # virtio_drivers_dir: /path/to/virtio-win

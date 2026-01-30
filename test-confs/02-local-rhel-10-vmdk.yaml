@@ -51,6 +51,18 @@ no_grub: false
 # Regenerate initramfs using dracut
 regen_initramfs: true
 
+# Optional: Add additional drivers to initramfs (for specific hardware)
+# Useful when migrating to bare metal with specific NICs or storage controllers
+# Examples:
+#   - Network: e1000e, ixgbe, mlx5_core, i40e
+#   - Storage: megaraid_sas, mpt3sas, hpsa
+#   - RAID: md_mod, raid0, raid1, raid456
+# initramfs_add_drivers: "e1000e mlx5_core"
+# OR use list format:
+# initramfs_add_drivers:
+#   - e1000e
+#   - mlx5_core
+
 # Keep backups inside guest filesystem
 no_backup: false
 

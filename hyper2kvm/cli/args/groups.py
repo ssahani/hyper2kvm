@@ -91,9 +91,29 @@ def _add_fixing_behavior(p: argparse.ArgumentParser) -> None:
     p.add_argument("--regen-initramfs", dest="regen_initramfs", action="store_true", help="Regenerate initramfs + grub config (best-effort).")
     p.add_argument("--no-regen-initramfs", dest="regen_initramfs", action="store_false", help="Disable initramfs/grub regen.")
     p.set_defaults(regen_initramfs=True)
+    p.add_argument(
+        "--initramfs-add-drivers",
+        dest="initramfs_add_drivers",
+        default=None,
+        help="Additional kernel modules to include in initramfs (space-separated string or list). "
+             "Example: 'nvme e1000e' or ['nvme', 'e1000e']. "
+             "Default includes common virtio drivers. Use this to add hardware-specific drivers."
+    )
 
     p.add_argument("--remove-vmware-tools", dest="remove_vmware_tools", action="store_true", help="Remove VMware tools from guest (Linux only).")
     p.add_argument("--cloud-init-config", dest="cloud_init_config", default=None, help="Cloud-init config (YAML/JSON) to inject.")
+    p.add_argument(
+        "--firstboot-scripts",
+        dest="firstboot_scripts",
+        default=None,
+        help="Firstboot scripts configuration (YAML/JSON). Creates systemd oneshot service that runs scripts on first boot and disables itself."
+    )
+    p.add_argument(
+        "--network-config-inject",
+        dest="network_config_inject",
+        default=None,
+        help="Network configuration injection (YAML/JSON). Injects systemd-networkd (.network, .netdev) and/or NetworkManager (.nmconnection) files for static network configuration."
+    )
     p.add_argument("--enable-recovery", dest="enable_recovery", action="store_true", help="Enable checkpoint recovery for long operations.")
 
     # ✅ Process-based parallelism (no threads): used by Orchestrator.process_disks_parallel
