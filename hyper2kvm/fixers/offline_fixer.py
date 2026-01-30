@@ -45,6 +45,9 @@ from .report_writer import write_report
 from .windows import fixer as windows_fixer  # type: ignore
 from . import firstboot_injector  # type: ignore
 from . import network_config_injector  # type: ignore
+from . import user_config_injector  # type: ignore
+from . import service_config_injector  # type: ignore
+from . import hostname_config_injector  # type: ignore
 
 _T = TypeVar("_T")
 
@@ -126,6 +129,9 @@ class OfflineFSFix:
         inject_cloud_init: dict[str, Any] | None = None,
         firstboot_scripts: dict[str, Any] | None = None,
         network_config_inject: dict[str, Any] | None = None,
+        user_config_inject: dict[str, Any] | None = None,
+        service_config_inject: dict[str, Any] | None = None,
+        hostname_config_inject: dict[str, Any] | None = None,
         recovery_manager: RecoveryManager | None = None,
         resize: str | None = None,
         virtio_drivers_dir: str | None = None,
@@ -151,6 +157,9 @@ class OfflineFSFix:
         self.inject_cloud_init_data = inject_cloud_init or {}
         self.firstboot_config = firstboot_scripts or {}
         self.network_config_inject = network_config_inject or {}
+        self.user_config_inject = user_config_inject or {}
+        self.service_config_inject = service_config_inject or {}
+        self.hostname_config_inject = hostname_config_inject or {}
         self.recovery_manager = recovery_manager
         self.resize = resize
         self.virtio_drivers_dir = virtio_drivers_dir
@@ -1225,6 +1234,27 @@ class OfflineFSFix:
                 default={"injected": False, "reason": "not_attempted"},
             )
 
+            # user config injection (Linux only)
+            user_config_inject_result = self._run_stage(
+                "inject_user_config",
+                lambda: user_config_injector.inject_user_config(self, g),
+                default={"injected": False, "reason": "not_attempted"},
+            )
+
+            # service config injection (Linux only)
+            service_config_inject_result = self._run_stage(
+                "inject_service_config",
+                lambda: service_config_injector.inject_service_config(self, g),
+                default={"injected": False, "reason": "not_attempted"},
+            )
+
+            # hostname config injection (Linux only)
+            hostname_config_inject_result = self._run_stage(
+                "inject_hostname_config",
+                lambda: hostname_config_injector.inject_hostname_config(self, g),
+                default={"injected": False, "reason": "not_attempted"},
+            )
+
             # Windows hooks: only run on Windows
             is_win = self._run_stage("detect_windows", lambda: self.is_windows(g), default=False)
             if is_win:
@@ -1275,6 +1305,9 @@ class OfflineFSFix:
                 "cloud_init_injected": cloud_init,
                 "firstboot_scripts_injected": firstboot,
                 "network_config_injected": network_config_inject_result,
+                "user_config_injected": user_config_inject_result,
+                "service_config_injected": service_config_inject_result,
+                "hostname_config_injected": hostname_config_inject_result,
             }
             self.report["analysis"]["fstab_audit"] = fstab_audit
             self.report["analysis"]["fstab_changes"] = [vars(x) for x in fstab_changes]

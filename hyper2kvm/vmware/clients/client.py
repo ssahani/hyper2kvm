@@ -8,9 +8,11 @@ vSphere / vCenter client for hyper2kvm.
 
 import logging
 import os
+import random
 import re
 import socket
 import ssl
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -308,6 +310,26 @@ from ..utils.v2v import (
     v2v_export_vm as _v2v_export_vm,
 )
 
+
+@dataclass(frozen=True)
+class VMwareConnectionOptions:
+    """
+    Options for VMware vSphere/vCenter connection establishment with retry logic.
+
+    Attributes:
+        max_retries: Maximum number of connection attempts (default: 3)
+        base_backoff_s: Base backoff time in seconds for exponential backoff (default: 2.0)
+        max_backoff_s: Maximum backoff time in seconds (default: 30.0)
+        timeout_s: Connection timeout in seconds (default: 30.0)
+        enable_jitter: Add random jitter to backoff to prevent thundering herd (default: True)
+    """
+    max_retries: int = 3
+    base_backoff_s: float = 2.0
+    max_backoff_s: float = 30.0
+    timeout_s: float = 30.0
+    enable_jitter: bool = True
+
+
 # Client
 
 
@@ -326,6 +348,7 @@ class VMwareClient:
         port: int = 443,
         insecure: bool = False,
         timeout: float | None = None,
+        connection_options: VMwareConnectionOptions | None = None,
     ) -> None:
         self.logger = logger
         self.host = (host or "").strip()
@@ -334,6 +357,7 @@ class VMwareClient:
         self.port = int(port)
         self.insecure = bool(insecure)
         self.timeout = timeout
+        self.connection_options = connection_options or VMwareConnectionOptions()
 
         self.si: Any = None
 
@@ -383,7 +407,26 @@ class VMwareClient:
                 cfg.get("vc_insecure") if cfg.get("vc_insecure") is not None else cfg.get("vs_insecure", False)
             )
         )
-        c = cls(logger, creds.host, creds.user, creds.password, port=p, insecure=ins, timeout=timeout)
+
+        # Parse connection retry options from config
+        connection_options = VMwareConnectionOptions(
+            max_retries=int(cfg.get("vc_connection_max_retries", 3)),
+            base_backoff_s=float(cfg.get("vc_connection_base_backoff_s", 2.0)),
+            max_backoff_s=float(cfg.get("vc_connection_max_backoff_s", 30.0)),
+            timeout_s=float(cfg.get("vc_connection_timeout_s", 30.0)),
+            enable_jitter=bool(cfg.get("vc_connection_enable_jitter", True)),
+        )
+
+        c = cls(
+            logger,
+            creds.host,
+            creds.user,
+            creds.password,
+            port=p,
+            insecure=ins,
+            timeout=timeout,
+            connection_options=connection_options,
+        )
         c.govc_bin = str(cfg.get("govc_bin") or os.environ.get("GOVC_BIN") or "govc")
         c.no_govmomi = bool(cfg.get("no_govmomi", False))
         c.ovftool_path = str(cfg.get("ovftool_path", "")) or None
@@ -488,14 +531,107 @@ class VMwareClient:
             return ctx
         return ssl.create_default_context()
 
+    def _is_transient_error(self, error: Exception) -> bool:
+        """
+        Determine if an error is transient and worth retrying.
+
+        Args:
+            error: Exception to classify
+
+        Returns:
+            True if the error is transient and should be retried, False otherwise
+        """
+        error_str = str(error).lower()
+
+        # Transient error patterns in error messages
+        transient_patterns = [
+            "connection timed out",
+            "connection refused",
+            "network is unreachable",
+            "no route to host",
+            "temporary failure in name resolution",
+            "connection reset by peer",
+            "broken pipe",
+            "ssl handshake failed",
+            "could not resolve hostname",
+            "timeout waiting for",
+            "timed out",
+            "name resolution failed",
+            "connection closed",
+            "connection aborted",
+            "network error",
+            "socket error",
+            "certificate verify failed",
+            "ssl error",
+            "connection error",
+        ]
+
+        # Check exception types that are typically transient
+        if isinstance(error, (
+            socket.timeout,
+            ConnectionRefusedError,
+            ConnectionResetError,
+            ConnectionAbortedError,
+            TimeoutError,
+            OSError,
+        )):
+            return True
+
+        # Check error message patterns
+        return any(pattern in error_str for pattern in transient_patterns)
+
+    def _calculate_backoff(self, attempt: int) -> float:
+        """
+        Calculate backoff time with exponential backoff and optional jitter.
+
+        Implements exponential backoff: base_backoff * (2 ** (attempt - 1))
+        with optional jitter to prevent thundering herd problem.
+
+        Args:
+            attempt: Current retry attempt number (1-indexed)
+
+        Returns:
+            Backoff time in seconds
+        """
+        # Calculate exponential backoff: 2s, 4s, 8s, 16s, 30s (capped at max_backoff_s)
+        backoff = min(
+            self.connection_options.base_backoff_s * (2 ** (attempt - 1)),
+            self.connection_options.max_backoff_s
+        )
+
+        # Add jitter: ±25% randomness to prevent thundering herd
+        if self.connection_options.enable_jitter:
+            jitter = backoff * 0.25 * (2 * random.random() - 1)
+            backoff += jitter
+
+        return max(0.0, backoff)
+
     def connect(self) -> None:
+        """
+        Connect to vSphere/vCenter with retry logic.
+
+        Implements exponential backoff retry for transient errors.
+        Configuration via connection_options parameter in __init__.
+
+        Raises:
+            VMwareError: On connection failure after all retries exhausted
+        """
         self._require_pyvmomi()
         ctx = self._ssl_context()
-        try:
-            if self.timeout is not None:
-                old_timeout = socket.getdefaulttimeout()
-                socket.setdefaulttimeout(self.timeout)
+
+        last_error: Exception | None = None
+        max_attempts = self.connection_options.max_retries + 1  # +1 for initial attempt
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Set timeout if specified
+                old_timeout = None
+                if self.timeout is not None:
+                    old_timeout = socket.getdefaulttimeout()
+                    socket.setdefaulttimeout(self.timeout)
+
                 try:
+                    # Attempt connection
                     self.si = SmartConnect(  # type: ignore[misc]
                         host=self.host,
                         user=self.user,
@@ -504,39 +640,77 @@ class VMwareClient:
                         sslContext=ctx,
                     )
                 finally:
-                    socket.setdefaulttimeout(old_timeout)
-            else:
-                self.si = SmartConnect(  # type: ignore[misc]
-                    host=self.host,
-                    user=self.user,
-                    pwd=self.password,
-                    port=self.port,
-                    sslContext=ctx,
+                    # Restore original timeout
+                    if old_timeout is not None:
+                        socket.setdefaulttimeout(old_timeout)
+
+                # Connection successful! Set session cookie for HTTP download client
+                try:
+                    stub = getattr(self.si, "_stub", None)
+                    cookie = getattr(stub, "cookie", None)
+                    if cookie:
+                        self._http_download_client().set_session_cookie(str(cookie))
+                except Exception as e:
+                    self.logger.debug("Failed to set HTTP session cookie: %s", e)
+
+                # Warm caches (best-effort)
+                try:
+                    _datastore_refresh_datacenter_cache(self)
+                except Exception as e:
+                    self.logger.debug("Datacenter cache warmup failed (non-fatal): %s", e)
+                try:
+                    _datastore_refresh_host_cache(self)
+                except Exception as e:
+                    self.logger.debug("Host cache warmup failed (non-fatal): %s", e)
+
+                # Log success
+                if attempt > 1:
+                    self.logger.info(
+                        "Connected to vSphere: %s:%s (succeeded on attempt %d/%d)",
+                        self.host, self.port, attempt, max_attempts
+                    )
+                else:
+                    self.logger.info("Connected to vSphere: %s:%s", self.host, self.port)
+                return
+
+            except Exception as e:
+                last_error = e
+                self.si = None
+
+                # Check if error is transient and worth retrying
+                is_transient = self._is_transient_error(e)
+
+                # Don't retry if it's the last attempt or error is not transient
+                if attempt >= max_attempts:
+                    if is_transient:
+                        self.logger.error(
+                            "Failed to connect to vSphere after %d attempts: %s",
+                            max_attempts, e
+                        )
+                    break
+
+                if not is_transient:
+                    self.logger.error(
+                        "Non-transient error connecting to vSphere (attempt %d/%d): %s. "
+                        "Not retrying.",
+                        attempt, max_attempts, e
+                    )
+                    break
+
+                # Calculate backoff and log retry attempt
+                backoff = self._calculate_backoff(attempt)
+                self.logger.warning(
+                    "Connection attempt %d/%d failed with transient error: %s. "
+                    "Retrying in %.1f seconds...",
+                    attempt, max_attempts, e, backoff
                 )
+                time.sleep(backoff)
 
-            # Set session cookie for HTTP download client
-            try:
-                stub = getattr(self.si, "_stub", None)
-                cookie = getattr(stub, "cookie", None)
-                if cookie:
-                    self._http_download_client().set_session_cookie(str(cookie))
-            except Exception as e:
-                self.logger.debug("Failed to set HTTP session cookie: %s", e)
-
-            # warm caches (best-effort)
-            try:
-                _datastore_refresh_datacenter_cache(self)
-            except Exception as e:
-                self.logger.debug("Datacenter cache warmup failed (non-fatal): %s", e)
-            try:
-                _datastore_refresh_host_cache(self)
-            except Exception as e:
-                self.logger.debug("Host cache warmup failed (non-fatal): %s", e)
-
-            self.logger.info("Connected to vSphere: %s:%s", self.host, self.port)
-        except Exception as e:
-            self.si = None
-            raise VMwareError(f"Failed to connect to vSphere: {e}") from e
+        # All retries exhausted - raise final error
+        raise VMwareError(
+            f"Failed to connect to vSphere ({self.host}:{self.port}) "
+            f"after {max_attempts} attempts: {last_error}"
+        ) from last_error
 
     def disconnect(self) -> None:
         try:

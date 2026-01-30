@@ -114,6 +114,24 @@ def _add_fixing_behavior(p: argparse.ArgumentParser) -> None:
         default=None,
         help="Network configuration injection (YAML/JSON). Injects systemd-networkd (.network, .netdev) and/or NetworkManager (.nmconnection) files for static network configuration."
     )
+    p.add_argument(
+        "--user-config-inject",
+        dest="user_config_inject",
+        default=None,
+        help="User account configuration (YAML/JSON). Creates users, deploys SSH keys, configures sudo access, and manages user accounts."
+    )
+    p.add_argument(
+        "--service-config-inject",
+        dest="service_config_inject",
+        default=None,
+        help="Systemd service configuration (YAML/JSON). Enables, disables, or masks systemd services."
+    )
+    p.add_argument(
+        "--hostname-config-inject",
+        dest="hostname_config_inject",
+        default=None,
+        help="Hostname and hosts file configuration (YAML/JSON). Sets hostname, domain, and manages /etc/hosts file."
+    )
     p.add_argument("--enable-recovery", dest="enable_recovery", action="store_true", help="Enable checkpoint recovery for long operations.")
 
     # ✅ Process-based parallelism (no threads): used by Orchestrator.process_disks_parallel

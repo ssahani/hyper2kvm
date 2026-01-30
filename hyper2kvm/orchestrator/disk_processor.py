@@ -187,6 +187,87 @@ class DiskProcessor:
             Log.trace(self.logger, "💥 network-config-inject load exception", exc_info=True)
             return None
 
+    def _load_user_config_inject(self) -> dict[str, Any] | None:
+        """Load user configuration injection if specified."""
+        import json
+
+        from ..config.config_loader import YAML_AVAILABLE, yaml
+
+        p = getattr(self.args, "user_config_inject", None)
+        if not p:
+            Log.trace(self.logger, "👤 user-config-inject: no config provided")
+            return None
+        try:
+            config_path = Path(p).expanduser().resolve()
+            if not config_path.exists():
+                self.logger.warning(f"User config inject file not found: {config_path}")
+                return None
+            Log.trace(self.logger, "👤 user-config-inject: loading %s", config_path)
+            if config_path.suffix.lower() == ".json":
+                return json.loads(config_path.read_text(encoding="utf-8"))
+            if YAML_AVAILABLE:
+                return yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            self.logger.warning("YAML not available, cannot load user config inject")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to load user config inject: {e}")
+            Log.trace(self.logger, "💥 user-config-inject load exception", exc_info=True)
+            return None
+
+    def _load_service_config_inject(self) -> dict[str, Any] | None:
+        """Load systemd service configuration injection if specified."""
+        import json
+
+        from ..config.config_loader import YAML_AVAILABLE, yaml
+
+        p = getattr(self.args, "service_config_inject", None)
+        if not p:
+            Log.trace(self.logger, "⚙️ service-config-inject: no config provided")
+            return None
+        try:
+            config_path = Path(p).expanduser().resolve()
+            if not config_path.exists():
+                self.logger.warning(f"Service config inject file not found: {config_path}")
+                return None
+            Log.trace(self.logger, "⚙️ service-config-inject: loading %s", config_path)
+            if config_path.suffix.lower() == ".json":
+                return json.loads(config_path.read_text(encoding="utf-8"))
+            if YAML_AVAILABLE:
+                return yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            self.logger.warning("YAML not available, cannot load service config inject")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to load service config inject: {e}")
+            Log.trace(self.logger, "💥 service-config-inject load exception", exc_info=True)
+            return None
+
+    def _load_hostname_config_inject(self) -> dict[str, Any] | None:
+        """Load hostname configuration injection if specified."""
+        import json
+
+        from ..config.config_loader import YAML_AVAILABLE, yaml
+
+        p = getattr(self.args, "hostname_config_inject", None)
+        if not p:
+            Log.trace(self.logger, "🏷️ hostname-config-inject: no config provided")
+            return None
+        try:
+            config_path = Path(p).expanduser().resolve()
+            if not config_path.exists():
+                self.logger.warning(f"Hostname config inject file not found: {config_path}")
+                return None
+            Log.trace(self.logger, "🏷️ hostname-config-inject: loading %s", config_path)
+            if config_path.suffix.lower() == ".json":
+                return json.loads(config_path.read_text(encoding="utf-8"))
+            if YAML_AVAILABLE:
+                return yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            self.logger.warning("YAML not available, cannot load hostname config inject")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to load hostname config inject: {e}")
+            Log.trace(self.logger, "💥 hostname-config-inject load exception", exc_info=True)
+            return None
+
     def _is_luks_enabled(self) -> bool:
         """Check if LUKS unlocking is enabled."""
         if hasattr(self.args, "luks_enable"):
@@ -270,6 +351,33 @@ class DiskProcessor:
                 sorted(network_config_data.keys()) if isinstance(network_config_data, dict) else type(network_config_data).__name__,
             )
 
+        # Load user config inject
+        user_config_data = self._load_user_config_inject()
+        if user_config_data is not None:
+            Log.trace(
+                self.logger,
+                "👤 user-config-inject loaded: keys=%s",
+                sorted(user_config_data.keys()) if isinstance(user_config_data, dict) else type(user_config_data).__name__,
+            )
+
+        # Load service config inject
+        service_config_data = self._load_service_config_inject()
+        if service_config_data is not None:
+            Log.trace(
+                self.logger,
+                "⚙️ service-config-inject loaded: keys=%s",
+                sorted(service_config_data.keys()) if isinstance(service_config_data, dict) else type(service_config_data).__name__,
+            )
+
+        # Load hostname config inject
+        hostname_config_data = self._load_hostname_config_inject()
+        if hostname_config_data is not None:
+            Log.trace(
+                self.logger,
+                "🏷️ hostname-config-inject loaded: keys=%s",
+                sorted(hostname_config_data.keys()) if isinstance(hostname_config_data, dict) else type(hostname_config_data).__name__,
+            )
+
         # Offline fixes
         Log.step(self.logger, "Offline filesystem fixes")
         fixer = OfflineFSFix(
@@ -286,6 +394,9 @@ class DiskProcessor:
             inject_cloud_init=cloud_init_data,
             firstboot_scripts=firstboot_data,
             network_config_inject=network_config_data,
+            user_config_inject=user_config_data,
+            service_config_inject=service_config_data,
+            hostname_config_inject=hostname_config_data,
             recovery_manager=self.recovery_manager,
             resize=getattr(self.args, "resize", None),
             virtio_drivers_dir=getattr(self.args, "virtio_drivers_dir", None),
