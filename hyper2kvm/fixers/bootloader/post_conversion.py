@@ -191,10 +191,11 @@ class PostConversionBootFixer:
             has_dracut = g.is_file("/usr/bin/dracut") or g.is_file("/bin/dracut") or g.is_file("/sbin/dracut")
 
             if has_dracut:
-                self.logger.info(f"  Rebuilding with: dracut -f --no-hostonly --kver {latest_kver}")
+                self.logger.info(f"  Rebuilding with: dracut -f --no-hostonly")
                 try:
                     # Use command_with_mounts for dracut (needs /proc, /dev, /sys)
-                    output = g.command_with_mounts(["dracut", "-f", "--no-hostonly", "--kver", latest_kver])
+                    # IMPORTANT: Don't specify --kver, let dracut auto-detect from chroot
+                    output = g.command_with_mounts(["dracut", "-f", "--no-hostonly"])
                     self.stats["initramfs_rebuilt"] = True
                     self.logger.info("  ✓ initramfs rebuilt successfully")
                     if output.strip():
