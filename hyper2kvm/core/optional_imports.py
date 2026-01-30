@@ -154,6 +154,16 @@ try:
         ProgressBar,
         Label,
         Button,
+        Input,
+        Select,
+        Checkbox,
+        RadioButton,
+        RadioSet,
+        DirectoryTree,
+        TabbedContent,
+        TabPane,
+        Tabs,
+        Tab,
     )
     from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
     from textual.reactive import reactive
@@ -173,6 +183,16 @@ except Exception:
     ProgressBar = None  # type: ignore
     Label = None  # type: ignore
     Button = None  # type: ignore
+    Input = None  # type: ignore
+    Select = None  # type: ignore
+    Checkbox = None  # type: ignore
+    RadioButton = None  # type: ignore
+    RadioSet = None  # type: ignore
+    DirectoryTree = None  # type: ignore
+    TabbedContent = None  # type: ignore
+    TabPane = None  # type: ignore
+    Tabs = None  # type: ignore
+    Tab = None  # type: ignore
     Container = None  # type: ignore
     Vertical = None  # type: ignore
     Horizontal = None  # type: ignore

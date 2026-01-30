@@ -155,6 +155,7 @@ Changelog = "https://github.com/ssahani/hyper2kvm/releases"
 
 [project.scripts]
 hyper2kvm = "hyper2kvm.__main__:main"
+hyper2kvm-tui = "hyper2kvm.tui.main_app:run_hyper2kvm_tui"
 
 [tool.setuptools]
 include-package-data = true
