@@ -6,6 +6,7 @@ Migrations panel for displaying active migrations in the main app.
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
@@ -23,6 +24,11 @@ from ..core.optional_imports import (
 
 if not TEXTUAL_AVAILABLE:
     raise ImportError("Textual required")
+
+from .migration_tracker import MigrationTracker
+from .migration_controller import MigrationController
+
+logger = logging.getLogger(__name__)
 
 
 class MigrationsPanel(Container):
@@ -109,10 +115,12 @@ class MigrationsPanel(Container):
     }
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, tracker: Optional[MigrationTracker] = None, **kwargs):
         super().__init__(**kwargs)
         self.active_migrations: List[Dict[str, Any]] = []
         self.selected_migration: Optional[str] = None
+        self.tracker = tracker or MigrationTracker(logger=logger)
+        self.controller = MigrationController(self.tracker, logger=logger)
 
     def compose(self) -> ComposeResult:
         """Compose the migrations panel UI."""
@@ -220,8 +228,12 @@ class MigrationsPanel(Container):
             self.notify("No migration selected", severity="warning")
             return
 
-        self.notify(f"Pausing migration {self.selected_migration}...")
-        # TODO: Implement pause logic
+        migration_id = self.selected_migration
+        if self.controller.pause_migration(migration_id):
+            self.notify(f"Migration paused: {migration_id}", severity="information")
+            self.refresh_migrations()
+        else:
+            self.notify(f"Failed to pause migration: {migration_id}", severity="error")
 
     def resume_migration(self) -> None:
         """Resume selected migration."""
@@ -229,8 +241,12 @@ class MigrationsPanel(Container):
             self.notify("No migration selected", severity="warning")
             return
 
-        self.notify(f"Resuming migration {self.selected_migration}...")
-        # TODO: Implement resume logic
+        migration_id = self.selected_migration
+        if self.controller.resume_migration(migration_id):
+            self.notify(f"Migration resumed: {migration_id}", severity="information")
+            self.refresh_migrations()
+        else:
+            self.notify(f"Failed to resume migration: {migration_id}", severity="error")
 
     def cancel_migration(self) -> None:
         """Cancel selected migration."""
@@ -238,8 +254,12 @@ class MigrationsPanel(Container):
             self.notify("No migration selected", severity="warning")
             return
 
-        self.notify(f"Cancelling migration {self.selected_migration}...", severity="warning")
-        # TODO: Implement cancel logic
+        migration_id = self.selected_migration
+        if self.controller.cancel_migration(migration_id):
+            self.notify(f"Migration cancelled: {migration_id}", severity="warning")
+            self.refresh_migrations()
+        else:
+            self.notify(f"Failed to cancel migration: {migration_id}", severity="error")
 
     def show_details(self) -> None:
         """Show detailed migration information."""
@@ -251,6 +271,46 @@ class MigrationsPanel(Container):
         # TODO: Show detailed dialog
 
     def refresh_migrations(self) -> None:
-        """Refresh migration list."""
-        self.notify("Refreshing migrations...")
-        # TODO: Reload from backend
+        """Refresh migration list from tracker."""
+        try:
+            # Reload from persistent storage
+            self.tracker.load()
+
+            # Cleanup finished processes
+            self.controller.cleanup_finished_processes()
+
+            # Get active migrations
+            active_migrations = self.tracker.get_active_migrations()
+
+            # Update statistics
+            stats = self.tracker.get_statistics()
+            self.update_stats_display(stats)
+
+            self.notify(f"Refreshed: {len(active_migrations)} active migrations")
+
+        except Exception as e:
+            logger.exception("Failed to refresh migrations")
+            self.notify(f"Refresh failed: {e}", severity="error")
+
+    def update_stats_display(self, stats: Dict[str, Any]) -> None:
+        """Update statistics widgets with new values."""
+        try:
+            # Update Static widgets if they exist
+            stat_widgets = {
+                "stat_running": f"Running: {stats.get('active_migrations', 0)}",
+                "stat_paused": "Paused: 0",  # Would need to count paused specifically
+                "stat_completed_migrations": f"Completed: {stats.get('total_completed', 0)}",
+                "stat_failed_migrations": f"Failed: {stats.get('total_failed', 0)}",
+                "stat_avg_speed": f"Avg Speed: {stats.get('avg_duration_seconds', 0):.1f} MB/s",
+            }
+
+            for widget_id, text in stat_widgets.items():
+                try:
+                    widget = self.query_one(f"#{widget_id}", Static)
+                    widget.update(text)
+                except Exception:
+                    # Widget might not exist yet
+                    pass
+
+        except Exception as e:
+            logger.debug(f"Failed to update stats display: {e}")
