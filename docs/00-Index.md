@@ -10,6 +10,7 @@
 ### 🚀 Getting Started
 - **[📦 02-Installation](02-Installation.md)** - Install hyper2kvm on Fedora, RHEL, Ubuntu, macOS, Windows
 - **[🚀 03-Quick-Start](03-Quick-Start.md)** - 5-minute quick start guide
+- **[🖥️ 25-TUI-Quickstart](25-TUI-Quickstart.md)** - Interactive Terminal UI guide (NEW!)
 - **[⚙️ 04-CLI-Reference](04-CLI-Reference.md)** - Complete command-line reference
 - **[📝 05-YAML-Examples](05-YAML-Examples.md)** - Configuration file examples
 - **[🤝 CONTRIBUTING](CONTRIBUTING.md)** - Contributing guidelines, GitLab mirror info
@@ -190,7 +191,8 @@ report: /tmp/hyper2kvm-report.md
 21. **[🌟 Photon OS](21-Photon-OS.md)** - VMware Photon OS migration
 22. **[🐧 Ubuntu 24.04](22-Ubuntu-24.04.md)** - Ubuntu/Debian migration
 23. **[🦎 SUSE](23-SUSE.md)** - openSUSE/SUSE Linux migration
-24. **[🔧 Enhanced Chroot](24-Enhanced-Chroot.md)** - Bootloader regeneration with bind mounts (NEW!)
+24. **[🔧 Enhanced Chroot](24-Enhanced-Chroot.md)** - Bootloader regeneration with bind mounts
+25. **[🖥️ TUI Quickstart](25-TUI-Quickstart.md)** - Interactive Terminal User Interface guide (NEW!)
 
 ### Advanced Topics
 11. **[🔧 Fstab Stabilization](11-Fstab-Stabilization.md)** - Converting device paths to stable UUIDs
