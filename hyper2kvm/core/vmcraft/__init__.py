@@ -29,6 +29,10 @@ from ._utils import (
 # Export specialized modules (for advanced usage)
 from .windows_users import WindowsUserManager
 from .linux_services import LinuxServiceManager
+from .windows_services import WindowsServiceManager
+from .windows_applications import WindowsApplicationManager
+from .advanced_analysis import AdvancedAnalyzer
+from .export import ExportManager
 
 __all__ = [
     # Main API
@@ -44,4 +48,8 @@ __all__ = [
     # Specialized modules
     "WindowsUserManager",
     "LinuxServiceManager",
+    "WindowsServiceManager",
+    "WindowsApplicationManager",
+    "AdvancedAnalyzer",
+    "ExportManager",
 ]
