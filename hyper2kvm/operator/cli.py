@@ -10,7 +10,9 @@ import sys
 import logging
 import kopf
 
-from hyper2kvm.operator import controller
+# Import controllers to register kopf handlers
+from hyper2kvm.operator import migrationjob_controller  # noqa: F401
+from hyper2kvm.operator import offlinefixjob_controller  # noqa: F401
 
 # Configure logging
 logging.basicConfig(
@@ -32,8 +34,7 @@ def main():
         # Run Kopf operator
         kopf.run(
             standalone=True,
-            clusterwide=False,  # Namespace-scoped for now
-            namespace=None,  # Watch all namespaces (can be restricted)
+            clusterwide=True,  # Watch all namespaces cluster-wide
             liveness_endpoint='http://0.0.0.0:8080/healthz',
         )
     except KeyboardInterrupt:
