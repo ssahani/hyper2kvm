@@ -39,7 +39,7 @@ class OperatorMetrics:
         )
         self.operator_info.info({
             'operator_id': operator_id,
-            'version': 'v1.9.0'
+            'version': 'v2.0.0'
         })
 
         # Reconciliation metrics

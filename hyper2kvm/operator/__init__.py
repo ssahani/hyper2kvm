@@ -5,7 +5,7 @@ Production-grade operator for automated migration job orchestration.
 Includes controllers for MigrationJob and OfflineFixJob CRDs.
 """
 
-__version__ = "1.5.0"
+__version__ = "2.0.0"
 
 # Import worker-based components (for OfflineFixJob)
 from hyper2kvm.operator.worker_registry import WorkerRegistry
