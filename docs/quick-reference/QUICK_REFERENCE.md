@@ -400,7 +400,7 @@ timeout: 7200
 - **Documentation**: `/docs/index.md`
 - **Tutorials**: `/docs/tutorials/`
 - **Recipes**: `/docs/recipes/`
-- **FAQ**: `/docs/FAQ.md`
+- **FAQ**: `/docs/quick-reference/FAQ.md`
 - **Troubleshooting**: `/docs/guides/troubleshooting.md`
 - **API Reference**: `/docs/reference/api/`
 

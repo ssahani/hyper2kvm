@@ -9,28 +9,32 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 ## Quick Navigation
 
 ### ⚡ Quick Access & Reference
-- **[Quick Reference Card](QUICK_REFERENCE.md)** - One-page command reference (printable)
-- **[Navigation Map](NAVIGATION_MAP.md)** 🗺️ - Visual guide to finding documentation
-- **[Glossary](GLOSSARY.md)** - Complete terminology reference (150+ terms)
-- **[FAQ](FAQ.md)** - Frequently asked questions (25+ Q&A)
+- **[Quick Reference Hub](quick-reference/)** - All quick reference materials
+- **[Quick Reference Card](quick-reference/QUICK_REFERENCE.md)** - One-page command reference (printable)
+- **[Navigation Map](quick-reference/NAVIGATION_MAP.md)** 🗺️ - Visual guide to finding documentation
+- **[Glossary](quick-reference/GLOSSARY.md)** - Complete terminology reference (150+ terms)
+- **[FAQ](quick-reference/FAQ.md)** - Frequently asked questions (25+ Q&A)
 
 ### 🎯 Decision Support Tools
-- **[Migration Decision Tree](MIGRATION_DECISION_TREE.md)** 🌳 - Choose the right migration approach
-- **[Comparison Matrix](COMPARISON_MATRIX.md)** 📊 - Compare methods, formats, and options
-- **[Troubleshooting Flowchart](TROUBLESHOOTING_FLOWCHART.md)** 🔧 - Diagnose and fix issues
+- **[Decision Support Hub](guides/decision-support/)** - All decision support tools
+- **[Migration Decision Tree](guides/decision-support/MIGRATION_DECISION_TREE.md)** 🌳 - Choose the right migration approach
+- **[Comparison Matrix](guides/decision-support/COMPARISON_MATRIX.md)** 📊 - Compare methods, formats, and options
+- **[Troubleshooting Flowchart](guides/decision-support/TROUBLESHOOTING_FLOWCHART.md)** 🔧 - Diagnose and fix issues
 
 ### 📋 Operational Guides
-- **[Migration Checklist](MIGRATION_CHECKLIST.md)** ✅ - Complete migration checklists
-- **[Pre-Flight Validation](PRE_FLIGHT_VALIDATION.md)** 🔍 - Verify readiness before migration
-- **[Migration Runbook Template](MIGRATION_RUNBOOK_TEMPLATE.md)** 📖 - Customizable migration runbook
-- **[Best Practices](BEST_PRACTICES.md)** ⭐ - Proven practices and anti-patterns to avoid
-- **[Examples Library](EXAMPLES_LIBRARY.md)** 📚 - 23+ real-world configuration examples
-- **[Automation Scripts](AUTOMATION_SCRIPTS.md)** 🤖 - Production-ready automation toolkit
-- **[Monitoring Guide](MONITORING_GUIDE.md)** 📈 - Monitor and observe migrated VMs
+- **[Operations Hub](guides/operations/)** - All operational guides and tools
+- **[Migration Checklist](guides/operations/MIGRATION_CHECKLIST.md)** ✅ - Complete migration checklists
+- **[Pre-Flight Validation](guides/operations/PRE_FLIGHT_VALIDATION.md)** 🔍 - Verify readiness before migration
+- **[Migration Runbook Template](guides/operations/MIGRATION_RUNBOOK_TEMPLATE.md)** 📖 - Customizable migration runbook
+- **[Best Practices](guides/operations/BEST_PRACTICES.md)** ⭐ - Proven practices and anti-patterns to avoid
+- **[Examples Library](guides/operations/EXAMPLES_LIBRARY.md)** 📚 - 23+ real-world configuration examples
+- **[Automation Scripts](guides/operations/AUTOMATION_SCRIPTS.md)** 🤖 - Production-ready automation toolkit
+- **[Monitoring Guide](guides/operations/MONITORING_GUIDE.md)** 📈 - Monitor and observe migrated VMs
 
 ### 📚 Documentation Resources
-- **[Contributing to Docs](CONTRIBUTING_DOCS.md)** - Documentation contribution guide
-- **[Documentation Changelog](DOCUMENTATION_CHANGELOG.md)** - Track documentation changes
+- **[Documentation Meta](meta/)** - Documentation about documentation
+- **[Contributing to Docs](meta/CONTRIBUTING_DOCS.md)** - Documentation contribution guide
+- **[Documentation Changelog](meta/DOCUMENTATION_CHANGELOG.md)** - Track documentation changes
 
 ### 🚀 Getting Started
 - **[Getting Started Hub](getting-started/)** - Complete getting started guide

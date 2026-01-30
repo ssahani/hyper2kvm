@@ -376,22 +376,25 @@ hyper2kvm --config batch.yaml
 ## Documentation 📚
 
 ### ⚡ Quick Access & Decision Tools
-- **[Quick Reference Card](docs/QUICK_REFERENCE.md)** 🌟 - One-page printable command reference
-- **[Migration Decision Tree](docs/MIGRATION_DECISION_TREE.md)** 🌳 - Choose the right migration approach
-- **[Comparison Matrix](docs/COMPARISON_MATRIX.md)** 📊 - Compare methods, formats, and options
-- **[Troubleshooting Flowchart](docs/TROUBLESHOOTING_FLOWCHART.md)** 🔧 - Diagnose and fix issues
-- **[Navigation Map](docs/NAVIGATION_MAP.md)** 🗺️ - Visual guide to finding documentation
-- **[Glossary](docs/GLOSSARY.md)** 🌟 - Complete terminology and acronyms (150+ terms)
-- **[FAQ](docs/FAQ.md)** 🌟 - Frequently asked questions (25+ Q&A)
+- **[Quick Reference Hub](docs/quick-reference/)** - All quick reference materials
+- **[Quick Reference Card](docs/quick-reference/QUICK_REFERENCE.md)** 🌟 - One-page printable command reference
+- **[Navigation Map](docs/quick-reference/NAVIGATION_MAP.md)** 🗺️ - Visual guide to finding documentation
+- **[Glossary](docs/quick-reference/GLOSSARY.md)** 🌟 - Complete terminology and acronyms (150+ terms)
+- **[FAQ](docs/quick-reference/FAQ.md)** 🌟 - Frequently asked questions (25+ Q&A)
+- **[Decision Support Hub](docs/guides/decision-support/)** - All decision support tools
+- **[Migration Decision Tree](docs/guides/decision-support/MIGRATION_DECISION_TREE.md)** 🌳 - Choose the right migration approach
+- **[Comparison Matrix](docs/guides/decision-support/COMPARISON_MATRIX.md)** 📊 - Compare methods, formats, and options
+- **[Troubleshooting Flowchart](docs/guides/decision-support/TROUBLESHOOTING_FLOWCHART.md)** 🔧 - Diagnose and fix issues
 
 ### 📋 Operational Guides (Ready to Use!)
-- **[Migration Checklist](docs/MIGRATION_CHECKLIST.md)** ✅ - Pre/during/post-migration checklists
-- **[Pre-Flight Validation](docs/PRE_FLIGHT_VALIDATION.md)** 🔍 - Verify system readiness (with automated script)
-- **[Migration Runbook Template](docs/MIGRATION_RUNBOOK_TEMPLATE.md)** 📖 - Customizable migration runbook
-- **[Best Practices](docs/BEST_PRACTICES.md)** ⭐ - Proven practices and anti-patterns to avoid
-- **[Examples Library](docs/EXAMPLES_LIBRARY.md)** 📚 - 23+ copy-paste ready configuration examples
-- **[Automation Scripts](docs/AUTOMATION_SCRIPTS.md)** 🤖 - Production-ready automation toolkit (10 scripts)
-- **[Monitoring Guide](docs/MONITORING_GUIDE.md)** 📈 - Monitor and observe migrated VMs in production
+- **[Operations Hub](docs/guides/operations/)** - All operational guides and toolkit
+- **[Migration Checklist](docs/guides/operations/MIGRATION_CHECKLIST.md)** ✅ - Pre/during/post-migration checklists
+- **[Pre-Flight Validation](docs/guides/operations/PRE_FLIGHT_VALIDATION.md)** 🔍 - Verify system readiness (with automated script)
+- **[Migration Runbook Template](docs/guides/operations/MIGRATION_RUNBOOK_TEMPLATE.md)** 📖 - Customizable migration runbook
+- **[Best Practices](docs/guides/operations/BEST_PRACTICES.md)** ⭐ - Proven practices and anti-patterns to avoid
+- **[Examples Library](docs/guides/operations/EXAMPLES_LIBRARY.md)** 📚 - 23+ copy-paste ready configuration examples
+- **[Automation Scripts](docs/guides/operations/AUTOMATION_SCRIPTS.md)** 🤖 - Production-ready automation toolkit (10 scripts)
+- **[Monitoring Guide](docs/guides/operations/MONITORING_GUIDE.md)** 📈 - Monitor and observe migrated VMs in production
 
 ### 📖 Start Here
 - **[Documentation Hub](docs/index.md)** ⭐ - Complete documentation index
