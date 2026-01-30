@@ -55,9 +55,23 @@ sudo journalctl -u hyper2kvm@production.service -f
 
 ### 1. Create System User and Directories
 
+**Note:** When installing via RPM, this is done automatically. Manual setup is only needed for non-RPM installations.
+
 ```bash
 # Create hyper2kvm system user
 sudo useradd -r -s /sbin/nologin -d /var/lib/hyper2kvm -c "hyper2kvm daemon" hyper2kvm
+
+# Add user to necessary groups for libguestfs, QEMU, and libvirt access
+# (RPM installation does this automatically)
+for group in qemu kvm libvirt disk; do
+    if getent group "$group" >/dev/null 2>&1; then
+        sudo usermod -a -G "$group" hyper2kvm
+    fi
+done
+
+# Verify group membership
+sudo id hyper2kvm
+# Expected output: uid=XXX(hyper2kvm) gid=XXX(hyper2kvm) groups=XXX(hyper2kvm),XXX(qemu),XXX(kvm),XXX(libvirt),XXX(disk)
 
 # Create directories
 sudo mkdir -p /var/lib/hyper2kvm
@@ -70,6 +84,12 @@ sudo chown -R hyper2kvm:hyper2kvm /var/log/hyper2kvm
 sudo chown -R root:hyper2kvm /etc/hyper2kvm
 sudo chmod 750 /etc/hyper2kvm
 ```
+
+**Group Memberships Explained:**
+- `qemu` - Required for QEMU operations and disk image access
+- `kvm` - Required for KVM acceleration access (/dev/kvm)
+- `libvirt` - Required for libvirt domain management and socket access
+- `disk` - Optional, for direct disk device access in some scenarios
 
 ### 2. Create Configuration
 
