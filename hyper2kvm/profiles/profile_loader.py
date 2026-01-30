@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config.config_loader import Config
+from .profile_cache import ProfileCache, get_global_cache
 
 try:
     import yaml  # type: ignore
@@ -36,8 +37,33 @@ class ProfileLoader:
     Profiles support inheritance via 'extends' field.
     """
 
-    def __init__(self, logger: logging.Logger | None = None):
+    def __init__(
+        self,
+        logger: logging.Logger | None = None,
+        enable_cache: bool = True,
+        cache: ProfileCache | None = None,
+    ):
+        """
+        Initialize ProfileLoader.
+
+        Args:
+            logger: Logger instance
+            enable_cache: Enable profile caching (default: True)
+            cache: Custom cache instance (default: use global cache)
+        """
         self.logger = logger or logging.getLogger(__name__)
+        self.enable_cache = enable_cache
+
+        # If cache is explicitly provided, use it
+        # If enable_cache is False, create a disabled cache instance
+        # Otherwise, use global cache
+        if cache is not None:
+            self.cache = cache
+        elif not enable_cache:
+            self.cache = ProfileCache(enabled=False, logger=self.logger)
+        else:
+            self.cache = get_global_cache(enabled=True)
+
         self._builtin_profiles_cache: dict[str, dict[str, Any]] | None = None
 
     def load_profile(self, profile_name: str, custom_profile_path: Path | None = None) -> dict[str, Any]:
@@ -56,19 +82,35 @@ class ProfileLoader:
         """
         self.logger.debug(f"Loading profile: {profile_name}")
 
+        # Generate cache key (includes custom path for differentiation)
+        cache_key = profile_name
+        if custom_profile_path:
+            cache_key = f"{custom_profile_path}:{profile_name}"
+
+        # Check cache first
+        cached_profile = self.cache.get(cache_key)
+        if cached_profile is not None:
+            return cached_profile.copy()
+
         # Try custom profile path first
         if custom_profile_path:
             profile_path = Path(custom_profile_path) / f"{profile_name}.yaml"
             if profile_path.exists():
                 self.logger.debug(f"Loading custom profile: {profile_path}")
-                return self._load_and_resolve(profile_path)
+                profile_data = self._load_and_resolve(profile_path)
+                # Cache custom profile with source path
+                self.cache.put(cache_key, profile_data, source_path=profile_path)
+                return profile_data
 
         # Try built-in profiles
         builtin_profiles = self._load_builtin_profiles()
         if profile_name in builtin_profiles:
             self.logger.debug(f"Loading built-in profile: {profile_name}")
             profile_data = builtin_profiles[profile_name].copy()
-            return self._resolve_inheritance(profile_data, builtin_profiles)
+            resolved_profile = self._resolve_inheritance(profile_data, builtin_profiles)
+            # Cache built-in profile (no source path = never expires)
+            self.cache.put(cache_key, resolved_profile, source_path=None)
+            return resolved_profile
 
         raise ProfileLoadError(
             f"Profile '{profile_name}' not found. "
@@ -240,6 +282,19 @@ class ProfileLoader:
         """Get list of available built-in profile names."""
         builtin_profiles = self._load_builtin_profiles()
         return sorted(builtin_profiles.keys())
+
+    def get_cache_statistics(self) -> dict[str, Any]:
+        """
+        Get profile cache statistics.
+
+        Returns:
+            Dictionary with cache statistics
+        """
+        return self.cache.get_statistics()
+
+    def log_cache_statistics(self) -> None:
+        """Log profile cache statistics."""
+        self.cache.log_statistics()
 
     def get_profile_info(self, profile_name: str) -> dict[str, Any]:
         """
