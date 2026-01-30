@@ -121,9 +121,10 @@ spec:
             command:
             - /bin/sh
             - -c
-            - "ps aux | grep -v grep | grep nbd-prep"
+            - "ps aux | grep -v grep | grep 'python.*nbd_prep'"
           initialDelaySeconds: 10
           periodSeconds: 30
+          failureThreshold: 5
 
       volumes:
       - name: dev

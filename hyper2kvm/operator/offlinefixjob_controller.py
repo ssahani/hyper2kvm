@@ -248,9 +248,12 @@ async def create_fixer_vm(
     node_name: str
 ):
     """
-    Create KubeVirt VirtualMachineInstance for offline fixes.
+    Create privileged Pod for offline fixes.
+
+    Note: Currently uses privileged Pod for NBD device access.
+    TODO: Migrate to KubeVirt HostDisk for production.
     """
-    logger.info(f"Creating fixer VM for {namespace}/{name}")
+    logger.info(f"Creating fixer Pod for {namespace}/{name}")
 
     try:
         # Load Kubernetes config
@@ -259,6 +262,7 @@ async def create_fixer_vm(
         except config.ConfigException:
             config.load_kube_config()
 
+        core_api = client.CoreV1Api()
         api = client.CustomObjectsApi()
 
         # Get execution settings
@@ -296,13 +300,14 @@ async def create_fixer_vm(
             if e.status != 409:  # Ignore if already exists
                 raise
 
-        # Create KubeVirt VirtualMachineInstance
-        vm_name = f'offline-fix-{name}'
-        vmi = {
-            'apiVersion': 'kubevirt.io/v1',
-            'kind': 'VirtualMachineInstance',
+        # Create privileged Pod for offline fixes
+        # TODO: Migrate to KubeVirt HostDisk approach for production
+        pod_name = f'offline-fix-{name}'
+        pod = {
+            'apiVersion': 'v1',
+            'kind': 'Pod',
             'metadata': {
-                'name': vm_name,
+                'name': pod_name,
                 'namespace': namespace,
                 'labels': {
                     'app': 'offline-fix',
@@ -310,34 +315,62 @@ async def create_fixer_vm(
                 }
             },
             'spec': {
-                'domain': {
-                    'resources': {
-                        'requests': {
-                            'memory': memory,
-                            'cpu': cpu
-                        }
-                    },
-                    'devices': {
-                        'disks': [
+                'restartPolicy': 'Never',
+                'nodeSelector': {
+                    'kubernetes.io/hostname': node_name
+                },
+                'containers': [
+                    {
+                        'name': 'fixer',
+                        'image': vm_image,
+                        'imagePullPolicy': 'IfNotPresent',
+                        'securityContext': {
+                            'privileged': True
+                        },
+                        'resources': {
+                            'requests': {
+                                'memory': memory,
+                                'cpu': cpu
+                            },
+                            'limits': {
+                                'memory': memory,
+                                'cpu': cpu
+                            }
+                        },
+                        'volumeMounts': [
                             {
                                 'name': 'vmroot',
-                                'disk': {
-                                    'bus': 'virtio'
-                                }
+                                'mountPath': '/vmroot'
                             },
                             {
                                 'name': 'config',
-                                'disk': {
-                                    'bus': 'virtio'
-                                }
+                                'mountPath': '/config'
+                            },
+                            {
+                                'name': 'dev',
+                                'mountPath': '/dev'
+                            }
+                        ],
+                        'env': [
+                            {
+                                'name': 'JOB_SPEC',
+                                'value': '/config/spec.json'
+                            },
+                            {
+                                'name': 'NBD_DEVICE',
+                                'value': nbd_device
+                            },
+                            {
+                                'name': 'MOUNT_PATH',
+                                'value': mount_path
                             }
                         ]
                     }
-                },
+                ],
                 'volumes': [
                     {
                         'name': 'vmroot',
-                        'hostDisk': {
+                        'hostPath': {
                             'path': mount_path,
                             'type': 'Directory'
                         }
@@ -347,44 +380,42 @@ async def create_fixer_vm(
                         'configMap': {
                             'name': spec_cm_name
                         }
+                    },
+                    {
+                        'name': 'dev',
+                        'hostPath': {
+                            'path': '/dev',
+                            'type': 'Directory'
+                        }
                     }
-                ],
-                'nodeSelector': {
-                    'kubernetes.io/hostname': node_name
-                }
+                ]
             }
         }
 
-        # Create VMI
-        api.create_namespaced_custom_object(
-            group='kubevirt.io',
-            version='v1',
-            namespace=namespace,
-            plural='virtualmachineinstances',
-            body=vmi
-        )
+        # Create Pod
+        core_api.create_namespaced_pod(namespace, pod)
 
-        logger.info(f"Created VM {vm_name}")
+        logger.info(f"Created fixer Pod {pod_name}")
 
         # Update status
-        patch.status['vmName'] = vm_name
-        patch.status['phase'] = 'VMRunning'
+        patch.status['podName'] = pod_name
+        patch.status['phase'] = 'Fixing'
         patch.status['conditions'] = status.get('conditions', []) + [{
-            'type': 'VMCreated',
+            'type': 'PodCreated',
             'status': 'True',
             'lastTransitionTime': datetime.now(timezone.utc).isoformat(),
-            'reason': 'FixerVMStarted',
-            'message': f'Fixer VM {vm_name} created'
+            'reason': 'FixerPodStarted',
+            'message': f'Fixer Pod {pod_name} created'
         }]
 
     except Exception as e:
-        logger.error(f"Failed to create VM: {e}")
+        logger.error(f"Failed to create fixer Pod: {e}")
         patch.status['phase'] = 'Failed'
         patch.status['conditions'] = status.get('conditions', []) + [{
             'type': 'Failed',
             'status': 'True',
             'lastTransitionTime': datetime.now(timezone.utc).isoformat(),
-            'reason': 'VMCreationFailed',
+            'reason': 'PodCreationFailed',
             'message': str(e)
         }]
 
@@ -400,7 +431,7 @@ async def delete_offline_fix_job(
     Handle deletion of OfflineFixJob.
 
     Cleanup:
-    - Delete VM
+    - Delete fixer Pod
     - Signal DaemonSet to cleanup NBD
     - Remove node annotations
     """
@@ -413,24 +444,20 @@ async def delete_offline_fix_job(
         except config.ConfigException:
             config.load_kube_config()
 
-        api = client.CustomObjectsApi()
         core_api = client.CoreV1Api()
 
-        # Delete VM if exists
-        vm_name = status.get('vmName')
-        if vm_name:
+        # Delete fixer Pod if exists
+        pod_name = status.get('podName')
+        if pod_name:
             try:
-                api.delete_namespaced_custom_object(
-                    group='kubevirt.io',
-                    version='v1',
-                    namespace=namespace,
-                    plural='virtualmachineinstances',
-                    name=vm_name
+                core_api.delete_namespaced_pod(
+                    name=pod_name,
+                    namespace=namespace
                 )
-                logger.info(f"Deleted VM {vm_name}")
+                logger.info(f"Deleted fixer Pod {pod_name}")
             except ApiException as e:
                 if e.status != 404:
-                    logger.warning(f"Failed to delete VM: {e}")
+                    logger.warning(f"Failed to delete Pod: {e}")
 
         # Signal cleanup to DaemonSet via node annotation
         node_name = status.get('node')

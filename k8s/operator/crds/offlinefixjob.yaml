@@ -66,9 +66,9 @@ spec:
                   mode:
                     type: string
                     enum:
-                    - kubevirt-vm
                     - pod
-                    default: kubevirt-vm
+                    - kubevirt-vm
+                    default: pod
                   vmImage:
                     type: string
                     default: "quay.io/hyper2kvm/offline-fix-vm:v1.0.0"
