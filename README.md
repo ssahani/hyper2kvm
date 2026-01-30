@@ -14,6 +14,8 @@
 
 Transform virtual machines from VMware, Hyper-V, AWS, Azure, and other hypervisors into production-ready KVM systems with **automated fixes**, **live migration**, and **comprehensive validation**.
 
+🎉 **NEW in v2.1.0**: Full **OpenShift Container Platform** support with OperatorHub integration, SecurityContextConstraints, Routes, and OAuth authentication!
+
 ---
 
 ## Why hyper2kvm?
@@ -574,7 +576,8 @@ h2kvmctl --cmd live-fix \
 - ✅ **Testing Integration** - Libvirt/QEMU smoke tests
 - ✅ **Cloud Features** - Cloud-init, vSphere, Azure support
 - ✅ **Worker Job Protocol v1** - Production Kubernetes deployment (v1.0-1.4)
-- ✅ **Kubernetes Operator** - Automated job orchestration with CRD ✨ NEW (v1.4.0)
+- ✅ **Kubernetes Operator** - Automated job orchestration with CRD (v1.4-2.0)
+- ✅ **OpenShift Support** - OperatorHub, Routes, SCC, OAuth ✨ NEW (v2.1.0)
 - ✅ **Container Support** - Docker, Podman, Helm charts, full CI/CD
 - ✅ **Observability** - Prometheus metrics, Grafana dashboards
 - ✅ **Documentation** - Comprehensive guides, tutorials, API reference
@@ -583,11 +586,44 @@ h2kvmctl --cmd live-fix \
 
 ---
 
-## Kubernetes & Container Deployment 🐳
+## Kubernetes & OpenShift Deployment 🐳☁️
+
+### OpenShift Container Platform Support (v2.1.0) ✨ NEW
+
+Native OpenShift support with one-click deployment from OperatorHub.
+
+**Install from OperatorHub**:
+1. Navigate to **OperatorHub** in OpenShift Console
+2. Search for "Hyper2KVM"
+3. Click **Install** → Choose namespace → Install
+4. Start migrating VMs with CRD-based jobs!
+
+**Or via Helm**:
+```bash
+helm repo add hyper2kvm https://ssahani.github.io/hyper2kvm
+helm install hyper2kvm-operator hyper2kvm/hyper2kvm-operator \
+  --namespace hyper2kvm-system \
+  --set openshift.enabled=true \
+  --set openshift.route.enabled=true
+```
+
+**OpenShift Features**:
+- ✅ **OperatorHub Integration** - One-click installation from catalog
+- ✅ **OpenShift Routes** - External access to metrics and webhooks with TLS
+- ✅ **SecurityContextConstraints** - Pre-configured SCCs for privileged workers
+- ✅ **OAuth Proxy** - Authenticated metrics access via OpenShift OAuth
+- ✅ **Platform Detection** - Automatic OpenShift API detection
+- ✅ **Disconnected Support** - Full air-gapped deployment capability
+- ✅ **Web Console Integration** - Native UI with CRD management
+- ✅ **Monitoring Stack** - Prometheus, Grafana, Alertmanager integration
+
+**Compatibility**: OpenShift 4.10 - 4.16
+
+**See**: [OpenShift Deployment Guide](docs/deployment/openshift-deployment-guide.md) | [OLM Bundle Guide](olm/README.md)
 
 ### Worker Job Protocol v1
 
-Production-grade job orchestration for VM migrations on Kubernetes with full observability and automation.
+Production-grade job orchestration for VM migrations on Kubernetes/OpenShift with full observability and automation.
 
 **Key Features:**
 - ✅ **10-State Job Lifecycle** - Created → Validated → Queued → Assigned → Running → Completed

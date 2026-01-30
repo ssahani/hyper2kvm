@@ -144,3 +144,49 @@ Webhook CA bundle (placeholder, will be patched by cert job or cert-manager)
 {{- define "hyper2kvm-operator.webhookCABundle" -}}
 {{- print "Cg==" }}
 {{- end }}
+
+{{/*
+Detect if running on OpenShift
+*/}}
+{{- define "hyper2kvm-operator.isOpenShift" -}}
+{{- if .Values.openshift.enabled }}
+{{- true }}
+{{- else if and .Values.openshift.autoDetect (.Capabilities.APIVersions.Has "route.openshift.io/v1") }}
+{{- true }}
+{{- else }}
+{{- false }}
+{{- end }}
+{{- end }}
+
+{{/*
+Platform name (kubernetes or openshift)
+*/}}
+{{- define "hyper2kvm-operator.platform" -}}
+{{- if eq (include "hyper2kvm-operator.isOpenShift" .) "true" }}
+{{- print "openshift" }}
+{{- else }}
+{{- print "kubernetes" }}
+{{- end }}
+{{- end }}
+
+{{/*
+Platform-specific annotations
+*/}}
+{{- define "hyper2kvm-operator.platformAnnotations" -}}
+{{- if eq (include "hyper2kvm-operator.isOpenShift" .) "true" }}
+{{- with .Values.openshift.templateMetadata.annotations }}
+{{- toYaml . }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Platform-specific labels
+*/}}
+{{- define "hyper2kvm-operator.platformLabels" -}}
+{{- if eq (include "hyper2kvm-operator.isOpenShift" .) "true" }}
+{{- with .Values.openshift.templateMetadata.labels }}
+{{- toYaml . }}
+{{- end }}
+{{- end }}
+{{- end }}

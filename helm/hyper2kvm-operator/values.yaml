@@ -11,6 +11,148 @@ global:
   imagePullSecrets: []
   # - name: registry-secret
 
+  # Platform detection (auto-detected if not specified)
+  # Options: kubernetes, openshift
+  platform: ""
+
+# OpenShift-specific configuration
+openshift:
+  # Enable OpenShift-specific features
+  enabled: false
+
+  # Auto-detect OpenShift platform (checks for OpenShift API)
+  autoDetect: true
+
+  # Route configuration for operator metrics
+  route:
+    # Enable Route creation
+    enabled: true
+
+    # Route hostname (auto-generated if empty)
+    host: ""
+
+    # TLS configuration
+    tls:
+      # TLS termination: edge, passthrough, reencrypt
+      termination: edge
+
+      # Insecure traffic policy: Allow, Redirect, None
+      insecureEdgeTerminationPolicy: Redirect
+
+      # Custom certificate (optional)
+      certificate: ""
+      key: ""
+      caCertificate: ""
+
+    # Route annotations
+    annotations: {}
+      # haproxy.router.openshift.io/timeout: 60s
+
+  # SecurityContextConstraints for privileged workers
+  scc:
+    # Create SCC for worker pods
+    create: true
+
+    # SCC name
+    name: "hyper2kvm-worker-scc"
+
+    # Allow privileged containers (required for NBD, mount, LVM)
+    allowPrivilegedContainer: true
+
+    # Allow host network
+    allowHostNetwork: false
+
+    # Allow host ports
+    allowHostPorts: false
+
+    # Allow host PID
+    allowHostPID: false
+
+    # Allow host IPC
+    allowHostIPC: false
+
+    # Required capabilities
+    requiredDropCapabilities:
+      - KILL
+      - MKNOD
+      - SETUID
+      - SETGID
+
+    # Allowed capabilities
+    allowedCapabilities:
+      - SYS_ADMIN
+      - SYS_MODULE
+      - SYS_RAWIO
+
+    # SELinux context
+    seLinuxContext:
+      type: MustRunAs
+
+    # Run as user
+    runAsUser:
+      type: RunAsAny
+
+    # FS Group
+    fsGroup:
+      type: RunAsAny
+
+    # Supplemental groups
+    supplementalGroups:
+      type: RunAsAny
+
+    # Volumes
+    volumes:
+      - configMap
+      - downwardAPI
+      - emptyDir
+      - persistentVolumeClaim
+      - projected
+      - secret
+      - hostPath
+
+  # OAuth proxy for authenticated metrics access
+  oauth:
+    # Enable OAuth proxy sidecar
+    enabled: false
+
+    # OAuth proxy image
+    image:
+      repository: quay.io/openshift/origin-oauth-proxy
+      tag: "4.14"
+      pullPolicy: IfNotPresent
+
+    # OAuth proxy port
+    port: 8443
+
+    # Resources for OAuth proxy
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+      requests:
+        cpu: 50m
+        memory: 32Mi
+
+    # Session secret (auto-generated if empty)
+    sessionSecret: ""
+
+  # Template metadata for OpenShift Web Console
+  templateMetadata:
+    # Template annotations
+    annotations:
+      openshift.io/display-name: "Hyper2KVM Operator"
+      openshift.io/provider-display-name: "Hyper2KVM Project"
+      openshift.io/documentation-url: "https://github.com/ssahani/hyper2kvm"
+      openshift.io/support-url: "https://github.com/ssahani/hyper2kvm/issues"
+      description: "Kubernetes operator for automated VM migration from VMware to KVM"
+      iconClass: "icon-openshift"
+      tags: "migration,vmware,kvm,virtualization"
+
+    # Template labels
+    labels:
+      app.kubernetes.io/part-of: "hyper2kvm"
+      app.openshift.io/runtime: "python"
+
 # Operator deployment configuration
 operator:
   # Operator image

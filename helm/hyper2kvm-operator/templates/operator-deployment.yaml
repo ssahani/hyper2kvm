@@ -101,9 +101,47 @@ spec:
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+{{- if and .Values.openshift.enabled .Values.openshift.oauth.enabled }}
+        # OAuth Proxy sidecar for authenticated metrics access
+        - name: oauth-proxy
+          image: {{ .Values.openshift.oauth.image.repository }}:{{ .Values.openshift.oauth.image.tag }}
+          imagePullPolicy: {{ .Values.openshift.oauth.image.pullPolicy }}
+          args:
+            - --https-address=:{{ .Values.openshift.oauth.port }}
+            - --provider=openshift
+            - --openshift-service-account={{ include "hyper2kvm-operator.fullname" . }}-oauth-proxy
+            - --upstream=http://localhost:8080
+            - --tls-cert=/etc/tls/private/tls.crt
+            - --tls-key=/etc/tls/private/tls.key
+            - --cookie-secret-file=/etc/proxy/secrets/session_secret
+            - --openshift-ca=/etc/pki/tls/cert.pem
+            - --openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            - --skip-auth-regex=^/metrics
+          ports:
+            - name: oauth-proxy
+              containerPort: {{ .Values.openshift.oauth.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.openshift.oauth.resources | nindent 12 }}
+          volumeMounts:
+            - name: oauth-tls
+              mountPath: /etc/tls/private
+              readOnly: true
+            - name: oauth-session
+              mountPath: /etc/proxy/secrets
+              readOnly: true
+{{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+{{- if and .Values.openshift.enabled .Values.openshift.oauth.enabled }}
+        - name: oauth-tls
+          secret:
+            secretName: {{ include "hyper2kvm-operator.fullname" . }}-oauth-tls
+        - name: oauth-session
+          secret:
+            secretName: {{ include "hyper2kvm-operator.fullname" . }}-oauth-session
+{{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

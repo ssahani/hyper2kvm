@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-01-30
+
+### Added - OpenShift Support
+
+- **OpenShift Route Support** - Native Routes for external access
+  - `helm/hyper2kvm-operator/templates/openshift-route.yaml` - Route templates for metrics and webhooks
+  - TLS termination support (edge, passthrough, reencrypt)
+  - Custom hostname configuration
+  - Insecure traffic policy options
+  - Automatic route creation for operator services
+
+- **SecurityContextConstraints (SCC)** - Privileged worker support
+  - `helm/hyper2kvm-operator/templates/openshift-scc.yaml` - SCC template
+  - Pre-configured SCC for worker pods requiring NBD/mount/LVM access
+  - Configurable capabilities (SYS_ADMIN, SYS_MODULE, SYS_RAWIO)
+  - SELinux context management
+  - Volume type restrictions
+  - RBAC integration for SCC usage
+
+- **OLM (Operator Lifecycle Manager) Bundle** - OperatorHub deployment
+  - `olm/bundle/manifests/hyper2kvm-operator.clusterserviceversion.yaml` - ClusterServiceVersion (900+ lines)
+  - `olm/bundle/metadata/annotations.yaml` - Bundle metadata
+  - `olm/bundle/tests/scorecard/config.yaml` - Scorecard test configuration
+  - `olm/bundle.Dockerfile` - Bundle image Dockerfile
+  - `olm/hyper2kvm-operator.package.yaml` - Package manifest
+  - OperatorHub integration with install modes (OwnNamespace, SingleNamespace, AllNamespaces)
+  - Webhook definitions (validating + mutating)
+  - CRD ownership and UI descriptors
+  - Upgrade strategy with skip range (>=1.0.0 <2.0.0)
+  - Disconnected/air-gapped environment support
+  - Related images for offline catalogs
+  - Two channels: stable (default) and preview
+
+- **OAuth Proxy Integration** - Authenticated metrics access
+  - `helm/hyper2kvm-operator/templates/openshift-oauth-proxy.yaml` - OAuth resources
+  - OAuth sidecar container for operator pods
+  - Automatic ServiceAccount OAuth integration
+  - TLS certificate management via OpenShift annotations
+  - Token-based authentication
+  - Session secret management
+
+- **Platform Detection** - Automatic OpenShift detection
+  - `helm/hyper2kvm-operator/templates/_helpers.tpl` - Detection helper functions
+  - Automatic OpenShift API detection via Capabilities
+  - Conditional resource rendering (Route vs Ingress)
+  - Platform-specific annotations and labels
+  - Manual override option
+
+- **Template Metadata** - OpenShift Web Console integration
+  - Display name, provider information, documentation URLs
+  - Icon class and categorization tags
+  - Runtime and part-of labels for console grouping
+  - Description and support information
+
+- **Disconnected/Air-Gapped Support** - Offline deployment
+  - Image mirroring instructions and examples
+  - ImageContentSourcePolicy configuration
+  - Bundle deployment in air-gapped clusters
+  - Related images manifest in CSV
+  - Internal registry integration guide
+
+- **OpenShift Monitoring Integration** - Native Prometheus integration
+  - ServiceMonitor for OpenShift Prometheus Operator
+  - PrometheusRule for alerting
+  - Grafana dashboard ConfigMap
+  - Integration with OpenShift monitoring stack
+  - Console metrics UI integration
+
+- **Comprehensive OpenShift Documentation**
+  - `docs/deployment/openshift-deployment-guide.md` - Complete deployment guide (3,000+ lines)
+  - `olm/README.md` - OLM bundle deployment guide (500+ lines)
+  - `docs/deployment/OPENSHIFT_FEATURES_SUMMARY.md` - Feature summary (600+ lines)
+  - Three installation methods: OperatorHub, Helm, Manual
+  - Security best practices
+  - Monitoring and alerting setup
+  - Troubleshooting guide
+  - Upgrade procedures
+  - Disconnected deployment workflows
+
+### Changed
+
+- **Helm Values** - Extended with OpenShift configuration section (150+ lines)
+  - `openshift.enabled` - Enable OpenShift features
+  - `openshift.autoDetect` - Auto-detect OpenShift platform
+  - `openshift.route.*` - Route configuration
+  - `openshift.scc.*` - SecurityContextConstraints settings
+  - `openshift.oauth.*` - OAuth proxy configuration
+  - `openshift.templateMetadata.*` - Console annotations/labels
+
+- **RBAC** - Added OpenShift-specific permissions
+  - SecurityContextConstraints usage permissions
+  - Route API permissions (get, list, watch, create, update, patch, delete)
+  - Service for OAuth proxy
+
+- **Operator Deployment** - OAuth proxy sidecar support
+  - Conditional OAuth proxy sidecar injection
+  - TLS volume mounts for OAuth certificates
+  - Session secret volume mounts
+
+### Compatibility
+
+- **OpenShift**: 4.10 - 4.16 (tested and supported)
+- **Kubernetes**: 1.24+ (backwards compatible)
+- **OLM**: Compatible with Operator Lifecycle Manager v1.x
+
+### Documentation
+
+- Complete OpenShift deployment guide with 3 installation methods
+- OLM bundle creation and publishing workflow
+- Disconnected/air-gapped deployment procedures
+- OpenShift-specific troubleshooting
+- Security context and RBAC configuration
+- Route and OAuth proxy setup
+
 ## [2.0.0] - 2026-01-30
 
 ### Added
