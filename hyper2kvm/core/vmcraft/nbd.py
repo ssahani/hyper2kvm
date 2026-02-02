@@ -1050,19 +1050,25 @@ class NBDDeviceManager:
             raise RuntimeError(f"Disk inspection failed for {image_path.name}: {e}") from e
 
         finally:
-            # Cleanup: deactivate LVM and disconnect NBD
-            if activate_lvm and check_lvm:
+            # Cleanup: deactivate only LVM VGs found on this NBD device
+            if activate_lvm and check_lvm and report.get("lvm", {}).get("volume_groups"):
                 try:
-                    run_sudo(
-                        self.logger,
-                        ["vgchange", "-an"],
-                        check=False,
-                        capture=True,
-                        failure_log_level=logging.DEBUG
-                    )
-                    self.logger.debug("Deactivated LVM volume groups")
+                    vgs_to_deactivate = [vg["vg"] for vg in report["lvm"]["volume_groups"]]
+                    self.logger.debug(f"Deactivating LVM volume groups: {vgs_to_deactivate}")
+                    for vg_name in vgs_to_deactivate:
+                        try:
+                            run_sudo(
+                                self.logger,
+                                ["vgchange", "-an", vg_name],
+                                check=False,
+                                capture=True,
+                                failure_log_level=logging.DEBUG
+                            )
+                            self.logger.debug(f"  Deactivated VG: {vg_name}")
+                        except Exception as e:
+                            self.logger.debug(f"  Could not deactivate VG {vg_name}: {e}")
                 except Exception as e:
-                    self.logger.debug(f"Could not deactivate VGs: {e}")
+                    self.logger.debug(f"VG deactivation warning: {e}")
 
             if temp_nbd:
                 try:

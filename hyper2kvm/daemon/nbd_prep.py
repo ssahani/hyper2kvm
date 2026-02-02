@@ -64,6 +64,7 @@ class NBDPrepDaemon:
         self.node_name = node_name
         self.api = None
         self.active_jobs = {}  # job_ref -> {device, mount_path}
+        self.activated_vgs = []  # Track VGs we activated for safe cleanup
 
     def run(self):
         """Main daemon loop."""
@@ -427,6 +428,8 @@ class NBDPrepDaemon:
             )
 
             if result.returncode == 0:
+                # Track which VGs we activated for safe cleanup
+                self.activated_vgs = vgs
                 logger.info("✓ LVM volume groups activated")
             else:
                 logger.warning(f"Failed to activate LVM: {result.stderr}")
@@ -434,18 +437,26 @@ class NBDPrepDaemon:
             logger.debug("No LVM volume groups found")
 
     def deactivate_lvm(self):
-        """Deactivate LVM volume groups."""
-        logger.info("Deactivating LVM volume groups")
-        result = subprocess.run(
-            ["vgchange", "-an"],
-            capture_output=True,
-            text=True
-        )
+        """Deactivate only LVM volume groups we activated."""
+        if not self.activated_vgs:
+            logger.debug("No LVM volume groups to deactivate")
+            return
 
-        if result.returncode == 0:
-            logger.debug("✓ LVM volume groups deactivated")
-        else:
-            logger.warning(f"Failed to deactivate LVM: {result.stderr}")
+        logger.info(f"Deactivating LVM volume groups: {self.activated_vgs}")
+        for vg in self.activated_vgs:
+            result = subprocess.run(
+                ["vgchange", "-an", vg],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                logger.debug(f"✓ Deactivated VG: {vg}")
+            else:
+                logger.warning(f"Failed to deactivate VG {vg}: {result.stderr}")
+
+        # Clear the list after deactivation
+        self.activated_vgs = []
 
     def mount_root_partition(self, nbd_device: str, job_name: str) -> str:
         """Find and mount root partition by trying all candidates."""

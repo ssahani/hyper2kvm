@@ -798,6 +798,7 @@ class StorageStackActivator:
         """
         self.logger = logger
         self.nbd_device: str | None = None  # Set by VMCraft when needed
+        self._activation_audit: dict[str, Any] = {}  # Track what was activated for safe cleanup
         self.luks_unlocker = LUKSUnlocker(
             logger,
             luks_enable=luks_enable,
@@ -825,6 +826,9 @@ class StorageStackActivator:
 
         # LUKS last because it may contain LVM (pass nbd_device for re-activation)
         audit["luks"] = self.luks_unlocker.unlock(nbd_device=self.nbd_device)
+
+        # Store audit for safe cleanup - only deactivate what we activated
+        self._activation_audit = audit
 
         return audit
 
@@ -856,13 +860,29 @@ class StorageStackActivator:
         except Exception as e:
             self.logger.debug(f"LUKS cleanup warning: {e}")
 
-        # Deactivate LVM - deactivate ALL volume groups
+        # Deactivate LVM - only deactivate volume groups we activated
         try:
             if _has_command("vgchange"):
-                self.logger.debug("Deactivating all LVM volume groups...")
-                run_sudo(self.logger, ["vgchange", "-an", "--all"],
-                       check=False, capture=True, failure_log_level=logging.DEBUG)
-                self.logger.debug("LVM volume groups deactivated")
+                # Get list of VGs we activated
+                activated_vgs = []
+                if self._activation_audit.get("lvm") and self._activation_audit["lvm"].get("vgs"):
+                    activated_vgs = self._activation_audit["lvm"]["vgs"]
+
+                if activated_vgs:
+                    # Deactivate only the specific VGs we activated
+                    # Use --devicesfile "" for consistency with activation (libguestfs approach)
+                    self.logger.debug(f"Deactivating LVM volume groups: {activated_vgs}")
+                    for vg in activated_vgs:
+                        try:
+                            run_sudo(self.logger, ["vgchange", "--devicesfile", "", "-an", vg],
+                                   check=False, capture=True, failure_log_level=logging.DEBUG)
+                            self.logger.debug(f"  Deactivated VG: {vg}")
+                        except Exception as e:
+                            self.logger.debug(f"  Failed to deactivate VG {vg}: {e}")
+                    self.logger.debug("LVM volume groups deactivated")
+                else:
+                    # No tracked VGs - skip deactivation to avoid affecting host
+                    self.logger.debug("No LVM volume groups tracked - skipping deactivation")
         except Exception as e:
             self.logger.debug(f"LVM deactivation warning: {e}")
 
@@ -913,19 +933,25 @@ class StorageStackActivator:
             self.logger.debug(f"Recursive unmount warning: {e}")
 
         try:
-            # Final LVM deactivation pass (in case some VGs weren't caught)
-            run_sudo(self.logger, ["vgchange", "-an", "--all"],
-                   check=False, capture=True, failure_log_level=logging.DEBUG)
-        except Exception:
-            pass
-
-        try:
-            # Remove all device mapper devices (aggressive but safe with proper unmount first)
-            run_sudo(self.logger, ["dmsetup", "remove_all"],
-                   check=False, capture=True, failure_log_level=logging.DEBUG)
-            self.logger.debug("Removed all device mapper devices")
+            # Clean up only device mapper devices we created (based on our prefix)
+            # This avoids affecting host system's device mapper devices
+            if _has_command("dmsetup") and self.luks_unlocker.luks_mapper_prefix:
+                result = run_sudo(self.logger, ["dmsetup", "ls"],
+                                check=False, capture=True, failure_log_level=logging.DEBUG)
+                if result and result.stdout:
+                    for line in result.stdout.splitlines():
+                        # Look for devices with our prefix
+                        parts = line.split()
+                        if parts and self.luks_unlocker.luks_mapper_prefix in parts[0]:
+                            dev_name = parts[0]
+                            try:
+                                run_sudo(self.logger, ["dmsetup", "remove", dev_name],
+                                       check=False, capture=True, failure_log_level=logging.DEBUG)
+                                self.logger.debug(f"Removed device mapper device: {dev_name}")
+                            except Exception as e:
+                                self.logger.debug(f"Failed to remove dm device {dev_name}: {e}")
         except Exception as e:
-            self.logger.debug(f"dmsetup remove_all warning: {e}")
+            self.logger.debug(f"dmsetup cleanup warning: {e}")
 
         try:
             # Final udev settle to ensure all cleanup is processed
