@@ -35,7 +35,37 @@ except ImportError:
 
 class Orchestrator:
     """
-    Main pipeline orchestrator.
+    Main pipeline orchestrator for VM migration workflows.
+
+    Coordinates all phases of VM migration including:
+    - Source discovery (vSphere, Azure, local files)
+    - Disk format conversion (VMDK, OVA, VHD → QCOW2)
+    - Offline guest fixes (fstab, bootloader, drivers)
+    - Validation and testing (libvirt, QEMU)
+    - Recovery management (checkpoint/resume)
+
+    Supported source types:
+        - local: Local VMDK/OVA/VHD files
+        - vsphere: VMware vCenter/ESXi
+        - azure: Azure VMs
+        - ova: OVA archives
+        - ovf: OVF packages
+
+    Attributes:
+        logger: Logger instance for status/error reporting
+        args: Parsed command-line arguments
+        recovery_manager: Optional recovery manager for resumable operations
+        disks: List of discovered disk files to process
+        vsphere_exporter: Handler for vSphere exports
+        azure_exporter: Handler for Azure exports
+        disk_discovery: Component for finding/validating disk files
+        disk_processor: Component for conversion and fixing
+
+    Examples:
+        >>> logger = logging.getLogger(__name__)
+        >>> args = parse_args_with_config()
+        >>> orchestrator = Orchestrator(logger, args)
+        >>> orchestrator.run()  # Execute full pipeline
     """
 
     def __init__(self, logger: logging.Logger, args: argparse.Namespace):

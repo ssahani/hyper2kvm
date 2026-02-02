@@ -64,12 +64,29 @@ hyper2kvm --config test-confs/03-local-ubuntu-22-vmdk.yaml local
 
 ### 04-local-photon-os-vmdk.yaml
 **VMware Photon OS VMDK → QCOW2**
-- ✅ Dracut initramfs regeneration
+- ✅ Dracut initramfs regeneration with virtio drivers
 - ✅ systemd-networkd compatibility
+- ✅ Virtio support verified (ships with drivers built-in)
+- ⚠️  Note: "initramfs rebuild failed: mtime+size unchanged" is **normal** - means drivers already present
 
 ```bash
-hyper2kvm --config test-confs/04-local-photon-os-vmdk.yaml local
+sudo ./h2kvmctl --config test-confs/04-local-photon-os-vmdk.yaml
 ```
+
+**Libvirt Deployment:**
+```bash
+# Use virtio configuration (recommended)
+sudo virsh define test-confs/photon-virtio.xml
+sudo virsh start photon-converted
+
+# Or SATA fallback (rarely needed)
+sudo virsh define test-confs/photon-sata.xml
+sudo virsh start photon-converted
+```
+
+**See also:**
+- `test-confs/README-photon.md` - Detailed Photon OS guide
+- `docs/os-support/photon-os.md` - Complete documentation
 
 ---
 
@@ -149,6 +166,32 @@ VMware Photon OS specific configurations.
 ## 📄 LibVirt XML Templates
 
 Domain XML templates for converted VMs.
+
+### Photon OS Templates
+
+**photon-virtio.xml** - Recommended configuration
+- ✅ Virtio disk for best performance
+- ✅ SeaBIOS (BIOS mode)
+- ✅ VNC graphics
+- ✅ Tested and verified
+
+```bash
+sudo virsh define test-confs/photon-virtio.xml
+sudo virsh start photon-converted
+```
+
+**photon-sata.xml** - Fallback configuration
+- ⚠️  SATA disk (compatibility mode)
+- ⚠️  Only use if virtio fails (rare)
+- ✅ SeaBIOS (BIOS mode)
+- ✅ VNC graphics
+
+```bash
+sudo virsh define test-confs/photon-sata.xml
+sudo virsh start photon-converted
+```
+
+### Generic Templates
 
 ### 60-libvirt-guest-uefi.xml
 **Generic UEFI Guest Template**
@@ -296,17 +339,57 @@ For detailed documentation, see:
 
 ---
 
-## 🆘 Support
+## 🆘 Support & Troubleshooting
+
+### Common Issues
+
+#### "initramfs rebuild failed: mtime+size unchanged"
+**This is normal for cloud-native distributions like Photon OS.**
+- ✅ It means virtio drivers are already present
+- ✅ No action needed - the VM will boot successfully
+- ✅ Verify by checking VM gets IP address and SSH responds
+
+#### Domain doesn't persist after conversion
+**The smoke test creates temporary domains for testing.**
+- Use `keep_domain: true` in config for persistent domains
+- Manually define domain: `sudo virsh define test-confs/photon-virtio.xml`
+- Check domain status: `sudo virsh list --all`
+
+#### VM boots but can't connect
+**Verify the VM is fully operational:**
+```bash
+# Get IP address
+sudo virsh domifaddr photon-converted
+
+# Test SSH port
+nc -zv <IP> 22
+
+# Check domain is running
+sudo virsh domstate photon-converted
+```
+
+#### Need root permissions
+**h2kvmctl requires sudo for disk operations:**
+```bash
+# Correct usage
+sudo ./h2kvmctl --config test-confs/04-local-photon-os-vmdk.yaml
+
+# Will fail without sudo
+./h2kvmctl --config test-confs/04-local-photon-os-vmdk.yaml
+```
+
+### Getting Help
 
 If you encounter issues:
-1. Check the **docs/90-Failure-Modes.md** guide
-2. Enable verbose logging: `verbose: 2`
-3. Generate a report: `report: /path/to/report.md`
-4. Review logs in your output directory
+1. Check OS-specific docs: `docs/os-support/photon-os.md`
+2. Review failure modes: `docs/reference/failure-modes.md`
+3. Enable verbose logging: `verbose: 2` in config
+4. Generate report: `report: /path/to/report.md`
+5. Check logs in output directory
 
 ---
 
-**Last Updated:** 2026-01-25
-**hyper2kvm Version:** v0.1.0
+**Last Updated:** 2026-02-08
+**hyper2kvm Version:** v0.2.0
 **VMCraft Version:** v9.0
 **Maintained by:** Susant Sahani <ssahani@gmail.com>

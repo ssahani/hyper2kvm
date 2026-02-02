@@ -10,6 +10,25 @@ from .orchestrator.orchestrator import Orchestrator
 
 
 def main() -> None:
+    """
+    Main entry point for hyper2kvm CLI.
+
+    Parses command-line arguments, configures logging, and orchestrates the
+    VM migration workflow. Supports both traditional workflow and manifest-driven
+    batch migrations.
+
+    Exit codes:
+        0: Success
+        1: General failure
+        2+: Specific error codes from Fatal exceptions
+
+    Raises:
+        Fatal: For critical errors that should terminate execution
+
+    Examples:
+        $ h2kvmctl --config migration.yaml
+        $ h2kvmctl --manifest batch-migration.json
+    """
     try:
         args, _conf, logger = parse_args_with_config()
 

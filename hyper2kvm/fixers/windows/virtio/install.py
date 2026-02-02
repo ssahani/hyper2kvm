@@ -104,7 +104,8 @@ def _virtio_preflight(self, g: guestfs.GuestFS) -> Tuple[Optional[Path], Optiona
                 from .windows_virtio_paths import _resolve_windows_system_paths
                 paths = _resolve_windows_system_paths(self, g)
                 win_info = _windows_version_info(self, g, paths=paths)
-            except:
+            except (ImportError, RuntimeError, KeyError, OSError) as version_err:
+                logger.debug(f"Could not get Windows version info: {version_err}")
                 win_info = None
 
             warn_no_virtio_drivers(logger, win_info)

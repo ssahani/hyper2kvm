@@ -75,7 +75,7 @@ sudo dnf install -y \
   libguestfs libguestfs-tools \
   openssh-clients rsync \
   libvirt-client libvirt-daemon-kvm
-```bash
+```
 
 ### Ubuntu / Debian
 
@@ -87,13 +87,13 @@ sudo apt-get install -y \
   libguestfs-tools \
   openssh-client rsync \
   libvirt-clients libvirt-daemon-system
-```bash
+```
 
 ### Verify libguestfs
 
 ```bash
 sudo libguestfs-test-tool
-```bash
+```
 
 This must pass before proceeding. If it fails, check KVM permissions and kernel modules.
 

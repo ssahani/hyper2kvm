@@ -26,14 +26,54 @@ from ..ssh.ssh_config import SSHConfig
 
 class DiskDiscovery:
     """
-    Discovers and prepares disks from various input sources.
+    Multi-source disk discovery and extraction engine.
 
-    Responsibilities:
-    - Detect input mode from args
-    - Handle local VMDK, OVA, OVF, VHD, AMI, RAW inputs
-    - Handle remote fetch-and-fix mode
-    - Handle live-fix mode (no disks returned)
-    - Manage temporary extraction directories
+    Discovers, validates, and prepares disk images from diverse input sources
+    for the migration pipeline. Handles format-specific extraction, SSH-based
+    remote fetching, and temporary workspace management.
+
+    Supported Input Sources:
+    - local: Local VMDK files (descriptor + extent or monolithic)
+    - ova: VMware OVA archives (TAR with OVF descriptor + VMDKs)
+    - ovf: OVF packages (directory with .ovf + VMDKs)
+    - vhd: Hyper-V VHD/VHDX files or TAR archives
+    - raw: Raw disk images (.img, .raw) or TAR archives
+    - ami: Amazon AMI bundles (manifest + parts or TAR)
+    - fetch-and-fix: Remote VMDK fetch via SSH/SCP/rsync
+    - live-fix: Live VM repair over SSH (no disk extraction)
+    - libvirt-xml: Generate migration manifest from libvirt domain XML
+
+    Features:
+    - Automatic format detection and extraction
+    - Optional on-the-fly QCOW2 conversion during extraction
+    - Nested TAR extraction for bundled images
+    - SSH client configuration for remote operations
+    - Temporary directory lifecycle management
+    - Filesystem boundary checking and size validation
+
+    Attributes:
+        logger: Logger instance for status/error reporting
+        args: Parsed command-line arguments specifying input source
+
+    Returns:
+        Tuple[List[Path], Optional[Path]]:
+            - List of discovered/extracted disk paths
+            - Temporary directory to cleanup (None if cleanup not needed)
+
+    Examples:
+        >>> discovery = DiskDiscovery(logger, args)
+        >>> disks, temp_dir = discovery.discover(Path("/output"))
+        >>> # Process disks...
+        >>> if temp_dir and temp_dir.exists():
+        ...     shutil.rmtree(temp_dir)  # Cleanup
+
+    See Also:
+        - OVF: OVA/OVF archive extraction
+        - VHD: Hyper-V format handling
+        - RAW: Raw image extraction
+        - AMI: Amazon AMI bundle parsing
+        - Fetch: Remote SSH-based VMDK retrieval
+        - LibvirtXML: Domain XML manifest generation
     """
 
     def __init__(self, logger: logging.Logger, args: argparse.Namespace):

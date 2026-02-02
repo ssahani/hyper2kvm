@@ -47,6 +47,26 @@ class Config:
 
     @staticmethod
     def load_one(logger: logging.Logger, path: str) -> dict[str, Any]:
+        """
+        Load a single configuration file (YAML or JSON).
+
+        Args:
+            logger: Logger instance for error reporting
+            path: Path to configuration file (.yaml, .yml, or .json)
+
+        Returns:
+            Dictionary containing normalized configuration with:
+            - Keys converted from dash-case to underscore_case
+            - Aliases canonicalized (cmd<->command, etc.)
+            - Signature verified if enabled
+
+        Raises:
+            SystemExit: If file not found, invalid format, or verification fails
+
+        Examples:
+            >>> config = Config.load_one(logger, "migration.yaml")
+            >>> print(config['cmd'])  # 'local', 'vsphere', etc.
+        """
         p = Path(path).expanduser().resolve()
         if not p.exists():
             # Enhanced error message (no behavior change: still dies with code=1)

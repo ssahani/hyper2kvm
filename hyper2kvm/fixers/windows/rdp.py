@@ -274,7 +274,8 @@ def _find_current_control_set(g: guestfs.GuestFS, h: int, root_node: int) -> int
 
         # Fallback: try ControlSet001
         return _find_registry_key(g, h, root_node, "ControlSet001")
-    except:
+    except (RuntimeError, OSError, KeyError, AttributeError) as e:
+        logger.debug(f"Failed to find current control set: {e}")
         return 0
 
 
@@ -296,7 +297,8 @@ def _find_registry_key(g: guestfs.GuestFS, h: int, parent_node: int, path: str) 
             if not found:
                 return 0
         return node
-    except:
+    except (RuntimeError, OSError, KeyError, ValueError) as e:
+        logger.debug(f"Registry key navigation failed for '{path}': {e}")
         return 0
 
 
@@ -313,7 +315,8 @@ def _get_registry_dword(g: guestfs.GuestFS, h: int, node: int, value_name: str) 
                     # Convert bytes to int (little-endian)
                     return int.from_bytes(data[:4], byteorder='little')
         return None
-    except:
+    except (RuntimeError, OSError, KeyError, ValueError, IndexError) as e:
+        logger.debug(f"Failed to read DWORD value '{value_name}': {e}")
         return None
 
 

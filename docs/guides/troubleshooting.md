@@ -421,6 +421,43 @@ EOF
 
 ## Boot Problems
 
+### Warning: "initramfs rebuild failed: mtime+size unchanged"
+
+**Symptom:**
+```
+⚠️  initramfs rebuild failed: mtime+size unchanged (mtime=1769251671, size=22324924)
+```
+
+**This is NORMAL and expected for cloud-native distributions!**
+
+**Explanation:**
+- This warning means the initramfs **already contains virtio drivers**
+- Common with Photon OS, CoreOS, Flatcar, and other cloud-native distros
+- The rebuild detected drivers are present, so no changes were made
+- **The VM will boot successfully** - this is not an error
+
+**Verification:**
+```bash
+# After conversion, check VM boots successfully
+sudo virsh list --all                # VM should be running
+sudo virsh domifaddr photon-converted  # Should get IP address
+nc -zv <IP> 22                         # SSH port should be accessible
+```
+
+**When to investigate:**
+- ❌ VM doesn't boot at all
+- ❌ Kernel panic about missing drivers
+- ✅ Otherwise, ignore this warning - it's expected!
+
+**Related distributions that commonly show this:**
+- VMware Photon OS (all versions)
+- Fedora CoreOS
+- Flatcar Container Linux
+- RancherOS
+- K3OS
+
+---
+
 ### Problem: VM Won't Boot After Conversion
 
 **Diagnosis:**
@@ -456,6 +493,61 @@ virt-customize -a output.qcow2 --run-command 'dracut -f'
 ```bash
 virt-customize -a output.qcow2 --edit '/etc/fstab:s/sda/vda/g'
 ```
+
+### Problem: Libvirt Domain Doesn't Persist After Conversion
+
+**Symptom:**
+```
+# After conversion completes successfully
+sudo virsh list --all
+# Domain is missing or shows as "shut off"
+
+error: failed to get domain 'photon-converted'
+```
+
+**Explanation:**
+The `libvirt_test` smoke test creates **temporary domains** for testing that are automatically cleaned up after validation passes.
+
+**Solution:**
+
+**Option 1: Use keep_domain configuration**
+```yaml
+# In your config file
+libvirt_test: true
+keep_domain: true      # Persist the domain after testing
+vm_name: my-vm
+```
+
+**Option 2: Manually define domain from XML**
+```bash
+# Use pre-configured XML templates
+sudo virsh define test-confs/photon-virtio.xml
+sudo virsh start photon-converted
+
+# Or create your own XML
+sudo virsh define /path/to/domain.xml
+sudo virsh start your-vm-name
+```
+
+**Option 3: Skip smoke test and define manually**
+```yaml
+# In your config file
+libvirt_test: false    # Skip automatic testing
+```
+
+Then define manually after conversion:
+```bash
+sudo virsh define your-domain.xml
+sudo virsh start your-vm
+```
+
+**Verify domain is persistent:**
+```bash
+sudo virsh list --all --persistent
+# Should show your domain with "yes" in persistent column
+```
+
+---
 
 ### Problem: Kernel Panic on Boot
 

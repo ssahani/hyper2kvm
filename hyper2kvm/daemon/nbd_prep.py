@@ -33,16 +33,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Constants
-ANNOTATION_OFFLINE_FIX_JOB = "offlinefix.hyper2kvm.io/job"
-ANNOTATION_NBD_READY = "offlinefix.hyper2kvm.io/nbd-ready"
-ANNOTATION_NBD_DEVICE = "offlinefix.hyper2kvm.io/nbd-device"
-ANNOTATION_MOUNT_PATH = "offlinefix.hyper2kvm.io/mount-path"
-ANNOTATION_CLEANUP = "offlinefix.hyper2kvm.io/cleanup"
-
-NBD_BASE_PATH = "/dev/nbd"
-MOUNT_BASE_PATH = "/var/lib/kubevirt-offline"
-IMPORTS_PATH = "/var/lib/imports"
+# Import constants from centralized module
+try:
+    from ..core.constants import (
+        ANNOTATION_OFFLINE_FIX_JOB,
+        ANNOTATION_NBD_READY,
+        ANNOTATION_NBD_DEVICE,
+        ANNOTATION_MOUNT_PATH,
+        ANNOTATION_CLEANUP,
+        NBD_BASE_PATH,
+        MOUNT_BASE_PATH,
+        IMPORTS_PATH,
+    )
+except ImportError:
+    # Fallback for standalone execution
+    ANNOTATION_OFFLINE_FIX_JOB = "offlinefix.hyper2kvm.io/job"
+    ANNOTATION_NBD_READY = "offlinefix.hyper2kvm.io/nbd-ready"
+    ANNOTATION_NBD_DEVICE = "offlinefix.hyper2kvm.io/nbd-device"
+    ANNOTATION_MOUNT_PATH = "offlinefix.hyper2kvm.io/mount-path"
+    ANNOTATION_CLEANUP = "offlinefix.hyper2kvm.io/cleanup"
+    NBD_BASE_PATH = "/dev/nbd"
+    MOUNT_BASE_PATH = "/var/lib/kubevirt-offline"
+    IMPORTS_PATH = "/var/lib/imports"
 
 
 class NBDPrepDaemon:
@@ -205,8 +217,8 @@ class NBDPrepDaemon:
             if mount_path and self.is_mount_point(mount_path):
                 try:
                     self.unmount(mount_path)
-                except:
-                    pass
+                except (OSError, RuntimeError) as unmount_error:
+                    logger.warning(f"Failed to unmount {mount_path}: {unmount_error}")
 
             # Update node annotation with error
             try:

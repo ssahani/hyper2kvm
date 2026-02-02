@@ -75,6 +75,15 @@ sudo virsh net-start default 2>/dev/null || true
 * Photon OS (minimal / server-oriented)
 * GUI may or may not be installed (console-only is still a valid success)
 
+**Important - Virtio Support:**
+
+Photon OS is a **cloud-native distribution** that ships with virtio drivers pre-installed in the initramfs. After conversion with hyper2kvm:
+
+* ✅ **Virtio disk works out-of-the-box** (recommended for performance)
+* ✅ The initramfs rebuild warning `"mtime+size unchanged"` is **normal and expected**
+* ✅ This warning means virtio drivers were already present - no changes needed
+* ⚠️  SATA fallback is rarely needed (only for very old Photon versions)
+
 ---
 
 ## BIOS + GUI libvirt XML (Most Compatible)
@@ -210,13 +219,19 @@ or:
 
 ---
 
-### “No bootable device”
+### "No bootable device"
 
-Some Photon installs expect SATA instead of virtio:
+**This is very rare with modern Photon OS.** Photon ships with virtio drivers and should boot with virtio disk.
+
+If you encounter this issue (unlikely with Photon OS 3.0+), try SATA as a fallback:
 
 ```xml
 <target dev='sda' bus='sata'/>
 ```
+
+**Recommended approach:**
+1. Always try virtio first (default configuration)
+2. Only use SATA if virtio fails (not expected for Photon OS)
 
 ---
 
@@ -231,6 +246,29 @@ systemctl get-default
 ```
 
 If it reports `multi-user.target`, this is **expected behavior**.
+
+---
+
+### Initramfs rebuild warning during conversion
+
+During hyper2kvm conversion, you may see:
+
+```
+⚠️  initramfs rebuild failed: mtime+size unchanged
+```
+
+**This is normal and expected for Photon OS.** It means:
+
+* Photon OS already has virtio drivers in the initramfs
+* The rebuild detected the drivers are present
+* No changes were needed (image is already KVM-ready)
+* The VM will boot successfully
+
+**Verification:**
+After conversion, the VM should:
+- ✅ Acquire an IP address via DHCP
+- ✅ SSH daemon accessible on port 22
+- ✅ Boot with virtio disk for optimal performance
 
 ---
 

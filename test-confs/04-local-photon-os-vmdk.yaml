@@ -5,18 +5,26 @@
 # Converts a local VMware Photon OS VMDK to QCOW2 format
 #
 # Usage:
-#   hyper2kvm --config 04-local-photon-os-vmdk.yaml local
+#   sudo ./h2kvmctl --config test-confs/04-local-photon-os-vmdk.yaml
 #
 # Features:
 #   ✅ UUID-based fstab stabilization
 #   ✅ GRUB root= fixing
-#   ✅ Dracut initramfs regeneration
+#   ✅ Dracut initramfs regeneration with virtio drivers
 #   ✅ QCOW2 compression
 #   ✅ systemd-networkd compatibility
+#   ✅ Virtio support verified (Photon OS ships with virtio drivers)
 #
 # Requirements:
 #   - libguestfs with dracut support
 #   - Photon OS guest (RPM-based)
+#
+# Note: You may see "initramfs rebuild failed: mtime+size unchanged" - this is
+#       NORMAL for Photon OS. It means virtio drivers are already present.
+#
+# Libvirt XML configs for deployment:
+#   - test-confs/photon-virtio.xml (recommended - best performance)
+#   - test-confs/photon-sata.xml (fallback - rarely needed)
 # ==============================================================================
 
 cmd: local

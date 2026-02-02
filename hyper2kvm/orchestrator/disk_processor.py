@@ -37,13 +37,45 @@ import tempfile
 
 class DiskProcessor:
     """
-    Processes disks through the conversion pipeline.
+    Disk processing pipeline coordinator for VM migration workflows.
 
-    Responsibilities:
-    - Single disk processing (flatten + fix + convert)
-    - Parallel multi-disk processing
-    - Progress reporting
-    - Output path resolution
+    Orchestrates the complete disk processing workflow including:
+    - VMDK validation and inspection (controller compatibility, snapshots, boot mode)
+    - Automatic BusLogic→LSI Logic controller fixes
+    - Snapshot flattening (multi-extent VMDKs → single image)
+    - Offline guest filesystem repairs (fstab, initramfs, grub, drivers)
+    - Format conversion (VMDK/OVA/VHD → QCOW2/RAW)
+    - Progress monitoring and error recovery
+    - Parallel multi-disk processing with thread pooling
+
+    Capabilities:
+    - Single-threaded sequential processing (default)
+    - Multi-threaded parallel processing (via --parallel-processing)
+    - Recovery checkpoint integration for resumable operations
+    - Cloud-init configuration injection
+    - Firstboot script injection
+    - Network/hostname/user configuration injection
+    - LUKS encrypted volume support
+    - Virtio driver injection for controller compatibility
+
+    Attributes:
+        logger: Logger instance for status/error reporting
+        args: Parsed command-line arguments from argparse
+        recovery_manager: Optional recovery manager for checkpoint/resume
+
+    Examples:
+        >>> processor = DiskProcessor(logger, args, recovery_manager)
+        >>> disks = [Path("vm1.vmdk"), Path("vm2.vmdk")]
+        >>> output = processor.process_disks_parallel(disks, Path("/output"))
+
+        >>> # Or single disk:
+        >>> result = processor.process_single_disk(disk, Path("/output"), 0, 1)
+
+    See Also:
+        - OfflineFSFix: Handles guest filesystem modifications
+        - Flatten: Snapshot flattening implementation
+        - Convert: QEMU-based image format conversion
+        - VMDKInspector: Pre-migration validation and risk assessment
     """
 
     def __init__(

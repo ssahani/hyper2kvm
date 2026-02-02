@@ -214,28 +214,39 @@ sudo apt-get install -y ntfs-3g libhivex-bin  # Ubuntu/Debian
 **Step 1:** Create `migration.yaml`
 
 ```yaml
-command: local
-vmdk: /vmware/windows-server.vmdk
-output_dir: /kvm
-to_output: windows-server.qcow2
+# Linux VM example (Photon OS, RHEL, Ubuntu, etc.)
+cmd: local
+vmdk: /path/to/photon.vmdk
+output_dir: /output
+to_output: photon-converted.qcow2
 out_format: qcow2
-fstab_mode: stabilize-all    # Stabilize mount points
-regen_initramfs: true         # Add VirtIO drivers
-compress: true                # Save disk space
+flatten: true                 # Flatten snapshot chains
+fstab_mode: stabilize-all    # Stabilize mount points (UUID)
+regen_initramfs: true        # Add VirtIO drivers
+no_grub: false               # Fix GRUB configuration
+checksum: true               # Generate SHA256
+libvirt_test: true           # Verify boot (optional)
 ```
 
 **Step 2:** Run migration
 
 ```bash
-h2kvmctl --config migration.yaml
+sudo h2kvmctl --config migration.yaml
 ```
 
-**Step 3:** Import to libvirt
+**Step 3:** Deploy to libvirt
 
 ```bash
-virsh define /kvm/windows-server.xml
-virsh start windows-server
+# For Photon OS and cloud-native distros (recommended)
+sudo virsh define test-confs/photon-virtio.xml
+sudo virsh start photon-converted
+
+# Verify it's running
+sudo virsh domifaddr photon-converted  # Get IP
+nc -zv <IP> 22                          # Test SSH
 ```
+
+> 💡 **Cloud-native distros** (Photon OS, CoreOS, Flatcar) ship with virtio drivers and work out-of-the-box!
 
 ### 💻 Option 2: Command Line Flags
 

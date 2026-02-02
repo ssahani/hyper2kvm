@@ -181,8 +181,8 @@ def _check_bitlocker_metadata(g: guestfs.GuestFS) -> Dict[str, Any]:
                             if label and ("-fve-fs-" in label.lower() or "bitlocker" in label.lower()):
                                 result["found"] = True
                                 result["volumes"].append(partition)
-                        except:
-                            pass
+                        except (RuntimeError, OSError) as label_err:
+                            logging.debug(f"Could not check label for {partition}: {label_err}")
 
                     except Exception as e:
                         logging.debug(f"Could not check partition {partition}: {e}")
@@ -224,8 +224,8 @@ def _check_bitlocker_files(g: guestfs.GuestFS, root: str) -> Dict[str, Any]:
                     if f.endswith(".BEK") or f.endswith(".bek"):
                         result["found"] = True
                         result["files"].append(f)
-            except:
-                pass
+            except (RuntimeError, OSError) as ls_err:
+                logging.debug(f"Could not list files in {windows_path}: {ls_err}")
 
     except Exception as e:
         logging.debug(f"File check failed: {e}")

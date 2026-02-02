@@ -109,6 +109,7 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 
 ### 🖥️ OS-Specific Documentation
 - **[OS Support Hub](os-support/)** - Complete OS support overview
+- **[Cloud-Native Distributions](guides/cloud-native-distros.md)** ⭐ NEW - Photon OS, CoreOS, Flatcar migration guide
 - **[Windows Migration](os-support/windows/guide.md)** - Windows VM migration guide
 - **[Windows Boot Cycle](os-support/windows/boot-cycle.md)** - Boot process details
 - **[Windows Networking](os-support/windows/networking.md)** - Network configuration
@@ -117,7 +118,7 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 - **[RHEL/CentOS Migration](os-support/rhel-10.md)** - Red Hat Enterprise Linux
 - **[Ubuntu Migration](os-support/ubuntu-2404.md)** - Ubuntu and Debian-based systems
 - **[SUSE Migration](os-support/suse.md)** - openSUSE and SLES
-- **[Photon OS Migration](os-support/photon-os.md)** - VMware Photon OS
+- **[Photon OS Migration](os-support/photon-os.md)** - VMware Photon OS detailed guide
 
 ### 🚢 Deployment & Operations
 - **[Deployment Hub](deployment/)** - Complete deployment overview
