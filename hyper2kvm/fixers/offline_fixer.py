@@ -989,36 +989,99 @@ class OfflineFSFix:
 
         raise RuntimeError(f"Failed mounting root {dev} (subvol={subvol}): {last_err or first_err}")
 
+    def _path_exists_ci_guestfs(self, g: guestfs.GuestFS, path: str) -> bool:
+        """
+        Check if path exists (case-insensitive) using guestfs API.
+
+        Needed for Windows filesystems which may have mixed case.
+
+        Args:
+            g: GuestFS instance
+            path: Path to check (e.g., "Windows/System32")
+
+        Returns:
+            True if path exists (case-insensitive match)
+        """
+        try:
+            # Try exact path first
+            if g.exists(f"/{path}"):
+                return True
+
+            # Try case-insensitive search for Windows filesystems
+            parts = path.strip("/").split("/")
+            current_path = "/"
+
+            for part in parts:
+                if not part:
+                    continue
+
+                # List directory contents
+                try:
+                    entries = [U.to_text(x) for x in g.ls(current_path) if U.to_text(x)]
+                except Exception:
+                    return False
+
+                # Look for case-insensitive match
+                found = False
+                for entry in entries:
+                    if entry.lower() == part.lower():
+                        current_path = f"{current_path.rstrip('/')}/{entry}"
+                        found = True
+                        break
+
+                if not found:
+                    return False
+
+            # Verify final path exists
+            return g.exists(current_path)
+
+        except Exception:
+            return False
+
     def _looks_like_root(self, g: guestfs.GuestFS) -> bool:
         """
         Check if mounted filesystem looks like guest root (not /boot).
 
         Root signals (any one is enough):
-          - /etc/os-release exists (definitive)
-          - /etc exists AND (systemd or a shell exists)
+          Windows:
+            - Windows/System32 directory exists
+            - Program Files directory exists
+            - Windows/explorer.exe or Windows/regedit.exe exists
+          Linux:
+            - /etc/os-release exists (definitive)
+            - /etc exists AND (systemd or a shell exists)
 
         /boot signals (reject if found):
           - vmlinuz-* or initramfs-* at the top level
           - AND any of: /grub2, /grub, /efi, /loader directories
-          - AND missing /etc/os-release
+          - AND missing /etc/os-release and Windows indicators
         """
-        # Gather diagnostic information
-        has_os_release = False
-        has_etc = False
-        has_systemd = False
-        has_shell = False
-        has_vmlinuz = False
-        has_initramfs = False
-        has_boot_dirs = False
-
         try:
-            # Best root signal: /etc/os-release
-            has_os_release = g.is_file("/etc/os-release")
-            if has_os_release:
-                self.logger.info("🔍 Accepted: has /etc/os-release (definitive root indicator)")
+            # First check for Windows root indicators (case-insensitive)
+            # Windows detection comes first as NTFS is case-insensitive and
+            # checking for Windows paths is faster than Linux indicators
+            windows_indicators = [
+                "Windows/System32",
+                "Program Files",
+                "Windows/explorer.exe",
+                "Windows/regedit.exe",
+                "Windows/System32/config/SOFTWARE",
+            ]
+
+            windows_hits = sum(1 for ind in windows_indicators if self._path_exists_ci_guestfs(g, ind))
+            if windows_hits >= 2:
+                self.logger.info(
+                    f"🔍 Accepted: Windows root detected ({windows_hits} indicators found)"
+                )
                 return True
 
-            # Check for /etc directory
+            # Best Linux root signal: /etc/os-release
+            has_os_release = g.is_file("/etc/os-release")
+            if has_os_release:
+                self.logger.info("🔍 Accepted: has /etc/os-release (definitive Linux root indicator)")
+                return True
+
+            # Gather Linux diagnostic information
             has_etc = g.is_dir("/etc")
 
             # Check for systemd
@@ -1032,6 +1095,8 @@ class OfflineFSFix:
                         g.is_file("/bin/sh"))
 
             # Check top-level for boot signatures
+            has_vmlinuz = False
+            has_initramfs = False
             try:
                 top_files = [U.to_text(x) for x in g.ls("/") if U.to_text(x)]
                 has_vmlinuz = any(name.startswith("vmlinuz-") for name in top_files)
@@ -1049,14 +1114,14 @@ class OfflineFSFix:
                 self.logger.info(
                     f"🔍 Rejected: looks like /boot "
                     f"(vmlinuz={has_vmlinuz}, initramfs={has_initramfs}, "
-                    f"boot_dirs={has_boot_dirs}, os_release={has_os_release})"
+                    f"boot_dirs={has_boot_dirs})"
                 )
                 return False
 
-            # Secondary root signal: /etc + (systemd OR shell)
+            # Secondary Linux root signal: /etc + (systemd OR shell)
             if has_etc and (has_systemd or has_shell):
                 self.logger.info(
-                    f"🔍 Accepted: has /etc + systemd/shell "
+                    f"🔍 Accepted: Linux root with /etc + systemd/shell "
                     f"(etc={has_etc}, systemd={has_systemd}, shell={has_shell})"
                 )
                 return True
@@ -1064,9 +1129,9 @@ class OfflineFSFix:
             # If we can't prove it's root, treat as not-root (safer)
             self.logger.info(
                 f"🔍 Rejected: insufficient root indicators "
-                f"(os_release={has_os_release}, etc={has_etc}, "
-                f"systemd={has_systemd}, shell={has_shell}, "
-                f"vmlinuz={has_vmlinuz}, initramfs={has_initramfs})"
+                f"(windows_hits={windows_hits}, "
+                f"os_release={has_os_release}, etc={has_etc}, "
+                f"systemd={has_systemd}, shell={has_shell})"
             )
             return False
 
@@ -1496,6 +1561,46 @@ class OfflineFSFix:
                         except Exception as repair_error:
                             self.logger.debug(f"Filesystem repair failed: {repair_error}")
                             raise mount_error
+                    elif vfs_type == "ntfs":
+                        # NTFS: Windows partitions often fail to mount if not cleanly unmounted
+                        # (hibernation, fast startup, etc.). Try recovery strategies.
+                        self.logger.info(f"NTFS mount failed, trying recovery strategies for {dev}")
+
+                        # Strategy 1: Try force mount (removes dirty flag)
+                        try:
+                            self.logger.info(f"Trying NTFS force mount for {dev}")
+                            g.mount_options("force", dev, "/")
+                            self.logger.info(f"✓ Mount succeeded with force option: {dev}")
+                            # Continue with force-mounted filesystem
+                        except Exception as force_error:
+                            self.logger.debug(f"NTFS force mount failed: {force_error}")
+
+                            # Strategy 2: Try read-only mount
+                            try:
+                                self.logger.info(f"Trying NTFS read-only mount for {dev}")
+                                g.mount_ro(dev, "/")
+                                self.logger.info(f"✓ Mount succeeded in read-only mode: {dev}")
+                                # Continue with read-only mode for detection
+                            except Exception as ro_error:
+                                self.logger.debug(f"NTFS read-only mount failed: {ro_error}")
+
+                                # Strategy 3: Try ntfsfix repair then remount
+                                try:
+                                    self.logger.info(f"Attempting ntfsfix repair for {dev}")
+                                    run_sudo(self.logger, ["ntfsfix", "-d", dev], check=False, capture=True)
+                                    # Retry force mount after repair
+                                    g.mount_options("force", dev, "/")
+                                    self.logger.info(f"✓ Mount succeeded after ntfsfix repair: {dev}")
+                                except Exception as repair_error:
+                                    self.logger.debug(f"NTFS repair and mount failed: {repair_error}")
+                                    # Last resort: try windows=0 option (case-sensitive mode)
+                                    try:
+                                        self.logger.info(f"Trying NTFS case-sensitive mount for {dev}")
+                                        g.mount_options("windows=0,force", dev, "/")
+                                        self.logger.info(f"✓ Mount succeeded with windows=0,force: {dev}")
+                                    except Exception as final_error:
+                                        self.logger.debug(f"All NTFS mount strategies failed: {final_error}")
+                                        raise mount_error
                     else:
                         raise
 
