@@ -36,7 +36,7 @@ spec:
       containers:
       - name: worker
         image: hyper2kvm:worker
-        imagePullPolicy: Never  # Use local image in k3d
+        imagePullPolicy: IfNotPresent  # Use local image in k3d
 
         env:
         - name: HYPER2KVM_MODE
@@ -54,16 +54,8 @@ spec:
         - name: PYTHONUNBUFFERED
           value: "1"
 
-        command:
-        - python3
-        - -m
-        - hyper2kvm.worker.daemon
-        - --state-dir
-        - /var/lib/hyper2kvm/jobs
-        - --event-dir
-        - /var/lib/hyper2kvm/events
-        - --queue-dir
-        - /var/lib/hyper2kvm/queue
+        # Use the entrypoint from the image
+        # command: inherited from image (/usr/local/bin/docker-entrypoint.sh)
 
         # Privileged mode required for operations
         securityContext:
