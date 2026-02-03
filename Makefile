@@ -246,3 +246,29 @@ quickstart: ## Quick start for new developers
 	@echo "  make test        - Run tests"
 	@echo "  make lint        - Check code quality"
 	@echo "  make help        - Show all commands"
+
+# ============================================================================
+# Kubernetes E2E Testing
+# ============================================================================
+
+.PHONY: e2e-k8s
+e2e-k8s: ## Run automated Kubernetes E2E test for CentOS 9
+	@bash scripts/run-e2e-test.sh
+
+.PHONY: e2e-k8s-detailed
+e2e-k8s-detailed: ## Run detailed Kubernetes E2E test workflow
+	@bash scripts/test-centos9-e2e-k8s.sh
+
+.PHONY: build-images
+build-images: ## Build container images locally
+	@bash scripts/build-and-push-images.sh
+
+.PHONY: push-images
+push-images: ## Build and push images to GHCR (requires GITHUB_TOKEN)
+	@PUSH=true bash scripts/build-and-push-images.sh
+
+.PHONY: e2e-clean
+e2e-clean: ## Clean up E2E test resources
+	@kubectl delete migrationjob centos9-e2e-test -n hyper2kvm-test --timeout=30s 2>/dev/null || true
+	@kubectl delete namespace hyper2kvm-test --timeout=60s 2>/dev/null || true
+	@echo "✅ E2E test resources cleaned up"
