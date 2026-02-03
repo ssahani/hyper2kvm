@@ -272,3 +272,15 @@ e2e-clean: ## Clean up E2E test resources
 	@kubectl delete migrationjob centos9-e2e-test -n hyper2kvm-test --timeout=30s 2>/dev/null || true
 	@kubectl delete namespace hyper2kvm-test --timeout=60s 2>/dev/null || true
 	@echo "✅ E2E test resources cleaned up"
+
+.PHONY: e2e-ubuntu
+e2e-ubuntu: ## Run automated Kubernetes E2E test for Ubuntu
+	@bash scripts/test-ubuntu-e2e-k8s.sh
+
+.PHONY: e2e-all
+e2e-all: ## Run E2E tests for both CentOS 9 and Ubuntu
+	@echo "Running CentOS 9 E2E test..."
+	@bash scripts/test-centos9-e2e-k8s.sh
+	@echo ""
+	@echo "Running Ubuntu E2E test..."
+	@bash scripts/test-ubuntu-e2e-k8s.sh
