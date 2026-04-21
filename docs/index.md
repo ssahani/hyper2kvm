@@ -187,6 +187,10 @@ Welcome to the comprehensive documentation for Hyper2KVM, a production-ready VM 
 - **[Live Migration Implementation Plan](development/live-migration-implementation-plan.md)** - Roadmap
 - **[Windows Support Implementation Plan](development/windows-support-implementation-plan.md)** - Windows roadmap
 
+### 🔐 Contact & security
+- **[Security policy](../SECURITY.md)** (repository root) — how to report vulnerabilities privately
+- **Maintainer:** Susant Sahani (ssahani@gmail.com) — use the addresses and process in [Contributing](development/contributing.md) for security reports and maintainer topics
+
 ### 📊 Project Information
 - **[Project Status](project/PROJECT_STATUS.md)** - Current development status
 - **[Priority Features](project/Priority-1-Features.md)** - Roadmap and priorities

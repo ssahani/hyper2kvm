@@ -1120,8 +1120,11 @@ ruff check hyper2kvm/
 - **Documentation**: [docs/](docs/)
 - **Discussions**: [GitHub Discussions](https://github.com/ssahani/hyper2kvm/discussions)
 
-### Enterprise
-For enterprise support, consulting, or custom development, contact the maintainers.
+### Security
+Report vulnerabilities privately using the process in [SECURITY.md](SECURITY.md) (contact: **ssahani@gmail.com**).
+
+### Maintainer & enterprise
+**Susant Sahani** — [ssahani@gmail.com](mailto:ssahani@gmail.com) for security follow-ups, enterprise support, consulting, or custom development. See also [Contributing](docs/development/contributing.md).
 
 ---
 

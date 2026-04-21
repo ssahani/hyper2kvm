@@ -4,6 +4,13 @@ Track major changes to Hyper2KVM documentation.
 
 ---
 
+## April 2026
+
+### Maintainer & security contact
+
+- Documented the canonical maintainer address (**ssahani@gmail.com**) and private security reporting in the root [README](../../README.md) Support section.
+- Added a **Contact & security** entry point to [docs/index.md](../index.md) linking to [SECURITY.md](../../SECURITY.md) and the contributing guide.
+
 ## Version 2.1.0 - February 2026
 
 ### Major Documentation Overhaul 🎉
